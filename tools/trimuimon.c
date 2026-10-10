@@ -42,15 +42,16 @@ static void apply(void)
 	char cmd[64];
 	FILE *f;
 
-	snprintf(cmd, sizeof cmd, "tinymix -D 0 set 22 %d >/dev/null 2>&1", vol * 63 / VOL_MAX);
-	if (system(cmd) == -1) { /* stays as it was */ }
-	if ((f = fopen(LCDBL, "w"))) { fprintf(f, "%d", 70 + bri * 5); fclose(f); }
+	/* First: the shelf's bar shows it while tinymix still runs. */
 	mkdir("/tmp/plorpos", 0755);
 	if ((f = fopen(LEVEL ".new", "w"))) {
 		fprintf(f, "%d %d\n", vol, bri);
 		fclose(f);
 		rename(LEVEL ".new", LEVEL);
 	}
+	snprintf(cmd, sizeof cmd, "tinymix -D 0 set 22 %d >/dev/null 2>&1", vol * 63 / VOL_MAX);
+	if (system(cmd) == -1) { /* stays as it was */ }
+	if ((f = fopen(LCDBL, "w"))) { fprintf(f, "%d", 70 + bri * 5); fclose(f); }
 }
 
 /* PE6 (PE_CFG0 bits 24-27) to function 3, the PWM - MinUI's initLCD. */

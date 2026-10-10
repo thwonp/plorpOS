@@ -1300,8 +1300,13 @@ static const char *view_hint(const view *v)
 }
 
 /* The battery, from the AXP209 (ggv.30): read every 30 s, "+" while it
- * charges. */
+ * charges. The Model S's LRADC driver has a capacity, what its own MainUI
+ * shows, and no charging state (80b.20). */
+#ifdef TRIMUI
+#define BATTERY "/sys/devices/soc/1c23400.battery/"
+#else
 #define BATTERY "/sys/class/power_supply/axp20x-battery/"
+#endif
 static int  bat_pct = -1;
 static bool bat_chg;
 
@@ -1312,6 +1317,23 @@ static void battery_poll(void)
 	int pct = -1;
 	FILE *f;
 
+#ifdef TRIMUI
+	/* Its capacity follows the voltage, which sags under load - 20 for a
+	 * moment where it is 40 - so: every 3 s, the highest of the last ten. */
+	static int seen[10], n, at;
+	int i;
+
+	if (last && plat_now_ms() - last < 3000) return;
+	last = plat_now_ms();
+	if ((f = fopen(BATTERY "capacity", "r"))) { if (fscanf(f, "%d", &pct) != 1) pct = -1; fclose(f); }
+	if (pct < 0) { bat_pct = -1; return; }
+	seen[at] = pct;
+	at = (at + 1) % 10;
+	if (n < 10) n++;
+	for (i = 0; i < n; i++) if (seen[i] > pct) pct = seen[i];
+	bat_pct = pct;
+	return;
+#endif
 	if (last && plat_now_ms() - last < 30000) return;
 	last = plat_now_ms();
 	if ((f = fopen(BATTERY "capacity", "r"))) { if (fscanf(f, "%d", &pct) != 1) pct = -1; fclose(f); }
@@ -1319,6 +1341,62 @@ static void battery_poll(void)
 	bat_pct = pct;
 	bat_chg = !strncmp(st, "Charging", 8);
 }
+
+#ifdef TRIMUI
+/* Volume and brightness are trimuimon's, on SELECT / START + L / R. While
+ * one of the two is held the header shows its level in place of the
+ * battery, as MinUI did (80b.19); the shelf leaves L / R alone then, and
+ * START's play/pause waits for its release: a tap, with no L / R (80b.14). */
+#define LEVEL "/tmp/plorpos/level"
+static bool sel_held, start_held, start_combo;
+static unsigned start_at;
+static int  lv_kind, lv_val;        /* 0 none, 1 volume 0-20, 2 brightness 0-10 */
+
+/* The shelf's key for a press or release, SDLK_UNKNOWN for none. */
+static SDLKey key_from(SDLKey k);
+static SDLKey trimui_key(const SDL_Event *e)
+{
+	SDLKey k = e->key.keysym.sym;
+	bool down = e->type == SDL_KEYDOWN;
+
+	if (k == SDLK_RCTRL) { sel_held = down; return SDLK_UNKNOWN; }
+	if (k == SDLK_RETURN) {
+		/* A tap: held longer it was for the brightness bar. */
+		bool fire = !down && start_held && !start_combo && plat_now_ms() - start_at < 500;
+
+		if (down && !start_held) start_at = plat_now_ms();
+		start_held = down;
+		start_combo = false;
+		return fire ? SDLK_s : SDLK_UNKNOWN;
+	}
+	if (!down) return SDLK_UNKNOWN;
+	if ((k == SDLK_TAB || k == SDLK_BACKSPACE) && (sel_held || start_held)) {
+		start_combo = start_held;
+		return SDLK_UNKNOWN;
+	}
+	return key_from(k);
+}
+
+/* True when what the header shows of it changed. tmpfs, read only while
+ * held: every pass then, so the bar keeps up with the presses. */
+static bool level_poll(void)
+{
+	int kind = sel_held != start_held ? (sel_held ? 1 : 2) : 0, vol = -1, bri = -1, val = 0;
+	FILE *f;
+
+	if (kind && (f = fopen(LEVEL, "r"))) {
+		if (fscanf(f, "%d %d", &vol, &bri) != 2) vol = bri = -1;
+		fclose(f);
+	}
+	if (kind == 1 && vol >= 0) val = vol;
+	else if (kind == 2 && bri >= 0) val = bri;
+	else kind = 0;
+	if (kind == lv_kind && val == lv_val) return false;
+	lv_kind = kind;
+	lv_val = val;
+	return true;
+}
+#endif
 
 static void draw_header(const view *v)
 {
@@ -1328,8 +1406,25 @@ static void draw_header(const view *v)
 	int bw = 0, mw = 0, h;
 
 	if (bat_pct >= 0) snprintf(bat, sizeof bat, "%s%d%%", bat_chg ? "+" : "", bat_pct);
+#ifdef TRIMUI
+	if (lv_kind) {
+		const char *name = lv_kind == 1 ? "Volume" : "Brightness";
+		int lw = 0;
+
+		TTF_SizeUTF8(font, name, &lw, &h);
+		bw = lw + 8 + 60;
+		fill(0, 0, W, TOP, c_bar);
+		text(font, W - 6 - bw, 3, lw, name, C_DIM, 0);
+		fill(W - 6 - 60, TOP / 2 - 2, 60, 4, c_track);
+		fill(W - 6 - 60, TOP / 2 - 2, 60 * lv_val / (lv_kind == 1 ? 20 : 10), 4, c_fill);
+		bat[0] = '\0';
+	} else
+#endif
 	if (bat[0]) TTF_SizeUTF8(font, bat, &bw, &h);
 	if (mark[0]) TTF_SizeUTF8(font, mark, &mw, &h);
+#ifdef TRIMUI
+	if (!lv_kind)
+#endif
 	fill(0, 0, W, TOP, c_bar);
 	if (bat[0]) text(font, W - 6 - bw, 3, bw, bat, C_DIM, 0);
 	if (mark[0]) text(font, W - 6 - bw - (bw ? 8 : 0) - mw, 3, mw, mark, C_ACC, 0);
@@ -2088,6 +2183,18 @@ int main(void)
 		bool dirty = false;
 
 		while (SDL_PollEvent(&e)) {
+#ifdef TRIMUI
+			if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+				SDLKey k = trimui_key(&e);
+
+				if (k == SDLK_UNKNOWN && e.type == SDL_KEYUP) continue;
+				if (!t_in) t_in = plat_now_ms();
+				active_at = t_in;
+				if (k != SDLK_UNKNOWN && (!dimmed || !dimmed_key(k))) key(k);
+				dirty = true;
+				continue;
+			}
+#endif
 			if (e.type == SDL_KEYDOWN) {
 				if (!t_in) t_in = plat_now_ms();
 				active_at = t_in;
@@ -2099,6 +2206,9 @@ int main(void)
 				want_quit = 1;
 			}
 		}
+#ifdef TRIMUI
+		if (level_poll()) dirty = true;
+#endif
 		now = plat_now_ms();
 		if (now - last_tick >= 100) {
 			unsigned s2;
