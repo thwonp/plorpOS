@@ -5,7 +5,8 @@
 # the TortOS folder, as on the other devices. No card, no session: the getty.
 [Unit]
 Description=plorpOS session
-After=systemd-user-sessions.service rotate-audio.service mnt-SDCARD.mount
+# bluetoothd first, so WirePlumber finds BlueZ when it starts (plorpos-3yv.18).
+After=systemd-user-sessions.service rotate-audio.service mnt-SDCARD.mount bluetooth.service
 Conflicts=getty@tty1.service
 ConditionPathExists=/mnt/SDCARD/TortOS/rotate/session.sh
 

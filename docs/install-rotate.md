@@ -54,15 +54,20 @@ and the screen's touch does what the buttons did:
 
 | Touch | Does |
 |---|---|
-| tap | A |
-| swipe | the d-pad (a longer swipe moves further) |
-| two-finger tap | B |
-| long press | X (a game's info) |
+| tap | selects what is under it; A on the selected item |
+| swipe | the d-pad (a longer swipe moves further, a flick coasts) |
+| swipe in from the left or right edge | B (back) |
+| long press | Y on what is under it (favorite a game) |
+| two-finger tap | X on what is under it (a game's info) |
 | three-finger tap | Menu |
 | long press in a game | the in-game menu |
 
 The **side key** is Muse's: tap to play or pause, hold for the previous track,
 double tap for the next - on the shelf and in a game.
+
+**Bluetooth headsets**: Menu > Bluetooth, Y to search, A to pair. Sound moves
+to the headset while it is connected and back to the speaker after; Muse
+pauses when the headset goes. Its own buttons play/pause and skip in Muse.
 
 ## Updating
 
