@@ -188,7 +188,9 @@ bool plat_video_init(void)
 bool plat_video_init_over_child(void) { return plat_video_init(); }
 
 static bool resident_away_pending;
+static pid_t child_away;   /* a frozen child, off once the menu has drawn */
 static void resident_place(bool on_screen);
+static bool place(pid_t pid, bool on_screen);
 
 void plat_present(SDL_Renderer *r)
 {
@@ -200,6 +202,17 @@ void plat_present(SDL_Renderer *r)
 		resident_away_pending = false;
 		resident_place(false);
 	}
+	if (child_away > 0) {
+		if (!place(child_away, false)) fprintf(stderr, "run: sway would not hide the child\n");
+		child_away = 0;
+	}
+}
+
+void plat_window_show(bool on)
+{
+	if (!win) return;
+	if (on) SDL_ShowWindow(win);
+	else { SDL_HideWindow(win); SDL_PumpEvents(); }
 }
 
 void plat_video_quit(void)
@@ -345,47 +358,46 @@ static bool helper(char *const argv[])
  * GKD's way, and its reasons (platform_gkd.c). */
 #define HIDE_WS "plorpos-hidden"
 
-/* The resident's window on screen (on top, fullscreen) or off it. */
-static void resident_place(bool on_screen)
+/* pid's window on screen (on top, fullscreen) or off it, on the hidden
+ * workspace. */
+static bool place(pid_t pid, bool on_screen)
 {
-	pid_t pid = diatom_pid();
 	char crit[96];
 	char *cmd[] = { "swaymsg", crit, NULL };
 
-	if (pid <= 0) return;
 	snprintf(crit, sizeof crit, on_screen
 	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
 	         : "[pid=%d] move container to workspace " HIDE_WS, (int)pid);
-	helper(cmd);
+	return helper(cmd);
 }
 
+static void resident_place(bool on_screen)
+{
+	pid_t pid = diatom_pid();
+
+	if (pid > 0) place(pid, on_screen);
+}
+
+/* The frozen child's window stays up, its last frame on it, until the menu
+ * has drawn its first frame over it (plat_present) - the order screen_yield
+ * keeps with the resident, for the same reason (plorpos-3yv.20). */
 bool child_hide(pid_t pid)
 {
-	char crit[80];
-	char *move[] = { "swaymsg", crit, NULL };
-
-	snprintf(crit, sizeof crit, "[pid=%d] move container to workspace " HIDE_WS,
-	         (int)pid);
-	if (!helper(move)) {
-		fprintf(stderr, "run: sway would not hide the child\n");
-		return false;
-	}
+	child_away = pid;
 	if (fd_pad >= 0 && ioctl(fd_pad, EVIOCGRAB, 1) != 0)
 		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
 	return true;
 }
 
+/* The child back on top first, still showing its frame, then the launcher's
+ * window out of the way - also when it is not coming back (a reset's new
+ * child maps next; after a quit run_alone shows the window again). */
 void child_restore(pid_t pid, bool show)
 {
-	char crit[80];
-	char *cmd[] = { "swaymsg", crit, NULL };
-
+	child_away = 0;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
-	if (!show) return;
-	snprintf(crit, sizeof crit,
-	         "[pid=%d] move container to workspace 1, focus, fullscreen enable",
-	         (int)pid);
-	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
+	if (show && !place(pid, true)) fprintf(stderr, "run: sway would not show the child\n");
+	plat_window_show(false);
 }
 
 /* The child's own PipeWire stream, found by its pid, muted while Muse plays:

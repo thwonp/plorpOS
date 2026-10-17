@@ -11024,9 +11024,17 @@ static run_choice native_menu(void *ctx)
 	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
 	menu_style st = { 0 };
 
+#if defined(PLATFORM_ROTATE)
+	/* run_alone's window, as it was; the child leaves the screen once the
+	 * menu's first frame is drawn (child_hide), and the window goes again
+	 * in child_restore. */
+	plat_window_show(true);
+	if (!plat_input_init()) return RUN_QUIT;
+#else
 	if (!plat_video_init_over_child() || !plat_input_init()) return RUN_QUIT;
 	a->r = plat_renderer();
 	ui_init(a->r, P_FONT);
+#endif
 	a->menu_w = 0;
 	/* The Menu press that opened this is not for it - see game_menu. */
 	plat_input_flush();
@@ -11043,10 +11051,14 @@ static run_choice native_menu(void *ctx)
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
 
+#if defined(PLATFORM_ROTATE)
+	plat_input_quit();
+#else
 	free_all_textures(a);
 	ui_quit();
 	plat_input_quit();
 	plat_video_quit();
+#endif
 	return c.choice;
 }
 
@@ -11084,6 +11096,18 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	int rc;
 
 	anim_launch(a, 190);
+#if defined(PLATFORM_ROTATE)
+	/* Under sway the child needs no display of its own, so the launcher's
+	 * window stays - hidden, renderer, fonts and textures intact - and the
+	 * child's menu opens on it without building any of that (.20). */
+	plat_input_quit();
+	plat_window_show(false);
+
+	rc = plat_run(argv, child_env, P_ROOT, on_menu, on_tick, a);
+
+	plat_window_show(true);
+	if (!plat_input_init()) { a->running = false; return rc; }
+#else
 	free_all_textures(a);
 	ui_quit();
 	plat_input_quit();
@@ -11095,6 +11119,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	a->r = plat_renderer();
 	ui_init(a->r, P_FONT);
 	a->menu_w = 0;   /* fonts reopened: remeasure the panel */
+#endif
 	prime_sys_window(a);
 	prime_window(a, a->sys_cursor);
 	/* The display is ours again and no game is running: the safe moment

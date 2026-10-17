@@ -103,6 +103,11 @@ SDL_Renderer *plat_renderer(void);
  * the present every frame of it goes through. Only the Brick differs: no
  * compositor, so no window either (plorpos-reo.8). */
 bool plat_video_init_over_child(void);
+#if defined(PLATFORM_ROTATE)
+/* The launcher's window kept across a child's run, hidden and shown again:
+ * under sway nothing needs it gone (plorpos-3yv.20). */
+void plat_window_show(bool on);
+#endif
 void plat_present(SDL_Renderer *r);
 
 bool plat_input_init(void);
