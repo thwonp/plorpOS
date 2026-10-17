@@ -405,45 +405,95 @@ void child_restore(pid_t pid, bool show)
 }
 
 /* The child's own PipeWire stream, found by its pid, muted while Muse plays:
- * platform_gkd.c's, looked for at most twice a second. */
+ * platform_gkd.c's, looked for at most twice a second. SDL's PipeWire
+ * driver (launch.sh) puts no pid on the stream, only on its client, so the
+ * stream is the one whose Client: is the child's (plorpos-3yv.18). */
+#define QUIET_CLIENTS 4
+
 static int quiet_stream(pid_t pid)
 {
 	char line[256], want[48];
-	int cur = -1, idx = -1;
-	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
+	int cur = -1, idx = -1, clients[QUIET_CLIENTS], nc = 0, c, i;
+	FILE *f = popen("pactl list clients 2>/dev/null", "r");
 
 	if (!f) return -1;
 	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
 	while (fgets(line, sizeof line, f)) {
+		if (!strncmp(line, "Client #", 8)) cur = atoi(line + 8);
+		else if (cur >= 0 && nc < QUIET_CLIENTS && strstr(line, want)) clients[nc++] = cur;
+	}
+	pclose(f);
+	if (!(f = popen("pactl list sink-inputs 2>/dev/null", "r"))) return -1;
+	cur = -1;
+	while (fgets(line, sizeof line, f)) {
 		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
-		else if (idx < 0 && strstr(line, want)) idx = cur;
+		else if (idx >= 0) continue;
+		else if (strstr(line, want)) idx = cur;
+		else if (sscanf(line, " Client: %d", &c) == 1)
+			for (i = 0; i < nc; i++) if (clients[i] == c) idx = cur;
 	}
 	pclose(f);
 	return idx;
 }
 
+/* On a worker, latest wins: SDL's PipeWire stream is muted by its own
+ * client, so a mute sent to a frozen child waits until it is thawed - and
+ * plat_run says it before the SIGCONT, which on this thread froze the
+ * launcher for pactl's 10 s timeout (plorpos-3yv.18). The worker's pactl
+ * lands as the child wakes. Wanted only while plat_run keeps asking: a
+ * request older than a second is a run that ended. */
+static pthread_mutex_t q_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  q_cv = PTHREAD_COND_INITIALIZER;
+static pid_t           q_want_pid;
+static int             q_want = -1;
+static unsigned        q_asked_at;
+
+static void *quiet_worker(void *arg)
+{
+	pid_t pid = 0;
+	int said = -1, idx = -1, on;
+	char num[16];
+	(void)arg;
+
+	for (;;) {
+		char *cmd[] = { "pactl", "set-sink-input-mute", num, NULL, NULL };
+
+		pthread_mutex_lock(&q_mu);
+		while (q_want < 0 || (q_want_pid == pid && q_want == said))
+			pthread_cond_wait(&q_cv, &q_mu);
+		if (plat_now_ms() - q_asked_at > 1000) { q_want = -1; pthread_mutex_unlock(&q_mu); continue; }
+		if (q_want_pid != pid) { pid = q_want_pid; said = -1; idx = -1; }
+		on = q_want;
+		pthread_mutex_unlock(&q_mu);
+
+		if (idx < 0 && (idx = quiet_stream(pid)) < 0) { SDL_Delay(500); continue; }
+		snprintf(num, sizeof num, "%d", idx);
+		cmd[3] = on ? "1" : "0";
+		if (helper(cmd)) {
+			said = on;
+			fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
+		} else {
+			idx = -1;   /* the stream went: look again */
+		}
+	}
+	return NULL;
+}
+
 void child_quiet(pid_t pid, bool on)
 {
-	static pid_t q_pid;
-	static int q_idx = -1, q_said = -1;
-	static unsigned q_look_at;
-	char idx[16];
-	char *cmd[] = { "pactl", "set-sink-input-mute", idx, on ? "1" : "0", NULL };
+	static bool started;
 
-	if (pid != q_pid) { q_pid = pid; q_idx = -1; q_said = -1; q_look_at = 0; }
-	if (q_said == (int)on) return;
-	if (q_idx < 0) {
-		if (q_look_at && plat_now_ms() - q_look_at < 500) return;
-		q_look_at = plat_now_ms() | 1;
-		if ((q_idx = quiet_stream(pid)) < 0) return;
+	pthread_mutex_lock(&q_mu);
+	if (!started) {
+		pthread_t t;
+		if (pthread_create(&t, NULL, quiet_worker, NULL) == 0) pthread_detach(t);
+		started = true;
 	}
-	snprintf(idx, sizeof idx, "%d", q_idx);
-	if (helper(cmd)) {
-		q_said = on;
-		fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
-	} else {
-		q_idx = -1;   /* the stream went: look again */
-	}
+	q_want_pid = pid;
+	q_want = on;
+	q_asked_at = plat_now_ms();
+	pthread_cond_signal(&q_cv);
+	pthread_mutex_unlock(&q_mu);
 }
 
 static void pad_read(in_state *st)
