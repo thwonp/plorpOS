@@ -697,10 +697,14 @@ void plat_leds_off(void) { }
 
 #define VOL_MAX    PLAT_VOL_MAX
 #define BACKLIGHT  "/sys/class/backlight/backlight/brightness"
-/* The panel's PWM is 0-2499. The Brick's ladder shape, scaled, until judged
- * on this panel. */
+/* The panel's PWM is 0-2499. By eye 2026-10-17 (plorpos-3yv.24): black up
+ * to 80, 90 the dimmest it shows - and it stays at that same dimness to 170
+ * at least; 140 -> 200 is the first visible step. So one rung on the floor
+ * (100, room for another panel's edge), the next at 200, and from there
+ * rungs each a visible step apart. diatom port/gkd.c (DIATOM_PORT_ROTATE)
+ * has the same ladder and must match. */
 static const unsigned short bright_ladder[] = {
-	20, 40, 80, 160, 310, 470, 700, 940, 1250, 1570, 1880, 2499
+	100, 200, 270, 360, 470, 600, 760, 960, 1250, 1570, 1880, 2499
 };
 #define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "bright_ladder vs PLAT_BRIGHT_MAX");
