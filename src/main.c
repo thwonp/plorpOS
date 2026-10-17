@@ -11254,7 +11254,11 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	/* Through env(1) when the device needs a library preloaded into PICO-8
 	 * alone, or a PATH of its own; env execs it, so the pid plat_run signals
 	 * is pico8_64's. */
-	if (plat_pico8_preload || plat_pico8_path)
+	bool via_env = plat_pico8_preload || plat_pico8_path;
+#if defined(PLATFORM_H700)
+	via_env = true;   /* for plat_pico8_pad, which the Rotate needs with neither */
+#endif
+	if (via_env)
 		argv[n++] = (char *)"/usr/bin/env";
 	if (plat_pico8_preload) {
 		snprintf(preload, sizeof preload, "LD_PRELOAD=%s", plat_pico8_preload);
@@ -11269,8 +11273,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #if defined(PLATFORM_H700)
 	/* The pad as PICO-8 should see it - SDL's own guess crosses Start and R2
 	 * (plorpos-7ny.41). */
-	if (plat_pico8_preload || plat_pico8_path)
-		argv[n++] = (char *)plat_pico8_pad;
+	argv[n++] = (char *)plat_pico8_pad;
 #endif
 #if !defined(PLAT_PIPEWIRE)
 	/* To the headset when that is where the sound goes, by its PCM name in

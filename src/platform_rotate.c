@@ -59,8 +59,10 @@ const char *const plat_child_env[] = {
 };
 /* SDL2 and FFmpeg are Debian's, in the system paths. */
 const char plat_child_libpath[] = "";
-const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
-const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
+/* Neither, as on the GKD: Debian's SDL has sensors, PipeWire quiets PICO-8
+ * (child_quiet) and follows the output, and Debian's wget is GNU, with TLS. */
+const char *const plat_pico8_preload = NULL;
+const char *const plat_pico8_path = NULL;
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }
@@ -80,12 +82,17 @@ static const struct { int code; in_button b; } padmap[] = {
 	{ BTN_DPAD_LEFT, IN_LEFT }, { BTN_DPAD_RIGHT, IN_RIGHT },
 	{ BTN_DPAD_UP, IN_UP }, { BTN_DPAD_DOWN, IN_DOWN },
 };
-/* SDL numbers gpio-keys' buttons by code from BTN_SOUTH up. PROVISIONAL with
- * the map above. */
+/* The same buttons for native PICO-8's SDL. SDL numbers the present codes in
+ * order, measured on the device (2026-10-17, every key injected): A b0, B b1,
+ * X b2, Y b3, L1 b4, R1 b5, L2 b6, R2 b7, Select b8, Start b9, Menu b10 (the
+ * launcher's, left out), side key b11 (Muse's), d-pad up/down/left/right
+ * b12-b15. x/y positional, as on the H700. No name CRC: SDL matches it
+ * whatever the name. */
 const char plat_pico8_pad[] =
 	"SDL_GAMECONTROLLERCONFIG=19000000010000000100000000010000,gpio-keys-gamepad,"
-	"a:b0,b:b1,y:b3,x:b4,leftshoulder:b6,rightshoulder:b7,back:b10,start:b11,"
-	"lefttrigger:b8,righttrigger:b9,platform:Linux,";
+	"a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b8,start:b9,"
+	"lefttrigger:b6,righttrigger:b7,"
+	"dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,platform:Linux,";
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
