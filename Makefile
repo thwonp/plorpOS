@@ -34,6 +34,8 @@ else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+else ifeq ($(PLATFORM),rotate)
+all: build/rotate/tortos.elf build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 else
 all: build/tortos.elf
 endif
@@ -71,7 +73,7 @@ VERSION ?= 1.5.3
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd h700,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd h700 rotate,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -95,9 +97,10 @@ build/ss_creds.h: FORCE
 
 # Each device's sources: everything but the other device's file, so that editing
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
-SRC_BRICK := $(filter-out src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
-SRC_GKD   := $(filter-out src/platform_brick.c src/platform_h700.c,$(wildcard src/*.c))
-SRC_H700  := $(filter-out src/platform_brick.c src/platform_gkd.c,$(wildcard src/*.c))
+SRC_BRICK  := $(filter-out src/platform_gkd.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_GKD    := $(filter-out src/platform_brick.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_H700   := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_ROTATE := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
 # And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
 THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
@@ -223,6 +226,36 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
 		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+
+# The RG Rotate on Armbian (plorpos-3yv): Debian trixie's own SDL2 and FFmpeg,
+# unpacked by mk/fetch-rotate-sysroot.sh - no device needed.
+build/rotate/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/rotate creds
+
+build/rotate/tortos.elf: $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rotate/ss_creds.h
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-rotate/usr/include/SDL2 ] || { \
+		echo "no Rotate sysroot; run: mk/fetch-rotate-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=rotate BUILD=build/rotate SYSROOT=/work/sysroot-rotate \
+		VERSION=$(VERSION) creds build/rotate/tortos.elf
+	@for src in $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk build/rotate/ss_creds.h; do \
+		if [ "$$src" -nt build/rotate/tortos.elf ]; then \
+			echo "STALE: build/rotate/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/rotate/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+
+# btplayer with them: same container, and it needs nothing from the sysroot.
+build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so &: $(wildcard src/muse/*.c) \
+                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c mk/cross.mk
+	@[ -f sysroot-rotate/usr/include/libavcodec/avcodec.h ] || { \
+		echo "no FFmpeg in the Rotate sysroot; run: mk/fetch-rotate-sysroot.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		make -f mk/cross.mk PLATFORM=rotate BUILD=build/rotate SYSROOT=/work/sysroot-rotate \
+		build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.

@@ -25,6 +25,17 @@ CFLAGS += -DPLATFORM_H700
 # (src/muse/muse.c, MUSE_HANDOVER).
 MUSE_DEFS := -DMUSE_HANDOVER
 endif
+ifeq ($(PLATFORM),rotate)
+# Anbernic RG Rotate on Armbian (plorpos-3yv): the H700's branches all fit a
+# Linux handheld that is not a Brick, so it takes them, and PLATFORM_ROTATE
+# where it differs (src/platform_rotate.c says which). Muse shares the codec
+# the H700's way until .11 says otherwise.
+CFLAGS += -DPLATFORM_H700 -DPLATFORM_ROTATE
+# Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
+# trixie's own libc headers in the sysroot never shadow the toolchain's.
+CFLAGS += -idirafter $(SYSROOT)/usr/include
+MUSE_DEFS := -DMUSE_HANDOVER
+endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
 # the device at runtime, where they exist. The flag permits undefined symbols
