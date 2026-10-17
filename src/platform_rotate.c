@@ -214,15 +214,29 @@ bool plat_input_init(void)
 	return fd_pad >= 0;
 }
 
-#define TOUCH_SWIPE_PX  60     /* farther than this is a swipe, not a tap */
-#define TOUCH_STEP_PX   120    /* each this much farther, one more step */
+#define TOUCH_SWIPE_PX  60     /* farther than this is a swipe: the first step */
+#define TOUCH_STEP_PX   200    /* then each this much farther, one more */
 #define TOUCH_HOLD_MS   500
+#define FLICK_MIN_PXMS  0.8f   /* lifted moving this fast (px/ms): it coasts */
+#define FLICK_FRESH_MS  60     /* ... if it was still moving this recently */
+#define FLICK_TAU_MS    300.0f /* the coast slows by e every this long */
+#define FLICK_STOP_PXMS 0.25f  /* and stops below this */
+#define FLICK_STEP_PX   120    /* a step per this much coast */
 
 static struct {
 	int    fingers, most;      /* down now, and the most at once */
 	float  x0, y0, x, y;       /* the first finger, in panel pixels */
 	unsigned t0;
 	bool   held;               /* the long press already fired */
+	int    axis;               /* -1 until the first step, then 0 x / 1 y */
+	float  anchor;             /* where along it the last step was taken */
+	int    steps;              /* taken by this touch */
+	float  v, pv;              /* speed along the axis (px/ms), last position */
+	unsigned tv;               /* ... and when */
+	bool   caught;             /* this touch stopped a coast: not a tap */
+	bool   coasting;
+	float  cv, cpos;           /* coast speed, and distance since its last step */
+	unsigned ct;
 	in_button queue[8];
 	int    qn;
 	in_button up;              /* pressed last poll, released this one ... */
@@ -417,22 +431,67 @@ static void sys_read(in_state *st)
  * already answers to - so closed, with the face buttons hidden, the whole
  * shelf, every menu and Muse are still in reach:
  *
- *   tap = A, swipe = d-pad (a longer swipe, up to five steps), two-finger
- *   tap = B, long press = X (a game's info; fired while held), three-finger
- *   tap = Menu. Start has nothing to do on the shelf, so it gets no gesture.
+ *   tap = A, drag = d-pad, flick = d-pad that coasts on, two-finger tap =
+ *   B, long press = Y (favorite a game, Muse's mode, a rescan; fired while
+ *   held - plorpos-3yv.22), three-finger tap = Menu. Start has nothing to do
+ *   on the shelf and X (a game's info) is a button's job, open.
  *
- * One gesture at a time, decided when the last finger lifts (a long press
- * when it has been held still). Each resulting press is down for one poll
- * and up the next, queued so a long swipe's steps land one poll apart. */
+ * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
+ * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
+ * spaced so a short deliberate swipe is one tile. Lifted while still moving
+ * fast, it coasts: steps keep coming at FLICK_STEP_PX of a speed that decays,
+ * so a harder flick goes further. A touch during a coast stops it and is not
+ * a tap. Taps are decided when the last finger lifts. Each press is down for
+ * one poll and up the next, queued so a run of steps lands one poll apart. */
 static void touch_queue(in_button b, int n)
 {
 	while (n-- > 0 && touch.qn < (int)(sizeof touch.queue / sizeof touch.queue[0]))
 		touch.queue[touch.qn++] = b;
 }
 
+/* One step along `axis` for a finger travelling `d` (signed) along it. The
+ * finger drags the content: a swipe to the left moves on, as the d-pad's
+ * right does. */
+static void touch_step(int axis, float d)
+{
+	if (axis == 0) touch_queue(d < 0 ? IN_RIGHT : IN_LEFT, 1);
+	else           touch_queue(d < 0 ? IN_DOWN : IN_UP, 1);
+	touch.steps++;
+}
+
+static void touch_drag(void)
+{
+	float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
+	float ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy, p, d;
+	unsigned now = plat_now_ms();
+
+	if (touch.axis < 0) {
+		if ((ax > ay ? ax : ay) <= TOUCH_SWIPE_PX) return;
+		touch.axis = ax > ay ? 0 : 1;
+		p = touch.axis == 0 ? dx : dy;
+		touch.anchor = p < 0 ? -TOUCH_SWIPE_PX : TOUCH_SWIPE_PX;
+		touch.pv = p; touch.tv = now; touch.v = 0;
+		touch_step(touch.axis, p);
+	}
+	p = touch.axis == 0 ? dx : dy;
+	if (now > touch.tv) {
+		float inst = (p - touch.pv) / (float)(now - touch.tv);
+		touch.v = now - touch.tv >= FLICK_FRESH_MS ? inst : 0.5f * touch.v + 0.5f * inst;
+		touch.pv = p; touch.tv = now;
+	}
+	while ((d = p - touch.anchor) >= TOUCH_STEP_PX || d <= -TOUCH_STEP_PX) {
+		touch.anchor += d < 0 ? -TOUCH_STEP_PX : TOUCH_STEP_PX;
+		touch_step(touch.axis, d);
+	}
+}
+
 static void touch_event(const SDL_Event *e)
 {
-	int w = plat_screen_w > 0 ? plat_screen_w : 720, h = plat_screen_h > 0 ? plat_screen_h : 720;
+	/* Panel pixels, so the distances above are what a finger travels:
+	 * plat_screen_w is in layout units (1024 wide here, at scale 0.70). */
+	float w = plat_screen_w * plat_scale(), h = plat_screen_h * plat_scale();
+
+	if (w <= 0 || h <= 0) w = h = 720;
 
 	if (e->type == SDL_FINGERDOWN) {
 		if (touch.fingers++ == 0) {
@@ -441,37 +500,60 @@ static void touch_event(const SDL_Event *e)
 			touch.y0 = touch.y = e->tfinger.y * h;
 			touch.t0 = plat_now_ms();
 			touch.held = false;
+			touch.axis = -1;
+			touch.steps = 0;
+			touch.caught = touch.coasting;
+			touch.coasting = false;
 		} else if (touch.fingers > touch.most)
 			touch.most = touch.fingers;
 	} else if (e->type == SDL_FINGERMOTION) {
-		if (touch.fingers == 1) { touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h; }
+		if (touch.fingers == 1) {
+			touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h;
+			if (touch.most == 1 && !touch.held) touch_drag();
+		}
 	} else if (e->type == SDL_FINGERUP && touch.fingers > 0) {
-		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
-		float ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy, d = ax > ay ? ax : ay;
+		float v = touch.v < 0 ? -touch.v : touch.v;
 
 		if (--touch.fingers > 0 || touch.held) return;
-		if (touch.most >= 3)      touch_queue(IN_MENU, 1);
-		else if (touch.most == 2) touch_queue(IN_BACK, 1);
-		else if (d > TOUCH_SWIPE_PX) {
-			int steps = clampi(1 + (int)((d - TOUCH_SWIPE_PX) / TOUCH_STEP_PX), 1, 5);
-			/* The finger drags the content: a swipe to the left moves on,
-			 * as the d-pad's right does. */
-			if (ax > ay) touch_queue(dx < 0 ? IN_RIGHT : IN_LEFT, steps);
-			else         touch_queue(dy < 0 ? IN_DOWN : IN_UP, steps);
-		} else
-			touch_queue(IN_ACCEPT, 1);
+		if (touch.steps > 0) {
+			if (plat_now_ms() - touch.tv <= FLICK_FRESH_MS && v >= FLICK_MIN_PXMS) {
+				touch.coasting = true;
+				touch.cv = touch.v;
+				touch.cpos = 0;
+				touch.ct = plat_now_ms();
+			}
+		} else if (touch.most >= 3) touch_queue(IN_MENU, 1);
+		else if (touch.most == 2)   touch_queue(IN_BACK, 1);
+		else if (!touch.caught)     touch_queue(IN_ACCEPT, 1);
 	}
+}
+
+static void touch_coast(void)
+{
+	unsigned now = plat_now_ms();
+	float dt = (float)(now - touch.ct);
+
+	touch.ct = now;
+	if (dt > FLICK_TAU_MS) dt = FLICK_TAU_MS;
+	touch.cpos += touch.cv * dt;
+	touch.cv -= touch.cv * dt / FLICK_TAU_MS;
+	while (touch.cpos >= FLICK_STEP_PX || touch.cpos <= -FLICK_STEP_PX) {
+		touch_step(touch.axis, touch.cpos);
+		touch.cpos += touch.cpos < 0 ? FLICK_STEP_PX : -FLICK_STEP_PX;
+	}
+	if ((touch.cv < 0 ? -touch.cv : touch.cv) < FLICK_STOP_PXMS) touch.coasting = false;
 }
 
 static void touch_poll(in_state *st)
 {
 	if (touch.pulsing) { set_btn(st, touch.up, false); touch.pulsing = false; }
-	if (touch.fingers == 1 && touch.most == 1 && !touch.held &&
+	if (touch.coasting) touch_coast();
+	if (touch.fingers == 1 && touch.most == 1 && !touch.held && touch.steps == 0 &&
 	    plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
 		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
 			touch.held = true;
-			touch_queue(IN_X, 1);
+			touch_queue(IN_Y, 1);
 		}
 	}
 	if (touch.qn > 0) {
