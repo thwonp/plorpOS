@@ -2,13 +2,14 @@
 # Push a Rotate build to the device over ssh (plorpos-3yv), for development.
 # The card image is mk/payload.sh's business (.13); this only replaces files.
 #
-#   mk/rotate-deploy.sh [elf|diatom|all|boot]   (ROTATE_HOST, ROTATE_KEY, DIATOM_ELF override)
+#   mk/rotate-deploy.sh [elf|diatom|all|boot|stage]   (ROTATE_HOST, ROTATE_KEY, DIATOM_ELF override)
 #
 # elf: the launcher alone. diatom: the resident emulator alone (../diatom,
 # PORT=rotate tools/brick-make.sh). all: both, the cores, Muse's tools, the session
 # scripts (sd/rotate) and the shared files payload.sh puts in TortOS/
 # (systems.cfg, cards, font, web, CA bundle, shaders). boot: also installs
 # plorpos.service into the rootfs and enables it in place of tty1's getty.
+# stage: the TortOS folder into $ROTATE_STAGE, no device (mk/rotate-image.sh).
 # The runtime libraries are Debian's: apt, not this script.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,23 +31,41 @@ if [ "$MODE" = diatom ]; then
 	echo "deployed diatom $(md5sum "$DIATOM" | cut -c1-8); the launcher restarts it"
 	exit 0
 fi
-ssh_ "mkdir -p $P" < /dev/null
-if [ "$MODE" = all ] || [ "$MODE" = boot ]; then
-	S=$(mktemp -d)
-	trap 'rm -rf "$S"' EXIT
-	mkdir -p "$S/cards" "$S/res/web" "$S/shaders" "$S/rotate" "$S/cores" "$S/pico8"
-	cp "$ROOT"/vendor/cores/*_libretro.so "$S/cores/"
-	cp "$ROOT/sd/tortos/pico8/wget" "$S/pico8/"
+# The TortOS folder, as the card holds it, into $1: the launcher, Diatom
+# and its cores, Muse's tools, the session (sd/rotate) and the shared files
+# payload.sh puts in TortOS/ (systems.cfg, cards, font, web, CA bundle,
+# shaders). No pico8sdl.so or wget shim: the Rotate's PICO-8 needs neither.
+stage() {
+	S=$1
+	mkdir -p "$S/cards" "$S/res/web" "$S/shaders" "$S/rotate" "$S/cores"
+	cp "$B/tortos.elf" "$S/"
 	[ -f "$DIATOM" ] && cp "$DIATOM" "$S/diatom"
+	cp "$ROOT"/vendor/cores/*_libretro.so "$S/cores/"
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
-	for f in muse musectl btplayer pico8sdl.so; do cp "$B/$f" "$S/"; done
+	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
 	cp "$ROOT/config/systems.cfg" "$ROOT/res/fonts/menu.ttf" "$ROOT/res/singles.png" \
 	   "$ROOT/res/ssl/cacert.pem" "$S/"
 	cp -R "$ROOT/res/cards/." "$S/cards/"
 	cp "$ROOT/res/web/"* "$S/res/web/"
 	cp "$ROOT/res/fonts/menu.ttf" "$S/res/web/menu.ttf"
 	cp "$ROOT/res/shaders/"* "$S/shaders/"
-	tar -C "$S" -cf - . | ssh_ "tar -C $P -xf -"
+}
+if [ "$MODE" = stage ]; then
+	[ -n "${ROTATE_STAGE:-}" ] || { echo "stage: set ROTATE_STAGE" >&2; exit 1; }
+	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; }
+	mkdir -p "$ROTATE_STAGE"
+	stage "$ROTATE_STAGE"
+	echo "staged TortOS/ in $ROTATE_STAGE"
+	exit 0
+fi
+ssh_ "mkdir -p $P" < /dev/null
+if [ "$MODE" = all ] || [ "$MODE" = boot ]; then
+	T=$(mktemp -d)
+	trap 'rm -rf "$T"' EXIT
+	stage "$T"
+	# The two that may be running go by put, below, not over their inodes.
+	tar -C "$T" --exclude=./tortos.elf --exclude=./diatom -cf - . | ssh_ "tar -C $P -xf -"
+	[ -f "$DIATOM" ] && put "$DIATOM" diatom
 	ssh_ "mkdir -p /mnt/SDCARD/Roms /mnt/SDCARD/Music /mnt/SDCARD/Bios /mnt/SDCARD/Saves" < /dev/null
 fi
 if [ "$MODE" = boot ]; then

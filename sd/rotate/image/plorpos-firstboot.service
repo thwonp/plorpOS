@@ -1,0 +1,15 @@
+# The RG Rotate card: data partition and plorpOS on it, when missing
+# (sd/rotate/image/plorpos-firstboot.sh). A no-op boot after boot otherwise.
+[Unit]
+Description=plorpOS data partition
+After=local-fs.target
+Before=plorpos.service
+ConditionPathExists=!/mnt/SDCARD/TortOS/rotate/session.sh
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/share/plorpos/plorpos-firstboot.sh
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
