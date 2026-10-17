@@ -44,6 +44,37 @@ warm_codec() {
 	pactl suspend-sink @DEFAULT_SINK@ 0
 	silence || echo "codec: still stalled after the warm-up; no sound this session"
 }
+# Bonded headsets connected at the session's start (plorpos-3yv.18.4), as
+# the Brick's bt_reconnect: one already out of its case when the Rotate starts
+# does not reach for it itself. Bonded = trusted with a link key, bt.c's
+# rule. Stops at the first link; a few rounds, as WirePlumber registers its
+# A2DP endpoints a moment after it starts. After warm_codec: a headset there
+# first would be the default sink its suspend went to.
+bt_reconnect() {
+	for round in 1 2 3 4; do
+		bonds=
+		for d in /var/lib/bluetooth/*/*:*; do
+			grep -q '^Trusted=true' "$d/info" 2> /dev/null || continue
+			grep -q '^\[LinkKey\]' "$d/info" 2> /dev/null || continue
+			bonds="$bonds ${d##*/}"
+		done
+		[ -n "$bonds" ] || return 0
+		for mac in $bonds; do
+			timeout 5 bluetoothctl info "$mac" 2> /dev/null | grep -q 'Connected: yes' && return 0
+		done
+		for mac in $bonds; do
+			timeout 10 bluetoothctl connect "$mac" > /dev/null 2>&1
+			# By info, never by connect's return (the Brick's rule).
+			sleep 1
+			if timeout 5 bluetoothctl info "$mac" 2> /dev/null | grep -q 'Connected: yes'; then
+				echo "bluetooth: reconnected $mac (round $round)"
+				return 0
+			fi
+		done
+		sleep 5
+	done
+	echo "bluetooth: no bonded headset answered"
+}
 start_resident() {
 	pgrep -f "TortOS/diatom --socket" > /dev/null && return
 	[ -x "$DIR/diatom" ] || return
@@ -61,6 +92,7 @@ start_resident() {
 			i=$((i + 1))
 		done
 		warm_codec
+		bt_reconnect &
 		exec "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 			--save "$SD/Saves" --system "$SD/Bios"
 	) >> "$LOG" 2>&1 &
