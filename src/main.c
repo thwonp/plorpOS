@@ -3943,6 +3943,16 @@ static int menu_notes_fit(void)
  * The caller passes it rather than this inferring it, because only the caller
  * knows the content is a repeat - and getting it wrong does not look like a
  * bug, it looks like a scroll that jumps. */
+/* A row as a touch target (ui_hit): the presses that walk the cursor to it,
+ * by menu_step_sel's rule, so the rows it skips a tap skips too. */
+static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect *r)
+{
+	int dir = i > sel ? 1 : -1, k = sel, c = 0;
+
+	while (k != i && c < n) { k = menu_step_sel(rows, n, k, dir); c++; }
+	if (k == i) ui_hit(r, dir > 0 ? IN_DOWN : IN_UP, c);
+}
+
 static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
                          int n, int sel, int fixed_w, unsigned accent,
                          const unsigned *vcolors, bool visits_all, int loop_at)
@@ -4195,6 +4205,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * eleven system accents; the mark's old blue sat close to Genesis. */
 	ui_glow(a->r, &panel, accent, 60, 1.5f);
 	ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	ui_hit_modal(&panel);   /* the panel is what a tap can reach now */
 
 	if (heading) {
 		/* Centered in the band by its ink, on the same reasoning as the rows:
@@ -4474,6 +4485,11 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		}
 		/* Centered in ITS OWN row, not in row_h: a note is shorter. */
 		ty = y + (ROW_H(rows[i]) - text_h) / 2 + ink_off;
+		/* What a tap can select: a live row in the window, or the pinned
+		 * footer - not the spare row drawn half-clipped past either end. */
+		if (sel >= 0 && rows[i].label && rows[i].live &&
+		    ((i >= first && i < first + vis) || (pinned && i >= scroll_split)))
+			menu_hit(rows, n, sel, i, &(SDL_Rect){ panel.x, y, panel.w, ROW_H(rows[i]) });
 
 		/* The same bar as the heading's, at the same alpha and width. If one
 		 * is ever retuned the other follows, which is the point. */
