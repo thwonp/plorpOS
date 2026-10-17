@@ -26,6 +26,8 @@ static const char *bonds(void)
 	const char *b = getenv("TORTOS_BT_BONDS");
 #if defined(PLATFORM_GKD)
 	return b && *b ? b : "/storage/.cache/bluetooth";   /* ROCKNIX's build */
+#elif defined(PLATFORM_ROTATE)
+	return b && *b ? b : "/var/lib/bluetooth";          /* Debian's */
 #else
 	return b && *b ? b : "/etc/lib/bluetooth";
 #endif
@@ -365,8 +367,8 @@ static bool bluetoothd_running(void)
  * replaced and why each was wrong. */
 int bt_mark_connected_now(bt_device *list, int n)
 {
-#if defined(PLATFORM_H700)
-	/* No hcitool on BaseOS. BlueZ 5.66's own list, which holds a device only
+#if defined(PLATFORM_H700) || defined(PLATFORM_ROTATE)
+	/* No hcitool on BaseOS (nor in Debian's bluez). BlueZ 5.66's own list, which holds a device only
 	 * once its link is up - not the half-open one hcitool also showed.
 	 * Matched on `Device <mac>` at a line's start, so neither an event line
 	 * (`[CHG] Device ...`) nor a device with no name is misread. */
@@ -710,7 +712,7 @@ bool bt_forget(const char *mac)
 
 bool bt_asoundrc(const char *tortos_dir, const char *userdata_dir)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	/* No bluealsa and no .asoundrc: PipeWire makes the sink itself. */
 	(void)tortos_dir; (void)userdata_dir;
 	return true;
