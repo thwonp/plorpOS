@@ -418,7 +418,8 @@ static void sys_read(in_state *st)
  * shelf, every menu and Muse are still in reach:
  *
  *   tap = A, swipe = d-pad (a longer swipe, up to five steps), two-finger
- *   tap = B, long press = Start (fired while held), three-finger tap = Menu.
+ *   tap = B, long press = X (a game's info; fired while held), three-finger
+ *   tap = Menu. Start has nothing to do on the shelf, so it gets no gesture.
  *
  * One gesture at a time, decided when the last finger lifts (a long press
  * when it has been held still). Each resulting press is down for one poll
@@ -470,7 +471,7 @@ static void touch_poll(in_state *st)
 		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
 			touch.held = true;
-			touch_queue(IN_START, 1);
+			touch_queue(IN_X, 1);
 		}
 	}
 	if (touch.qn > 0) {
