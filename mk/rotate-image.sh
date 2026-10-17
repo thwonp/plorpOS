@@ -52,6 +52,7 @@ ssh_ 'tar -C / --one-file-system --numeric-owner -cf - \
 	--exclude=./mnt/SDCARD --exclude=./tmp/* --exclude=./var/tmp/* \
 	--exclude=./var/log/journal/* --exclude=./var/cache/apt/archives/*.deb \
 	--exclude=./root/.bash_history --exclude=./root/*.py --exclude=./root/*.sh \
+	--exclude=./root/*.orig --exclude=./root/k --exclude=./root/wp.env \
 	--exclude=./swapfile . | zstd -1 -T0' > "$W/rootfs.tar.zst"
 fi
 [ -s "$W/rootfs.tar.zst" ] || { echo "image: no rootfs read" >&2; exit 1; }
