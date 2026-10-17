@@ -820,7 +820,7 @@ static char *dline(int timeout_ms)
  * launch.sh wrote one, so on the GKD - and on the Brick after respawn_resident
  * started Diatom - there was no pid to escalate to, and a core wedged inside
  * retro_run kept the screen until someone ran kill -9 (plorpos-gkd.58). */
-static pid_t diatom_pid(void)
+pid_t diatom_pid(void)
 {
 	struct ucred cr;
 	socklen_t len = sizeof cr;

@@ -187,10 +187,19 @@ bool plat_video_init(void)
  * it is an ordinary window. */
 bool plat_video_init_over_child(void) { return plat_video_init(); }
 
+static bool resident_away_pending;
+static void resident_place(bool on_screen);
+
 void plat_present(SDL_Renderer *r)
 {
 	ui_hit_frame();   /* a tap now means what this frame shows */
 	SDL_RenderPresent(r);
+	/* The menu's first frame is up: only now does the paused game go
+	 * (screen_yield). */
+	if (resident_away_pending) {
+		resident_away_pending = false;
+		resident_place(false);
+	}
 }
 
 void plat_video_quit(void)
@@ -200,13 +209,34 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-/* Only one fullscreen window mapped at a time, as on the GKD: sway does not
- * reliably show the one that drew last. */
+/* The hand-over with the resident, in the order that never shows black
+ * (plorpos-3yv.25). A paused Diatom keeps its window mapped, its last frame
+ * on it (port/gkd.c, PARK_KEEP), and sway will not reliably raise a newly
+ * shown window over a fullscreen one - measured: the menu was open but
+ * hidden behind the game 2 times in 3. So each side is put on screen by
+ * name, and only once it has something to show:
+ *
+ *   pause:  the launcher's window is shown and draws its first frame
+ *           underneath, THEN the game goes to the hidden workspace
+ *           (plat_present) - the menu is there complete the instant it is.
+ *   resume: the game comes back on top, still showing its paused frame,
+ *           THEN the launcher's window goes.
+ *
+ * Hiding first left sway's black background up for the 12-29 ms until the
+ * launcher's first buffer. At a game's start and exit there is no resident
+ * window to move; the move fails silently and nothing else changes. */
 void screen_yield(bool to_game)
 {
 	if (!win) return;
-	if (to_game) { SDL_HideWindow(win); SDL_PumpEvents(); }
-	else SDL_ShowWindow(win);
+	if (to_game) {
+		resident_away_pending = false;
+		resident_place(true);
+		SDL_HideWindow(win);
+		SDL_PumpEvents();
+	} else {
+		SDL_ShowWindow(win);
+		resident_away_pending = true;
+	}
 }
 
 /* ---- input: raw evdev, no SDL joystick --------------------------------- */
@@ -314,6 +344,20 @@ static bool helper(char *const argv[])
  * and the pad is grabbed so its read does not queue the menu's presses: the
  * GKD's way, and its reasons (platform_gkd.c). */
 #define HIDE_WS "plorpos-hidden"
+
+/* The resident's window on screen (on top, fullscreen) or off it. */
+static void resident_place(bool on_screen)
+{
+	pid_t pid = diatom_pid();
+	char crit[96];
+	char *cmd[] = { "swaymsg", crit, NULL };
+
+	if (pid <= 0) return;
+	snprintf(crit, sizeof crit, on_screen
+	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d] move container to workspace " HIDE_WS, (int)pid);
+	helper(cmd);
+}
 
 bool child_hide(pid_t pid)
 {
