@@ -7,6 +7,9 @@ DIR=$(cd "$(dirname "$0")/.." && pwd)
 export XDG_RUNTIME_DIR=/run/plorpos
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+# /run outlives a restart of the service: an old sway's IPC socket would be
+# the first swaymsg finds.
+rm -f "$XDG_RUNTIME_DIR"/sway-ipc.*.sock
 pipewire &
 wireplumber &
 pipewire-pulse &

@@ -23,14 +23,47 @@ done
 : > "$LOG"
 echo "plorpOS on the RG Rotate, $(uname -r), uptime $(cut -d' ' -f1 /proc/uptime)" >> "$LOG"
 
-export SDL_VIDEODRIVER=wayland SDL_AUDIODRIVER=pulseaudio
+# SDL's own PipeWire driver: its pulseaudio one, through pipewire-pulse,
+# dropped 7037 frames at a game's start where this dropped none, and once
+# stalled for good (2026-10-17). pactl still lists its streams (child_quiet).
+export SDL_VIDEODRIVER=wayland SDL_AUDIODRIVER=pipewire
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
+
+# The first PCM open after PipeWire starts never runs: the sc2730's DMA
+# stalls at hw_ptr 360 with the stream "RUNNING", every time (2026-10-17,
+# 4 of 4 session starts), and every later open works (7 of 7). A stream
+# that is open then - Diatom's - stays silent all session. So that first
+# open is spent here on 0.1 s of silence, the sink is suspended to close
+# it, and a second one checks the codec now plays. ~2.5 s, before Diatom
+# and in the background: the shelf does not wait.
+warm_codec() {
+	silence() { head -c 19200 /dev/zero | timeout 2 pw-cat --playback --raw \
+		--format s16 --rate 48000 --channels 2 - 2> /dev/null; }
+	silence
+	pactl suspend-sink @DEFAULT_SINK@ 1
+	pactl suspend-sink @DEFAULT_SINK@ 0
+	silence || echo "codec: still stalled after the warm-up; no sound this session"
+}
 start_resident() {
 	pgrep -f "TortOS/diatom --socket" > /dev/null && return
 	[ -x "$DIR/diatom" ] || return
 	rm -f "$TORTOS_DIATOM_SOCKET"
-	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
-		--save "$SD/Saves" --system "$SD/Bios" >> "$LOG" 2>&1 &
+	# Not before the speaker's sink exists: session.sh starts PipeWire beside
+	# sway, and a Diatom that got there first ran silent all session
+	# ("Could not connect PulseAudio stream", 2026-10-17). In the background,
+	# bounded at 5 s, so the shelf never waits for it; the launcher gives a
+	# starting Diatom 8 s at a game's launch.
+	(
+		i=0
+		until pw-cli ls Node 2> /dev/null | grep -q 'Speaker__sink'; do
+			[ $i -ge 50 ] && { echo "no speaker sink after 5 s; Diatom starts anyway"; break; }
+			sleep 0.1
+			i=$((i + 1))
+		done
+		warm_codec
+		exec "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
+			--save "$SD/Saves" --system "$SD/Bios"
+	) >> "$LOG" 2>&1 &
 }
 
 rm -f /tmp/tortos_poweroff
