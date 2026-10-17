@@ -6695,12 +6695,20 @@ static void bt_screen(app *a)
 
 		if (a->in.pressed[IN_X] && u.cursor >= 0 && u.cursor < u.n &&
 		    u.dev[u.cursor].bonded) {
-			wait_panel(a, "Bluetooth", "Forgetting...");
-			if (bt_forget(u.dev[u.cursor].mac)) {
-				bt_asoundrc(P_ROOT, P_USERDATA);
-				snprintf(u.note, sizeof u.note, "Forgotten"); note_until = now + 4000;
-			} else {
-				snprintf(u.note, sizeof u.note, "It would not unpair"); note_until = now + 4000;
+			/* Asks first, like Wi-Fi's forget: on the Rotate X is a
+			 * two-finger tap, easy to land by accident (plorpos-3yv.26). */
+			const bt_device *d = &u.dev[u.cursor];
+			char msg[BT_NAME_MAX + 16];
+
+			snprintf(msg, sizeof msg, "Forget %s?", d->name[0] ? d->name : d->mac);
+			if (confirm_panel(a, "Bluetooth", msg, "Forget")) {
+				wait_panel(a, "Bluetooth", "Forgetting...");
+				if (bt_forget(d->mac)) {
+					bt_asoundrc(P_ROOT, P_USERDATA);
+					snprintf(u.note, sizeof u.note, "Forgotten"); note_until = now + 4000;
+				} else {
+					snprintf(u.note, sizeof u.note, "It would not unpair"); note_until = now + 4000;
+				}
 			}
 			next_refresh = 0;
 		}

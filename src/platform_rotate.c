@@ -265,6 +265,7 @@ bool plat_input_init(void)
 #define TOUCH_SWIPE_PX  60     /* farther than this is a swipe: the first step */
 #define TOUCH_STEP_PX   200    /* then each this much farther, one more */
 #define TOUCH_HOLD_MS   500
+#define TOUCH_EDGE_PX   32     /* a touch starting this close to a side is back */
 #define FLICK_MIN_PX    200    /* a flick has come this far: shorter is a nudge */
 #define FLICK_MIN_PXMS  3.0f   /* lifted moving this fast (px/ms): it coasts */
 #define FLICK_FRESH_MS  60     /* ... if it was still moving this recently */
@@ -278,7 +279,8 @@ static struct {
 	int    fingers, most;      /* down now, and the most at once */
 	float  x0, y0, x, y;       /* the first finger, in panel pixels */
 	unsigned t0;
-	bool   held;               /* the long press already fired */
+	bool   held;               /* the long press (or the edge's back) fired */
+	int    edge;               /* started at the left side +1, right -1, else 0 */
 	int    axis;               /* -1 until the first step, then 0 x / 1 y */
 	float  anchor;             /* where along it the last step was taken */
 	int    steps;              /* taken by this touch */
@@ -497,10 +499,16 @@ static void sys_read(in_state *st)
  * shelf, every menu and Muse are still in reach:
  *
  *   tap = select what is under it, A on the selected item (touch_at), drag
- *   = d-pad, flick = d-pad that coasts on, two-finger tap = B, long press =
- *   Y on what is under it (favorite a game, Muse's mode, a rescan; fired
- *   while held - plorpos-3yv.22), three-finger tap = Menu. Start has nothing
- *   to do on the shelf and X (a game's info) is a button's job, open.
+ *   = d-pad, flick = d-pad that coasts on, swipe in from the left or right
+ *   edge = B (Android's back, fired once TOUCH_SWIPE_PX in - plorpos-3yv.26),
+ *   long press = Y on what is under it (favorite a game, Muse's mode, a
+ *   rescan; fired while held - plorpos-3yv.22), two-finger tap = X on what
+ *   is under it (a game's info), three-finger tap = Menu. Start has nothing
+ *   to do on the shelf.
+ *
+ * A touch that starts within TOUCH_EDGE_PX of a side is only ever back: no
+ * steps, no coast, and no tap once it has moved - so the shelf still
+ * scrolls from anywhere inside.
  *
  * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
  * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
@@ -552,12 +560,12 @@ static void touch_drag(void)
 	}
 }
 
-/* A tap (then = IN_ACCEPT) or long press (then = IN_Y) where the finger
- * came down, against what the screen showed (ui_hit, plorpos-3yv.23). On an
- * item the tap selects it, and on the selected one it is A; a long press
- * selects it and then is Y. Empty space is nothing, outside a menu's panel a
- * tap dismisses it, and a screen that recorded no items gets `then` as
- * before. */
+/* A tap (then = IN_ACCEPT), long press (IN_Y) or two-finger tap (IN_X)
+ * where the finger came down, against what the screen showed (ui_hit,
+ * plorpos-3yv.23). On an item the tap selects it, and on the selected one it
+ * is A; a long press or two-finger tap selects it and then is Y or X. Empty
+ * space is nothing, outside a menu's panel a tap dismisses it, and a screen
+ * that recorded no items gets `then` as before. */
 static void touch_at(in_button then)
 {
 	float s = plat_scale() > 0 ? plat_scale() : 1;
@@ -610,18 +618,28 @@ static void touch_event(const SDL_Event *e)
 			touch.steps = 0;
 			touch.caught = touch.coasting;
 			touch.coasting = false;
+			touch.edge = touch.x0 < TOUCH_EDGE_PX ? 1 : touch.x0 >= w - TOUCH_EDGE_PX ? -1 : 0;
 		} else if (touch.fingers > touch.most)
 			touch.most = touch.fingers;
 	} else if (e->type == SDL_FINGERMOTION) {
 		if (touch.fingers == 1) {
 			touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h;
-			if (touch.most == 1 && !touch.held) touch_drag();
+			if (touch.most == 1 && !touch.held && !touch.edge) touch_drag();
+			if (touch.most == 1 && !touch.held && touch.edge &&
+			    (touch.x - touch.x0) * touch.edge >= TOUCH_SWIPE_PX) {
+				touch_queue(IN_BACK, 1);
+				touch.held = true;
+			}
 		}
 	} else if (e->type == SDL_FINGERUP && touch.fingers > 0) {
 		unsigned now = plat_now_ms();
 		float sv = 0, v;
 
 		if (--touch.fingers > 0 || touch.held) return;
+		if (touch.edge && touch.most == 1) {
+			float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
+			if (dx * dx + dy * dy > TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) return;
+		}
 		if (touch.steps > 0) {
 			float d = touch.hp[(touch.hn - 1) & 7];
 			if (touch.hn > 0 && now - touch.ht[(touch.hn - 1) & 7] <= FLICK_FRESH_MS &&
@@ -634,7 +652,7 @@ static void touch_event(const SDL_Event *e)
 				touch.ct = plat_now_ms();
 			}
 		} else if (touch.most >= 3) touch_queue(IN_MENU, 1);
-		else if (touch.most == 2)   touch_queue(IN_BACK, 1);
+		else if (touch.most == 2)   touch_at(IN_X);
 		else if (!touch.caught)     touch_at(IN_ACCEPT);
 	}
 }
