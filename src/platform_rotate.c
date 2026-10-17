@@ -214,6 +214,21 @@ bool plat_input_init(void)
 	return fd_pad >= 0;
 }
 
+#define TOUCH_SWIPE_PX  60     /* farther than this is a swipe, not a tap */
+#define TOUCH_STEP_PX   120    /* each this much farther, one more step */
+#define TOUCH_HOLD_MS   500
+
+static struct {
+	int    fingers, most;      /* down now, and the most at once */
+	float  x0, y0, x, y;       /* the first finger, in panel pixels */
+	unsigned t0;
+	bool   held;               /* the long press already fired */
+	in_button queue[8];
+	int    qn;
+	in_button up;              /* pressed last poll, released this one ... */
+	bool   pulsing;            /* ... if this is set */
+} touch;
+
 void plat_input_flush(void)
 {
 	struct input_event ev;
@@ -224,6 +239,7 @@ void plat_input_flush(void)
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	menu_down = menu_sent = menu_spent = menu_pulse = false;
+	memset(&touch, 0, sizeof touch);
 }
 
 void plat_input_quit(void) { }
@@ -394,6 +410,77 @@ static void sys_read(in_state *st)
 	}
 }
 
+/* ---- touch: gestures as buttons (plorpos-3yv.10) ------------------------
+ *
+ * The panel's touches arrive as SDL finger events, already turned with the
+ * swivel by sway (map_to_output), and become the buttons every screen
+ * already answers to - so closed, with the face buttons hidden, the whole
+ * shelf, every menu and Muse are still in reach:
+ *
+ *   tap = A, swipe = d-pad (a longer swipe, up to five steps), two-finger
+ *   tap = B, long press = Start (fired while held), three-finger tap = Menu.
+ *
+ * One gesture at a time, decided when the last finger lifts (a long press
+ * when it has been held still). Each resulting press is down for one poll
+ * and up the next, queued so a long swipe's steps land one poll apart. */
+static void touch_queue(in_button b, int n)
+{
+	while (n-- > 0 && touch.qn < (int)(sizeof touch.queue / sizeof touch.queue[0]))
+		touch.queue[touch.qn++] = b;
+}
+
+static void touch_event(const SDL_Event *e)
+{
+	int w = plat_screen_w > 0 ? plat_screen_w : 720, h = plat_screen_h > 0 ? plat_screen_h : 720;
+
+	if (e->type == SDL_FINGERDOWN) {
+		if (touch.fingers++ == 0) {
+			touch.most = 1;
+			touch.x0 = touch.x = e->tfinger.x * w;
+			touch.y0 = touch.y = e->tfinger.y * h;
+			touch.t0 = plat_now_ms();
+			touch.held = false;
+		} else if (touch.fingers > touch.most)
+			touch.most = touch.fingers;
+	} else if (e->type == SDL_FINGERMOTION) {
+		if (touch.fingers == 1) { touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h; }
+	} else if (e->type == SDL_FINGERUP && touch.fingers > 0) {
+		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
+		float ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy, d = ax > ay ? ax : ay;
+
+		if (--touch.fingers > 0 || touch.held) return;
+		if (touch.most >= 3)      touch_queue(IN_MENU, 1);
+		else if (touch.most == 2) touch_queue(IN_BACK, 1);
+		else if (d > TOUCH_SWIPE_PX) {
+			int steps = clampi(1 + (int)((d - TOUCH_SWIPE_PX) / TOUCH_STEP_PX), 1, 5);
+			/* The finger drags the content: a swipe to the left moves on,
+			 * as the d-pad's right does. */
+			if (ax > ay) touch_queue(dx < 0 ? IN_RIGHT : IN_LEFT, steps);
+			else         touch_queue(dy < 0 ? IN_DOWN : IN_UP, steps);
+		} else
+			touch_queue(IN_ACCEPT, 1);
+	}
+}
+
+static void touch_poll(in_state *st)
+{
+	if (touch.pulsing) { set_btn(st, touch.up, false); touch.pulsing = false; }
+	if (touch.fingers == 1 && touch.most == 1 && !touch.held &&
+	    plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
+		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
+		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
+			touch.held = true;
+			touch_queue(IN_START, 1);
+		}
+	}
+	if (touch.qn > 0) {
+		touch.up = touch.queue[0];
+		touch.pulsing = true;
+		memmove(touch.queue, touch.queue + 1, --touch.qn * sizeof touch.queue[0]);
+		set_btn(st, touch.up, true);
+	}
+}
+
 void plat_input_poll(in_state *st)
 {
 	SDL_Event e;
@@ -401,10 +488,13 @@ void plat_input_poll(in_state *st)
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
 	plat_audio_jack_poll();
-	while (SDL_PollEvent(&e))
+	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) st->quit_requested = true;
+		else touch_event(&e);
+	}
 	pad_read(st);
 	sys_read(st);
+	touch_poll(st);
 }
 
 void plat_leds_off(void) { }
