@@ -217,10 +217,13 @@ bool plat_input_init(void)
 #define TOUCH_SWIPE_PX  60     /* farther than this is a swipe: the first step */
 #define TOUCH_STEP_PX   200    /* then each this much farther, one more */
 #define TOUCH_HOLD_MS   500
-#define FLICK_MIN_PXMS  0.8f   /* lifted moving this fast (px/ms): it coasts */
+#define FLICK_MIN_PX    200    /* a flick has come this far: shorter is a nudge */
+#define FLICK_MIN_PXMS  3.0f   /* lifted moving this fast (px/ms): it coasts */
 #define FLICK_FRESH_MS  60     /* ... if it was still moving this recently */
-#define FLICK_TAU_MS    300.0f /* the coast slows by e every this long */
-#define FLICK_STOP_PXMS 0.25f  /* and stops below this */
+#define FLICK_WINDOW_MS 80     /* speed = travel over the last this long */
+#define FLICK_SPAN_MS   20     /* and over no less: two reports 1 ms apart lie */
+#define FLICK_TAU_MS    350.0f /* the coast slows by e every this long */
+#define FLICK_STOP_PXMS 2.0f   /* and stops while still brisk, not trickling */
 #define FLICK_STEP_PX   120    /* a step per this much coast */
 
 static struct {
@@ -231,8 +234,9 @@ static struct {
 	int    axis;               /* -1 until the first step, then 0 x / 1 y */
 	float  anchor;             /* where along it the last step was taken */
 	int    steps;              /* taken by this touch */
-	float  v, pv;              /* speed along the axis (px/ms), last position */
-	unsigned tv;               /* ... and when */
+	float  hp[8];              /* the last positions along the axis ... */
+	unsigned ht[8];            /* ... and when; the newest is hn-1, mod 8 */
+	int    hn;
 	bool   caught;             /* this touch stopped a coast: not a tap */
 	bool   coasting;
 	float  cv, cpos;           /* coast speed, and distance since its last step */
@@ -438,9 +442,11 @@ static void sys_read(in_state *st)
  *
  * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
  * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
- * spaced so a short deliberate swipe is one tile. Lifted while still moving
- * fast, it coasts: steps keep coming at FLICK_STEP_PX of a speed that decays,
- * so a harder flick goes further. A touch during a coast stops it and is not
+ * spaced so a short deliberate swipe is one tile. A flick - FLICK_MIN_PX or
+ * more, lifted still moving fast - coasts: steps keep coming at FLICK_STEP_PX
+ * of a speed that decays, so a harder flick goes further. Distance, not speed,
+ * tells a small flick from a big one (measured by hand 2026-10-17: small
+ * 97-134 px, big 302-376 px; their speeds overlap). A touch during a coast stops it and is not
  * a tap. Taps are decided when the last finger lifts. Each press is down for
  * one poll and up the next, queued so a run of steps lands one poll apart. */
 static void touch_queue(in_button b, int n)
@@ -470,19 +476,34 @@ static void touch_drag(void)
 		touch.axis = ax > ay ? 0 : 1;
 		p = touch.axis == 0 ? dx : dy;
 		touch.anchor = p < 0 ? -TOUCH_SWIPE_PX : TOUCH_SWIPE_PX;
-		touch.pv = p; touch.tv = now; touch.v = 0;
+		touch.hn = 0;
 		touch_step(touch.axis, p);
 	}
 	p = touch.axis == 0 ? dx : dy;
-	if (now > touch.tv) {
-		float inst = (p - touch.pv) / (float)(now - touch.tv);
-		touch.v = now - touch.tv >= FLICK_FRESH_MS ? inst : 0.5f * touch.v + 0.5f * inst;
-		touch.pv = p; touch.tv = now;
-	}
+	if (touch.hn == 0 || touch.ht[(touch.hn - 1) & 7] != now) touch.hn++;
+	touch.hp[(touch.hn - 1) & 7] = p;
+	touch.ht[(touch.hn - 1) & 7] = now;
 	while ((d = p - touch.anchor) >= TOUCH_STEP_PX || d <= -TOUCH_STEP_PX) {
 		touch.anchor += d < 0 ? -TOUCH_STEP_PX : TOUCH_STEP_PX;
 		touch_step(touch.axis, d);
 	}
+}
+
+/* The finger's speed along the axis as it lifts: its travel over the last
+ * FLICK_WINDOW_MS, not over the last report alone - one report ~16 ms
+ * apart can jump as the finger rolls off the glass, and read a small flick
+ * as a fast one. */
+static float touch_speed(void)
+{
+	int last = (touch.hn - 1) & 7, k = last, i;
+
+	for (i = 1; i < 8 && i < touch.hn; i++) {
+		int j = (last - i) & 7;
+		if (touch.ht[last] - touch.ht[j] > FLICK_WINDOW_MS) break;
+		k = j;
+	}
+	if (touch.ht[last] - touch.ht[k] < FLICK_SPAN_MS) return 0;
+	return (touch.hp[last] - touch.hp[k]) / (float)(touch.ht[last] - touch.ht[k]);
 }
 
 static void touch_event(const SDL_Event *e)
@@ -512,13 +533,18 @@ static void touch_event(const SDL_Event *e)
 			if (touch.most == 1 && !touch.held) touch_drag();
 		}
 	} else if (e->type == SDL_FINGERUP && touch.fingers > 0) {
-		float v = touch.v < 0 ? -touch.v : touch.v;
+		unsigned now = plat_now_ms();
+		float sv = 0, v;
 
 		if (--touch.fingers > 0 || touch.held) return;
 		if (touch.steps > 0) {
-			if (plat_now_ms() - touch.tv <= FLICK_FRESH_MS && v >= FLICK_MIN_PXMS) {
+			float d = touch.hp[(touch.hn - 1) & 7];
+			if (touch.hn > 0 && now - touch.ht[(touch.hn - 1) & 7] <= FLICK_FRESH_MS &&
+			    (d < 0 ? -d : d) >= FLICK_MIN_PX) sv = touch_speed();
+			v = sv < 0 ? -sv : sv;
+			if (v >= FLICK_MIN_PXMS) {
 				touch.coasting = true;
-				touch.cv = touch.v;
+				touch.cv = sv;
 				touch.cpos = 0;
 				touch.ct = plat_now_ms();
 			}
