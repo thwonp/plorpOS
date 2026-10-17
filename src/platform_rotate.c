@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <poll.h>
 #include <pthread.h>
 #include <spawn.h>
 #include <stdio.h>
@@ -33,6 +34,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include "platform_dev.h"
 
@@ -518,6 +520,75 @@ void apply_brightness(int b)
 
 void backlight_off(void) { backlight_write(0); }
 
+/* ---- the side key (BTN_THUMBR): Muse's media key, everywhere -------------
+ *
+ * The user's gestures (plorpos-3yv.14): a tap plays or pauses, a hold goes
+ * back a track, a double tap skips forward. Written as the note a headset's
+ * buttons leave (/tmp/tortos_btkey, read by musec_poll on the shelf, in the
+ * menus and in a game's tick), so the key reaches Muse wherever Muse matters
+ * and never a game. A thread of its own on its own fd: the pad's other
+ * reader (pad_read) only runs while the launcher has the screen.
+ *
+ * A tap waits SIDE_DOUBLE_MS for a second one before it counts: that wait is
+ * the price of telling a double tap from two taps. A hold fires while held. */
+#define SIDE_DOUBLE_MS 250
+#define SIDE_HOLD_MS   500
+
+static void btkey_write(const char *act)
+{
+	struct timespec t;
+	FILE *f = fopen("/tmp/tortos_btkey.new", "w");
+
+	if (!f) return;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	fprintf(f, "%s %ld\n", act, (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
+	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
+}
+
+static void *side_worker(void *arg)
+{
+	int fd = open_by_name(PAD_NAME);
+	bool down = false, held = false;
+	int taps = 0;                 /* taps waiting for the double-tap window */
+	unsigned since = 0;           /* the press, or the last release */
+
+	(void)arg;
+	if (fd < 0) return NULL;
+	for (;;) {
+		struct pollfd p = { fd, POLLIN, 0 };
+		int wait = -1;
+		unsigned now = plat_now_ms();
+
+		if (down && !held) wait = SIDE_HOLD_MS - (int)(now - since);
+		else if (!down && taps) wait = SIDE_DOUBLE_MS - (int)(now - since);
+		if (wait < 0 && wait != -1) wait = 0;
+		if (poll(&p, 1, wait) > 0) {
+			struct input_event ev;
+			while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+				if (ev.type != EV_KEY || ev.code != BTN_THUMBR || ev.value == 2) continue;
+				now = plat_now_ms();
+				if (ev.value) { down = true; held = false; since = now; continue; }
+				if (!down) continue;
+				down = false;
+				if (held) { held = false; taps = 0; continue; }
+				if (++taps == 2) { btkey_write("next"); taps = 0; continue; }
+				since = now;
+			}
+			continue;
+		}
+		now = plat_now_ms();
+		if (down && !held && now - since >= SIDE_HOLD_MS) {
+			held = true;
+			taps = 0;
+			btkey_write("prev");
+		} else if (!down && taps && now - since >= SIDE_DOUBLE_MS) {
+			taps = 0;
+			btkey_write("toggle");
+		}
+	}
+	return NULL;
+}
+
 void plat_settings_init(void)
 {
 	pthread_t t;
@@ -530,6 +601,7 @@ void plat_settings_init(void)
 		mixer_fd = 0;
 	} else
 		fprintf(stderr, "settings: no volume worker\n");
+	if (pthread_create(&t, NULL, side_worker, NULL) == 0) pthread_detach(t);
 
 	v = db_get_int(db_dev(), "volume", -1);
 	b = db_get_int(db_dev(), "brightness", -1);
