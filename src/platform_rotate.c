@@ -27,11 +27,13 @@
 #include <linux/input.h>
 #include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -707,6 +709,7 @@ void plat_input_poll(in_state *st)
 	pad_read(st);
 	sys_read(st);
 	touch_poll(st);
+	plat_sink_follow(false);
 }
 
 void plat_leds_off(void) { }
@@ -797,12 +800,238 @@ static int wpctl_level(void)
 	return lv;
 }
 
-/* The output is the codec's speaker until Bluetooth (.18) and the USB DAC
- * (.19) give PipeWire another sink to route to. */
-void plat_audio_speaker_only(bool on) { (void)on; }
-bool plat_bt_audio(void) { return false; }
-bool plat_usb_audio(void) { return false; }
-void plat_sink_follow(bool game) { (void)game; }
+/* ---- where the sound goes: platform_gkd.c's (plorpos-3yv.18.2) ----------
+ *
+ * Every player is a PipeWire client, and PipeWire moves running streams when
+ * the default sink changes - so routing is choosing the default sink. The
+ * launcher's rules: a USB DAC wins, then a headset, Speaker never uses
+ * either, and a headset or DAC going away while it was playing pauses Muse,
+ * as a phone does. Driven by `pactl subscribe`, woken only when a sink comes,
+ * goes or the default changes, plus the player's setting every 250 ms. */
+static bool route_speaker_only;     /* Audio Output = Speaker */
+static bool route_bt;               /* PipeWire has a Bluetooth sink */
+static bool route_usb;              /* PipeWire has a USB DAC's sink */
+static int  sink_level = -1;        /* the default sink's volume, in rungs */
+
+void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
+bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
+bool plat_usb_audio(void) { return __atomic_load_n(&route_usb, __ATOMIC_RELAXED); }
+
+/* The note a headset's buttons leave (btplayer's on the Brick); musec reads it
+ * wherever Muse matters. tmpfs, so nothing reaches the card. */
+static void btkey_write(const char *act)
+{
+	struct timespec t;
+	FILE *f = fopen("/tmp/tortos_btkey.new", "w");
+
+	if (!f) return;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	fprintf(f, "%s %ld\n", act, (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
+	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
+}
+
+enum { ON_BUILTIN, ON_BT, ON_USB };   /* which sink route_eval chose last */
+
+static void route_eval(int *on)
+{
+	extern char **environ;
+	char line[256], bt[128] = "", usb[128] = "", builtin[128] = "", def[128] = "";
+	const char *want;
+	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
+	FILE *f = popen("pactl list short sinks 2>/dev/null", "r");
+
+	if (!f) return;
+	/* By name: a USB DAC is an alsa_output too (alsa_output.usb-...). */
+	while (fgets(line, sizeof line, f)) {
+		char name[128];
+		if (sscanf(line, "%*s %127s", name) != 1) continue;
+		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
+			snprintf(bt, sizeof bt, "%s", name);
+		else if (!strncmp(name, "alsa_output.usb-", 16) && !usb[0])
+			snprintf(usb, sizeof usb, "%s", name);
+		else if (!strncmp(name, "alsa_output.", 12) && !builtin[0])
+			snprintf(builtin, sizeof builtin, "%s", name);
+	}
+	pclose(f);
+	if ((f = popen("pactl get-default-sink 2>/dev/null", "r"))) {
+		if (fgets(def, sizeof def, f)) def[strcspn(def, "\n")] = '\0';
+		pclose(f);
+	}
+	/* Two headsets, or two DACs: keep the one already chosen. */
+	if (bt[0] && !strncmp(def, "bluez_output.", 13)) snprintf(bt, sizeof bt, "%s", def);
+	if (usb[0] && !strncmp(def, "alsa_output.usb-", 16)) snprintf(usb, sizeof usb, "%s", def);
+	__atomic_store_n(&route_bt, bt[0] != '\0', __ATOMIC_RELAXED);
+	__atomic_store_n(&route_usb, usb[0] != '\0', __ATOMIC_RELAXED);
+
+	if ((*on == ON_BT && !bt[0]) || (*on == ON_USB && !usb[0])) {
+		fprintf(stderr, "audio: %s gone, pausing Muse\n", *on == ON_USB ? "USB DAC" : "headset");
+		btkey_write("pause");
+	}
+	if (speaker || (!usb[0] && !bt[0])) want = builtin;
+	else if (usb[0])                     want = usb;
+	else                                 want = bt;
+	*on = want == usb ? ON_USB : want == bt ? ON_BT : ON_BUILTIN;
+	if (want[0] && strcmp(want, def)) {
+		char *argv[] = { "pactl", "set-default-sink", (char *)want, NULL };
+		pid_t pid;
+		int st;
+
+		fprintf(stderr, "audio: output %s\n",
+		        want == usb ? "USB DAC" : want == bt ? "bluetooth" : "built-in");
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+			waitpid(pid, &st, 0);
+	}
+}
+
+static void *route_worker(void *arg)
+{
+	int on = ON_BUILTIN;
+	(void)arg;
+
+	for (;;) {
+		char *argv[] = { "pactl", "subscribe", NULL };
+		int fd[2];
+		pid_t pid, parent = getpid();
+		bool speaker = !route_speaker_only;
+
+		if (pipe(fd) < 0) { sleep(2); continue; }
+		/* Not posix_spawn: pactl ignores SIGPIPE, so a launcher that died
+		 * would leave it writing to nobody. The kernel ends it instead. */
+		pid = fork();
+		if (pid == 0) {
+			prctl(PR_SET_PDEATHSIG, SIGTERM);
+			if (getppid() != parent) _exit(1);      /* died before the prctl */
+			dup2(fd[1], STDOUT_FILENO);
+			close(fd[0]);
+			close(fd[1]);
+			execv("/usr/bin/pactl", argv);
+			_exit(127);
+		}
+		close(fd[1]);
+
+		while (pid > 0) {
+			struct pollfd p = { fd[0], POLLIN, 0 };
+			char buf[1024];
+			bool dirty = false;
+
+			if (poll(&p, 1, 250) > 0) {
+				ssize_t n = read(fd[0], buf, sizeof buf - 1);
+				if (n <= 0) break;          /* pipewire-pulse went away */
+				buf[n] = '\0';
+				dirty = strstr(buf, "'new' on sink #") || strstr(buf, "'remove' on sink #")
+				     || strstr(buf, "on server");
+			}
+			if (speaker != route_speaker_only) {
+				speaker = route_speaker_only;
+				dirty   = true;
+			}
+			if (dirty) route_eval(&on);
+			/* After route_eval, so a new default is the one read. Every
+			 * volume set - ours, Diatom's, a headset's - is a sink change. */
+			if (dirty || (p.revents && strstr(buf, "'change' on sink #")))
+				__atomic_store_n(&sink_level, wpctl_level(), __ATOMIC_RELAXED);
+		}
+		close(fd[0]);
+		if (pid > 0) { kill(pid, SIGTERM); waitpid(pid, NULL, 0); }
+		sleep(1);
+	}
+	return NULL;
+}
+
+/* The output's own volume, when something other than a level set here or by
+ * Diatom moved it: a headset's buttons (bluez5.hw-volume), or a change of
+ * output, since each sink keeps its own. Adopted once the sink has disagreed
+ * for half a second - our own sets land in tens of ms. On the shelf it is a
+ * nudge; in a game it goes to Diatom, which owns the level while it runs. */
+void plat_sink_follow(bool game)
+{
+	static unsigned since;
+	static int seen = -1;
+	int count, resident = plat_resident_volume(&count);
+	int have = game && resident >= 0 ? resident : cur_vol;
+	int want = __atomic_load_n(&sink_level, __ATOMIC_RELAXED);
+	unsigned now = plat_now_ms();
+
+	if (want < 0 || have < 0 || want == have) { seen = -1; return; }
+	if (want != seen) { seen = want; since = now; return; }
+	if (now - since < 500) return;
+	seen = -1;
+	fprintf(stderr, "audio: output is at level %d, was %d\n", want, have);
+	if (game) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", want, VOL_MAX + 1);
+	else      plat_volume_nudge(want - have);
+}
+
+/* A headset's buttons, platform_gkd.c's: BlueZ gives each AVRCP headset a
+ * keyboard named `<headset> (AVRCP)` that comes and goes with the
+ * connection, so the list is read again every two seconds. The WF-C510
+ * sends PLAYCD/PAUSECD for a press, NEXTSONG for two, PREVIOUSSONG for
+ * three. */
+#define HEADSETS 4
+
+static const char *avrcp_action(unsigned code)
+{
+	switch (code) {
+	case KEY_PLAYCD: case KEY_PLAYPAUSE: case KEY_PLAY: return "toggle";
+	case KEY_PAUSECD: case KEY_STOPCD: case KEY_PAUSE:  return "pause";
+	case KEY_NEXTSONG: case KEY_FASTFORWARD:           return "next";
+	case KEY_PREVIOUSSONG: case KEY_REWIND:            return "prev";
+	}
+	return NULL;
+}
+
+static void *avrcp_worker(void *arg)
+{
+	struct pollfd p[HEADSETS];
+	char node[HEADSETS][24];
+	int n = 0;
+	(void)arg;
+
+	for (;;) {
+		FILE *f = fopen("/proc/bus/input/devices", "r");
+		char line[256], *ev;
+		bool avrcp = false;
+
+		while (f && fgets(line, sizeof line, f)) {
+			char path[24];
+			int i;
+
+			if (!strncmp(line, "N: Name=", 8)) {
+				avrcp = strstr(line, " (AVRCP)\"") != NULL;
+				continue;
+			}
+			if (!avrcp || strncmp(line, "H: Handlers=", 12) || !(ev = strstr(line, "event")))
+				continue;
+			avrcp = false;
+			snprintf(path, sizeof path, "/dev/input/%.*s", (int)strspn(ev, "event0123456789"), ev);
+			for (i = 0; i < n && strcmp(node[i], path); i++) ;
+			if (i < n || n == HEADSETS) continue;
+			if ((p[n].fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0) continue;
+			p[n].events = POLLIN;
+			snprintf(node[n++], sizeof node[0], "%s", path);
+			fprintf(stderr, "audio: headset keys on %s\n", path);
+		}
+		if (f) fclose(f);
+
+		poll(p, n, 2000);
+		for (int i = 0; i < n; i++) {
+			struct input_event e;
+			ssize_t got;
+
+			if (!p[i].revents) continue;
+			while ((got = read(p[i].fd, &e, sizeof e)) == (ssize_t)sizeof e) {
+				const char *act = e.type == EV_KEY && e.value == 1 ? avrcp_action(e.code) : NULL;
+				if (act) btkey_write(act);
+			}
+			if (got < 0 && errno != EAGAIN) {   /* the headset went */
+				close(p[i].fd);
+				p[i] = p[--n];
+				memcpy(node[i], node[n], sizeof node[0]);
+				i--;
+			}
+		}
+	}
+	return NULL;
+}
 
 /* No headphone sink in the codec's UCM profile (WirePlumber lists the
  * speaker alone). */
@@ -846,17 +1075,6 @@ void backlight_off(void) { backlight_write(0); }
  * the price of telling a double tap from two taps. A hold fires while held. */
 #define SIDE_DOUBLE_MS 250
 #define SIDE_HOLD_MS   500
-
-static void btkey_write(const char *act)
-{
-	struct timespec t;
-	FILE *f = fopen("/tmp/tortos_btkey.new", "w");
-
-	if (!f) return;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	fprintf(f, "%s %ld\n", act, (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
-	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
-}
 
 static void *side_worker(void *arg)
 {
@@ -915,6 +1133,13 @@ void plat_settings_init(void)
 	} else
 		fprintf(stderr, "settings: no volume worker\n");
 	if (pthread_create(&t, NULL, side_worker, NULL) == 0) pthread_detach(t);
+	{
+		char ao[32];
+		db_get_str(db_dev(), "audioout", ao, sizeof ao, "auto");
+		plat_audio_speaker_only(!strcmp(ao, "speaker"));
+	}
+	if (pthread_create(&t, NULL, route_worker, NULL) == 0) pthread_detach(t);
+	if (pthread_create(&t, NULL, avrcp_worker, NULL) == 0) pthread_detach(t);
 
 	v = db_get_int(db_dev(), "volume", -1);
 	b = db_get_int(db_dev(), "brightness", -1);
