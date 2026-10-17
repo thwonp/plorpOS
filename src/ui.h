@@ -297,4 +297,31 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 /* rgb interpolation, for easing the background tint between systems */
 unsigned ui_mix(unsigned a, unsigned b, float t);
 
+/* ---- touch targets (plorpos-3yv.23) -----------------------------------
+ *
+ * What a tap can land on. While a frame draws, a screen records each item
+ * it shows as the presses that would select it from where the selection is
+ * now - a tile two to the right is (IN_RIGHT, 2), the selected item itself
+ * is n = 0 - so a tap sends the presses, and every screen's own wrapping,
+ * scrolling and skipping applies as it does for the d-pad. A menu panel
+ * drops whatever was recorded under it and makes a tap outside it a dismiss.
+ * The frame plat_present shows is the one a tap is checked against.
+ *
+ * Only the Rotate has a touch panel; elsewhere these cost nothing. */
+typedef enum {
+	UI_HIT_UNMAPPED,   /* the screen recorded nothing: no idea what's where */
+	UI_HIT_NONE,       /* empty space */
+	UI_HIT_ITEM,       /* an item: *button x *n (n 0 = the selected one) */
+	UI_HIT_OUTSIDE,    /* outside a menu panel */
+} ui_hit_kind;
+#ifdef PLATFORM_ROTATE
+void ui_hit(const SDL_Rect *r, int button, int n);
+void ui_hit_modal(const SDL_Rect *panel);
+void ui_hit_frame(void);
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n);
+#else
+static inline void ui_hit(const SDL_Rect *r, int button, int n) { (void)r; (void)button; (void)n; }
+static inline void ui_hit_modal(const SDL_Rect *panel) { (void)panel; }
+#endif
+
 #endif

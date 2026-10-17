@@ -1324,3 +1324,55 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 	SDL_RenderCopyF(r, t, NULL, &(SDL_FRect){ snap(cx - unit / 2.0f),
 		snap(cy - unit / 2.0f), size / ts, size / ts });
 }
+
+/* ---- touch targets (plorpos-3yv.23) -------------------------------------- */
+
+#ifdef PLATFORM_ROTATE
+#define HIT_MAX 64
+
+typedef struct { SDL_Rect r; int button, n; } ui_target;
+typedef struct {
+	ui_target t[HIT_MAX];
+	int       n;
+	bool      modal;
+	SDL_Rect  panel;
+} ui_targets;
+/* The frame being drawn, and the one on the screen. */
+static ui_targets hit_draw, hit_shown;
+
+void ui_hit(const SDL_Rect *r, int button, int n)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n };
+}
+
+void ui_hit_modal(const SDL_Rect *panel)
+{
+	hit_draw.n = 0;
+	hit_draw.modal = true;
+	hit_draw.panel = *panel;
+}
+
+void ui_hit_frame(void)
+{
+	hit_shown = hit_draw;
+	hit_draw.n = 0;
+	hit_draw.modal = false;
+}
+
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n)
+{
+	SDL_Point p = { x, y };
+	int i;
+
+	/* Last recorded is drawn on top. */
+	for (i = hit_shown.n - 1; i >= 0; i--)
+		if (SDL_PointInRect(&p, &hit_shown.t[i].r)) {
+			*button = hit_shown.t[i].button;
+			*n = hit_shown.t[i].n;
+			return UI_HIT_ITEM;
+		}
+	if (hit_shown.modal)
+		return SDL_PointInRect(&p, &hit_shown.panel) ? UI_HIT_NONE : UI_HIT_OUTSIDE;
+	return hit_shown.n > 0 ? UI_HIT_NONE : UI_HIT_UNMAPPED;
+}
+#endif

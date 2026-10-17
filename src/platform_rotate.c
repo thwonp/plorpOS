@@ -37,6 +37,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "platform_dev.h"
+#include "ui.h"
 
 /* The card's exFAT data partition is mounted here (plorpos-3yv.7), so the
  * Brick's spelling holds. */
@@ -186,7 +187,11 @@ bool plat_video_init(void)
  * it is an ordinary window. */
 bool plat_video_init_over_child(void) { return plat_video_init(); }
 
-void plat_present(SDL_Renderer *r) { SDL_RenderPresent(r); }
+void plat_present(SDL_Renderer *r)
+{
+	ui_hit_frame();   /* a tap now means what this frame shows */
+	SDL_RenderPresent(r);
+}
 
 void plat_video_quit(void)
 {
@@ -241,7 +246,7 @@ static struct {
 	bool   coasting;
 	float  cv, cpos;           /* coast speed, and distance since its last step */
 	unsigned ct;
-	in_button queue[8];
+	in_button queue[32];       /* a tap on a far item is many presses */
 	int    qn;
 	in_button up;              /* pressed last poll, released this one ... */
 	bool   pulsing;            /* ... if this is set */
@@ -435,10 +440,11 @@ static void sys_read(in_state *st)
  * already answers to - so closed, with the face buttons hidden, the whole
  * shelf, every menu and Muse are still in reach:
  *
- *   tap = A, drag = d-pad, flick = d-pad that coasts on, two-finger tap =
- *   B, long press = Y (favorite a game, Muse's mode, a rescan; fired while
- *   held - plorpos-3yv.22), three-finger tap = Menu. Start has nothing to do
- *   on the shelf and X (a game's info) is a button's job, open.
+ *   tap = select what is under it, A on the selected item (touch_at), drag
+ *   = d-pad, flick = d-pad that coasts on, two-finger tap = B, long press =
+ *   Y on what is under it (favorite a game, Muse's mode, a rescan; fired
+ *   while held - plorpos-3yv.22), three-finger tap = Menu. Start has nothing
+ *   to do on the shelf and X (a game's info) is a button's job, open.
  *
  * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
  * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
@@ -446,9 +452,10 @@ static void sys_read(in_state *st)
  * more, lifted still moving fast - coasts: steps keep coming at FLICK_STEP_PX
  * of a speed that decays, so a harder flick goes further. Distance, not speed,
  * tells a small flick from a big one (measured by hand 2026-10-17: small
- * 97-134 px, big 302-376 px; their speeds overlap). A touch during a coast stops it and is not
- * a tap. Taps are decided when the last finger lifts. Each press is down for
- * one poll and up the next, queued so a run of steps lands one poll apart. */
+ * 97-134 px, big 302-376 px; their speeds overlap). A touch during a coast
+ * stops it and is not a tap. Taps are decided when the last finger lifts.
+ * Each press is down for one poll and up the next, queued so a run of steps
+ * lands one poll apart. */
 static void touch_queue(in_button b, int n)
 {
 	while (n-- > 0 && touch.qn < (int)(sizeof touch.queue / sizeof touch.queue[0]))
@@ -486,6 +493,28 @@ static void touch_drag(void)
 	while ((d = p - touch.anchor) >= TOUCH_STEP_PX || d <= -TOUCH_STEP_PX) {
 		touch.anchor += d < 0 ? -TOUCH_STEP_PX : TOUCH_STEP_PX;
 		touch_step(touch.axis, d);
+	}
+}
+
+/* A tap (then = IN_ACCEPT) or long press (then = IN_Y) where the finger
+ * came down, against what the screen showed (ui_hit, plorpos-3yv.23). On an
+ * item the tap selects it, and on the selected one it is A; a long press
+ * selects it and then is Y. Empty space is nothing, outside a menu's panel a
+ * tap dismisses it, and a screen that recorded no items gets `then` as
+ * before. */
+static void touch_at(in_button then)
+{
+	float s = plat_scale() > 0 ? plat_scale() : 1;
+	int b = 0, n = 0;
+
+	switch (ui_hit_find((int)(touch.x0 / s), (int)(touch.y0 / s), &b, &n)) {
+	case UI_HIT_UNMAPPED: touch_queue(then, 1); break;
+	case UI_HIT_NONE:     break;
+	case UI_HIT_OUTSIDE:  if (then == IN_ACCEPT) touch_queue(IN_BACK, 1); break;
+	case UI_HIT_ITEM:
+		touch_queue((in_button)b, n);
+		if (n == 0 || then != IN_ACCEPT) touch_queue(then, 1);
+		break;
 	}
 }
 
@@ -550,7 +579,7 @@ static void touch_event(const SDL_Event *e)
 			}
 		} else if (touch.most >= 3) touch_queue(IN_MENU, 1);
 		else if (touch.most == 2)   touch_queue(IN_BACK, 1);
-		else if (!touch.caught)     touch_queue(IN_ACCEPT, 1);
+		else if (!touch.caught)     touch_at(IN_ACCEPT);
 	}
 }
 
@@ -579,7 +608,7 @@ static void touch_poll(in_state *st)
 		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
 			touch.held = true;
-			touch_queue(IN_Y, 1);
+			touch_at(IN_Y);
 		}
 	}
 	if (touch.qn > 0) {
