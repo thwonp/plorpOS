@@ -8144,6 +8144,20 @@ static void slot_draw(app *a, const slot_view *sv, int sel)
 				: (SDL_Color){ 90, 94, 110, can ? 255 : 90 };
 			ui_round_rect(a->r, &d, r2 / 2, c);
 		}
+		/* Touch targets (ui_hit): the strip is modal, the picture is the
+		 * selected slot, and a dot you can land on is the Left/Right presses
+		 * that get there - counting only landable slots, as slot_strip's
+		 * stepping does. A dot's whole column, a finger is wider than it. */
+		ui_hit_modal(&(SDL_Rect){ area.x, frame.y, area.w, y + dw - frame.y });
+		ui_hit(&frame, IN_RIGHT, 0);
+		for (i = 0; i < dots; i++) {
+			int j, c = 0, lo = i < sel ? i : sel + 1, hi = i < sel ? sel : i + 1;
+
+			if (i == sel || !(sv->saving ? i >= 1 : sv->have[i])) continue;
+			for (j = lo; j < hi; j++) c += sv->saving ? j >= 1 : sv->have[j];
+			ui_hit(&(SDL_Rect){ x0 + i * dw - dw / 2, y - dw * 2 / 3, dw, dw * 4 / 3 },
+			       i < sel ? IN_LEFT : IN_RIGHT, c);
+		}
 	}
 }
 
