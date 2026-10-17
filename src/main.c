@@ -1967,7 +1967,7 @@ static char g_game_set[LIB_PATH * 2];
 static aout_policy g_aout_policy;
 static char g_aout_sent[128];      /* the device Diatom was last told to use */
 static bool g_aout_ever;
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static unsigned g_aout_gen;        /* which connection it was told on */
 #endif
 static unsigned g_aout_retry_at;   /* earliest next in-game retry of a fallback */
@@ -1992,7 +1992,7 @@ static void aout_save(aout_policy p)
  * A file rather than asking Bluetooth ourselves: asking means forking
  * bluetoothctl out of a 119 MB process, which is what menu_wifi exists to
  * prevent. The shell loop already knows, so it writes and this reads. */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static char g_bt_link[32];    /* the published link's ACL handle, see bt_reconnect */
 /* Native PICO-8 is running and may hold the headset: Diatom stays off it, as
  * for Muse (aout_apply). Set on the Brick only, see run_pico8. plorpos-cdd. */
@@ -2002,7 +2002,7 @@ static bool g_pico8_runs;
 static const char *aout_bt_sink(void)
 {
 	static char   sink[128];
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* A label only: PipeWire holds the sink, see plat_bt_audio. */
 	snprintf(sink, sizeof sink, "%s", plat_bt_audio() ? "bluetooth" : "");
 	return sink;
@@ -2036,14 +2036,14 @@ static const char *aout_bt_sink(void)
  * read of kernel memory, not a fork, and plugging a DAC in should feel as
  * immediate as plugging a cable in. On the GKD PipeWire sees the card first
  * and platform_gkd.c routes it; this is only the label for the menu. */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static char g_usb_link[32];   /* bus/device of the DAC; a replug is a new one */
 #endif
 
 static const char *aout_usb_sink(void)
 {
 	static char sink[64];
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	snprintf(sink, sizeof sink, "%s", plat_usb_audio() ? "usb" : "");
 	return sink;
 #else
@@ -2078,7 +2078,7 @@ static const char *aout_usb_sink(void)
 #endif
 }
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* The connection behind whatever the sound goes to: a headset's link, a DAC's
  * bus address, or nothing for the codec. A change under the same device
  * string is a reconnect the holder has to be told about. */
@@ -2112,7 +2112,7 @@ static aout_state aout_now(void)
 
 	s.policy  = g_aout_policy;
 	s.wired   = plat_headphones_present();
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* Speaker overrides a cable on the GKD, whose amps it can set. */
 	if (g_aout_policy == AOUT_SPEAKER) s.wired = false;
 #endif
@@ -2131,7 +2131,7 @@ static aout_state aout_now(void)
  * on the desktop build it never will. */
 static aout_dest aout_actual(const aout_state *s)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* PipeWire moves every stream with the default, so asked is actual. */
 	return aout_resolve(s);
 #else
@@ -2159,7 +2159,7 @@ static bool aout_send(const char *dev)
 	return true;
 }
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Send only on a change. SETAUDIO reopens an audio device, which is cheap but
  * not free, and doing it every tick would be a reopen per tick. */
 static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
@@ -2223,7 +2223,7 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
-#if !defined(PLATFORM_GKD)   /* PipeWire: no hand-over, no headset volume */
+#if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
 static void bt_volume_follow(const char *out, bool fresh)
 {
 	static int      sent = -1;
@@ -2318,7 +2318,7 @@ static void bt_volume_follow(const char *out, bool fresh)
  * answered, because Diatom does not retry. */
 static void aout_apply(bool force)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
 	(void)force;
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
@@ -2496,7 +2496,7 @@ static void on_game_tick(void)
 	g_game_ticking = true;             /* see bt_volume_follow */
 	aout_apply(false);
 	g_game_ticking = false;
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	plat_sink_follow(true);
 #endif
 	aout_retry_in_game();
@@ -6509,7 +6509,7 @@ static void bt_await_route(const char *mac)
 	while ((int)(until - plat_now_ms()) > 0) {
 		muse_poll();
 		aout_apply(false);
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 		if (plat_bt_audio()) return;        /* PipeWire already moved it */
 #else
 		if (!strcasecmp(aout_bt_sink(), want) &&
@@ -11030,7 +11030,7 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
 	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35,
 	 * plorpos-cdd. */
@@ -11233,7 +11233,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #else
 	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
 #endif
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	char audiodev[160];
 	aout_state as = aout_now();
 	const char *dev = aout_device(&as);
@@ -11272,7 +11272,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	if (plat_pico8_preload || plat_pico8_path)
 		argv[n++] = (char *)plat_pico8_pad;
 #endif
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	/* To the headset when that is where the sound goes, by its PCM name in
 	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
 	 * Only the device it starts on: pico8_64 opens one at start and keeps it,
@@ -11319,7 +11319,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
 	a->to_splore = false;
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	plat_child_audio_reset();
 #endif
 	if (splore) argv[n++] = (char *)"-splore";

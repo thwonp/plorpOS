@@ -6,13 +6,16 @@
  * (Menu as the brightness modifier, no mute switch, Diatom's audio, the
  * PICO-8 pad mapping), and PLATFORM_ROTATE marks where this one differs.
  *
- * The panel is KMS/DRM, drawn through SDL2's kmsdrm driver and GLES2. Every
- * input is a discrete GPIO key under mainline gpio-keys: the d-pad is four
- * buttons, not a hat. The nodes are found by name, as their numbers follow
- * probe order.
+ * The session is the GKD's shape (sd/rotate): sway on the panel, the launcher
+ * and Diatom as Wayland clients of it, PipeWire for the sound (PLAT_PIPEWIRE).
+ * So the window, the hand-overs and the volume follow platform_gkd.c. sway
+ * turns the picture when the swivel closes and maps touch to match
+ * (sd/rotate/sway.conf), so nothing here rotates.
  *
- * Not here yet, by plan: drawing over a frozen child (.12), the swivel's
- * rotation (.9), touch (.10), the volume control (.6). */
+ * Every input is a discrete GPIO key under mainline gpio-keys: the d-pad is
+ * four buttons, not a hat. The nodes are found by name, as their numbers
+ * follow probe order. Read straight from evdev, as on the GKD; sway's own
+ * keyboard handling is off. */
 #include "atomic.h"
 #include "db.h"
 #include "platform.h"
@@ -22,11 +25,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <pthread.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "platform_dev.h"
 
@@ -114,10 +120,16 @@ static int open_by_name(const char *want)
 	return found;
 }
 
-/* ---- video ----------------------------------------------------------- */
+/* ---- video -----------------------------------------------------------
+ *
+ * A fullscreen Wayland window under sway, 720x720 whichever way the swivel
+ * is: a turn is sway's output transform, and a square output keeps its size,
+ * so the window is never resized. */
 
 bool plat_video_init(void)
 {
+	int w = 0, h = 0;
+
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
@@ -125,8 +137,14 @@ bool plat_video_init(void)
 		return false;
 	}
 	SDL_ShowCursor(SDL_DISABLE);
-	win = SDL_CreateWindow("plorpOS", 0, 0, 720, 720,
-	                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_SHOWN);
+	/* At the output's own size: 0x0 leaves SDL's Wayland backend a 1x1
+	 * window that fullscreen never grows (platform_gkd.c). */
+	{
+		SDL_DisplayMode dm = { 0 };
+		if (SDL_GetDesktopDisplayMode(0, &dm) != 0) { dm.w = 720; dm.h = 720; }
+		win = SDL_CreateWindow("plorpOS", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+		                       dm.w, dm.h, SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
+	}
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());
 		return false;
@@ -137,19 +155,27 @@ bool plat_video_init(void)
 		return false;
 	}
 	SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+	/* sway sizes the window in its first configure, after SDL_CreateWindow
+	 * returns. Bounded, as on the GKD. */
+	for (int i = 0; i < 100; i++) {
+		SDL_PumpEvents();
+		SDL_GetRendererOutputSize(ren, &w, &h);
+		if (w > 1 && h > 1) break;
+		SDL_Delay(10);
+	}
 	plat_geometry_init(ren);
 	SDL_RendererInfo info;
 	if (SDL_GetRendererInfo(ren, &info) == 0)
-		fprintf(stderr, "renderer: %s, driver: %s, vsync %s, render-to-texture %s\n",
-		        info.name, SDL_GetCurrentVideoDriver(),
+		fprintf(stderr, "renderer: %s, driver: %s, output %dx%d, vsync %s, render-to-texture %s\n",
+		        info.name, SDL_GetCurrentVideoDriver(), w, h,
 		        (info.flags & SDL_RENDERER_PRESENTVSYNC) ? "granted" : "DECLINED (requested)",
 		        (info.flags & SDL_RENDERER_TARGETTEXTURE) ? "available" : "MISSING");
 	return true;
 }
 
-/* Over a frozen child: KMS has one master, the child, until .12 works out
- * the handover. Its only caller (native PICO-8's menu) quits on false. */
-bool plat_video_init_over_child(void) { return false; }
+/* sway takes the frozen child off the screen (child_hide), so the menu over
+ * it is an ordinary window. */
+bool plat_video_init_over_child(void) { return plat_video_init(); }
 
 void plat_present(SDL_Renderer *r) { SDL_RenderPresent(r); }
 
@@ -160,7 +186,14 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-void screen_yield(bool to_game) { (void)to_game; }
+/* Only one fullscreen window mapped at a time, as on the GKD: sway does not
+ * reliably show the one that drew last. */
+void screen_yield(bool to_game)
+{
+	if (!win) return;
+	if (to_game) { SDL_HideWindow(win); SDL_PumpEvents(); }
+	else SDL_ShowWindow(win);
+}
 
 /* ---- input: raw evdev, no SDL joystick --------------------------------- */
 
@@ -211,40 +244,98 @@ int levels_key(int code, bool *bright)
 	return 0;
 }
 
+/* A helper to completion - swaymsg, pactl - with its chatter kept out of
+ * the log. true when it ran and said 0. */
+static bool helper(char *const argv[])
+{
+	extern char **environ;
+	posix_spawn_file_actions_t fa;
+	pid_t pid;
+	int st = 0;
+	bool ok;
+
+	posix_spawn_file_actions_init(&fa);
+	posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+	ok = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ) == 0 &&
+	     waitpid(pid, &st, 0) == pid && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+	posix_spawn_file_actions_destroy(&fa);
+	return ok;
+}
+
+/* The frozen child goes to a workspace of its own, where it is not drawn,
+ * and the pad is grabbed so its read does not queue the menu's presses: the
+ * GKD's way, and its reasons (platform_gkd.c). */
+#define HIDE_WS "plorpos-hidden"
+
 bool child_hide(pid_t pid)
 {
-	(void)pid;
-	if (fd_pad < 0 || ioctl(fd_pad, EVIOCGRAB, 1) != 0) {
-		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
+	char crit[80];
+	char *move[] = { "swaymsg", crit, NULL };
+
+	snprintf(crit, sizeof crit, "[pid=%d] move container to workspace " HIDE_WS,
+	         (int)pid);
+	if (!helper(move)) {
+		fprintf(stderr, "run: sway would not hide the child\n");
 		return false;
 	}
+	if (fd_pad >= 0 && ioctl(fd_pad, EVIOCGRAB, 1) != 0)
+		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
 	return true;
 }
 
 void child_restore(pid_t pid, bool show)
 {
-	(void)pid; (void)show;
+	char crit[80];
+	char *cmd[] = { "swaymsg", crit, NULL };
+
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
+	if (!show) return;
+	snprintf(crit, sizeof crit,
+	         "[pid=%d] move container to workspace 1, focus, fullscreen enable",
+	         (int)pid);
+	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
 }
 
-#define PICO8_QUIET "/tmp/plorpos-pico8-quiet"   /* tools/pico8sdl.c's too */
+/* The child's own PipeWire stream, found by its pid, muted while Muse plays:
+ * platform_gkd.c's, looked for at most twice a second. */
+static int quiet_stream(pid_t pid)
+{
+	char line[256], want[48];
+	int cur = -1, idx = -1;
+	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
+
+	if (!f) return -1;
+	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
+	while (fgets(line, sizeof line, f)) {
+		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
+		else if (idx < 0 && strstr(line, want)) idx = cur;
+	}
+	pclose(f);
+	return idx;
+}
 
 void child_quiet(pid_t pid, bool on)
 {
 	static pid_t q_pid;
-	static int q_said = -1;
+	static int q_idx = -1, q_said = -1;
+	static unsigned q_look_at;
+	char idx[16];
+	char *cmd[] = { "pactl", "set-sink-input-mute", idx, on ? "1" : "0", NULL };
 
-	if (pid != q_pid) { q_pid = pid; q_said = -1; }
+	if (pid != q_pid) { q_pid = pid; q_idx = -1; q_said = -1; q_look_at = 0; }
 	if (q_said == (int)on) return;
-	if (on) {
-		int fd = open(PICO8_QUIET, O_WRONLY | O_CREAT, 0644);
-		if (fd < 0) return;
-		close(fd);
-	} else if (unlink(PICO8_QUIET) != 0 && errno != ENOENT) {
-		return;
+	if (q_idx < 0) {
+		if (q_look_at && plat_now_ms() - q_look_at < 500) return;
+		q_look_at = plat_now_ms() | 1;
+		if ((q_idx = quiet_stream(pid)) < 0) return;
 	}
-	q_said = on;
-	fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
+	snprintf(idx, sizeof idx, "%d", q_idx);
+	if (helper(cmd)) {
+		q_said = on;
+		fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
+	} else {
+		q_idx = -1;   /* the stream went: look again */
+	}
 }
 
 static void pad_read(in_state *st)
@@ -321,6 +412,11 @@ static const unsigned short bright_ladder[] = {
 #define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "bright_ladder vs PLAT_BRIGHT_MAX");
 
+/* No mixer device: volume is PipeWire's, so mixer_fd is 0 once the worker
+ * below runs - "present", so the nudges run (platform_gkd.c). The codec's
+ * own gain (HPL/HPR, which it resets to 4 at every PCM open, and inverted:
+ * low is loud) is left at that 4; PipeWire opens the PCM, and the level is
+ * the sink's software volume. */
 int mixer_fd = -1, disp_fd = -1;
 int cur_vol = -1, cur_bright = -1;
 
@@ -333,11 +429,68 @@ void levels_save(void)
 	db_write_boot_env();
 }
 
-/* Remembered only: which control is the speaker's level is decided by ear
- * in .6 (HPL/HPR Gain or the DSP's VBC_VOLUME). */
-void apply_volume(int v) { cur_vol = v; }
+/* wpctl is a process, tens of ms, so sets go to a worker; latest wins.
+ * platform_gkd.c's, and diatom's. */
+static pthread_mutex_t vol_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  vol_cv = PTHREAD_COND_INITIALIZER;
+static int             vol_want = -1;
 
-/* The jack is on the codec; no headphones on this device's own panel yet. */
+static void *vol_worker(void *arg)
+{
+	extern char **environ;
+	(void)arg;
+	for (;;) {
+		char pct[16];
+		char *argv[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", pct, NULL };
+		pid_t pid;
+		int st, want;
+
+		pthread_mutex_lock(&vol_mu);
+		while (vol_want < 0) pthread_cond_wait(&vol_cv, &vol_mu);
+		want = vol_want;
+		vol_want = -1;
+		pthread_mutex_unlock(&vol_mu);
+
+		snprintf(pct, sizeof pct, "%d%%", want * 100 / VOL_MAX);
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+			waitpid(pid, &st, 0);
+	}
+	return NULL;
+}
+
+void apply_volume(int v)
+{
+	cur_vol = v;
+	if (mixer_fd < 0) return;
+	pthread_mutex_lock(&vol_mu);
+	vol_want = v;
+	pthread_cond_signal(&vol_cv);
+	pthread_mutex_unlock(&vol_mu);
+}
+
+/* What PipeWire is at now, in rungs, once at start. -1 if it cannot say. */
+static int wpctl_level(void)
+{
+	FILE *f = popen("wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null", "r");
+	float v;
+	int lv = -1;
+
+	if (!f) return -1;
+	if (fscanf(f, "Volume: %f", &v) == 1)
+		lv = clampi((int)(v * VOL_MAX + 0.5f), 0, VOL_MAX);
+	pclose(f);
+	return lv;
+}
+
+/* The output is the codec's speaker until Bluetooth (.18) and the USB DAC
+ * (.19) give PipeWire another sink to route to. */
+void plat_audio_speaker_only(bool on) { (void)on; }
+bool plat_bt_audio(void) { return false; }
+bool plat_usb_audio(void) { return false; }
+void plat_sink_follow(bool game) { (void)game; }
+
+/* No headphone sink in the codec's UCM profile (WirePlumber lists the
+ * speaker alone). */
 bool plat_headphones_present(void) { return false; }
 void plat_audio_jack_poll(void) { }
 void jack_forget(void) { }
@@ -367,15 +520,20 @@ void backlight_off(void) { backlight_write(0); }
 
 void plat_settings_init(void)
 {
+	pthread_t t;
 	int v, b;
 
-	mixer_fd = open("/dev/snd/controlC0", O_RDWR | O_CLOEXEC);
-	disp_fd  = open(BACKLIGHT, O_RDWR | O_CLOEXEC);
-	if (mixer_fd < 0) fprintf(stderr, "settings: no /dev/snd/controlC0\n");
-	if (disp_fd  < 0) fprintf(stderr, "settings: no %s\n", BACKLIGHT);
+	disp_fd = open(BACKLIGHT, O_RDWR | O_CLOEXEC);
+	if (disp_fd < 0) fprintf(stderr, "settings: no %s\n", BACKLIGHT);
+	if (pthread_create(&t, NULL, vol_worker, NULL) == 0) {
+		pthread_detach(t);
+		mixer_fd = 0;
+	} else
+		fprintf(stderr, "settings: no volume worker\n");
 
 	v = db_get_int(db_dev(), "volume", -1);
 	b = db_get_int(db_dev(), "brightness", -1);
+	if (v < 0) v = wpctl_level();
 	/* The panel's level now, to the nearest rung, with nothing saved. */
 	if (b < 0 && disp_fd >= 0) {
 		char s[16];

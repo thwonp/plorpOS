@@ -7,6 +7,14 @@
 #include <time.h>
 #include "platproc.h"
 
+/* PipeWire owns the sound (the GKD under ROCKNIX, the Rotate under Armbian):
+ * every stream mixes, the default sink is the output and moves the streams
+ * with it, and nothing hands the codec over. The audio paths in main.c and
+ * platform.c that the GKD wrote for it are the Rotate's too. */
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+#define PLAT_PIPEWIRE 1
+#endif
+
 /* Everything that knows it is running on a TrimUI Brick lives here: the
  * display, the buttons that arrive on three different devices, the panel
  * backlight, the codec, the battery, and the pipe to the resident emulator.
@@ -160,7 +168,7 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
  * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
  * Brick's plorpos-cdd). */
@@ -411,7 +419,7 @@ bool plat_hold_switch(void);
  * switch for its own reason - which volume window to use - so both halves ask
  * the hardware rather than one telling the other something it could get wrong. */
 bool plat_headphones_present(void);
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 /* PipeWire's default sink is the output, chosen in platform_gkd.c (gkd.9.3):
  * the Audio Output setting goes in, whether a Bluetooth sink exists comes
  * out. Nothing is sent to Diatom or Muse; both stay on "default". */

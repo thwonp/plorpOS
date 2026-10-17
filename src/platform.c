@@ -424,7 +424,7 @@ static int lv_hold_wait(const lv_hold *h)
 }
 #endif
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Where native PICO-8's sound goes, for pico8sdl.so's watcher to follow
  * (plorpos-7ny.35): "-" nothing, "" the default device, else the headset's
  * PCM and its link id - a headset that went and came back reopens. tmpfs. */
@@ -638,7 +638,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 
 			hold.next = 0;       /* no hold carries through the menu */
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 			child_audio_release();
 #endif
 			kill(pid, SIGSTOP);
@@ -1630,7 +1630,7 @@ int plat_resident_wait(void)
 	screen_yield(true);
 	r = diatom_wait();
 	screen_yield(false);
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	/* A pause hands the input back too, and with it the level: take the
 	 * game's now, not at EXIT. Otherwise the jack poll below re-applies this
 	 * side's older level the moment the menu opens, and the game resumes at
