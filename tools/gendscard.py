@@ -40,10 +40,9 @@ def mark(d, cx, top):
     """An open DS Lite, front on, every part placed from a product photo
     (494 px wide there, 360 here: x and y below are in the photo's frame,
     scaled). Two shells with small corners; between them the hinge barrel,
-    a cylinder in three parts - round end caps and a slightly thinner middle
-    with the mic slot, the right cap carrying the two LED lines. Screens at
-    about half the width with the little corner tabs on the top shell, 3x2
-    grilles beside it. On the lower shell the d-pad and ABXY sit centered in
+    a cylinder with round end caps a step taller than its middle, the mic slot
+    in the middle, the right cap carrying the two LED lines. Screens at
+    about half the width, centered. On the lower shell the d-pad and ABXY sit centered in
     the space between the shell's edge and the raised frame round the screen,
     and start/select hang low just right of that frame. All of it punched out
     of the accent to the card stock."""
@@ -65,41 +64,36 @@ def mark(d, cx, top):
     # Shells: top 127-362, bottom from behind the barrel to 640.
     rect(137, 127, 631, 362, acc, 7)
     rect(137, 392, 631, 640, acc, 7)
-    # The barrel, 366-400: end caps full height, the middle a hair thinner,
-    # grooves of card stock between the parts.
+    # The barrel, 366-400: end caps full height, the middle a hair thinner
+    # and running into them (the user's edit: no grooves).
     bh = (400 - 366) * k
     d.rectangle(s(X(137), Y(362), X(631), Y(404)), fill=stock)
     d.rounded_rectangle(s(X(140), Y(366), X(203), Y(400)), radius=int(bh / 2) * SS, fill=acc)
     d.rounded_rectangle(s(X(567), Y(366), X(628), Y(400)), radius=int(bh / 2) * SS, fill=acc)
-    rect(206, 368, 564, 398, acc)
+    rect(180, 368, 590, 398, acc)                      # runs into the caps: no grooves
     rect(384 - 2, 377, 384 + 2, 389, stock)            # the mic slot
     for lx in (597, 604):                               # the LED lines
         rect(lx - 1, 371, lx + 1, 395, stock)
 
-    # Top screen, the corner tabs, the grilles.
-    rect(264, 160, 499, 338, stock)
-    for tx, ty in ((205, 152), (561, 152), (205, 348), (561, 348)):
-        rect(tx - 5, ty - 5, tx + 5, ty + 5, stock)
-    for gx in ((175, 195, 215), (553, 573, 593)):
-        for x in gx:
-            for y in (243, 263):
-                dot(x, y, 2.6, stock)
+    # Top screen, centered on the shell (384). No grilles or corner tabs:
+    # too busy at card size (the user's edit, 2026-10-18).
+    rect(266, 160, 502, 338, stock)
 
-    # Bottom screen; the raised frame round it (249-512) is what the d-pad
-    # and ABXY are centered against.
-    rect(264, 426, 499, 600, stock)
+    # Bottom screen, centered like the top one; the raised frame round it
+    # (252-516) is what the d-pad and ABXY are centered against.
+    rect(266, 426, 502, 600, stock)
     # The raised frame itself, as a hairline: inset again by its thickness.
-    d.rounded_rectangle(s(X(249), Y(411), X(512), Y(614)), radius=6 * SS,
+    d.rounded_rectangle(s(X(252), Y(411), X(516), Y(614)), radius=6 * SS,
                         outline=stock, width=2 * SS)
-    dx, dy = (137 + 249) / 2, 490
+    dx, dy = (137 + 252) / 2, 490
     arm, th = 33, 11
     rect(dx - arm, dy - th, dx + arm, dy + th, stock, 2)
     rect(dx - th, dy - arm, dx + th, dy + arm, stock, 2)
-    bx, by = (512 + 631) / 2, 482
+    bx, by = (516 + 631) / 2, 482
     for ddx, ddy in ((0, -28), (0, 28), (-28, 0), (28, 0)):
         dot(bx + ddx, by + ddy, 8.5, stock)
     for y in (573, 602):                                # start, select
-        dot(537, y, 5, stock)
+        dot(541, y, 5, stock)
 
 
 def main():
