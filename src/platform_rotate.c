@@ -44,13 +44,13 @@
 
 /* The card's exFAT data partition is mounted here (plorpos-3yv.7), so the
  * Brick's spelling holds. */
-const char *P_ROOT = "/mnt/SDCARD/TortOS";
+const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/rotate";
 const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
-const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
-const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
+const char *P_WEB = "/mnt/SDCARD/plorpOS/res/web";
+const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {

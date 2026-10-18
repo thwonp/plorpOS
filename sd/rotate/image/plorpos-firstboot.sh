@@ -5,10 +5,10 @@
 # plorpOS on it - so also after the player wiped it - before plorpos.service.
 #
 #   p1 uboot, p2 bootfs, p3 the rootfs (fixed size), p4 exFAT "PLORPOS",
-#   mounted at /mnt/SDCARD: Roms, Saves, Bios, Music and TortOS/.
+#   mounted at /mnt/SDCARD: Roms, Saves, Bios, Music and plorpOS/.
 #
-# TortOS/ is seeded from the copy in the rootfs (/usr/share/plorpos/TortOS);
-# an update is a newer TortOS folder copied over it, as on the other devices.
+# plorpOS/ is seeded from the copy in the rootfs (/usr/share/plorpos/plorpOS);
+# an update is a newer plorpOS folder copied over it, as on the other devices.
 set -eu
 ROOT=$(findmnt -no SOURCE /)
 DISK=/dev/$(lsblk -no PKNAME "$ROOT")
@@ -26,9 +26,9 @@ if [ ! -b "$DATA" ]; then
 fi
 mkdir -p /mnt/SDCARD
 mountpoint -q /mnt/SDCARD || mount /mnt/SDCARD
-if [ ! -f /mnt/SDCARD/TortOS/rotate/session.sh ]; then
+if [ ! -f /mnt/SDCARD/plorpOS/rotate/session.sh ]; then
 	echo "firstboot: putting plorpOS on the data partition"
-	cp -R /usr/share/plorpos/TortOS /mnt/SDCARD/
+	cp -R /usr/share/plorpos/plorpOS /mnt/SDCARD/
 fi
 mkdir -p /mnt/SDCARD/Roms /mnt/SDCARD/Saves /mnt/SDCARD/Bios /mnt/SDCARD/Music
 sync

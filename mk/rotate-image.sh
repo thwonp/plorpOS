@@ -29,13 +29,13 @@ ssh_() { ssh -n -i "$KEY" -o IdentitiesOnly=yes "$HOST" "$@"; }
 
 mkdir -p "$W"
 rm -rf "$W/overlay"
-# 1. What plorpOS adds to the rootfs: the TortOS folder to seed the card
+# 1. What plorpOS adds to the rootfs: the plorpOS folder to seed the card
 #    with, the session and first-boot units (enabled), the data partition's
 #    mount, and no getty on tty1.
 O=$W/overlay
 mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants" \
 	"$O/etc/systemd/network" "$O/etc/wireplumber/wireplumber.conf.d"
-ROTATE_STAGE="$O/usr/share/plorpos/TortOS" sh "$ROOT/mk/rotate-deploy.sh" stage
+ROTATE_STAGE="$O/usr/share/plorpos/plorpOS" sh "$ROOT/mk/rotate-deploy.sh" stage
 cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$O/usr/share/plorpos/"
 cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.service" \
 	"$O/etc/systemd/system/"

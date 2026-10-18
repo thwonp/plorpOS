@@ -6,7 +6,7 @@
 # A launcher failing to start five times running gives the device back to
 # the login prompt until the next boot.
 SD=/mnt/SDCARD
-DIR=$SD/TortOS
+DIR=$SD/plorpOS
 export TORTOS_USERDATA=$SD/.userdata/rotate
 export HOME=$TORTOS_USERDATA
 LOGS=$TORTOS_USERDATA/logs
@@ -76,7 +76,7 @@ bt_reconnect() {
 	echo "bluetooth: no bonded headset answered"
 }
 start_resident() {
-	pgrep -f "TortOS/diatom --socket" > /dev/null && return
+	pgrep -f "plorpOS/diatom --socket" > /dev/null && return
 	[ -x "$DIR/diatom" ] || return
 	rm -f "$TORTOS_DIATOM_SOCKET"
 	# Not before the speaker's sink exists: session.sh starts PipeWire beside
@@ -137,5 +137,5 @@ while : ; do
 done
 
 echo "launcher failed $FAILS times; back to the login prompt" >> "$LOG"
-pkill -f "TortOS/diatom --socket"
+pkill -f "plorpOS/diatom --socket"
 exec systemctl start getty@tty1.service

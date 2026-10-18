@@ -6,10 +6,10 @@
 #
 # elf: the launcher alone. diatom: the resident emulator alone (../diatom,
 # PORT=rotate tools/brick-make.sh). all: both, the cores, Muse's tools, the session
-# scripts (sd/rotate) and the shared files payload.sh puts in TortOS/
+# scripts (sd/rotate) and the shared files payload.sh puts in plorpOS/
 # (systems.cfg, cards, font, web, CA bundle, shaders). boot: also installs
 # plorpos.service into the rootfs and enables it in place of tty1's getty.
-# stage: the TortOS folder into $ROTATE_STAGE, no device (mk/rotate-image.sh).
+# stage: the plorpOS folder into $ROTATE_STAGE, no device (mk/rotate-image.sh).
 # The runtime libraries are Debian's: apt, not this script.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,7 +18,7 @@ HOST=${ROTATE_HOST:-root@192.168.0.69}
 KEY=${ROTATE_KEY:-$HOME/.ssh/rgrotate}
 B=$ROOT/build/rotate
 DIATOM=${DIATOM_ELF:-$ROOT/../diatom/build/rotate/diatom}
-P=/mnt/SDCARD/TortOS
+P=/mnt/SDCARD/plorpOS
 ssh_() { ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "$@"; }
 
 [ -f "$B/tortos.elf" ] || { echo "no $B/tortos.elf; run: make PLATFORM=rotate" >&2; exit 1; }
@@ -27,13 +27,13 @@ put() { ssh_ "cat > $P/$2.new && chmod +x $P/$2.new && mv -f $P/$2.new $P/$2" < 
 if [ "$MODE" = diatom ]; then
 	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; }
 	put "$DIATOM" diatom
-	ssh_ 'pkill -f "[T]ortOS/diatom --socket"; true' < /dev/null   # [T]: not this shell
+	ssh_ 'pkill -f "[p]lorpOS/diatom --socket"; true' < /dev/null   # [T]: not this shell
 	echo "deployed diatom $(md5sum "$DIATOM" | cut -c1-8); the launcher restarts it"
 	exit 0
 fi
-# The TortOS folder, as the card holds it, into $1: the launcher, Diatom
+# The plorpOS folder, as the card holds it, into $1: the launcher, Diatom
 # and its cores, Muse's tools, the session (sd/rotate) and the shared files
-# payload.sh puts in TortOS/ (systems.cfg, cards, font, web, CA bundle,
+# payload.sh puts in plorpOS/ (systems.cfg, cards, font, web, CA bundle,
 # shaders). No pico8sdl.so or wget shim: the Rotate's PICO-8 needs neither.
 stage() {
 	S=$1
@@ -55,7 +55,7 @@ if [ "$MODE" = stage ]; then
 	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; }
 	mkdir -p "$ROTATE_STAGE"
 	stage "$ROTATE_STAGE"
-	echo "staged TortOS/ in $ROTATE_STAGE"
+	echo "staged plorpOS/ in $ROTATE_STAGE"
 	exit 0
 fi
 ssh_ "mkdir -p $P" < /dev/null
@@ -64,7 +64,7 @@ if [ "$MODE" = all ] || [ "$MODE" = boot ]; then
 	trap 'rm -rf "$T"' EXIT
 	stage "$T"
 	# The two that may be running go by put, below, not over their inodes.
-	tar -C "$T" --exclude=./tortos.elf --exclude=./diatom -cf - . | ssh_ "tar -C $P -xf -"
+	tar -C "$T" --exclude=./tortos.elf --exclude=./diatom -cf - . | ssh_ "tar -C $P --no-same-owner -xf -"
 	[ -f "$DIATOM" ] && put "$DIATOM" diatom
 	ssh_ "mkdir -p /mnt/SDCARD/Roms /mnt/SDCARD/Music /mnt/SDCARD/Bios /mnt/SDCARD/Saves" < /dev/null
 fi

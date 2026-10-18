@@ -2,16 +2,16 @@
 # and the launcher under it - in place of tty1's login prompt. Installed into
 # the rootfs by the card image (mk/rotate-image.sh) or mk/rotate-deploy.sh boot.
 # The scripts it runs live on the data partition, so an update is a copy of
-# the TortOS folder, as on the other devices. No card, no session: the getty.
+# the plorpOS folder, as on the other devices. No card, no session: the getty.
 [Unit]
 Description=plorpOS session
 # bluetoothd first, so WirePlumber finds BlueZ when it starts (plorpos-3yv.18).
 After=systemd-user-sessions.service rotate-audio.service mnt-SDCARD.mount bluetooth.service
 Conflicts=getty@tty1.service
-ConditionPathExists=/mnt/SDCARD/TortOS/rotate/session.sh
+ConditionPathExists=/mnt/SDCARD/plorpOS/rotate/session.sh
 
 [Service]
-ExecStart=/usr/bin/dbus-run-session /bin/sh /mnt/SDCARD/TortOS/rotate/session.sh
+ExecStart=/usr/bin/dbus-run-session /bin/sh /mnt/SDCARD/plorpOS/rotate/session.sh
 TTYPath=/dev/tty1
 StandardInput=tty
 StandardOutput=journal
