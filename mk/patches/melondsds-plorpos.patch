@@ -1,0 +1,62 @@
+From 4f3890eb7937d4e48a84bbc34fffec70c50f66f1 Mon Sep 17 00:00:00 2001
+From: plorpOS <noreply@plorpos>
+Date: Sun, 18 Oct 2026 15:16:45 -0400
+Subject: [PATCH] plorpOS: unload leaves a fresh core; legacy-size states load
+
+---
+ src/libretro/core/core.cpp |  9 +++++++--
+ src/libretro/libretro.cpp  | 11 +++++++++++
+ 2 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/src/libretro/core/core.cpp b/src/libretro/core/core.cpp
+index df32f077..b026c72d 100644
+--- a/src/libretro/core/core.cpp
++++ b/src/libretro/core/core.cpp
+@@ -1065,7 +1065,12 @@ bool MelonDsDs::CoreState::Unserialize(std::span<const std::byte> data) noexcept
+         _savestateSize = SerializeSize();
+     }
+ 
+-    if (data.size() != _savestateSize) {
++    // plorpOS: our melonDS saves 4 MiB of DS main RAM where states from before
++    // it saved all 16 (savestate minor 1, NDS::DoSavestate); those still load.
++    const size_t legacySize = *_savestateSize + (0x1000000 - 0x400000);
++    const bool sizeOk = data.size() == *_savestateSize || data.size() == legacySize;
++
++    if (!sizeOk) {
+         retro::error("Expected to load a {}-byte savestate, got {} bytes", *_savestateSize, data.size());
+         return false;
+     }
+@@ -1094,7 +1099,7 @@ bool MelonDsDs::CoreState::Unserialize(std::span<const std::byte> data) noexcept
+         return false;
+     }
+ 
+-    if (data.size() != *_savestateSize) {
++    if (!sizeOk) {
+         retro::error("Expected a {}-byte savestate, got one of {} bytes", *_savestateSize, data.size());
+         retro::set_error_message("Can't load this savestate, most likely the ROM or the core is wrong.");
+         return false;
+diff --git a/src/libretro/libretro.cpp b/src/libretro/libretro.cpp
+index b56f23aa..bec7f011 100644
+--- a/src/libretro/libretro.cpp
++++ b/src/libretro/libretro.cpp
+@@ -132,6 +132,17 @@ PUBLIC_SYMBOL void retro_unload_game(void) {
+     retro::task::deinit();
+ 
+     Core.UnloadGame();
++
++    // plorpOS: leave the core as retro_init left it. A frontend that keeps the
++    // core loaded between games (Diatom, ADR-0006) otherwise starts the next
++    // game on this one's leftovers: ApplyConfig dereferences the null Console
++    // through the kept render state (SIGSEGV on the second load), the cached
++    // savestate size is the old game's, the task queue is gone, and the ROM
++    // copy in _ndsInfo stays allocated.
++    Core.~CoreState();
++    memset(MelonDsDs::CoreStateBuffer.data(), 0, MelonDsDs::CoreStateBuffer.size());
++    retro::task::init(false, nullptr);
++    new(&MelonDsDs::CoreStateBuffer) MelonDsDs::CoreState();
+ }
+ 
+ PUBLIC_SYMBOL unsigned retro_get_region(void) {
+-- 
+2.55.0
+
