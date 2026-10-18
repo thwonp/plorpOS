@@ -1330,7 +1330,7 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 #ifdef PLATFORM_ROTATE
 #define HIT_MAX 64
 
-typedef struct { SDL_Rect r; int button, n; } ui_target;
+typedef struct { SDL_Rect r; int button, n; bool id; } ui_target;  /* id: n is an id */
 typedef struct {
 	ui_target t[HIT_MAX];
 	int       n;
@@ -1342,7 +1342,30 @@ static ui_targets hit_draw, hit_shown;
 
 void ui_hit(const SDL_Rect *r, int button, int n)
 {
-	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n };
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false };
+}
+
+void ui_hit_id(const SDL_Rect *r, int id)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, 0, id, true };
+}
+
+void ui_hit_clear(void)
+{
+	hit_draw.n = 0;
+	hit_draw.modal = false;
+}
+
+static int hit_given = -1;
+
+void ui_hit_give(int id) { hit_given = id; }
+
+int ui_hit_take(void)
+{
+	int id = hit_given;
+
+	hit_given = -1;
+	return id;
 }
 
 void ui_hit_modal(const SDL_Rect *panel)
@@ -1369,7 +1392,7 @@ ui_hit_kind ui_hit_find(int x, int y, int *button, int *n)
 		if (SDL_PointInRect(&p, &hit_shown.t[i].r)) {
 			*button = hit_shown.t[i].button;
 			*n = hit_shown.t[i].n;
-			return UI_HIT_ITEM;
+			return hit_shown.t[i].id ? UI_HIT_ID : UI_HIT_ITEM;
 		}
 	if (hit_shown.modal)
 		return SDL_PointInRect(&p, &hit_shown.panel) ? UI_HIT_NONE : UI_HIT_OUTSIDE;

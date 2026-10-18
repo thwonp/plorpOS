@@ -618,7 +618,8 @@ static void touch_drag(void)
  * plorpos-3yv.23). On an item the tap selects it, and on the selected one it
  * is A; a long press or two-finger tap selects it and then is Y or X. Empty
  * space is nothing, outside a menu's panel a tap dismisses it, and a screen
- * that recorded no items gets `then` as before. */
+ * that recorded no items gets `then` as before. A key recorded by id is the
+ * screen's to act on (ui_hit_id), whatever the tap. */
 static void touch_at(in_button then)
 {
 	float s = plat_scale() > 0 ? plat_scale() : 1;
@@ -632,6 +633,7 @@ static void touch_at(in_button then)
 		touch_queue((in_button)b, n);
 		if (n == 0 || then != IN_ACCEPT) touch_queue(then, 1);
 		break;
+	case UI_HIT_ID:       ui_hit_give(n); break;   /* any kind of tap */
 	}
 }
 
