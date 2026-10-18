@@ -34,7 +34,7 @@ rm -rf "$W/overlay"
 #    mount, and no getty on tty1.
 O=$W/overlay
 mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants" \
-	"$O/etc/systemd/network"
+	"$O/etc/systemd/network" "$O/etc/wireplumber/wireplumber.conf.d"
 ROTATE_STAGE="$O/usr/share/plorpos/TortOS" sh "$ROOT/mk/rotate-deploy.sh" stage
 cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$O/usr/share/plorpos/"
 cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.service" \
@@ -43,6 +43,7 @@ ln -s ../plorpos.service "$O/etc/systemd/system/multi-user.target.wants/plorpos.
 ln -s ../plorpos-firstboot.service \
 	"$O/etc/systemd/system/multi-user.target.wants/plorpos-firstboot.service"
 cp "$ROOT/sd/rotate/image/20-wlan0.network" "$O/etc/systemd/network/"
+cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$O/etc/wireplumber/wireplumber.conf.d/"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -72,7 +73,8 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 	zstd -dc /w/rootfs.tar.zst | tar -C /r --numeric-owner -xpf -
 	cp -a /w/overlay/. /r/
 	chown -R 0:0 /r/usr/share/plorpos /r/etc/systemd/system/plorpos*.service \
-		/r/etc/systemd/network/20-wlan0.network
+		/r/etc/systemd/network/20-wlan0.network \
+		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
 	# Wi-Fi is the launcher'"'"'s (plorpos-3yv.17): not netplan'"'"'s, and not the
