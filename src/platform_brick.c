@@ -328,6 +328,8 @@ void plat_input_flush(void)
 	memset(hat_dir, 0, sizeof hat_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
 	memset(rstick_dir, 0, sizeof rstick_dir);
+	SDL_JoystickUpdate();
+	menu_filter_reset(joy && SDL_JoystickGetButton(joy, JOY_MENU));
 #ifdef __linux__
 	{
 		struct input_event ev;
@@ -610,6 +612,7 @@ void plat_input_poll(in_state *st)
 	poll_raw_fd(fd_power, st);
 	poll_raw_fd(fd_keys, st);
 	poll_raw_fd(fd_joy, st);
+	menu_filter(st);
 }
 
 #ifdef __linux__

@@ -481,6 +481,42 @@ static void child_audio_release(void)
 }
 #endif
 
+/* See platform_dev.h. */
+static struct { bool held, spent, swpulse; unsigned t0; } mf;
+
+void menu_filter_reset(bool held_now)
+{
+	mf.held = mf.spent = held_now;
+	mf.swpulse = false;
+}
+
+void menu_filter(in_state *st)
+{
+	bool raw = st->down[IN_MENU];
+	int b;
+
+	if (mf.swpulse) { st->down[IN_SWITCHER] = false; mf.swpulse = false; }
+	st->pressed[IN_MENU] = false;            /* never on the press */
+	if (raw && !mf.held) {
+		mf.held = true;
+		mf.spent = false;
+		mf.t0 = plat_now_ms();
+	}
+	if (mf.held && raw) {
+		for (b = 0; b < IN_COUNT; b++)
+			if (b != IN_MENU && st->pressed[b]) mf.spent = true;   /* a chord */
+		if (!mf.spent && plat_now_ms() - mf.t0 >= SWITCHER_HOLD_MS) {
+			mf.spent = true;
+			st->pressed[IN_SWITCHER] = st->down[IN_SWITCHER] = true;
+			mf.swpulse = true;
+		}
+	}
+	if (mf.held && !raw) {
+		mf.held = false;
+		if (!mf.spent) st->pressed[IN_MENU] = true;
+	}
+}
+
 static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
@@ -525,17 +561,14 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
 	lv_hold hold = { 0 };
-#if defined(PLATFORM_H700)
-	/* Menu is the brightness modifier too (Menu+Vol): a tap goes on its
+	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
+	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
 	 * release, as pad_read and diatom have it, and only if no level key
 	 * went with it. Opened on the press, the menu met the release as a tap
 	 * of its own and closed again at once (plorpos-7ny.14). */
 	bool menu_held = false, menu_spent = false;
 	unsigned menu_t0 = 0;   /* held SWITCHER_HOLD_MS: the switcher (plorpos-gl5.3) */
 	const int menu_value = 0;
-#else
-	const int menu_value = 1;
-#endif
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
@@ -609,12 +642,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (d) {
 				level_nudge(bright, d);
 				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
-#if defined(PLATFORM_H700)
 				if (bright) menu_spent = true;
-#endif
 				continue;
 			}
-#if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
 				menu_spent = false;
@@ -627,7 +657,6 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu_held = false;
 				if (!tap) continue;
 			}
-#endif
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == menu_value) {
 				struct timespec now;
 
@@ -641,7 +670,6 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
-#if defined(PLATFORM_H700)
 		/* Menu held alone a second: the switcher, and its release is then
 		 * nothing (plorpos-gl5.3). */
 		if (menu_held && !menu_spent && !menu &&
@@ -649,7 +677,6 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			menu_spent = true;
 			swipe = GESTURE_SWITCHER;
 		}
-#endif
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
 		run_menu_why = menu ? GESTURE_NONE : swipe;

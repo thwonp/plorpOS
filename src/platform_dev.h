@@ -17,6 +17,15 @@
 
 /* Defined in platform.c, opened and read by the device file too. */
 extern int fd_power;                         /* -1 when the device has none */
+
+/* Menu as the Brick and the GKD read it: a press, turned here into what the
+ * H700 and the Rotate already do - a tap on release unless another button
+ * went with it, and the game switcher when held alone SWITCHER_HOLD_MS
+ * (plorpos-gl5.4). down[IN_MENU] stays the key's level, so chords still see
+ * it held. Called at the end of plat_input_poll; reset by plat_input_flush
+ * with whether Menu is down right then (a held one is spent). */
+void menu_filter(in_state *st);
+void menu_filter_reset(bool held_now);
 extern volatile sig_atomic_t g_terminating;
 /* One line to the resident emulator; false when it is not connected. */
 bool dsend(const char *fmt, ...);

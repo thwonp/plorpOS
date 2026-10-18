@@ -226,6 +226,12 @@ void plat_input_flush(void)
 	memset(pad_dir, 0, sizeof pad_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
 	home_down = false;
+	{
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		menu_filter_reset(fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		                  (bits[BTN_MODE / (8 * sizeof bits[0])] >> (BTN_MODE % (8 * sizeof bits[0])) & 1));
+	}
 }
 
 /* The nodes stay open, as on the Brick: they are display-independent, and
@@ -427,6 +433,7 @@ void plat_input_poll(in_state *st)
 	pad_read(st);
 	keys_read(st);
 	power_read(st);
+	menu_filter(st);
 	plat_sink_follow(false);
 }
 
