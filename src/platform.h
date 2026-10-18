@@ -372,6 +372,31 @@ pwr_action plat_power_tap_or_hold(bool down);
  * menu. */
 bool plat_resident_sleep_asked(void);
 
+/* Edge swipes over a running game (plorpos-3yv.45): the touch panel read
+ * straight from evdev, since the game's window has the focus and with it
+ * every touch SDL would deliver. A swipe in from the top is Muse, from the
+ * bottom the game switcher. Only the Rotate has a panel; elsewhere the fd is
+ * -1 and nothing is ever seen.
+ *
+ * Tight is a Nintendo DS game, whose bottom screen takes touches: the band
+ * narrows to GESTURE_TIGHT_PX and a swipe must be GESTURE_IN_PX in within
+ * GESTURE_TIGHT_MS, the window Diatom holds such a touch back from the core
+ * for - the two sides decide the same way from the same numbers. */
+typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER } gesture;
+#define GESTURE_BAND_PX  32
+#define GESTURE_TIGHT_PX 12
+#define GESTURE_IN_PX    30
+#define GESTURE_TIGHT_MS 100
+int     gesture_fd(void);
+void    gesture_tight(bool on);
+/* Drains the panel's queue; the swipe that completed in it, if any. */
+gesture gesture_read(void);
+/* Like plat_resident_sleep_asked, once: the gesture whose PAUSE the
+ * RES_PAUSED plat_resident_wait just returned answers. */
+gesture plat_resident_gesture_asked(void);
+/* Why plat_run's on_menu was called: Menu (GESTURE_NONE) or a swipe. */
+gesture plat_run_menu_why(void);
+
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no
  * conversion - which only holds while every place that rescales a level agrees

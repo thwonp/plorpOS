@@ -10813,7 +10813,10 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-static void game_menu(app *a)
+/* muse_only: an edge swipe over the game (plorpos-3yv.46) - Muse straight
+ * over the paused frame, and closing it (B, Select, the swipe again) is
+ * back to the game, not to this menu. */
+static void game_menu(app *a, bool muse_only)
 {
 	gm_ctx c = { 0 };
 	const char *pv = plat_resident_last_preview();
@@ -10849,7 +10852,9 @@ static void game_menu(app *a)
 	 * screen this menu opened - the save slots, Achievements - comes back as
 	 * MENU_LEFT_BACK too, so it is Continue from there as well. */
 	g_menu_closing = false;
-	if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
+	if (muse_only)
+		c.resume = !muse_open(a, &c.st, &c);
+	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
 
@@ -11038,6 +11043,8 @@ static run_choice native_menu(void *ctx)
 	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
 	menu_style st = { 0 };
 
+	if (plat_run_menu_why() == GESTURE_SWITCHER) return RUN_CONTINUE;   /* plorpos-gl5.3 */
+
 #if defined(PLATFORM_ROTATE)
 	/* run_alone's window, as it was; the child leaves the screen once the
 	 * menu's first frame is drawn (child_hide), and the window goes again
@@ -11060,7 +11067,12 @@ static run_choice native_menu(void *ctx)
 	 * the runner opens itself. Asked to quit with the menu up, the game
 	 * goes too. */
 	g_menu_closing = false;   /* sticky: see game_menu */
-	if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
+	/* A swipe from the top is Muse over the frozen game, and closing it is
+	 * back to the game (plorpos-3yv.46). */
+	if (plat_run_menu_why() == GESTURE_MUSE) {
+		if (muse_open(a, &st, &c) && (want_quit || !a->running))
+			c.choice = RUN_QUIT;
+	} else if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
@@ -11722,7 +11734,16 @@ static void launch(app *a)
 					}
 					continue;
 				}
-				if (r == RES_PAUSED) { game_menu(a); continue; }
+				if (r == RES_PAUSED) {
+					gesture g = plat_resident_gesture_asked();
+
+					if (g == GESTURE_SWITCHER) {      /* plorpos-gl5.3 */
+						plat_resident_line("RESUME");
+						continue;
+					}
+					game_menu(a, g == GESTURE_MUSE);
+					continue;
+				}
 				break;
 			}
 			a->game_on = false;

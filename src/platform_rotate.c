@@ -284,6 +284,7 @@ static struct {
 	unsigned t0;
 	bool   held;               /* the long press (or the edge's back) fired */
 	int    edge;               /* started at the left side +1, right -1, else 0 */
+	int    vedge;              /* else at the top +1 (Muse), bottom -1, else 0 */
 	int    axis;               /* -1 until the first step, then 0 x / 1 y */
 	float  anchor;             /* where along it the last step was taken */
 	int    steps;              /* taken by this touch */
@@ -556,12 +557,14 @@ static void sys_read(in_state *st)
  *   edge = B (Android's back, fired once TOUCH_SWIPE_PX in - plorpos-3yv.26),
  *   long press = Y on what is under it (favorite a game, Muse's mode, a
  *   rescan; fired while held - plorpos-3yv.22), two-finger tap = X on what
- *   is under it (a game's info), three-finger tap = Menu. Start has nothing
- *   to do on the shelf.
+ *   is under it (a game's info), three-finger tap = Menu, swipe down from
+ *   the top edge = Select (Muse, from anywhere - plorpos-3yv.46). Start has
+ *   nothing to do on the shelf.
  *
- * A touch that starts within TOUCH_EDGE_PX of a side is only ever back: no
- * steps, no coast, and no tap once it has moved - so the shelf still
- * scrolls from anywhere inside.
+ * A touch that starts within TOUCH_EDGE_PX of a side is only ever back, and
+ * one that starts that close to the top (sides win in the corners) only ever
+ * Select: no steps, no coast, and no tap once it has moved - so the shelf
+ * still scrolls from anywhere inside.
  *
  * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
  * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
@@ -674,15 +677,21 @@ static void touch_event(const SDL_Event *e)
 			touch.caught = touch.coasting;
 			touch.coasting = false;
 			touch.edge = touch.x0 < TOUCH_EDGE_PX ? 1 : touch.x0 >= w - TOUCH_EDGE_PX ? -1 : 0;
+			touch.vedge = touch.edge ? 0 : touch.y0 < TOUCH_EDGE_PX ? 1 : 0;
 		} else if (touch.fingers > touch.most)
 			touch.most = touch.fingers;
 	} else if (e->type == SDL_FINGERMOTION) {
 		if (touch.fingers == 1) {
 			touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h;
-			if (touch.most == 1 && !touch.held && !touch.edge) touch_drag();
+			if (touch.most == 1 && !touch.held && !touch.edge && !touch.vedge) touch_drag();
 			if (touch.most == 1 && !touch.held && touch.edge &&
 			    (touch.x - touch.x0) * touch.edge >= TOUCH_SWIPE_PX) {
 				touch_queue(IN_BACK, 1);
+				touch.held = true;
+			}
+			if (touch.most == 1 && !touch.held && touch.vedge == 1 &&
+			    touch.y - touch.y0 >= TOUCH_SWIPE_PX) {
+				touch_queue(IN_SELECT, 1);
 				touch.held = true;
 			}
 		}
@@ -691,7 +700,7 @@ static void touch_event(const SDL_Event *e)
 		float sv = 0, v;
 
 		if (--touch.fingers > 0 || touch.held) return;
-		if (touch.edge && touch.most == 1) {
+		if ((touch.edge || touch.vedge) && touch.most == 1) {
 			float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 			if (dx * dx + dy * dy > TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) return;
 		}
@@ -746,6 +755,102 @@ static void touch_poll(in_state *st)
 		memmove(touch.queue, touch.queue + 1, --touch.qn * sizeof touch.queue[0]);
 		set_btn(st, touch.up, true);
 	}
+}
+
+/* ---- touch over a game: edge swipes from evdev (plorpos-3yv.45) ---------
+ *
+ * The SDL path above only hears touches while the launcher's window has the
+ * focus. During a game the panel is read here instead, alongside sway (evdev
+ * readers each get every event; nothing is grabbed), and only the first
+ * finger (slot 0) is followed: an edge swipe is one finger.
+ *
+ * Raw coordinates are the panel's own, so the swivel's turn is applied here
+ * the way sway applies it to SDL's: closed is sway's transform 90, which puts
+ * the panel's right edge at the top (measured with injected swipes,
+ * 2026-10-18). */
+#define TOUCH_NAME "Goodix Capacitive TouchScreen"
+#define PANEL_MAX  719
+
+static int fd_touch = -2;          /* -2: not looked for yet */
+static bool g_tight;
+static struct {
+	int  slot, rx, ry;
+	bool down_pending, up_pending, on, fired;
+	int  edge;                     /* +1 top, -1 bottom, 0 none */
+	bool closed;
+	float y0;
+	unsigned t0;
+} gs;
+
+int gesture_fd(void)
+{
+	if (fd_touch == -2) fd_touch = open_by_name(TOUCH_NAME);
+	return fd_touch;
+}
+
+void gesture_tight(bool on) { g_tight = on; }
+
+static bool lid_closed(void)
+{
+	unsigned long sw[1] = { 0 };
+
+	return fd_power >= 0 && ioctl(fd_power, EVIOCGSW(sizeof sw), sw) >= 0 &&
+	       (sw[0] >> SW_LID & 1);
+}
+
+/* The screen's y (and x) for the raw point, as the player holds it. */
+static void gs_screen(float *x, float *y)
+{
+	if (gs.closed) { *x = gs.ry; *y = PANEL_MAX - gs.rx; }
+	else           { *x = gs.rx; *y = gs.ry; }
+}
+
+gesture gesture_read(void)
+{
+	struct input_event ev;
+	gesture out = GESTURE_NONE;
+
+	if (gesture_fd() < 0) return GESTURE_NONE;
+	while (read(fd_touch, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_ABS) {
+			if (ev.code == ABS_MT_SLOT) gs.slot = ev.value;
+			else if (gs.slot != 0) continue;
+			else if (ev.code == ABS_MT_TRACKING_ID) {
+				if (ev.value < 0) gs.up_pending = true;
+				else gs.down_pending = true;
+			} else if (ev.code == ABS_MT_POSITION_X) gs.rx = ev.value;
+			else if (ev.code == ABS_MT_POSITION_Y) gs.ry = ev.value;
+			continue;
+		}
+		if (ev.type != EV_SYN || ev.code != SYN_REPORT) continue;
+		if (gs.down_pending) {
+			int band = g_tight ? GESTURE_TIGHT_PX : GESTURE_BAND_PX;
+			float x, y;
+
+			gs.down_pending = false;
+			gs.closed = lid_closed();
+			gs_screen(&x, &y);
+			gs.on = true;
+			gs.fired = false;
+			gs.y0 = y;
+			gs.t0 = plat_now_ms();
+			/* The sides win the corners, as on the shelf. */
+			gs.edge = x < band || x > PANEL_MAX - band ? 0
+			        : y < band ? 1 : y > PANEL_MAX - band ? -1 : 0;
+		} else if (gs.on && gs.edge && !gs.fired) {
+			float x, y, in;
+
+			gs_screen(&x, &y);
+			in = (y - gs.y0) * gs.edge;
+			if (g_tight && plat_now_ms() - gs.t0 > GESTURE_TIGHT_MS) gs.edge = 0;
+			else if (in >= GESTURE_IN_PX) {
+				gs.fired = true;
+				out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
+			}
+		}
+		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
+	}
+	return out;
 }
 
 void plat_input_poll(in_state *st)

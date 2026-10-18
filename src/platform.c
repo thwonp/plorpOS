@@ -481,6 +481,10 @@ static void child_audio_release(void)
 }
 #endif
 
+static gesture run_menu_why;
+
+gesture plat_run_menu_why(void) { return run_menu_why; }
+
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
@@ -509,8 +513,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	int menu_code = 0;
 	int fd_menu = on_menu ? menu_key(&menu_code) : -1;
 	int fd_lv = levels_fd();
-	struct pollfd pfd[3] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 },
-	                         { fd_lv, POLLIN, 0 } };
+	int fd_ges = on_menu ? gesture_fd() : -1;
+	struct pollfd pfd[4] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 },
+	                         { fd_lv, POLLIN, 0 }, { fd_ges, POLLIN, 0 } };
+	if (fd_ges >= 0) gesture_read();          /* touches from before the run */
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		; /* drain stale events */
 	while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
@@ -533,8 +539,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		poll(pfd, 3, lv_hold_wait(&hold));
+		poll(pfd, 4, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
+		gesture swipe = fd_ges >= 0 ? gesture_read() : GESTURE_NONE;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
 		/* The volume keys: volume, or brightness with Home held, a step per
 		 * press and, held, the shelf's repeat (lv_hold). */
@@ -632,6 +639,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+		/* An edge swipe opens the same frozen-child screen, told why
+		 * (plorpos-3yv.45): Menu wins a tie. */
+		run_menu_why = menu ? GESTURE_NONE : swipe;
+		if (swipe != GESTURE_NONE) menu = true;
 		if (!term_at && !menu) lv_hold_tick(&hold);
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
@@ -653,6 +664,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 					;
 				while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
 					;
+				if (fd_ges >= 0) gesture_read();   /* the screen's own touches */
 				pwr_down = false;
 			}
 			if (c == RUN_CONTINUE) {
@@ -790,6 +802,11 @@ bool dsend(const char *fmt, ...)
 }
 
 /* One line, or NULL after timeout_ms with nothing complete. -1 blocks. */
+/* A second fd that ends dline's wait early, with no line - set only while
+ * diatom_wait runs, whose loop reads it. Every other caller is waiting for
+ * an answer and would read an early NULL as a timeout. */
+static int d_wake_fd = -1;
+
 static char *dline(int timeout_ms)
 {
 	static char out[2048];
@@ -809,7 +826,12 @@ static char *dline(int timeout_ms)
 			return out;
 		}
 		if (dsock < 0) return NULL;
-		if (poll(&p, 1, timeout_ms) <= 0) return NULL;
+		{
+			struct pollfd pp[2] = { p, { d_wake_fd, POLLIN, 0 } };
+
+			if (poll(pp, 2, timeout_ms) <= 0) return NULL;
+			if (!(pp[0].revents & (POLLIN | POLLHUP | POLLERR))) return NULL;
+		}
 		n = read(dsock, dbuf + dused, sizeof dbuf - dused);
 		if (n <= 0) { dclose(); return NULL; }
 		dused += (size_t)n;
@@ -1462,6 +1484,24 @@ bool plat_resident_sleep_asked(void)
 	return was;
 }
 
+/* A mid-game edge swipe asked Diatom to PAUSE: the PAUSED is Muse or the
+ * switcher, not the menu (plorpos-3yv.45). */
+static gesture d_gesture_asked;
+
+gesture plat_resident_gesture_asked(void)
+{
+	gesture was = d_gesture_asked;
+	d_gesture_asked = GESTURE_NONE;
+	return was;
+}
+
+#if !defined(PLATFORM_ROTATE)
+/* No touch panel: nothing to read, nothing ever swiped. */
+int     gesture_fd(void) { return -1; }
+void    gesture_tight(bool on) { (void)on; }
+gesture gesture_read(void) { return GESTURE_NONE; }
+#endif
+
 static int diatom_wait(void)
 {
 	int sent_stop = 0;
@@ -1502,6 +1542,7 @@ static int diatom_wait(void)
 				/* A sleep's PAUSE overtaken by a hold's STOP: the game is
 				 * ending, and its EXIT is what to wait for. */
 				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
+				if (d_gesture_asked && sent_stop) { d_gesture_asked = GESTURE_NONE; continue; }
 				return RES_PAUSED;
 			}
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
@@ -1589,6 +1630,20 @@ static int diatom_wait(void)
 			}
 		}
 #endif
+		/* An edge swipe over the game: PAUSE, and the PAUSED that answers
+		 * comes back to launch() as Muse or the switcher - see
+		 * plat_resident_gesture_asked. One at a time, and never over a
+		 * sleep's PAUSE or an ending game. */
+		{
+			gesture g = gesture_read();
+
+			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
+			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
+				d_gesture_asked = g;
+				dsend("PAUSE");
+			}
+		}
+
 		/* A termination arriving mid-game. Without this the loop waits for a
 		 * game that nobody is going to end, and the process cannot be
 		 * signaled out of it - which is how `killall tortos.elf` came to do
@@ -1628,7 +1683,10 @@ int plat_resident_wait(void)
 	int r;
 
 	screen_yield(true);
+	d_wake_fd = gesture_fd();
+	gesture_read();                  /* touches from before the game */
 	r = diatom_wait();
+	d_wake_fd = -1;
 	screen_yield(false);
 #if !defined(PLAT_PIPEWIRE)
 	/* A pause hands the input back too, and with it the level: take the
