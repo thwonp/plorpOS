@@ -71,6 +71,8 @@ static char     g_sink_said[128];   /* what it last reported, "" not yet */
 static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
+static bool     g_restored;         /* the queue came from the card and has not played */
+static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
 
@@ -129,12 +131,12 @@ static void sendf(const char *fmt, ...)
 
 /* Connected, or on the way. The daemon is started at most once every two
  * seconds, so a Muse that cannot start does not become a fork a frame. */
-static int connected(void)
+/* A Muse that is already running, or nothing: never starts one. */
+static int connect_only(void)
 {
 	struct sockaddr_un sa = { .sun_family = AF_UNIX };
 	int fd;
 
-	if (g_fd >= 0) return 1;
 	snprintf(sa.sun_path, sizeof sa.sun_path, "%s", MUSE_SOCK);
 	/* Non-blocking by fcntl rather than SOCK_NONBLOCK, which is Linux's: the
 	 * host build compiles this too, and a Unix-socket connect either answers
@@ -153,6 +155,13 @@ static int connected(void)
 		return 1;
 	}
 	if (fd >= 0) close(fd);
+	return 0;
+}
+
+/* Connected, or Muse started on the way there. */
+static int connected(void)
+{
+	if (g_fd >= 0 || connect_only()) return 1;
 	if (!g_bin[0]) return 0;
 	if (!g_spawned || plat_now_ms() - g_spawned_ms > 2000) {
 		char *argv[] = { g_bin, NULL };
@@ -172,6 +181,7 @@ static void play_current(void)
 
 	if (t < 0 || t >= g_qn) return;
 	q = g_q[t];
+	g_restored = false;
 	/* Held until the daemon has said which output it is on - its READY
 	 * announcement ends with SINK - or the route below has nothing to go by
 	 * and the first track of a fresh daemon starts on the speaker. */
@@ -233,6 +243,39 @@ static void field(const char *line, const char *key, char *out, size_t n)
 	}
 }
 
+static void queue_set(const char *const *paths, int n, int start, double at, bool book,
+                      double speed, const char *artist, const char *album);
+
+/* The first STATE after a queue was restored: a Muse that outlived the last
+ * launcher may be playing in it. On its track: the queue goes on from there,
+ * so the next track follows this one. Not in it - restarted within the five
+ * seconds before a save, or a book: the queue is not this music's and goes,
+ * and what Muse plays is still known to be playing. */
+static void adopt(const char *line, const char *state)
+{
+	char path[LIB_PATH * 2 + 8];
+	size_t rl = strlen(g_root);
+	int i;
+
+	g_restored = false;
+	if (!strcmp(state, "stopped")) return;
+	field(line, "path", path, sizeof path);
+	for (i = 0; i < g_qn; i++)
+		if (!strncmp(path, g_root, rl) && path[rl] == '/' && !strcmp(path + rl + 1, g_q[i]))
+			break;
+	if (i == g_qn) {
+		queue_set(NULL, 0, 0, 0, false, 1.0, "", "");
+		g_now.index = g_now.count = 0;
+		return;
+	}
+	if (i != muq_current(&g_order)) {
+		muq_free(&g_order);
+		muq_init(&g_order, g_qn, i, g_mode, plat_now_ms() * 2654435761u + 1);
+	}
+	g_now.index = g_order.pos;
+	g_now.count = g_qn;
+}
+
 static void event(const char *line)
 {
 	char v[256];
@@ -241,6 +284,7 @@ static void event(const char *line)
 		if (g_pending) play_current();
 	} else if (!strncmp(line, "STATE", 5)) {
 		field(line, "state", v, sizeof v);
+		if (g_restored) adopt(line, v);
 		/* The track that ended says "stopped" AFTER its END, and by then the
 		 * next one has already been asked for. Taken at its word, the queue
 		 * reads as stopped for the moment between two tracks - and a game
@@ -412,7 +456,14 @@ void musec_poll(void)
 	 * finish the track it was on and stop, because its END went to a socket
 	 * nobody was reading. */
 	if (g_fd < 0) {
-		if ((!g_pending && g_qn == 0) || !connected()) return;
+		/* A queue only restored, or none: a Muse already running - one that
+		 * outlived the last launcher - is asked how it is, once, but none is
+		 * started for a queue nobody has played. */
+		if (!g_pending && (g_qn == 0 || g_restored)) {
+			if (g_probed) return;
+			g_probed = true;
+			if (!connect_only()) return;
+		} else if (!connected()) return;
 	}
 	for (;;) {
 		got = recv(g_fd, g_in + g_have, sizeof g_in - g_have - 1, MSG_DONTWAIT);
@@ -439,8 +490,6 @@ void musec_poll(void)
 	}
 }
 
-static void queue_set(const char *const *paths, int n, int start, double at, bool book,
-                      double speed, const char *artist, const char *album);
 
 void musec_play(const char *const *paths, int n, int start, double at, bool book,
                 double speed, const char *artist, const char *album)
@@ -476,6 +525,7 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
 	g_skips = 0;
 	g_start_at = at > 0 ? at : 0;
 	g_ran_out = false;
+	g_restored = false;
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
 }
@@ -509,6 +559,91 @@ int musec_queue(const char *const **paths, int *current, const char **artist,
 	*artist = g_artist;
 	*album = g_album;
 	return g_qn;
+}
+
+/* The queue and its track kept over a restart and a reboot (plorpos-ggv.25 on
+ * the Nano, plorpos-2ru everywhere): written to the card once it has stood
+ * still for QUEUE_SETTLE_MS - twenty skips through an album are one write -
+ * and loaded stopped at start, for pause/play to go on from that track. Track
+ * by track: the place in a song is not kept. A book is not written: its place
+ * is kept to the second by the launcher's own book_keep. */
+#define QUEUE_SETTLE_MS 5000
+
+static unsigned queue_sig(void)
+{
+	unsigned h = 2166136261u;
+	int i;
+
+	if (g_qn <= 0 || g_book) return 0;
+	h = (h ^ (unsigned)g_qn) * 16777619u;
+	h = (h ^ (unsigned)muq_current(&g_order)) * 16777619u;
+	h = (h ^ (unsigned)g_mode) * 16777619u;
+	for (i = 0; g_q[0][i]; i++) h = (h ^ (unsigned char)g_q[0][i]) * 16777619u;
+	return h ? h : 1;
+}
+
+void musec_queue_save(const char *file)
+{
+	char tmp[LIB_PATH * 2];
+	FILE *f;
+	int i;
+
+	if (!queue_sig() || snprintf(tmp, sizeof tmp, "%s.new", file) >= (int)sizeof tmp ||
+	    !(f = fopen(tmp, "w")))
+		return;
+	fprintf(f, "track\t%d\nmode\t%d\nartist\t%s\nalbum\t%s\n",
+	        muq_current(&g_order), (int)g_mode, g_artist, g_album);
+	for (i = 0; i < g_qn; i++) fprintf(f, "%s\n", g_q[i]);
+	if (fclose(f) == 0) rename(tmp, file);
+	else unlink(tmp);
+}
+
+void musec_queue_keep(const char *file)
+{
+	static unsigned saved, seen, since;
+	unsigned sig = queue_sig(), now = plat_now_ms();
+
+	if (!saved) saved = seen = sig;            /* what start loaded, or nothing */
+	if (sig != seen) { seen = sig; since = now; }
+	if (sig && sig != saved && now - since >= QUEUE_SETTLE_MS) {
+		musec_queue_save(file);
+		saved = sig;
+	}
+}
+
+void musec_queue_restore(const char *file, bool mode_too)
+{
+	char line[LIB_PATH + 16], artist[128] = "", album[128] = "";
+	char **paths = NULL;
+	int n = 0, cap = 0, cur = 0, mode = -1, i;
+	FILE *f = fopen(file, "r");
+
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\n")] = '\0';
+		if (!strncmp(line, "track\t", 6)) cur = atoi(line + 6);
+		else if (!strncmp(line, "mode\t", 5)) mode = atoi(line + 5);
+		else if (!strncmp(line, "artist\t", 7)) snprintf(artist, sizeof artist, "%s", line + 7);
+		else if (!strncmp(line, "album\t", 6)) snprintf(album, sizeof album, "%s", line + 6);
+		else if (line[0]) {
+			if (n == cap) {
+				char **p = realloc(paths, (size_t)(cap = cap ? cap * 2 : 64) * sizeof *p);
+
+				if (!p) break;
+				paths = p;
+			}
+			if (!(paths[n] = strdup(line))) break;
+			n++;
+		}
+	}
+	fclose(f);
+	if (mode_too && mode >= 0 && mode < MUQ_MODES) musec_set_mode((muq_mode)mode);
+	if (n > 0) {
+		musec_load((const char *const *)paths, n, cur, 0, false, 1.0, artist, album);
+		g_restored = true;
+	}
+	for (i = 0; i < n; i++) free(paths[i]);
+	free(paths);
 }
 
 /* Pause, and only pause - never the resume a toggle would be. When the output
