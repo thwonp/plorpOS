@@ -768,12 +768,17 @@ static void book_keep(bool now)
 	}
 }
 
-/* Muse, polled: what the daemon said, and a book's place kept. Everything that
- * polls Muse comes through here. */
+/* The music queue kept on the card over a restart or a reboot (plorpos-2ru):
+ * "" in a shot, which starts no Muse. */
+static char g_queue_file[CFG_STR * 2];
+
+/* Muse, polled: what the daemon said, a book's place and the queue kept.
+ * Everything that polls Muse comes through here. */
 static void muse_poll(void)
 {
 	musec_poll();
 	book_keep(false);
+	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
 
 /* A book's speed, kept beside its place: the last one chosen on it, 1x for a
@@ -3828,6 +3833,7 @@ static void power_off(app *a)
 	plat_leds_off();
 	remember_place(a);
 	book_keep(true);
+	if (g_queue_file[0]) musec_queue_save(g_queue_file);
 	plat_request_poweroff();
 	anim_poweroff(a);
 	/* And dark the moment it ends. The rest of the shutdown is not instant -
@@ -13812,6 +13818,13 @@ int main(int argc, char *argv[])
 			if (shot_mode) snprintf(m, sizeof m, "%s", shot_mode);
 			for (k = 0; k < MUQ_MODES; k++)
 				if (!strcmp(m, MUSE_MODES[k].key)) musec_set_mode((muq_mode)k);
+		}
+		/* The last queue, stopped on its track - or, after a launcher
+		 * restart, taken up where a Muse still playing it is. The mode
+		 * stays the db's, just set. */
+		if (!shot_path) {
+			snprintf(g_queue_file, sizeof g_queue_file, "%s/muse-queue.txt", P_USERDATA);
+			musec_queue_restore(g_queue_file, false);
 		}
 	}
 	t_mark("muse+accounts");

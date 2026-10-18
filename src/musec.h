@@ -57,6 +57,13 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
 /* The queue in its own order, and the place in it of the track now. */
 int musec_queue(const char *const **paths, int *current, const char **artist,
                 const char **album);
+/* The queue kept on the card (plorpos-ggv.25, plorpos-2ru). keep: every tick,
+ * writes once it has stood still 5 s. save: now (powering off). restore: at
+ * start, stopped on its track; mode_too where the play mode is not kept
+ * anywhere else. A Muse still playing from before is taken up in it. */
+void musec_queue_keep(const char *file);
+void musec_queue_save(const char *file);
+void musec_queue_restore(const char *file, bool mode_too);
 bool musec_is_book(void);
 
 /* A book's speed, 0.5 to 2.0 with the pitch kept - the daemon's SPEED. Set on
