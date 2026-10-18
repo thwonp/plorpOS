@@ -8409,67 +8409,103 @@ static SDL_Rect sw_fit(SDL_Texture *t, SDL_Rect area)
 	return r;
 }
 
-static void sw_draw(app *a, sw_entry *e, int n, int sel)
+/* Where a card at position p sits: 0 is the middle, +-1 the dimmed
+ * neighbors at the sides, and anything between is on its way - a drag moves
+ * every card by the same fraction, so the row follows the finger
+ * (plorpos-gl5.5). The neighbors are 3/5 the size, their centers SW_STEP
+ * apart, and cut by the screen's edge. */
+#define SW_AREA_W 640
+#define SW_AREA_H 440
+#define SW_STEP   560.0f
+static SDL_Rect sw_box(float p)
 {
-	const SDL_Rect area = { (TORTOS_SCREEN_W - 640) / 2, STAGE_Y + 120, 640, 440 };
-	const int bw = 12, gap = 48;
+	float t = p < 0 ? -p : p, sc;
+	SDL_Rect r;
+
+	if (t > 1) t = 1;
+	sc = 1.0f - t * 0.4f;
+	r.w = (int)(SW_AREA_W * sc);
+	r.h = (int)(SW_AREA_H * sc);
+	r.x = (int)(TORTOS_SCREEN_W / 2 + p * SW_STEP) - r.w / 2;
+	r.y = STAGE_Y + 120 + (SW_AREA_H - r.h) / 2;
+	return r;
+}
+
+/* off: how far the row has been dragged (layout units, + to the right);
+ * lift: how far the middle card has been pushed up, on its way off. */
+static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
+{
+	const int bw = 12;
 	int line_menu = ui_font_line(UI_F_MENU), line_meta = ui_font_line(UI_F_META);
-	SDL_Rect img, frame;
 	char meta[CFG_STR * 2 + 32], count[24];
-	int d;
+	int k, mid = sel;
+	float best = 99;
 
 	ui_text(a->r, ui_font(UI_F_LABEL), "Recent", TORTOS_SCREEN_W / 2, 39, 0, UI_TEXT_DIM);
 	ui_hit_modal(&(SDL_Rect){ 0, 0, TORTOS_SCREEN_W, TORTOS_SCREEN_H });
 	if (n == 0) {
 		ui_text(a->r, ui_font(UI_F_MENU), "Nothing played yet", TORTOS_SCREEN_W / 2,
-		        area.y + (area.h - line_menu) / 2, 0, UI_TEXT_DIM);
+		        STAGE_Y + 120 + (SW_AREA_H - line_menu) / 2, 0, UI_TEXT_DIM);
 		return;
 	}
+	/* The card nearest the middle is the one the caption and frame are for. */
+	for (k = sel - 2; k <= sel + 2; k++) {
+		float p = (k - sel) + off / SW_STEP, t = p < 0 ? -p : p;
+		if (k >= 0 && k < n && t < best) { best = t; mid = k; }
+	}
+	/* Farthest first, so the middle one is drawn over its neighbors. */
+	for (int ring = 2; ring >= 0; ring--)
+		for (int side = -1; side <= 1; side += 2) {
+			int kk = sel + side * ring;
+			float p, t;
+			SDL_Rect box, r;
+			Uint8 lum;
+			int alpha = 255;
 
-	/* The neighbors first, under the selected one: dimmed, smaller, and cut
-	 * by the screen's edge. A tap on one is that game. */
-	for (d = -1; d <= 1; d += 2) {
-		int k = sel + d;
-		SDL_Rect side = { 0, area.y + area.h / 5, area.w * 3 / 5, area.h * 3 / 5 }, r;
+			if (ring == 0 && side > 0) continue;
+			k = kk;
+			if (k < 0 || k >= n) continue;
+			p = (k - sel) + off / SW_STEP;
+			t = p < 0 ? -p : p;
+			if (t > 2.2f) continue;
+			sw_load(a, &e[k]);
+			box = sw_box(p);
+			r = sw_fit(e[k].tex, box);
+			if (k == sel && lift > 0) {
+				r.y -= (int)lift;
+				alpha = 255 - (int)(lift * 255 / 450);
+				if (alpha < 0) alpha = 0;
+			}
+			lum = (Uint8)(255 - (t > 1 ? 1 : t) * 165);
+			if (k == mid && t < 0.5f) {
+				Uint32 tint = a->sys.systems[e[k].sys].accent;
+				SDL_Rect frame = { r.x - bw, r.y - bw, r.w + bw * 2, r.h + bw * 2 };
 
-		if (k < 0 || k >= n) continue;
-		sw_load(a, &e[k]);
-		side.x = d < 0 ? area.x - gap - side.w : area.x + area.w + gap;
-		r = sw_fit(e[k].tex, side);
-		if (d < 0) r.x = side.x + side.w - r.w;
-		else       r.x = side.x;
-		if (e[k].tex) {
-			SDL_SetTextureColorMod(e[k].tex, 90, 90, 90);
-			SDL_RenderCopy(a->r, e[k].tex, NULL, &r);
-			SDL_SetTextureColorMod(e[k].tex, 255, 255, 255);
-		} else {
-			SDL_SetRenderDrawColor(a->r, 20, 21, 28, 255);
-			SDL_RenderFillRect(a->r, &r);
+				if (alpha == 255) ui_glow(a->r, &r, tint, 85, 1.35f);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+				ui_round_rect(a->r, &frame, bw, (SDL_Color){
+					(Uint8)(tint >> 16), (Uint8)(tint >> 8), (Uint8)tint, (Uint8)alpha });
+				ui_hit(&frame, IN_RIGHT, 0);
+			} else if (t >= 0.5f) {
+				ui_hit(&r, p < 0 ? IN_LEFT : IN_RIGHT, 1);
+			}
+			if (e[k].tex) {
+				SDL_SetTextureColorMod(e[k].tex, lum, lum, lum);
+				SDL_SetTextureAlphaMod(e[k].tex, (Uint8)alpha);
+				SDL_RenderCopy(a->r, e[k].tex, NULL, &r);
+				SDL_SetTextureColorMod(e[k].tex, 255, 255, 255);
+				SDL_SetTextureAlphaMod(e[k].tex, 255);
+			} else {
+				SDL_SetRenderDrawColor(a->r, (Uint8)(lum / 12), (Uint8)(lum / 12),
+				                       (Uint8)(lum / 9), (Uint8)alpha);
+				SDL_RenderFillRect(a->r, &r);
+			}
 		}
-		ui_hit(&r, d < 0 ? IN_LEFT : IN_RIGHT, 1);
-	}
-
-	sw_load(a, &e[sel]);
-	img = sw_fit(e[sel].tex, area);
-	frame = (SDL_Rect){ img.x - bw, img.y - bw, img.w + bw * 2, img.h + bw * 2 };
-	{
-		Uint32 tint = a->sys.systems[e[sel].sys].accent;
-
-		ui_glow(a->r, &img, tint, 85, 1.35f);
-		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-		ui_round_rect(a->r, &frame, bw, (SDL_Color){
-			(Uint8)(tint >> 16), (Uint8)(tint >> 8), (Uint8)tint, 255 });
-	}
-	if (e[sel].tex) SDL_RenderCopy(a->r, e[sel].tex, NULL, &img);
-	else {
-		SDL_SetRenderDrawColor(a->r, 12, 13, 18, 255);
-		SDL_RenderFillRect(a->r, &img);
-	}
-	ui_hit(&frame, IN_RIGHT, 0);
 
 	{
-		const system_cfg *s = &a->sys.systems[e[sel].sys];
-		const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+		const system_cfg *s = &a->sys.systems[e[mid].sys];
+		const game_entry *g = &a->view[e[mid].sys].list.items[e[mid].item];
+		SDL_Rect img = sw_fit(e[mid].tex, sw_box(0));
 		int y = img.y + img.h + 36;
 
 		ui_text(a->r, ui_font(UI_F_MENU), g->title, TORTOS_SCREEN_W / 2, y, 0, UI_TEXT);
@@ -8477,7 +8513,7 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel)
 		         fav_is(s->tag, g->file) ? "  \xC2\xB7  Favorite" : "");
 		ui_text(a->r, ui_font(UI_F_META), meta, TORTOS_SCREEN_W / 2,
 		        y + 6 + line_menu, 0, UI_TEXT_DIM);
-		snprintf(count, sizeof count, "%d / %d", sel + 1, n);
+		snprintf(count, sizeof count, "%d / %d", mid + 1, n);
 		ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
 		        y + 18 + line_menu + line_meta, 0, UI_TEXT_DIM);
 	}
@@ -8514,8 +8550,15 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	static sw_entry e[RECENT_MAX];
 	int n = sw_build(a, e), sel = 0, i, done = 0;
 	ui_pace pace = { 0 };
+	/* The row's drag and the middle card's lift (plorpos-gl5.5): both in
+	 * layout units, both easing back to 0 when nothing holds them. axis:
+	 * 0 undecided, 1 across, 2 up, 3 down (nothing). */
+	float off = 0, lift = 0;
+	int axis = 0;
+	bool removing = false;
 
 	*powered = false;
+	plat_touch_free(true);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -8523,8 +8566,52 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
 		if (n > 0) {
-			if (in_repeat(&a->in, IN_LEFT)  && sel > 0)     sel--;
-			if (in_repeat(&a->in, IN_RIGHT) && sel < n - 1) sel++;
+			/* A step slides too: the row starts where it was and eases in. */
+			if (in_repeat(&a->in, IN_LEFT)  && sel > 0)     { sel--; off -= SW_STEP; }
+			if (in_repeat(&a->in, IN_RIGHT) && sel < n - 1) { sel++; off += SW_STEP; }
+		}
+		{
+			touch_drag_state d;
+			float sc = plat_scale() > 0 ? plat_scale() : 1;
+
+			plat_touch_drag_get(&d);
+			if (n > 0 && d.active && !removing) {
+				float dx = d.dx / sc, dy = d.dy / sc;
+
+				if (!axis) axis = fabsf(dx) >= fabsf(dy) ? 1 : dy < 0 ? 2 : 3;
+				if (axis == 1) {
+					off = dx;
+					/* Past either end it gives, but only a little. */
+					if ((sel == 0 && off > 0) || (sel == n - 1 && off < 0)) off *= 0.35f;
+				} else if (axis == 2) {
+					lift = dy < 0 ? -dy : 0;
+				}
+				ui_redraw_now();
+			} else if (d.released) {
+				float vx = d.vx / sc, vy = d.vy / sc;
+
+				if (axis == 1) {
+					if ((off > SW_STEP * 0.3f || vx > 0.6f) && sel > 0)            { sel--; off -= SW_STEP; }
+					else if ((off < -SW_STEP * 0.3f || vx < -0.6f) && sel < n - 1) { sel++; off += SW_STEP; }
+				} else if (axis == 2 && (lift > 220 || vy < -0.8f)) {
+					removing = true;   /* on its way off the top */
+				}
+				axis = 0;
+				ui_redraw_now();
+			} else if (!d.active) {
+				if (removing) {
+					lift += 70;
+					if (lift > 700) { removing = false; lift = 0; a->in.pressed[IN_X] = true; }
+				} else if (lift > 0) {
+					lift *= 0.6f;
+					if (lift < 2) lift = 0;
+				}
+				if (off != 0) {
+					off *= 0.6f;
+					if (fabsf(off) < 1) off = 0;
+				}
+				if (off != 0 || lift != 0) ui_redraw_now();
+			}
 		}
 		if (menu_leaving(a) || a->in.pressed[IN_SWITCHER]) done = -1;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
@@ -8590,10 +8677,11 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 200);
 			SDL_RenderFillRect(a->r, NULL);
 		}
-		sw_draw(a, e, n, sel);
+		sw_draw(a, e, n, sel, off, lift);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
+	plat_touch_free(false);
 	for (i = 0; i < n; i++)
 		if (e[i].tex) { SDL_DestroyTexture(e[i].tex); e[i].tex = NULL; }
 	return done == 1;

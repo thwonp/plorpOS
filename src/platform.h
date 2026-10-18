@@ -400,6 +400,21 @@ gesture gesture_read(void);
 /* Like plat_resident_sleep_asked, once: the gesture whose PAUSE the
  * RES_PAUSED plat_resident_wait just returned answers. */
 gesture plat_resident_gesture_asked(void);
+/* Free drag (plorpos-gl5.5): a screen that moves things under the finger -
+ * the switcher's cards - asks the touch layer to stop turning drags into
+ * d-pad steps, and reads the drag itself, in panel pixels: where the finger
+ * is against where it went down while it is down, and once, on lifting, the
+ * same with its speed (px/ms). Taps, the long press and the edge swipes are
+ * unchanged. No panel: never active. */
+typedef struct {
+	bool  active;          /* a one-finger drag is under way */
+	bool  released;        /* it just ended (once) */
+	float dx, dy;          /* from where it went down */
+	float vx, vy;          /* at the release */
+} touch_drag_state;
+void plat_touch_free(bool on);
+bool plat_touch_drag_get(touch_drag_state *d);
+
 /* Why plat_run's on_menu was called: Menu (GESTURE_NONE) or a swipe. */
 gesture plat_run_menu_why(void);
 

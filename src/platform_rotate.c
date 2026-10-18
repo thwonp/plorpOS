@@ -303,7 +303,35 @@ static struct {
 	int    qn;
 	in_button up;              /* pressed last poll, released this one ... */
 	bool   pulsing;            /* ... if this is set */
+	/* Free drag (plorpos-gl5.5): no steps, the drag read by the screen. */
+	bool   free, moved, rel;
+	float  lx, ly, vx, vy, rdx, rdy;
+	unsigned lt;
 } touch;
+
+void plat_touch_free(bool on)
+{
+	touch.free = on;
+	touch.rel = false;
+}
+
+bool plat_touch_drag_get(touch_drag_state *d)
+{
+	memset(d, 0, sizeof *d);
+	if (touch.rel) {
+		d->released = true;
+		d->dx = touch.rdx; d->dy = touch.rdy;
+		d->vx = touch.vx;  d->vy = touch.vy;
+		touch.rel = false;
+		return true;
+	}
+	if (!touch.free || touch.fingers != 1 || touch.most != 1 || touch.edge ||
+	    touch.vedge || touch.held || !touch.moved) return false;
+	d->active = true;
+	d->dx = touch.x - touch.x0;
+	d->dy = touch.y - touch.y0;
+	return true;
+}
 
 void plat_input_flush(void)
 {
@@ -324,7 +352,12 @@ void plat_input_flush(void)
 		            (bits[CODE_MENU / (8 * sizeof bits[0])] >> (CODE_MENU % (8 * sizeof bits[0])) & 1);
 		menu_spent = menu_down;
 	}
-	memset(&touch, 0, sizeof touch);
+	{
+		bool keep = touch.free;   /* the screen's ask outlives a flush */
+
+		memset(&touch, 0, sizeof touch);
+		touch.free = keep;
+	}
 }
 
 void plat_input_quit(void) { }
@@ -698,6 +731,9 @@ static void touch_event(const SDL_Event *e)
 			touch.caught = touch.coasting;
 			touch.coasting = false;
 			touch.edge = touch.x0 < TOUCH_EDGE_PX ? 1 : touch.x0 >= w - TOUCH_EDGE_PX ? -1 : 0;
+			touch.moved = false;
+			touch.lx = touch.x0; touch.ly = touch.y0; touch.lt = touch.t0;
+			touch.vx = touch.vy = 0;
 			touch.vedge = touch.edge ? 0 : touch.y0 < TOUCH_EDGE_PX ? 1
 			            : touch.y0 >= h - TOUCH_EDGE_PX ? -1 : 0;
 		} else if (touch.fingers > touch.most)
@@ -705,7 +741,20 @@ static void touch_event(const SDL_Event *e)
 	} else if (e->type == SDL_FINGERMOTION) {
 		if (touch.fingers == 1) {
 			touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h;
-			if (touch.most == 1 && !touch.held && !touch.edge && !touch.vedge) touch_drag();
+			if (touch.free) {
+				unsigned now = plat_now_ms();
+				float mx = touch.x - touch.x0, my = touch.y - touch.y0;
+
+				/* Speed over the last stretch, eased so one jittery report
+				 * cannot decide a fling. */
+				if (now > touch.lt) {
+					float k = now - touch.lt > 40 ? 1.0f : 0.5f;
+					touch.vx += k * ((touch.x - touch.lx) / (float)(now - touch.lt) - touch.vx);
+					touch.vy += k * ((touch.y - touch.ly) / (float)(now - touch.lt) - touch.vy);
+					touch.lx = touch.x; touch.ly = touch.y; touch.lt = now;
+				}
+				if (mx * mx + my * my > 16 * 16) touch.moved = true;
+			} else if (touch.most == 1 && !touch.held && !touch.edge && !touch.vedge) touch_drag();
 			if (touch.most == 1 && !touch.held && touch.edge &&
 			    (touch.x - touch.x0) * touch.edge >= TOUCH_SWIPE_PX) {
 				touch_queue(IN_BACK, 1);
@@ -722,6 +771,13 @@ static void touch_event(const SDL_Event *e)
 		float sv = 0, v;
 
 		if (--touch.fingers > 0 || touch.held) return;
+		if (touch.free && touch.moved && touch.most == 1 && !touch.edge && !touch.vedge) {
+			if (now - touch.lt > FLICK_FRESH_MS) touch.vx = touch.vy = 0;
+			touch.rdx = touch.x - touch.x0;
+			touch.rdy = touch.y - touch.y0;
+			touch.rel = true;
+			return;                   /* a drag, not a tap */
+		}
 		if ((touch.edge || touch.vedge) && touch.most == 1) {
 			float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 			if (dx * dx + dy * dy > TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) return;
