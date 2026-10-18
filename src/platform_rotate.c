@@ -20,6 +20,7 @@
 #include "db.h"
 #include "platform.h"
 #include "audioout.h"
+#include "musec.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -862,6 +863,7 @@ static bool route_speaker_only;     /* Audio Output = Speaker */
 static bool route_bt;               /* PipeWire has a Bluetooth sink */
 static bool route_usb;              /* PipeWire has a USB DAC's sink */
 static int  sink_level = -1;        /* the default sink's volume, in rungs */
+static bool route_music;            /* Muse is heard (musec_heard), from the main thread */
 
 void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
 bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
@@ -882,9 +884,38 @@ static void btkey_write(const char *act)
 
 enum { ON_BUILTIN, ON_BT, ON_USB };   /* which sink route_eval chose last */
 
-static void route_eval(int *on)
+static void pactl_run(char *const argv[])
 {
 	extern char **environ;
+	pid_t pid;
+	int st;
+
+	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+		waitpid(pid, &st, 0);
+}
+
+/* The speaker stays muted while a DAC or headset is the output (plorpos-3yv.37).
+ * When one goes, WirePlumber moves the running streams to the speaker at
+ * once, inside PipeWire - before any pause of ours can land - so a muted
+ * speaker is the only way the song is never heard there. A DAC or headset
+ * that went while Muse played holds the mute until Muse has stopped.
+ * Applied from scratch on the first pass, so a mute WirePlumber remembered
+ * across a crash does not outlive it. */
+static bool route_hold;
+static int  speaker_muted = -1;
+
+static void speaker_mute(const char *builtin, bool mute)
+{
+	char *argv[] = { "pactl", "set-sink-mute", (char *)builtin, mute ? "1" : "0", NULL };
+
+	if (!builtin[0] || mute == speaker_muted) return;
+	speaker_muted = mute;
+	fprintf(stderr, "audio: speaker %s\n", mute ? "muted" : "unmuted");
+	pactl_run(argv);
+}
+
+static void route_eval(int *on)
+{
 	char line[256], bt[128] = "", usb[128] = "", builtin[128] = "", def[128] = "";
 	const char *want;
 	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
@@ -916,20 +947,21 @@ static void route_eval(int *on)
 	if ((*on == ON_BT && !bt[0]) || (*on == ON_USB && !usb[0])) {
 		fprintf(stderr, "audio: %s gone, pausing Muse\n", *on == ON_USB ? "USB DAC" : "headset");
 		btkey_write("pause");
+		if (__atomic_load_n(&route_music, __ATOMIC_RELAXED)) route_hold = true;
 	}
 	if (speaker || (!usb[0] && !bt[0])) want = builtin;
 	else if (usb[0])                     want = usb;
 	else                                 want = bt;
 	*on = want == usb ? ON_USB : want == bt ? ON_BT : ON_BUILTIN;
+	/* Muted before the default moves, so a stream never reaches it unmuted. */
+	if (want != builtin) route_hold = false;
+	speaker_mute(builtin, want != builtin || route_hold);
 	if (want[0] && strcmp(want, def)) {
 		char *argv[] = { "pactl", "set-default-sink", (char *)want, NULL };
-		pid_t pid;
-		int st;
 
 		fprintf(stderr, "audio: output %s\n",
 		        want == usb ? "USB DAC" : want == bt ? "bluetooth" : "built-in");
-		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
-			waitpid(pid, &st, 0);
+		pactl_run(argv);
 	}
 }
 
@@ -943,6 +975,8 @@ static void *route_worker(void *arg)
 		int fd[2];
 		pid_t pid, parent = getpid();
 		bool speaker = !route_speaker_only;
+
+		speaker_muted = -1;                     /* a new session: apply afresh */
 
 		if (pipe(fd) < 0) { sleep(2); continue; }
 		/* Not posix_spawn: pactl ignores SIGPIPE, so a launcher that died
@@ -975,6 +1009,10 @@ static void *route_worker(void *arg)
 				speaker = route_speaker_only;
 				dirty   = true;
 			}
+			if (route_hold && !__atomic_load_n(&route_music, __ATOMIC_RELAXED)) {
+				route_hold = false;
+				dirty      = true;
+			}
 			if (dirty) route_eval(&on);
 			/* After route_eval, so a new default is the one read. Every
 			 * volume set - ours, Diatom's, a headset's - is a sink change. */
@@ -1002,6 +1040,7 @@ void plat_sink_follow(bool game)
 	int want = __atomic_load_n(&sink_level, __ATOMIC_RELAXED);
 	unsigned now = plat_now_ms();
 
+	__atomic_store_n(&route_music, musec_heard(), __ATOMIC_RELAXED);
 	if (want < 0 || have < 0 || want == have) { seen = -1; return; }
 	if (want != seen) { seen = want; since = now; return; }
 	if (now - since < 500) return;
