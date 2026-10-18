@@ -145,6 +145,11 @@ static int connected(void)
 		g_fd = fd;
 		g_have = 0;
 		if (g_now.state == MU_OFF) g_now.state = MU_STOPPED;
+		/* Muse may have been playing all along - it outlives a launcher
+		 * that restarts or crashes. Ask, rather than read it as stopped
+		 * until its next event: a native PICO-8 started meanwhile was not
+		 * quieted (plorpos-2ru). A Muse just started answers "stopped". */
+		sendf("STATUS");
 		return 1;
 	}
 	if (fd >= 0) close(fd);
