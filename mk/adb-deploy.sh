@@ -72,6 +72,8 @@ case $WHAT in res|all)
 	$A push "$ROOT/res/cards/."             "$P/cards/" > /dev/null
 	$A push "$ROOT/res/fonts/menu.ttf"      "$P/" > /dev/null
 	$A push "$ROOT/res/fonts/head.ttf"      "$P/" > /dev/null   # the heading face (ui.c)
+	$A push "$ROOT/res/fonts/josefin.ttf"   "$P/" > /dev/null   # UI Settings > Font
+	$A push "$ROOT/res/fonts/lato.ttf"      "$P/" > /dev/null
 	$A push "$ROOT/res/singles.png"         "$P/" > /dev/null
 	# Over The Hare's page, served off the card so it can be restyled without
 	# a rebuild. The font goes in twice rather than being kept in the repo

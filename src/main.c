@@ -156,6 +156,30 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "ds-b",    "Layout B" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
+
+/* UI Settings > Font (plorpos-8m1.3): the body face - menu items, game
+ * titles, notes; the headings stay Fredoka (head.ttf). Files beside menu.ttf
+ * (P_FONT), which is Quicksand, the default; each with the width correction
+ * that makes a line of it as wide as Josefin Sans' (ui.c). */
+static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
+	{ "josefin",   "Josefin Sans", "josefin.ttf", 1.00f },
+	{ "quicksand", "Quicksand",    "menu.ttf",    0.98f },
+	{ "lato",      "Lato",         "lato.ttf",    1.03f },
+};
+#define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
+static int g_font = 1;
+
+static void font_apply(int k)
+{
+	char path[512];
+	const char *slash = strrchr(P_FONT, '/');
+
+	snprintf(path, sizeof path, "%.*s%s", slash ? (int)(slash - P_FONT + 1) : 0,
+	         P_FONT, FONTS[k].file);
+	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
+	g_font = k;
+	ui_set_body(path, FONTS[k].scale);
+}
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   3
 
@@ -4875,6 +4899,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
+		u.font      = FONTS[g_font].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
@@ -7773,6 +7798,16 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
 		g_dir = cards_dir_step(g_dir, d ? d : 1);
 		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		return MENU_STAY;
+	}
+
+	/* The body face, applied at once: the fonts are reopened under the open
+	 * menu, and the shelf's cards - some carry text - drawn again. */
+	if (sel == US_FONT && (d || key == IN_ACCEPT)) {
+		font_apply((g_font + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
+		db_set_str(db_dev(), "font", FONTS[g_font].id);
+		free_all_textures(a);
+		prime_sys_window(a);
 		return MENU_STAY;
 	}
 
@@ -14513,6 +14548,14 @@ int main(int argc, char *argv[])
 	 * saved brightness does. Read before ui_init, which is when the scale is
 	 * applied. */
 	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	{
+		char id[32];
+		int k;
+
+		db_get_str(db_dev(), "font", id, sizeof id, "quicksand");
+		for (k = 0; k < FONT_COUNT; k++)
+			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(k);
+	}
 	t_mark("font+settings");
 
 	/* The system cards asked for before the display came up, installed so the

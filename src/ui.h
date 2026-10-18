@@ -58,6 +58,12 @@
 
 bool ui_init(SDL_Renderer *r, const char *font_path);
 void ui_quit(void);
+/* The body face (UI Settings > Font, plorpos-8m1.3): the file and its width
+ * correction for every role but the headings. Kept across ui_init, so a
+ * screen that tears the UI down and brings it back keeps it; when the fonts
+ * are open, they are reopened at once and the text drawn from the old face
+ * dropped. NULL path: the one ui_init was given. */
+void ui_set_body(const char *path, float scale);
 
 /* The type scale. One base size, a multiplier per role, and a global user
  * scale over the top -- so retuning a role is one number here instead of a

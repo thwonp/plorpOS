@@ -100,6 +100,7 @@ static const db_default device_defaults[] = {
 	                              mutually exclusive with autooff */
 	{ "wifi",       "0"  },    /* what THIS device was last doing, not the */
 	{ "bluetooth",  "0"  },    /* shipped default - seeding merges the two */
+	{ "font",       "quicksand" },   /* UI Settings > Font (plorpos-8m1.3) */
 	{ "cards",      CARDS_DEFAULT },
 	{ "cards_dir",  CARDS_DIR_DEFAULT },
 	{ "sys_order",  "year" },  /* SYS_ORDER_DEFAULT, config.h */

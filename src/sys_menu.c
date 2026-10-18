@@ -201,6 +201,7 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
 	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
+	out[US_FONT]  = (menu_row){ "Font",         u->font,      true };
 	return US_ROWS;
 }
 

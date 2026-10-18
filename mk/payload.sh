@@ -125,6 +125,7 @@ fi
 cp "$ROOT/config/systems.cfg" "$P/"
 cp -R "$ROOT/res/cards/." "$P/cards/"     # the classic/ and fancy/ sets, as adb-deploy.sh pushes them
 cp "$ROOT/res/fonts/head.ttf" "$P/"       # the heading face (ui.c, plorpos-8m1.2)
+cp "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$P/"   # UI Settings > Font (plorpos-8m1.3)
 cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 cp "$ROOT/res/singles.png" "$P/"          # Muse's cover for Singles, the loose songs
 # Over The Hare's page. The launcher serves these off the card at P_WEB, so a
