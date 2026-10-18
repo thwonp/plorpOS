@@ -33,7 +33,12 @@
  * Written as the same product it used to be evaluated as, so every font comes
  * out at exactly the point size 115% gave and nothing moves by a rounding
  * accident. */
-#define FONT_BASE (32.0f * 1.15f)
+#define FONT_BASE (32.0f * 1.15f * FACE_SCALE)
+/* The face's own correction (plorpos-8m1.2): Fredoka's lowercase stands far
+ * taller than Josefin Sans' did (x-height 500 against 378 per 1000), so at
+ * the old sizes every line ran about a tenth wider and fixed panels clipped
+ * their notes. Its line metrics are set in the font file to Josefin's. */
+#define FACE_SCALE 0.92f
 static const float font_mul[UI_F_COUNT] = {
 	[UI_F_TITLE] = 1.62f,   /* 52 */
 	[UI_F_MENU]  = 1.34f,   /* 43 */

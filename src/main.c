@@ -3883,7 +3883,7 @@ static void power_off(app *a)
 #define MENU_RADIUS 20
 /* The system's one accent: this menu, the volume OSD, and the mark's center
  * cell in both animations. Hand-kept equal to markdef.CYAN and UI_CYAN_*. */
-#define MENU_ACCENT 0x3DD6FFu
+#define MENU_ACCENT 0x8A5CD6u   /* plorpOS purple (plorpos-8m1.2) */
 
 /* The unit every menu measurement is in. Row height, padding and the gap
  * between the two columns are all cut from it, so the whole panel scales with
@@ -8508,7 +8508,21 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
 		SDL_Rect img = sw_fit(e[mid].tex, sw_box(0));
 		int y = img.y + img.h + 36;
 
-		ui_text(a->r, ui_font(UI_F_MENU), g->title, TORTOS_SCREEN_W / 2, y, 0, UI_TEXT);
+		/* A title wider than the screen slides, as on the shelf, and starts
+		 * over whenever the card under the middle changes. */
+		{
+			static int last = -1;
+			static unsigned since;
+			int tw = 0, maxw = TORTOS_SCREEN_W - 80;
+
+			if (mid != last) { last = mid; since = plat_now_ms(); }
+			tw = ui_text_width(ui_font(UI_F_MENU), g->title);
+			if (tw <= maxw)
+				ui_text(a->r, ui_font(UI_F_MENU), g->title, TORTOS_SCREEN_W / 2, y, 0, UI_TEXT);
+			else
+				ui_text_marquee(a->r, ui_font(UI_F_MENU), g->title, 40, y, maxw,
+				                plat_now_ms() - since, UI_TEXT);
+		}
 		snprintf(meta, sizeof meta, "%s%s", s->name,
 		         fav_is(s->tag, g->file) ? "  \xC2\xB7  Favorite" : "");
 		ui_text(a->r, ui_font(UI_F_META), meta, TORTOS_SCREEN_W / 2,

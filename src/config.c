@@ -61,7 +61,7 @@ bool cfg_load_systems(const char *path, systems_cfg *out)
 		snprintf(s->core, CFG_STR, "%s", fld[3]);
 		snprintf(s->tag, sizeof s->tag, "%s", fld[4]);
 		if (n > 5) snprintf(s->card, CFG_STR, "%s", fld[5]);
-		s->accent = 0x3DD6FF;
+		s->accent = 0x8A5CD6;   /* plorpOS purple, ui.h */
 		if (n > 6 && fld[6][0]) s->accent = (unsigned)strtoul(fld[6], NULL, 16);
 		if (n > 7) snprintf(s->exts, CFG_STR, "%s", fld[7]);
 		if (n > 8) snprintf(s->disc_bios, CFG_STR, "%s", fld[8]);

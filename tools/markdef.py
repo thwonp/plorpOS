@@ -47,6 +47,7 @@ LTGRN   = (128, 176, 118)     # shell, and the wordmark's Tort
 MIDGRN  = (104, 138, 96)      # shell, and the lower speed line
 DKGREEN = (61, 89, 67)        # the head, the upper speed line, and what dims
                               # the center at shutdown
+PURPLE  = (138, 92, 214)      # plorpOS's accent (plorpos-8m1.2): ui.h UI_CYAN_*, the Favorites card
 CYAN    = (61, 214, 255)      # the center, the wordmark's OS, the middle speed
                               # line; also the launcher's chrome and volume OSD
 

@@ -32,10 +32,10 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from markdef import CYAN, heart  # noqa: E402
+from markdef import PURPLE as CYAN, heart  # noqa: E402  (plorpOS purple)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "res", "cards", "FAVORITES.png")
+OUT = os.path.join(ROOT, "res", "cards", "classic", "FAVORITES.png")
 FONT = os.path.join(ROOT, "res", "fonts", "menu.ttf")
 
 W, H = 640, 820
