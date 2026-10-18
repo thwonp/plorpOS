@@ -98,6 +98,10 @@ static bool hat_dir[4];
  * brightness, and alone it is a press on release. menu_pulse lets that
  * release-press go up on the next poll. */
 static bool menu_down, menu_sent, menu_spent, menu_pulse;
+/* Held alone for SWITCHER_HOLD_MS it is the game switcher instead, and its
+ * release is then nothing (plorpos-gl5.2). */
+static unsigned menu_t0;
+static bool switcher_pulse;
 
 SDL_Renderer *plat_renderer(void) { return ren; }
 
@@ -309,7 +313,16 @@ void plat_input_flush(void)
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	memset(hat_dir, 0, sizeof hat_dir);
-	menu_down = menu_sent = menu_spent = menu_pulse = false;
+	menu_sent = menu_pulse = switcher_pulse = false;
+	/* Menu still held - the hold that opened the switcher - is spent: its
+	 * release must not arrive as a fresh Menu and close what it opened. */
+	{
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		menu_down = fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		            (bits[CODE_MENU / (8 * sizeof bits[0])] >> (CODE_MENU % (8 * sizeof bits[0])) & 1);
+		menu_spent = menu_down;
+	}
 }
 
 /* The descriptors are display-independent and stay open. */
@@ -391,6 +404,7 @@ static void pad_read(in_state *st)
 	struct input_event ev;
 
 	if (menu_pulse) { set_btn(st, IN_MENU, false); menu_pulse = false; }
+	if (switcher_pulse) { set_btn(st, IN_SWITCHER, false); switcher_pulse = false; }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS && (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y)) {
 			bool *d = &hat_dir[ev.code == ABS_HAT0X ? 0 : 2];
@@ -404,7 +418,7 @@ static void pad_read(in_state *st)
 
 		if (ev.code == CODE_MENU) {
 			menu_down = down;
-			if (down) { menu_sent = menu_spent = false; continue; }
+			if (down) { menu_sent = menu_spent = false; menu_t0 = plat_now_ms(); continue; }
 			if (menu_sent) set_btn(st, IN_MENU, false);
 			else if (!menu_spent) { set_btn(st, IN_MENU, true); menu_pulse = true; }
 			menu_sent = false;
@@ -429,6 +443,12 @@ static void pad_read(in_state *st)
 	}
 	for (int i = 0; i < 4; i++)
 		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i]);
+	if (menu_down && !menu_sent && !menu_spent &&
+	    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
+		menu_spent = true;
+		set_btn(st, IN_SWITCHER, true);
+		switcher_pulse = true;
+	}
 }
 
 /* POWER, and the lid closing as a tap of it: down now, up on the next poll. */

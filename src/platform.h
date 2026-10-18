@@ -69,6 +69,8 @@ extern const char *const plat_pico8_path;
  * ADR-0044). */
 bool plat_two_sticks(void);
 
+#define SWITCHER_HOLD_MS 1000
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,
@@ -84,6 +86,10 @@ typedef enum {
 	/* The Brick Pro's right stick: its click and its directions, which
 	 * drive nothing else (diatom's ADR-0044). Same order. */
 	IN_R3, IN_RSLEFT, IN_RSRIGHT, IN_RSUP, IN_RSDOWN,
+	/* Not a key: Menu held for SWITCHER_HOLD_MS with nothing else pressed,
+	 * or a swipe up from the bottom of a touch panel - the game switcher
+	 * (plorpos-gl5). One poll down, the next up, as the touch presses are. */
+	IN_SWITCHER,
 	IN_COUNT,
 	IN_NONE = -1,
 } in_button;

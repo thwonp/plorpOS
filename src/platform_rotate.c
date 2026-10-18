@@ -105,6 +105,10 @@ static int fd_pad = -1;
  * button it goes down with it, with a volume key it is spent on brightness,
  * and alone it is a press on release (menu_pulse: up on the next poll). */
 static bool menu_down, menu_sent, menu_spent, menu_pulse;
+/* Held alone for SWITCHER_HOLD_MS it is the game switcher instead, and its
+ * release is then nothing (plorpos-gl5.2). */
+static unsigned menu_t0;
+static bool switcher_pulse;
 
 SDL_Renderer *plat_renderer(void) { return ren; }
 
@@ -310,7 +314,16 @@ void plat_input_flush(void)
 	while (SDL_PollEvent(&e)) { }
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
-	menu_down = menu_sent = menu_spent = menu_pulse = false;
+	menu_sent = menu_pulse = switcher_pulse = false;
+	/* Menu still held - the hold that opened the switcher - is spent: its
+	 * release must not arrive as a fresh Menu and close what it opened. */
+	{
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		menu_down = fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		            (bits[CODE_MENU / (8 * sizeof bits[0])] >> (CODE_MENU % (8 * sizeof bits[0])) & 1);
+		menu_spent = menu_down;
+	}
 	memset(&touch, 0, sizeof touch);
 }
 
@@ -503,13 +516,14 @@ static void pad_read(in_state *st)
 	struct input_event ev;
 
 	if (menu_pulse) { set_btn(st, IN_MENU, false); menu_pulse = false; }
+	if (switcher_pulse) { set_btn(st, IN_SWITCHER, false); switcher_pulse = false; }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type != EV_KEY || ev.value == 2) continue;
 		bool down = ev.value == 1;
 
 		if (ev.code == CODE_MENU) {
 			menu_down = down;
-			if (down) { menu_sent = menu_spent = false; continue; }
+			if (down) { menu_sent = menu_spent = false; menu_t0 = plat_now_ms(); continue; }
 			if (menu_sent) set_btn(st, IN_MENU, false);
 			else if (!menu_spent) { set_btn(st, IN_MENU, true); menu_pulse = true; }
 			menu_sent = false;
@@ -521,6 +535,12 @@ static void pad_read(in_state *st)
 		}
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
+	}
+	if (menu_down && !menu_sent && !menu_spent &&
+	    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
+		menu_spent = true;
+		set_btn(st, IN_SWITCHER, true);
+		switcher_pulse = true;
 	}
 }
 
@@ -558,13 +578,14 @@ static void sys_read(in_state *st)
  *   long press = Y on what is under it (favorite a game, Muse's mode, a
  *   rescan; fired while held - plorpos-3yv.22), two-finger tap = X on what
  *   is under it (a game's info), three-finger tap = Menu, swipe down from
- *   the top edge = Select (Muse, from anywhere - plorpos-3yv.46). Start has
+ *   the top edge = Select (Muse, from anywhere - plorpos-3yv.46), swipe up
+ *   from the bottom edge = the game switcher (plorpos-gl5). Start has
  *   nothing to do on the shelf.
  *
  * A touch that starts within TOUCH_EDGE_PX of a side is only ever back, and
- * one that starts that close to the top (sides win in the corners) only ever
- * Select: no steps, no coast, and no tap once it has moved - so the shelf
- * still scrolls from anywhere inside.
+ * one that starts that close to the top or bottom (sides win in the corners)
+ * only ever Select or the switcher: no steps, no coast, and no tap once it
+ * has moved - so the shelf still scrolls from anywhere inside.
  *
  * A drag steps WHILE the finger moves (plorpos-3yv.21): the first step at
  * TOUCH_SWIPE_PX, which also locks the axis, then one per TOUCH_STEP_PX -
@@ -677,7 +698,8 @@ static void touch_event(const SDL_Event *e)
 			touch.caught = touch.coasting;
 			touch.coasting = false;
 			touch.edge = touch.x0 < TOUCH_EDGE_PX ? 1 : touch.x0 >= w - TOUCH_EDGE_PX ? -1 : 0;
-			touch.vedge = touch.edge ? 0 : touch.y0 < TOUCH_EDGE_PX ? 1 : 0;
+			touch.vedge = touch.edge ? 0 : touch.y0 < TOUCH_EDGE_PX ? 1
+			            : touch.y0 >= h - TOUCH_EDGE_PX ? -1 : 0;
 		} else if (touch.fingers > touch.most)
 			touch.most = touch.fingers;
 	} else if (e->type == SDL_FINGERMOTION) {
@@ -689,9 +711,9 @@ static void touch_event(const SDL_Event *e)
 				touch_queue(IN_BACK, 1);
 				touch.held = true;
 			}
-			if (touch.most == 1 && !touch.held && touch.vedge == 1 &&
-			    touch.y - touch.y0 >= TOUCH_SWIPE_PX) {
-				touch_queue(IN_SELECT, 1);
+			if (touch.most == 1 && !touch.held && touch.vedge &&
+			    (touch.y - touch.y0) * touch.vedge >= TOUCH_SWIPE_PX) {
+				touch_queue(touch.vedge > 0 ? IN_SELECT : IN_SWITCHER, 1);
 				touch.held = true;
 			}
 		}

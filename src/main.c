@@ -30,6 +30,7 @@
 #include "artshrink.h"
 #include "artscrape.h"
 #include "favorites.h"
+#include "recent.h"
 #include "hare.h"
 #include "idle.h"
 #include "notice.h"
@@ -2494,6 +2495,9 @@ static void on_game_tick(void)
 	 * never an fsync: measured on the card, an fsync is 1.56 ms median but
 	 * 16.4 ms at the tail, which is a dropped frame. */
 	stats_tick(plat_now_ms());
+	/* The switcher's list: one unsynced row, once, after a launch moved a
+	 * game to its front (plorpos-gl5.1). */
+	recent_flush();
 
 	/* A cable plugged in mid-game, or a headset that connected or walked out
 	 * of range, moves the sound without leaving the game. That is the whole
@@ -8300,6 +8304,261 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	return done == 1 ? chosen : 0;
 }
 
+/* ---- the game switcher (plorpos-gl5) -------------------------------------
+ *
+ * The recent games (recent.h), one at a time and large like the slot strip:
+ * each game's Auto picture - the moment resuming it gives back - or its box
+ * art when it has never been left. Its neighbors sit dimmed at the sides, so
+ * left and right read as a row. A resumes, B closes, X (or a swipe up on the
+ * card, which arrives as Down) takes it off the list, Y favorites it.
+ *
+ * A game the library no longer has (its file is gone, its system removed)
+ * is left out rather than shown as a card that cannot launch. */
+typedef struct {
+	int sys, item;                 /* the real shelf it is on, and where */
+	SDL_Texture *tex;              /* loaded when first near the cursor */
+	bool tried, shot;              /* shot: an Auto picture, not box art */
+} sw_entry;
+
+/* Where a recent game is on its own shelf, or false. */
+static bool sw_find(app *a, const char *tag, const char *file, int *sys, int *item)
+{
+	int si, gi;
+
+	for (si = 0; si < a->sys.count; si++) {
+		const system_cfg *s = &a->sys.systems[si];
+
+		if (a->view[si].owner || is_muse(s) || strcmp(s->tag, tag) != 0) continue;
+		for (gi = 0; gi < a->view[si].list.count; gi++)
+			if (!strcmp(a->view[si].list.items[gi].file, file)) {
+				*sys = si;
+				*item = gi;
+				return true;
+			}
+	}
+	return false;
+}
+
+static int sw_build(app *a, sw_entry *e)
+{
+	int i, n = 0;
+
+	for (i = 0; i < recent_count() && n < RECENT_MAX; i++) {
+		const char *tag, *file;
+
+		recent_at(i, &tag, &file);
+		memset(&e[n], 0, sizeof e[n]);
+		if (sw_find(a, tag, file, &e[n].sys, &e[n].item)) n++;
+	}
+	return n;
+}
+
+static void sw_load(app *a, sw_entry *e)
+{
+	const system_cfg *s = &a->sys.systems[e->sys];
+	const game_entry *g = &a->view[e->sys].list.items[e->item];
+	char p[LIB_PATH * 3];
+	SDL_Surface *sf;
+
+	if (e->tried) return;
+	e->tried = true;
+	preview_path(a, e->sys, g, p, sizeof p);
+	sf = IMG_Load(p);
+	e->shot = sf != NULL;
+	if (!sf && card_art_path(s, g, p, sizeof p)) sf = IMG_Load(p);
+	if (!sf) return;
+	e->tex = SDL_CreateTextureFromSurface(a->r, sf);
+	SDL_FreeSurface(sf);
+}
+
+/* The picture fitted into `area`, centered, keeping its shape. */
+static SDL_Rect sw_fit(SDL_Texture *t, SDL_Rect area)
+{
+	int tw = 4, th = 3;
+	SDL_Rect r = area;
+
+	if (t) SDL_QueryTexture(t, NULL, NULL, &tw, &th);
+	if (tw <= 0 || th <= 0) { tw = 4; th = 3; }
+	if ((float)area.w / tw * th <= area.h) { r.h = area.w * th / tw; }
+	else                                   { r.w = area.h * tw / th; }
+	r.x = area.x + (area.w - r.w) / 2;
+	r.y = area.y + (area.h - r.h) / 2;
+	return r;
+}
+
+static void sw_draw(app *a, sw_entry *e, int n, int sel)
+{
+	const SDL_Rect area = { (TORTOS_SCREEN_W - 640) / 2, STAGE_Y + 120, 640, 440 };
+	const int bw = 12, gap = 48;
+	int line_menu = ui_font_line(UI_F_MENU), line_meta = ui_font_line(UI_F_META);
+	SDL_Rect img, frame;
+	char meta[CFG_STR * 2 + 32], count[24];
+	int d;
+
+	ui_text(a->r, ui_font(UI_F_LABEL), "Recent", TORTOS_SCREEN_W / 2, 39, 0, UI_TEXT_DIM);
+	ui_hit_modal(&(SDL_Rect){ 0, 0, TORTOS_SCREEN_W, TORTOS_SCREEN_H });
+	if (n == 0) {
+		ui_text(a->r, ui_font(UI_F_MENU), "Nothing played yet", TORTOS_SCREEN_W / 2,
+		        area.y + (area.h - line_menu) / 2, 0, UI_TEXT_DIM);
+		return;
+	}
+
+	/* The neighbors first, under the selected one: dimmed, smaller, and cut
+	 * by the screen's edge. A tap on one is that game. */
+	for (d = -1; d <= 1; d += 2) {
+		int k = sel + d;
+		SDL_Rect side = { 0, area.y + area.h / 5, area.w * 3 / 5, area.h * 3 / 5 }, r;
+
+		if (k < 0 || k >= n) continue;
+		sw_load(a, &e[k]);
+		side.x = d < 0 ? area.x - gap - side.w : area.x + area.w + gap;
+		r = sw_fit(e[k].tex, side);
+		if (d < 0) r.x = side.x + side.w - r.w;
+		else       r.x = side.x;
+		if (e[k].tex) {
+			SDL_SetTextureColorMod(e[k].tex, 90, 90, 90);
+			SDL_RenderCopy(a->r, e[k].tex, NULL, &r);
+			SDL_SetTextureColorMod(e[k].tex, 255, 255, 255);
+		} else {
+			SDL_SetRenderDrawColor(a->r, 20, 21, 28, 255);
+			SDL_RenderFillRect(a->r, &r);
+		}
+		ui_hit(&r, d < 0 ? IN_LEFT : IN_RIGHT, 1);
+	}
+
+	sw_load(a, &e[sel]);
+	img = sw_fit(e[sel].tex, area);
+	frame = (SDL_Rect){ img.x - bw, img.y - bw, img.w + bw * 2, img.h + bw * 2 };
+	{
+		Uint32 tint = a->sys.systems[e[sel].sys].accent;
+
+		ui_glow(a->r, &img, tint, 85, 1.35f);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		ui_round_rect(a->r, &frame, bw, (SDL_Color){
+			(Uint8)(tint >> 16), (Uint8)(tint >> 8), (Uint8)tint, 255 });
+	}
+	if (e[sel].tex) SDL_RenderCopy(a->r, e[sel].tex, NULL, &img);
+	else {
+		SDL_SetRenderDrawColor(a->r, 12, 13, 18, 255);
+		SDL_RenderFillRect(a->r, &img);
+	}
+	ui_hit(&frame, IN_RIGHT, 0);
+
+	{
+		const system_cfg *s = &a->sys.systems[e[sel].sys];
+		const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+		int y = img.y + img.h + 36;
+
+		ui_text(a->r, ui_font(UI_F_MENU), g->title, TORTOS_SCREEN_W / 2, y, 0, UI_TEXT);
+		snprintf(meta, sizeof meta, "%s%s", s->name,
+		         fav_is(s->tag, g->file) ? "  \xC2\xB7  Favorite" : "");
+		ui_text(a->r, ui_font(UI_F_META), meta, TORTOS_SCREEN_W / 2,
+		        y + 6 + line_menu, 0, UI_TEXT_DIM);
+		snprintf(count, sizeof count, "%d / %d", sel + 1, n);
+		ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
+		        y + 18 + line_menu + line_meta, 0, UI_TEXT_DIM);
+	}
+	ui_text(a->r, ui_font(UI_F_META),
+	        "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite",
+	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 40 - line_meta, 0, UI_TEXT_DIM);
+}
+
+/* What the switcher ended with. */
+typedef struct { int sys, item; } sw_pick;
+
+/* Runs the switcher over `bg` (a paused game's frame) or black, on the
+ * newest game - from a game, the running one, which its launch put first.
+ * Returns true with *pick set when a game was chosen; false when closed or
+ * when the power button ended it (then *powered says which, in a game: the
+ * caller stops the game). */
+static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
+                         bool *powered)
+{
+	static sw_entry e[RECENT_MAX];
+	int n = sw_build(a, e), sel = 0, i, done = 0;
+	ui_pace pace = { 0 };
+
+	*powered = false;
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+
+	while (!done && !want_quit && a->running) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) break;
+		if (n > 0) {
+			if (in_repeat(&a->in, IN_LEFT)  && sel > 0)     sel--;
+			if (in_repeat(&a->in, IN_RIGHT) && sel < n - 1) sel++;
+		}
+		if (menu_leaving(a) || a->in.pressed[IN_SWITCHER]) done = -1;
+		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (n > 0 && a->in.pressed[IN_ACCEPT]) {
+			pick->sys = e[sel].sys;
+			pick->item = e[sel].item;
+			done = 1;
+		}
+		if (n > 0 && (a->in.pressed[IN_X] || a->in.pressed[IN_DOWN])) {
+			const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+
+			recent_remove(a->sys.systems[e[sel].sys].tag, g->file);
+			if (e[sel].tex) SDL_DestroyTexture(e[sel].tex);
+			memmove(&e[sel], &e[sel + 1], (size_t)(n - sel - 1) * sizeof e[0]);
+			n--;
+			if (sel >= n && sel > 0) sel--;
+			ui_redraw_now();
+		}
+		if (n > 0 && a->in.pressed[IN_Y]) {
+			const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+
+			char tag[RECENT_TAG_MAX], file[RECENT_FILE_MAX];
+
+			snprintf(tag, sizeof tag, "%s", a->sys.systems[e[sel].sys].tag);
+			snprintf(file, sizeof file, "%s", g->file);
+			fav_toggle(tag, file);
+			fav_save();
+			/* The Favorites shelf comes and goes with its first and last
+			 * game, which moves every system after it: positions taken
+			 * before are stale, so the row is found again. */
+			refresh_favorites_shelf(a);
+			for (i = 0; i < n; i++)
+				if (e[i].tex) SDL_DestroyTexture(e[i].tex);
+			n = sw_build(a, e);
+			for (i = 0, sel = 0; i < n; i++)
+				if (!strcmp(a->sys.systems[e[i].sys].tag, tag) &&
+				    !strcmp(a->view[e[i].sys].list.items[e[i].item].file, file))
+					sel = i;
+			ui_redraw_now();
+		}
+		{
+			pwr_action pa = power_check(a);
+
+			if (pa == PWR_POWEROFF) {
+				if (in_game) { plat_note_power_pressed(); *powered = true; }
+				else power_off(a);
+				done = -1;
+			}
+		}
+
+		if (done || !screen_draw_due(a, &pace, 0)) {
+			if (!done) SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+		SDL_RenderClear(a->r);
+		if (bg) {
+			draw_paused_frame(a, bg);
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 200);
+			SDL_RenderFillRect(a->r, NULL);
+		}
+		sw_draw(a, e, n, sel);
+		draw_battery(a->r);
+		plat_present(a->r);
+	}
+	for (i = 0; i < n; i++)
+		if (e[i].tex) { SDL_DestroyTexture(e[i].tex); e[i].tex = NULL; }
+	return done == 1;
+}
+
 /* Change the mode, keep it, tell the running game, and take back the rect so
  * the backdrop behind the menu redraws where the game is about to be. */
 static void gm_cycle_display(app *a, int d)
@@ -10941,6 +11200,21 @@ static void game_menu(app *a, bool muse_only)
  * starts one too, once the fallback game has given the display back. Never
  * while a game is running: two GL contexts and a launcher is one more than
  * this device should be asked for. */
+/* The switcher from the shelf: a chosen game is put under the cursor on its
+ * own shelf and launched from there, as if picked by hand. */
+static void launch(app *a);
+static void switcher_shelf(app *a)
+{
+	sw_pick pk;
+	bool powered;
+
+	if (!switcher_run(a, NULL, false, &pk, &powered)) return;
+	a->sys_cursor = pk.sys;
+	a->view[pk.sys].cursor = pk.item;
+	a->screen = SCREEN_GAMES;
+	launch(a);
+}
+
 static void respawn_resident(app *a)
 {
 	char elf[CFG_STR * 2], save[CFG_STR * 2], bios[CFG_STR * 2];
@@ -11098,6 +11372,7 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+	recent_flush();                  /* as on_game_tick */
 #if !defined(PLAT_PIPEWIRE)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
 	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35,
@@ -11555,6 +11830,10 @@ static void launch(app *a)
 		memset(&a->in, 0, sizeof a->in);
 		return;
 	}
+
+	/* Front of the switcher's list, in memory only - the tick writes it.
+	 * Splore is a place, not a game (plorpos-gl5.1). */
+	if (!is_splore(s, romfile)) recent_note(s->tag, romfile);
 
 	/* The autosave story, by path rather than by convention: the state and the
 	 * preview live beside each other, the launch hands both over, and a game
@@ -13860,6 +14139,7 @@ int main(int argc, char *argv[])
 	/* Before the scan, because the scan builds the Favorites shelf out of
 	 * them and a shelf cannot be built from a list that has not been read. */
 	fav_load();
+	recent_load();
 
 	/* Close any session the device never saw end - a power cut, a flat
 	 * battery - at its last checkpoint, before anything reads a total. See
@@ -14205,6 +14485,10 @@ int main(int argc, char *argv[])
 		 * game - see muse_open. Before the shelf's own keys, which do not use
 		 * it, so every layout gets it from this one line. */
 		if (a.in.pressed[IN_SELECT]) { muse_open(&a, NULL, NULL); continue; }
+
+		/* Menu held a second (or a swipe up from the bottom of the Rotate's
+		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */
+		if (a.in.pressed[IN_SWITCHER]) { switcher_shelf(&a); continue; }
 
 		/* MENU on the shelf is TortOS's own menu, the counterpart to the one
 		 * MENU opens in a game. It draws over the shelf and returns here. */
