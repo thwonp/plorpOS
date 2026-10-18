@@ -93,3 +93,9 @@ the PICO-8 logo for its label, "SPLORE" for its title in the frame's own 3x5
 letters (S and L drawn to match - the frame only spells PICO-8 CARTRIDGE), and
 the frame's greys turned gold so it stands apart from the carts. Nothing of the
 source cart is left; the frame and logo are Lexaloffle's trade dress, as above.
+
+NDS.png joined on 2026-10-18 (plorpos-3yv.48, the RG Rotate's Nintendo DS
+shelf): Evan Amos's `File:Nintendo-DS-Lite-Black-Open.png` (public domain,
+own work), processed the same way - trimmed to its alpha, longest side 369.
+The DS Lite rather than the original DS, by the user's choice; the classic
+card (tools/gendscard.py) draws the Lite too.

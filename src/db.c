@@ -139,6 +139,26 @@ static const db_default library_defaults[] = {
 	 * A53s run pcsx_rearmed at native resolution, as NextUI ships it. */
 	{ "coreopt.PS.pcsx_rearmed_neon_enhancement_enable", "enabled" },
 #endif
+#if defined(PLATFORM_ROTATE)
+	/* The Nintendo DS (plorpos-3yv.47): melonDS DS stacks the two screens
+	 * top over bottom in one frame and Diatom lays them out (Layout A/B,
+	 * its ds-a/ds-b); one layout, no gap, so the frame is always that
+	 * shape. The panel is the stylus: touch mode, and no cursor drawn
+	 * over the bottom screen. JIT and the threaded renderer are what hold
+	 * 60 fps on the T618 (ds-spike.md: no JIT misses 27% of frames). */
+	{ "coreopt.NDS.melonds_touch_mode",                "touch" },
+	{ "coreopt.NDS.melonds_show_cursor",               "disabled" },
+	{ "coreopt.NDS.melonds_number_of_screen_layouts",  "1" },
+	{ "coreopt.NDS.melonds_screen_layout1",            "top-bottom" },
+	{ "coreopt.NDS.melonds_screen_gap",                "0" },
+	{ "coreopt.NDS.melonds_jit_enable",                "enabled" },
+	{ "coreopt.NDS.melonds_render_mode",               "software" },
+	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
+	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
+	/* Swap Screens on Menu+X out of the box: the DS's own X stays a game
+	 * button alone (plorpos-3yv.47). */
+	{ "hotkey.NDS",                                    "x:swap" },
+#endif
 };
 
 const db_default *db_defaults(db_scope scope, size_t *count)

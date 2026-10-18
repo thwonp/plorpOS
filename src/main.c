@@ -149,9 +149,29 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "stretch", "Stretch" },
 	{ "aspect",  "Aspect"  },
 	{ "integer", "Integer" },
+	/* The Nintendo DS's two-screen layouts (plorpos-3yv.47), and the only
+	 * modes its shelf offers - none of the three above mean anything for a
+	 * frame that is two screens. See dmode_step. */
+	{ "ds-a",    "Layout A" },
+	{ "ds-b",    "Layout B" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 #define DMODE_ASPECT 1
+#define DMODE_DS_A   3
+
+/* A system's own slice of DMODES: the DS its two layouts, every other system
+ * the rest. Cycling stays inside it, and a mode outside it (never set, or
+ * set before the layouts existed) is the slice's first. */
+static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
+
+static int dmode_step(const char *tag, int cur, int d)
+{
+	int lo = is_nds_tag(tag) ? DMODE_DS_A : 0;
+	int hi = is_nds_tag(tag) ? DMODE_COUNT : DMODE_DS_A, n = hi - lo;
+
+	if (cur < lo || cur >= hi) return lo;
+	return lo + (cur - lo + d + n) % n;
+}
 
 typedef struct {
 	systems_cfg sys;
@@ -310,6 +330,9 @@ static void display_load(app *a)
 		for (k = 0; k < DMODE_COUNT; k++)
 			if (!strcmp(DMODES[k].name, name)) { a->view[i].dmode = k; break; }
 	}
+	/* Each system inside its own slice (Layout A for a DS never set). */
+	for (i = 0; i < a->sys.count; i++)
+		a->view[i].dmode = dmode_step(a->sys.systems[i].tag, a->view[i].dmode, 0);
 }
 
 /* One row per visible system, and nothing else touched.
@@ -7878,7 +7901,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (d && sel == SM_DISPLAY) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->dmode = (v->dmode + d + DMODE_COUNT) % DMODE_COUNT;
+			v->dmode = dmode_step(a->sys.systems[a->sys_cursor].tag, v->dmode, d);
 			display_save(a);
 			return MENU_STAY;
 		}
@@ -8627,7 +8650,7 @@ static void gm_cycle_display(app *a, int d)
 	 * by every game launched from there, whatever machine it came from. */
 	sysview *v = owner_view(a);
 
-	v->dmode = (v->dmode + d + DMODE_COUNT) % DMODE_COUNT;
+	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode, d);
 	display_save(a);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[v->dmode].name);
 	plat_resident_sync_rect(150);
@@ -10420,7 +10443,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[128];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	const int RW_ROW = FIRST_ACT + HK_ROW_COUNT;
+	/* Swap Screens is the DS's, its last action row; elsewhere the screen is
+	 * a row shorter (plorpos-3yv.47). */
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 1;
+	const int RW_ROW = FIRST_ACT + nact, NROWS = RW_ROW + 1;
 	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
 
 	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
@@ -10461,8 +10487,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + ROWS - 1) % ROWS;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % ROWS;
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
 
 			if (sel == MOD_ROW) {
 				int d = 0;
@@ -10517,7 +10543,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 
 		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
-		for (i = 0; i < HK_ROW_COUNT; i++) {
+		for (i = 0; i < nact; i++) {
 			int t = trig_for_row[i];
 
 			if (capturing && i == sel - FIRST_ACT)
@@ -10531,16 +10557,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 		}
 		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
-		rows[ROWS] = MENU_RULE;
-		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
+		rows[NROWS] = MENU_RULE;
+		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
 		                                     : "A: set    X: clear");
 
-		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, ROWS + 2, sel))) {
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, NROWS + 2, sel))) {
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
 		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
@@ -11927,6 +11953,9 @@ static void launch_one(app *a)
 	 * Splore is a place, not a game (plorpos-gl5.1). */
 	if (!is_splore(s, romfile)) recent_note(s->tag, romfile);
 	snprintf(g_cur_tag, sizeof g_cur_tag, "%s", s->tag);
+	/* A DS's bottom screen takes touches: the edge band narrows and a
+	 * swipe must be quick (plorpos-3yv.47, platform.h). */
+	gesture_tight(is_nds_tag(s->tag));
 	snprintf(g_cur_file, sizeof g_cur_file, "%s", romfile);
 
 	/* The autosave story, by path rather than by convention: the state and the
