@@ -531,6 +531,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	 * went with it. Opened on the press, the menu met the release as a tap
 	 * of its own and closed again at once (plorpos-7ny.14). */
 	bool menu_held = false, menu_spent = false;
+	unsigned menu_t0 = 0;   /* held SWITCHER_HOLD_MS: the switcher (plorpos-gl5.3) */
 	const int menu_value = 0;
 #else
 	const int menu_value = 1;
@@ -617,6 +618,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
 				menu_spent = false;
+				menu_t0 = plat_now_ms();
 				continue;
 			}
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 0) {
@@ -639,6 +641,15 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+#if defined(PLATFORM_H700)
+		/* Menu held alone a second: the switcher, and its release is then
+		 * nothing (plorpos-gl5.3). */
+		if (menu_held && !menu_spent && !menu &&
+		    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
+			menu_spent = true;
+			swipe = GESTURE_SWITCHER;
+		}
+#endif
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
 		run_menu_why = menu ? GESTURE_NONE : swipe;
@@ -1543,6 +1554,10 @@ static int diatom_wait(void)
 				 * ending, and its EXIT is what to wait for. */
 				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
 				if (d_gesture_asked && sent_stop) { d_gesture_asked = GESTURE_NONE; continue; }
+				/* Menu held a second in the game: Diatom's word for the
+				 * switcher, read the way a swipe's PAUSE is (plorpos-gl5.3). */
+				if (strstr(l, "\tfor=switcher") && d_gesture_asked == GESTURE_NONE)
+					d_gesture_asked = GESTURE_SWITCHER;
 				return RES_PAUSED;
 			}
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)

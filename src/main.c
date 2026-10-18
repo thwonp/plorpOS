@@ -8466,6 +8466,20 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel)
 /* What the switcher ended with. */
 typedef struct { int sys, item; } sw_pick;
 
+/* From a game: the game picked to go to once the running one has ended, by
+ * key - the shelves are rescanned in between, so positions would not hold -
+ * and whether a favorite changed meanwhile (plorpos-gl5.3). The running
+ * game, for telling "this one again" from a switch. */
+static char g_switch_tag[RECENT_TAG_MAX], g_switch_file[RECENT_FILE_MAX];
+static bool g_switch_fav;
+static char g_cur_tag[RECENT_TAG_MAX], g_cur_file[RECENT_FILE_MAX];
+
+/* The switcher over a running game. True when another game was picked (now
+ * in g_switch_*); the caller ends this one. *powered: the power button ended
+ * it, and the game is to stop. */
+static bool switcher_in_game(app *a, SDL_Texture *bg, bool *powered);
+static void gm_resume(app *a, SDL_Texture *bg);
+
 /* Runs the switcher over `bg` (a paused game's frame) or black, on the
  * newest game - from a game, the running one, which its launch put first.
  * Returns true with *pick set when a game was chosen; false when closed or
@@ -8517,8 +8531,11 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 			fav_save();
 			/* The Favorites shelf comes and goes with its first and last
 			 * game, which moves every system after it: positions taken
-			 * before are stale, so the row is found again. */
-			refresh_favorites_shelf(a);
+			 * before are stale, so the row is found again. Not under a
+			 * paused game, whose launch holds those positions: it is
+			 * rebuilt when the game ends (g_switch_fav). */
+			if (in_game) g_switch_fav = true;
+			else refresh_favorites_shelf(a);
 			for (i = 0; i < n; i++)
 				if (e[i].tex) SDL_DestroyTexture(e[i].tex);
 			n = sw_build(a, e);
@@ -8557,6 +8574,47 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	for (i = 0; i < n; i++)
 		if (e[i].tex) { SDL_DestroyTexture(e[i].tex); e[i].tex = NULL; }
 	return done == 1;
+}
+
+static bool switcher_in_game(app *a, SDL_Texture *bg, bool *powered)
+{
+	sw_pick pk;
+	const char *tag, *file;
+
+	if (!switcher_run(a, bg, true, &pk, powered)) return false;
+	tag  = a->sys.systems[pk.sys].tag;
+	file = a->view[pk.sys].list.items[pk.item].file;
+	if (!strcmp(tag, g_cur_tag) && !strcmp(file, g_cur_file)) return false;
+	snprintf(g_switch_tag, sizeof g_switch_tag, "%s", tag);
+	snprintf(g_switch_file, sizeof g_switch_file, "%s", file);
+	return true;
+}
+
+/* A swipe or a Menu hold over a Diatom game: the switcher over its paused
+ * frame. Another game ends this one (STOP: Diatom writes its Auto state on
+ * the way out, as Quit does) and launch() starts the pick; the same game, B,
+ * or nothing chosen resumes. */
+static void game_switch(app *a)
+{
+	const char *pv = plat_resident_last_preview();
+	SDL_Texture *bg = NULL;
+	bool powered;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	if (pv && *pv) {
+		SDL_Surface *sf = IMG_Load(pv);
+
+		if (sf) {
+			bg = SDL_CreateTextureFromSurface(a->r, sf);
+			SDL_FreeSurface(sf);
+		}
+	}
+	if (switcher_in_game(a, bg, &powered) || powered || want_quit)
+		plat_resident_line("STOP");
+	else
+		gm_resume(a, bg);
+	if (bg) SDL_DestroyTexture(bg);
 }
 
 /* Change the mode, keep it, tell the running game, and take back the rect so
@@ -11072,6 +11130,65 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
+/* Hand a paused game back - the end of game_menu, shared with the game
+ * switcher (plorpos-gl5.3). */
+static void gm_resume(app *a, SDL_Texture *bg)
+{
+	/* Hand the pages back the way Diatom expects to find them.
+	 *
+	 * Diatom does not repaint the area outside its picture every frame -
+	 * its pages start opaque black and it writes only the rect - which is
+	 * sound while it owns the framebuffer and false the moment this
+	 * process has drawn a full-screen menu into the same pages. At any
+	 * display mode that does not fill the panel, resuming showed the game
+	 * correctly sized with this menu still surrounding it, and flickering:
+	 * Diatom cycles three pages and only the two this process presents
+	 * into had been dirtied, so the border alternated menu, menu, black at
+	 * the refresh rate.
+	 *
+	 * Twice because this process alternates two pages and one present only
+	 * clears the one it lands on. Before RESUME and never after:
+	 * afterwards Diatom is drawing, and this would be a second presenter. */
+#if defined(PLATFORM_H700)
+	/* On the H700 the paused frame, undimmed, not black, and landed
+	 * before RESUME (2026-10-06):
+	 *  - the page flips are the Mali driver's and land after the swap
+	 *    returns: with Diatom back in 33 ms, a late one put the menu (or
+	 *    black) on glass for a frame about every other Continue. So the
+	 *    GPU finishes and its last flip lands first (two refreshes, as
+	 *    Diatom's gl_quiesce);
+	 *  - both buffers must still get a frame unlike the menu: Mali's
+	 *    transaction elimination skips tiles it would write unchanged,
+	 *    so the next pause's identical menu left Diatom's game showing;
+	 *  - the paused frame is what Diatom shows next, so closing the menu
+	 *    reads as the game appearing, with no black between. Diatom
+	 *    wipes the pages it reuses, as the black frames did. */
+	{
+		void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
+		int i;
+
+		for (i = 0; i < 2; i++) {
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
+			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+			SDL_RenderClear(a->r);
+			draw_paused_frame(a, bg);
+			plat_present(a->r);
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		}
+		if (finish) finish();
+		usleep(34000);
+	}
+#else
+	present_black(a);
+	present_black(a);
+#endif
+	/* SELECT in this menu opens Muse, so the music may have started or
+	 * stopped while the game was paused. Said before the game moves, not
+	 * a tick after it. */
+	plat_resident_quiet(musec_playing());
+	plat_resident_line("RESUME");
+}
+
 /* muse_only: an edge swipe over the game (plorpos-3yv.46) - Muse straight
  * over the paused frame, and closing it (B, Select, the swipe again) is
  * back to the game, not to this menu. */
@@ -11130,61 +11247,7 @@ static void game_menu(app *a, bool muse_only)
 	 * ends writes its state on the way out. */
 	if (want_quit && !c.resume) plat_resident_line("STOP");
 
-	if (c.resume) {
-		/* Hand the pages back the way Diatom expects to find them.
-		 *
-		 * Diatom does not repaint the area outside its picture every frame -
-		 * its pages start opaque black and it writes only the rect - which is
-		 * sound while it owns the framebuffer and false the moment this
-		 * process has drawn a full-screen menu into the same pages. At any
-		 * display mode that does not fill the panel, resuming showed the game
-		 * correctly sized with this menu still surrounding it, and flickering:
-		 * Diatom cycles three pages and only the two this process presents
-		 * into had been dirtied, so the border alternated menu, menu, black at
-		 * the refresh rate.
-		 *
-		 * Twice because this process alternates two pages and one present only
-		 * clears the one it lands on. Before RESUME and never after:
-		 * afterwards Diatom is drawing, and this would be a second presenter. */
-#if defined(PLATFORM_H700)
-		/* On the H700 the paused frame, undimmed, not black, and landed
-		 * before RESUME (2026-10-06):
-		 *  - the page flips are the Mali driver's and land after the swap
-		 *    returns: with Diatom back in 33 ms, a late one put the menu (or
-		 *    black) on glass for a frame about every other Continue. So the
-		 *    GPU finishes and its last flip lands first (two refreshes, as
-		 *    Diatom's gl_quiesce);
-		 *  - both buffers must still get a frame unlike the menu: Mali's
-		 *    transaction elimination skips tiles it would write unchanged,
-		 *    so the next pause's identical menu left Diatom's game showing;
-		 *  - the paused frame is what Diatom shows next, so closing the menu
-		 *    reads as the game appearing, with no black between. Diatom
-		 *    wipes the pages it reuses, as the black frames did. */
-		{
-			void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
-			int i;
-
-			for (i = 0; i < 2; i++) {
-				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
-				SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
-				SDL_RenderClear(a->r);
-				draw_paused_frame(a, c.bg);
-				plat_present(a->r);
-				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			}
-			if (finish) finish();
-			usleep(34000);
-		}
-#else
-		present_black(a);
-		present_black(a);
-#endif
-		/* SELECT in this menu opens Muse, so the music may have started or
-		 * stopped while the game was paused. Said before the game moves, not
-		 * a tick after it. */
-		plat_resident_quiet(musec_playing());
-		plat_resident_line("RESUME");
-	}
+	if (c.resume) gm_resume(a, c.bg);
 #if defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);   /* drawn above, before RESUME */
 #endif
@@ -11317,7 +11380,6 @@ static run_choice native_menu(void *ctx)
 	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
 	menu_style st = { 0 };
 
-	if (plat_run_menu_why() == GESTURE_SWITCHER) return RUN_CONTINUE;   /* plorpos-gl5.3 */
 
 #if defined(PLATFORM_ROTATE)
 	/* run_alone's window, as it was; the child leaves the screen once the
@@ -11342,8 +11404,15 @@ static run_choice native_menu(void *ctx)
 	 * goes too. */
 	g_menu_closing = false;   /* sticky: see game_menu */
 	/* A swipe from the top is Muse over the frozen game, and closing it is
-	 * back to the game (plorpos-3yv.46). */
-	if (plat_run_menu_why() == GESTURE_MUSE) {
+	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
+	 * held is the switcher: another game ends this one, and launch() starts
+	 * it (plorpos-gl5.3). */
+	if (plat_run_menu_why() == GESTURE_SWITCHER) {
+		bool powered;
+
+		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
+			c.choice = RUN_QUIT;
+	} else if (plat_run_menu_why() == GESTURE_MUSE) {
 		if (muse_open(a, &st, &c) && (want_quit || !a->running))
 			c.choice = RUN_QUIT;
 	} else if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
@@ -11719,7 +11788,30 @@ static void disc_bios_for(const system_cfg *s, const char *rom, char *out, size_
 	         head[0x20B] == 0x64 ? 'E' : head[0x20B] == 0xA1 ? 'J' : 'U');
 }
 
+static void launch_one(app *a);
+
+/* A game, and then each game the switcher picked from inside it, in turn
+ * (plorpos-gl5.3): the pick is looked up again after the shelves' rescan. */
 static void launch(app *a)
+{
+	int sys, item;
+
+	launch_one(a);
+	for (;;) {
+		if (g_switch_fav) { g_switch_fav = false; refresh_favorites_shelf(a); }
+		if (!g_switch_tag[0] || !a->running || want_quit) break;
+		bool found = sw_find(a, g_switch_tag, g_switch_file, &sys, &item);
+
+		g_switch_tag[0] = '\0';
+		if (!found) break;
+		a->sys_cursor = sys;
+		a->view[sys].cursor = item;
+		a->screen = SCREEN_GAMES;
+		launch_one(a);
+	}
+}
+
+static void launch_one(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
 	/* The game's system, not the shelf's. Launching a favorite off the
@@ -11834,6 +11926,8 @@ static void launch(app *a)
 	/* Front of the switcher's list, in memory only - the tick writes it.
 	 * Splore is a place, not a game (plorpos-gl5.1). */
 	if (!is_splore(s, romfile)) recent_note(s->tag, romfile);
+	snprintf(g_cur_tag, sizeof g_cur_tag, "%s", s->tag);
+	snprintf(g_cur_file, sizeof g_cur_file, "%s", romfile);
 
 	/* The autosave story, by path rather than by convention: the state and the
 	 * preview live beside each other, the launch hands both over, and a game
@@ -12016,10 +12110,7 @@ static void launch(app *a)
 				if (r == RES_PAUSED) {
 					gesture g = plat_resident_gesture_asked();
 
-					if (g == GESTURE_SWITCHER) {      /* plorpos-gl5.3 */
-						plat_resident_line("RESUME");
-						continue;
-					}
+					if (g == GESTURE_SWITCHER) { game_switch(a); continue; }
 					game_menu(a, g == GESTURE_MUSE);
 					continue;
 				}
