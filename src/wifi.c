@@ -134,6 +134,16 @@ static bool kv(const char *text, const char *key, char *out, int cap)
 	return false;
 }
 
+#if defined(PLATFORM_ROTATE)
+/* The Rotate is the H700's model on Debian: no udhcpc, and none needed -
+ * systemd-networkd asks for the address whenever the link comes up and drops
+ * it when the link goes (/etc/systemd/network/20-wlan0.network,
+ * plorpos-3yv.17). So every lease step here is the network's, not ours. */
+#define LEASES_OURS 0
+#else
+#define LEASES_OURS 1
+#endif
+
 #if defined(PLATFORM_H700)
 static bool g_dhcp_asked;   /* defined with dhcp_start, below */
 
@@ -144,8 +154,10 @@ static bool g_dhcp_asked;   /* defined with dhcp_start, below */
  * Detached, like dhcp_start, so nothing waits on the radio. */
 static void dhcp_after_join(void)
 {
-	pid_t pid = fork();
+	pid_t pid;
 
+	if (!LEASES_OURS) return;
+	pid = fork();
 	if (pid < 0) return;
 	if (pid == 0) {
 		if (fork() == 0) {
@@ -231,6 +243,7 @@ static void lease_drop(void)
 	char *flush[] = { (char *)"/sbin/ip", (char *)"addr", (char *)"flush",
 	                  (char *)"dev", (char *)WLAN, NULL };
 
+	if (!LEASES_OURS) return;
 	run(kill_dhcp, NULL, 0);
 	run(flush, NULL, 0);
 }
@@ -248,6 +261,16 @@ void wifi_down(void)
 	g_dhcp_asked = false;
 	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
 	lease_drop();
+#if defined(PLATFORM_ROTATE)
+	/* And the radio with it: wlan0 down is what stops the firmware - 188 mA
+	 * connected and idle, 121 mA down, and unloading the driver as well only
+	 * 119 (2026-10-18). wpa_supplicant leaves the link up as it found it. */
+	{
+		char *down[] = { (char *)"/sbin/ip", (char *)"link", (char *)"set",
+		                 (char *)"dev", (char *)WLAN, (char *)"down", NULL };
+		run(down, NULL, 0);
+	}
+#endif
 #else
 	char *argv[] = { (char *)"/etc/init.d/wpa_supplicant",
 	                 (char *)"stop", NULL };
@@ -451,8 +474,10 @@ static bool g_dhcp_asked;   /* a lease has been requested for this join */
 
 static void dhcp_start(void)
 {
-	pid_t pid = fork();
+	pid_t pid;
 
+	if (!LEASES_OURS) return;
+	pid = fork();
 	if (pid < 0) return;
 	if (pid == 0) {
 		if (fork() == 0) {

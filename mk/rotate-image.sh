@@ -14,8 +14,10 @@
 # fixed ROOT_MB with the device's UUID (extlinux and fstab name it), no p4:
 # the first boot makes the exFAT data partition across the rest of the card
 # (sd/rotate/image/plorpos-firstboot.sh). The rootfs carries the device's
-# Wi-Fi settings, root password and ssh keys: an image for its owner, not
-# for handing out.
+# root password and ssh keys: an image for its owner, not for handing out.
+# Wi-Fi is not in it: the launcher runs wpa_supplicant on the data
+# partition's saved networks (plorpos-3yv.17), so a fresh card joins one from
+# the Wi-Fi screen.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$HOME/projects/misc/rg-rotate/image/plorpos-rotate.img}
@@ -31,7 +33,8 @@ rm -rf "$W/overlay"
 #    with, the session and first-boot units (enabled), the data partition's
 #    mount, and no getty on tty1.
 O=$W/overlay
-mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants"
+mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants" \
+	"$O/etc/systemd/network"
 ROTATE_STAGE="$O/usr/share/plorpos/TortOS" sh "$ROOT/mk/rotate-deploy.sh" stage
 cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$O/usr/share/plorpos/"
 cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.service" \
@@ -39,6 +42,7 @@ cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.se
 ln -s ../plorpos.service "$O/etc/systemd/system/multi-user.target.wants/plorpos.service"
 ln -s ../plorpos-firstboot.service \
 	"$O/etc/systemd/system/multi-user.target.wants/plorpos-firstboot.service"
+cp "$ROOT/sd/rotate/image/20-wlan0.network" "$O/etc/systemd/network/"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -67,9 +71,14 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 	mkdir /r
 	zstd -dc /w/rootfs.tar.zst | tar -C /r --numeric-owner -xpf -
 	cp -a /w/overlay/. /r/
-	chown -R 0:0 /r/usr/share/plorpos /r/etc/systemd/system/plorpos*.service
+	chown -R 0:0 /r/usr/share/plorpos /r/etc/systemd/system/plorpos*.service \
+		/r/etc/systemd/network/20-wlan0.network
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
+	# Wi-Fi is the launcher'"'"'s (plorpos-3yv.17): not netplan'"'"'s, and not the
+	# D-Bus wpa_supplicant either, which owns no interface here.
+	rm -f /r/etc/netplan/20-wifi.yaml
+	ln -sf /dev/null /r/etc/systemd/system/wpa_supplicant.service
 	grep -q PLORPOS /r/etc/fstab || echo "LABEL=PLORPOS /mnt/SDCARD exfat defaults,nofail,noatime,x-systemd.device-timeout=3s 0 0" >> /r/etc/fstab
 	mkdir -p /r/mnt/SDCARD
 	rm -f /w/p3.img

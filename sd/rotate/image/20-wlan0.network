@@ -1,0 +1,13 @@
+# wlan0 on the RG Rotate (plorpos-3yv.17): the address, from the network
+# whenever the link is up. The link itself is the launcher's - wpa_supplicant
+# brings it up, Wi-Fi off takes it down (src/wifi.c) - so networkd never
+# raises it (manual), and boot does not wait on it (not required).
+[Match]
+Name=wlan0
+
+[Link]
+ActivationPolicy=manual
+RequiredForOnline=no
+
+[Network]
+DHCP=yes

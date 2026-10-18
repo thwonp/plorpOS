@@ -98,6 +98,23 @@ start_resident() {
 	) >> "$LOG" 2>&1 &
 }
 
+# Wi-Fi as the player left it (boot.env, which the launcher writes on every
+# change), on the data partition's saved networks - the H700's way, which
+# src/wifi.c follows from then on (plorpos-3yv.17). systemd-networkd asks for
+# the address once the link is up (/etc/systemd/network/20-wlan0.network).
+# In the background: the shelf never waits for the radio.
+WIFI=0
+[ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
+WPA_CONF=$TORTOS_USERDATA/wpa_supplicant.conf
+if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ] &&
+   ! wpa_cli -p /run/wpa_supplicant -i wlan0 ping > /dev/null 2>&1; then
+	(
+		i=0
+		while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 25 ]; do sleep 1; i=$((i + 1)); done
+		wpa_supplicant -B -D nl80211,wext -i wlan0 -C /run/wpa_supplicant -c "$WPA_CONF"
+	) >> "$LOG" 2>&1 &
+fi
+
 rm -f /tmp/tortos_poweroff
 cd "$DIR" || exit 1
 FAILS=0
