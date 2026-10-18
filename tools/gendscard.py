@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "res", "cards", "classic", "NDS.png")
-FONT = os.path.join(ROOT, "res", "fonts", "menu.ttf")
+FONT = os.path.join(ROOT, "res", "fonts", "head.ttf")   # card labels are headings (plorpos-8m1.2)
 
 W, H = 640, 820
 STOCK = (28, 31, 42)
@@ -37,53 +37,69 @@ def s(*v):
 
 
 def mark(d, cx, top):
-    """An open DS Lite, front on, in its own proportions (measured off a
-    product photo at 0.465 scale): nearly square overall, two shells with
-    small corners, and between them the hinge barrel - nearly the full width,
-    round-ended, set off from both shells by a hair of card stock. Screens at
-    about half the width, 3x2 speaker grilles beside the top one, the d-pad
-    high on the left, ABXY as a diamond on the right and start/select below
-    it - all punched out to the card stock."""
+    """An open DS Lite, front on, every part placed from a product photo
+    (494 px wide there, 360 here: x and y below are in the photo's frame,
+    scaled). Two shells with small corners; between them the hinge barrel,
+    a cylinder in three parts - round end caps and a slightly thinner middle
+    with the mic slot, the right cap carrying the two LED lines. Screens at
+    about half the width with the little corner tabs on the top shell, 3x2
+    grilles beside it. On the lower shell the d-pad and ABXY sit centered in
+    the space between the shell's edge and the raised frame round the screen,
+    and start/select hang low just right of that frame. All of it punched out
+    of the accent to the card stock."""
     acc, stock = ACCENT + (255,), STOCK + (255,)
-    W_, r = 360, 10
-    x0 = cx - W_ // 2
-    top_h, gap, barrel = 171, 4, 24
-    y_bar = top + top_h + gap
-    y_bot = y_bar + barrel + gap
-    bot_h = 372 - (y_bot - top)
+    k = 360 / 494.0
+    ox, oy = cx - 180, top
 
-    d.rounded_rectangle(s(x0, top, x0 + W_, top + top_h), radius=r * SS, fill=acc)
-    d.rounded_rectangle(s(x0, y_bot, x0 + W_, y_bot + bot_h), radius=r * SS, fill=acc)
-    d.rounded_rectangle(s(x0 + 3, y_bar, x0 + W_ - 3, y_bar + barrel),
-                        radius=(barrel // 2) * SS, fill=acc)
+    def X(v): return ox + (v - 137) * k
+    def Y(v): return oy + (v - 127) * k
 
-    # Screens, 4:3 and the same size, centered.
-    sw_, sh_ = 172, 129
-    sx = cx - sw_ // 2
-    d.rectangle(s(sx, top + 20, sx + sw_, top + 20 + sh_), fill=stock)
-    d.rectangle(s(sx, y_bot + 14, sx + sw_, y_bot + 14 + sh_), fill=stock)
+    def rect(x0, y0, x1, y1, fill, r=0):
+        box = s(X(x0), Y(y0), X(x1), Y(y1))
+        if r: d.rounded_rectangle(box, radius=r * SS, fill=fill)
+        else: d.rectangle(box, fill=fill)
 
-    # Speaker grilles: three across, two down, either side of the top screen.
-    gy = top + top_h // 2 - 7
-    for gx in (x0 + 44, x0 + W_ - 44):
-        for row in range(2):
-            for col in range(3):
-                px, py = gx - 13 + col * 13, gy + row * 13
-                d.ellipse(s(px - 3, py - 3, px + 3, py + 3), fill=stock)
+    def dot(x, y, rad, fill):
+        d.ellipse(s(X(x) - rad, Y(y) - rad, X(x) + rad, Y(y) + rad), fill=fill)
 
-    # D-pad: high on the left of the lower shell.
-    dx, dy = x0 + 41, y_bot + 62
-    arm, th = 24, 15
-    d.rectangle(s(dx - arm, dy - th // 2, dx + arm, dy + th // 2), fill=stock)
-    d.rectangle(s(dx - th // 2, dy - arm, dx + th // 2, dy + arm), fill=stock)
-    # ABXY, a diamond on the right; start and select below it.
-    bx, by = x0 + W_ - 45, y_bot + 55
-    br, off = 10, 20
-    for ox, oy in ((0, -off), (0, off), (-off, 0), (off, 0)):
-        d.ellipse(s(bx + ox - br, by + oy - br, bx + ox + br, by + oy + br), fill=stock)
-    for k in range(2):
-        py = y_bot + 120 + k * 22
-        d.ellipse(s(bx - 25 - 5, py - 5, bx - 25 + 5, py + 5), fill=stock)
+    # Shells: top 127-362, bottom from behind the barrel to 640.
+    rect(137, 127, 631, 362, acc, 7)
+    rect(137, 392, 631, 640, acc, 7)
+    # The barrel, 366-400: end caps full height, the middle a hair thinner,
+    # grooves of card stock between the parts.
+    bh = (400 - 366) * k
+    d.rectangle(s(X(137), Y(362), X(631), Y(404)), fill=stock)
+    d.rounded_rectangle(s(X(140), Y(366), X(203), Y(400)), radius=int(bh / 2) * SS, fill=acc)
+    d.rounded_rectangle(s(X(567), Y(366), X(628), Y(400)), radius=int(bh / 2) * SS, fill=acc)
+    rect(206, 368, 564, 398, acc)
+    rect(384 - 2, 377, 384 + 2, 389, stock)            # the mic slot
+    for lx in (597, 604):                               # the LED lines
+        rect(lx - 1, 371, lx + 1, 395, stock)
+
+    # Top screen, the corner tabs, the grilles.
+    rect(264, 160, 499, 338, stock)
+    for tx, ty in ((205, 152), (561, 152), (205, 348), (561, 348)):
+        rect(tx - 5, ty - 5, tx + 5, ty + 5, stock)
+    for gx in ((175, 195, 215), (553, 573, 593)):
+        for x in gx:
+            for y in (243, 263):
+                dot(x, y, 2.6, stock)
+
+    # Bottom screen; the raised frame round it (249-512) is what the d-pad
+    # and ABXY are centered against.
+    rect(264, 426, 499, 600, stock)
+    # The raised frame itself, as a hairline: inset again by its thickness.
+    d.rounded_rectangle(s(X(249), Y(411), X(512), Y(614)), radius=6 * SS,
+                        outline=stock, width=2 * SS)
+    dx, dy = (137 + 249) / 2, 490
+    arm, th = 33, 11
+    rect(dx - arm, dy - th, dx + arm, dy + th, stock, 2)
+    rect(dx - th, dy - arm, dx + th, dy + arm, stock, 2)
+    bx, by = (512 + 631) / 2, 482
+    for ddx, ddy in ((0, -28), (0, 28), (-28, 0), (28, 0)):
+        dot(bx + ddx, by + ddy, 8.5, stock)
+    for y in (573, 602):                                # start, select
+        dot(537, y, 5, stock)
 
 
 def main():
@@ -91,8 +107,8 @@ def main():
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, W * SS - 1, H * SS - 1], radius=RADIUS * SS, fill=STOCK + (255,))
     d.rectangle([0, RULE_Y * SS, W * SS - 1, (RULE_Y + RULE_H) * SS - 1], fill=ACCENT + (255,))
-    # Centered on the panel above the rule: 372 px of mark in ~587.
-    mark(d, W // 2, (RULE_Y - 372) // 2)
+    # Centered on the panel above the rule: 374 px of mark in ~587.
+    mark(d, W // 2, (RULE_Y - 374) // 2)
     im = im.resize((W, H), Image.LANCZOS)
     d = ImageDraw.Draw(im)
     f = ImageFont.truetype(FONT, 54)

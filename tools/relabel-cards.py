@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join(ROOT, "res", "cards", "classic")
-FONT = os.path.join(ROOT, "res", "fonts", "menu.ttf")
+FONT = os.path.join(ROOT, "res", "fonts", "head.ttf")   # card labels are headings (plorpos-8m1.2)
 
 LABELS = {
     "32X": "SEGA 32X", "ARCADE": "ARCADE", "FAVORITES": "FAVORITES",

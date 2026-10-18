@@ -45,7 +45,7 @@ stage() {
 	cp "$ROOT"/vendor/cores-rotate/*_libretro.so "$S/cores/"
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
 	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
-	cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/singles.png" \
+	cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/head.ttf" "$ROOT/res/singles.png" \
 	   "$ROOT/res/ssl/cacert.pem" "$S/"
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" > "$S/systems.cfg"
 	cp -R "$ROOT/res/cards/." "$S/cards/"

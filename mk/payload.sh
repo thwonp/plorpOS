@@ -124,6 +124,7 @@ fi
 # pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
 cp "$ROOT/config/systems.cfg" "$P/"
 cp -R "$ROOT/res/cards/." "$P/cards/"     # the classic/ and fancy/ sets, as adb-deploy.sh pushes them
+cp "$ROOT/res/fonts/head.ttf" "$P/"       # the heading face (ui.c, plorpos-8m1.2)
 cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 cp "$ROOT/res/singles.png" "$P/"          # Muse's cover for Singles, the loose songs
 # Over The Hare's page. The launcher serves these off the card at P_WEB, so a

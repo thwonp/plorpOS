@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define GLOW_SIZE 192      /* the glow is drawn stretched; small is enough */
 #define TEXT_CACHE 12
@@ -33,12 +34,19 @@
  * Written as the same product it used to be evaluated as, so every font comes
  * out at exactly the point size 115% gave and nothing moves by a rounding
  * accident. */
-#define FONT_BASE (32.0f * 1.15f * FACE_SCALE)
-/* The face's own correction (plorpos-8m1.2): Fredoka's lowercase stands far
- * taller than Josefin Sans' did (x-height 500 against 378 per 1000), so at
- * the old sizes every line ran about a tenth wider and fixed panels clipped
- * their notes. Its line metrics are set in the font file to Josefin's. */
-#define FACE_SCALE 0.92f
+#define FONT_BASE (32.0f * 1.15f)
+/* Two faces (plorpos-8m1.2): the heading face - head.ttf beside menu.ttf,
+ * Fredoka - for the titles, the menu headings and the cards, and menu.ttf
+ * for everything else. No head.ttf, one face for all. Each is scaled so a
+ * line of it runs as wide as Josefin Sans' did, which every fixed panel was
+ * measured against; both files carry Josefin's line metrics (ascent 0.75,
+ * descent 0.25 of the em), so rows keep their height. */
+#define HEAD_SCALE 1.00f
+#define BODY_SCALE 0.98f
+static bool is_head(int role)
+{
+	return role == UI_F_TITLE || role == UI_F_LABEL || role == UI_F_CARD;
+}
 static const float font_mul[UI_F_COUNT] = {
 	[UI_F_TITLE] = 1.62f,   /* 52 */
 	[UI_F_MENU]  = 1.34f,   /* 43 */
@@ -117,11 +125,22 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
 	ts = plat_scale();
-	for (i = 0; i < UI_F_COUNT; i++) {
-		int pt = (int)(FONT_BASE * font_mul[i] * ts + 0.5f);
-		fonts[i] = TTF_OpenFont(font_path, pt);
-		if (!fonts[i])
-			fprintf(stderr, "font %s @%d: %s\n", font_path, pt, TTF_GetError());
+	{
+		char head[512];
+		const char *slash = strrchr(font_path, '/');
+
+		snprintf(head, sizeof head, "%.*shead.ttf",
+		         slash ? (int)(slash - font_path + 1) : 0, font_path);
+		if (access(head, R_OK) != 0) snprintf(head, sizeof head, "%s", font_path);
+		for (i = 0; i < UI_F_COUNT; i++) {
+			const char *path = is_head(i) ? head : font_path;
+			float k = is_head(i) ? HEAD_SCALE : BODY_SCALE;
+			int pt = (int)(FONT_BASE * font_mul[i] * k * ts + 0.5f);
+
+			fonts[i] = TTF_OpenFont(path, pt);
+			if (!fonts[i])
+				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
+		}
 	}
 	glow_tex = make_glow(r);
 	return fonts[UI_F_TITLE] != NULL;

@@ -36,7 +36,7 @@ from markdef import PURPLE as CYAN, heart  # noqa: E402  (plorpOS purple)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "res", "cards", "classic", "FAVORITES.png")
-FONT = os.path.join(ROOT, "res", "fonts", "menu.ttf")
+FONT = os.path.join(ROOT, "res", "fonts", "head.ttf")   # card labels are headings (plorpos-8m1.2)
 
 W, H = 640, 820
 STOCK = (28, 31, 42)
