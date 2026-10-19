@@ -55,7 +55,7 @@ static void off_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("radio off:\n");
-	ck(heading && !strcmp(heading, "Wi-Fi Services"), "the screen names itself");
+	ck(heading && !strcmp(heading, "Network Services"), "the screen names itself");
 	ck(n == WIFI_TOP_ROWS + 2, "switch, Cheevos, OTH, rule, note");
 	ck(rows[WIFI_ROW_SWITCH].live, "the switch is live");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].label, "Wi-Fi"), "row 0 is the switch");
@@ -233,7 +233,7 @@ static void tortos_menu_offline(void)
 	printf("plorpOS menu, radio off:\n");
 	ck(n == PM_ROWS, "every row is filled");
 	ck(!strcmp(heading, "plorpOS"), "heading");
-	ck(!strcmp(rows[PM_WIFI].label, "Wi-Fi Services"), "the Wi-Fi row is Wi-Fi Services");
+	ck(!strcmp(rows[PM_WIFI].label, "Network Services"), "the Wi-Fi row is Network Services");
 	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "and reads the radio: off");
 	ck(!strcmp(rows[PM_SYSTEM].label, "System Settings") && rows[PM_SYSTEM].live
 	   && !rows[PM_SYSTEM].value, "System Settings opens, with no value");
@@ -336,7 +336,7 @@ static void tortos_menu_online(void)
 
 	ck(n == PM_ROWS, "row count does not depend on the network");
 	printf("plorpOS menu, connected:\n");
-	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi Services shows the network name");
+	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Network Services shows the network name");
 	sys_menu_scraping_build(&u, rows, &heading);
 	ck(rows[SC_BOXART].live, "Box Art is live");
 	sys_menu_system_build(&u, rows, &b, &heading);
@@ -638,7 +638,7 @@ static void cursor_reaches(void)
 	ck(k == PM_ROWS, "every row is a stop: nothing here needs the network now");
 	ck(holds(got, k, PM_SYSTEM) && holds(got, k, PM_UI), "both settings submenus");
 	ck(holds(got, k, PM_SCRAPING), "Scraping is reachable with no network");
-	ck(holds(got, k, PM_WIFI), "Wi-Fi Services is reachable, which is how you fix that");
+	ck(holds(got, k, PM_WIFI), "Network Services is reachable, which is how you fix that");
 	ck(holds(got, k, PM_ABOUT), "About is reachable");
 	/* Play Time reads what is already stored and asks nothing of the network,
 	 * so it stays reachable when everything else is grayed out. */

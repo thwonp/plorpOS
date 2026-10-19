@@ -61,8 +61,8 @@ lands in the console's folder, so move the old one over it.
 
 ## Adding games over Wi-Fi
 
-1. Join a network under **MENU > Wi-Fi Services > Wi-Fi**.
-2. Open **MENU > Wi-Fi Services > Over The Hare**. It shows an address and a
+1. Join a network under **MENU > Network Services > Wi-Fi**.
+2. Open **MENU > Network Services > Over The Hare**. It shows an address and a
    PIN.
 3. Open that address in a browser on your phone or computer, and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into

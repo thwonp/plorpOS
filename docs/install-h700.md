@@ -36,7 +36,7 @@ names them) and BIOS files in `Bios/`.
 ## 3. Turn it on
 
 Put the card in the slot marked **TF2** and turn the device on. BaseOS starts
-plorpOS in a few seconds. Join Wi-Fi from **Menu > Wi-Fi Services**.
+plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
 
 ## Notes
 

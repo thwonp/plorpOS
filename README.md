@@ -66,7 +66,7 @@
 
 - **Music plays over gameplay** and can be accessed with the tap of the select button from any menu. This is one of the things that makes TortOS great, and plorpOS extends this through all its added systems. 
 - **USB DAC Support** on all supported devices (as of v1.5.1).
-  - On the Brick and Brick Pro, plug the DAC into the USB-C port on top. If you hear brief dropouts, turn Wi-Fi off under **MENU > Wi-Fi Services** while you listen - the Brick's Wi-Fi can interrupt a DAC, more so on a weak signal.
+  - On the Brick and Brick Pro, plug the DAC into the USB-C port on top. If you hear brief dropouts, turn Wi-Fi off under **MENU > Network Services** while you listen - the Brick's Wi-Fi can interrupt a DAC, more so on a weak signal.
 - **Music keeps playing through sleep.** A tap of POWER, lid close (on the RG SP), or the configurable idle timer
   while Muse plays turns only the screen off, and the album plays on.
   - Now Playing's buttons work in the dark, iPod-style, and the volume keys work
@@ -127,7 +127,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 - **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
-- **RetroAchievements:** sign in on the device, under **MENU > Wi-Fi Services > Cheevos**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
+- **RetroAchievements:** sign in on the device, under **MENU > Network Services > Cheevos**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
 - **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
@@ -192,8 +192,8 @@ On the Anbernic RG Nano there is **plorpOS nano**, a small music-first version: 
 
 <img align="right" width="360" src="res/readme/hare.png" alt="Over The Hare, with a browser connected">
 
-1. Join a network under **MENU > Wi-Fi Services > Wi-Fi**.
-2. Open **MENU > Wi-Fi Services > Over The Hare**. It shows an address and a PIN.
+1. Join a network under **MENU > Network Services > Wi-Fi**.
+2. Open **MENU > Network Services > Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer, and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into `Audiobooks`. They're on the shelf when you leave the screen.
 
@@ -254,7 +254,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 <details>
 <summary>What's in each menu</summary>
 
-**The plorpOS menu,** MENU on the consoles row: Play Time; Wi-Fi Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
+**The plorpOS menu,** MENU on the consoles row: Play Time; Network Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
 
 **A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
@@ -291,7 +291,7 @@ Don't like a cover? Press X on the game and choose **Replace Box Art**. It looks
 <details>
 <summary><b>How do achievements work?</b></summary>
 
-Sign in to your RetroAchievements account under **MENU > Wi-Fi Services > Cheevos**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later.
+Sign in to your RetroAchievements account under **MENU > Network Services > Cheevos**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later.
 
 </details>
 
@@ -351,7 +351,7 @@ Yes. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search 
 
 The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
 
-**On the Brick and Brick Pro, Wi-Fi starts before Bluetooth,** at power-on and after sleep. The two share one radio chip, and on the Brick Pro starting them together could freeze the device. So the headphones wait until Wi-Fi has connected, or has given up after 15 seconds, and take around 20 to 30 seconds to come back after sleep. Turn Wi-Fi off under **MENU > Wi-Fi Services** when you don't need it, and they reconnect sooner.
+**On the Brick and Brick Pro, Wi-Fi starts before Bluetooth,** at power-on and after sleep. The two share one radio chip, and on the Brick Pro starting them together could freeze the device. So the headphones wait until Wi-Fi has connected, or has given up after 15 seconds, and take around 20 to 30 seconds to come back after sleep. Turn Wi-Fi off under **MENU > Network Services** when you don't need it, and they reconnect sooner.
 
 </details>
 
@@ -379,7 +379,7 @@ Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the 
 <details>
 <summary><b>Something went wrong. How do I send the logs?</b></summary>
 
-Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick), `.userdata/gkd/logs/` (GKD) or `.userdata/rgsp/logs/` (RG SP) on the card.
+Open **MENU > Network Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick), `.userdata/gkd/logs/` (GKD) or `.userdata/rgsp/logs/` (RG SP) on the card.
 
 </details>
 

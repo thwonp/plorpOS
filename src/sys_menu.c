@@ -127,7 +127,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* The Wi-Fi screen, named for everything on it now: the radio, and the
 	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
 	 * value is still the radio's, since that is what decides the rest. */
-	out[PM_WIFI]         = (menu_row){ "Wi-Fi Services", b->b, true };
+	out[PM_WIFI]         = (menu_row){ "Network Services", b->b, true };
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };

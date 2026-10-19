@@ -124,7 +124,7 @@ matters to you - a card is the one part of this that gets reformatted.
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
 console inside it, the running game in a game. Inside any of them MENU closes
-the whole menu at once - from Play Time or Wi-Fi Services straight back to where you
+the whole menu at once - from Play Time or Network Services straight back to where you
 were, or back into the game - and B goes back one screen at a time.
 
 **The Brick carries this table itself**, under **MENU > Controls**: five pages
@@ -140,7 +140,7 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Wi-Fi Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
@@ -272,7 +272,7 @@ buttons can't turn it down.
 **On the Brick and Brick Pro, Wi-Fi can cause brief dropouts on a DAC** -
 a few milliseconds of silence, more often the weaker the signal. It is the
 radio itself, not the music player, and nothing in software has cured it.
-If you hear them, turn Wi-Fi off under **MENU > Wi-Fi Services** while you
+If you hear them, turn Wi-Fi off under **MENU > Network Services** while you
 listen.
 
 ### Bluetooth

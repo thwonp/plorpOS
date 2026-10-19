@@ -35,7 +35,7 @@
  *
  * The rest are grouped a level down since plorpos-z0d.1: the timers under
  * System Settings, the look under UI Settings, and Cheevos and Over The Hare
- * on the Wi-Fi Services screen with the other things that need the network. */
+ * on the Network Services screen with the other things that need the network. */
 typedef enum {
 	PM_STATS,
 	PM_WIFI,

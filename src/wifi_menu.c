@@ -83,7 +83,7 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	int nrows = 0, i;
 	bool any_saved = false;
 
-	*heading = "Wi-Fi Services";
+	*heading = "Network Services";
 
 	/* The scan is driven from here because this is the function that already
 	 * runs every frame. wifi_scan_poll() does nothing until its next second is

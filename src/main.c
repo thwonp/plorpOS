@@ -257,7 +257,7 @@ static void album_art_screen(app *a);
 static void rescan_all(app *a);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
-/* Wi-Fi Services opens both, and they are written after it. */
+/* Network Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
 /* And again: Play Time can send you to a game's shelf, which is the input
