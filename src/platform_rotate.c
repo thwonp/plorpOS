@@ -1154,9 +1154,10 @@ static void sink_resync(const char *name)
 
 	if (!f) return;
 	while (fgets(line, sizeof line, f)) {
-		char *v = strstr(line, "Name: ");
-		if (v) { v += 6; v[strcspn(v, "\n")] = '\0'; mine = !strcmp(v, name); }
-		else if (mine && (v = strstr(line, "object.id = \"")) && !id[0])
+		char *v = line + strspn(line, " \t");
+		if (!strncmp(v, "Name: ", 6)) { v += 6; v[strcspn(v, "\n")] = '\0'; mine = !strcmp(v, name); }
+		/* Whole key: a bluez sink lists spa.object.id first. */
+		else if (mine && !strncmp(v, "object.id = \"", 13) && !id[0])
 			snprintf(id, sizeof id, "%.*s", (int)strcspn(v + 13, "\""), v + 13);
 	}
 	pclose(f);
