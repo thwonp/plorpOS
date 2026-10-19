@@ -324,21 +324,26 @@ typedef enum {
 	UI_HIT_OUTSIDE,    /* outside a menu panel */
 	UI_HIT_ID,         /* a screen's own key: *n is its id (ui_hit_id) */
 } ui_hit_kind;
+/* ui_hit_act: the same, but a tap on it is also A once there - a menu's row,
+ * which a touch means to choose; a shelf's tile only comes into focus
+ * (plorpos-3yv.56). */
 /* A screen whose items are not a d-pad walk away - the keyboard's keys, a
  * tap on which types at once - records them by id instead; any tap on one
  * hands the id to ui_hit_take, read on the screen's next poll (-1: none).
  * ui_hit_clear drops what was recorded so far, as a backdrop drew it. */
 #ifdef PLATFORM_ROTATE
 void ui_hit(const SDL_Rect *r, int button, int n);
+void ui_hit_act(const SDL_Rect *r, int button, int n);
 void ui_hit_id(const SDL_Rect *r, int id);
 void ui_hit_modal(const SDL_Rect *panel);
 void ui_hit_clear(void);
 void ui_hit_frame(void);
-ui_hit_kind ui_hit_find(int x, int y, int *button, int *n);
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act);
 void ui_hit_give(int id);
 int  ui_hit_take(void);
 #else
 static inline void ui_hit(const SDL_Rect *r, int button, int n) { (void)r; (void)button; (void)n; }
+static inline void ui_hit_act(const SDL_Rect *r, int button, int n) { (void)r; (void)button; (void)n; }
 static inline void ui_hit_id(const SDL_Rect *r, int id) { (void)r; (void)id; }
 static inline void ui_hit_modal(const SDL_Rect *panel) { (void)panel; }
 static inline void ui_hit_clear(void) { }

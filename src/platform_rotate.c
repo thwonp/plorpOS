@@ -610,7 +610,8 @@ static void sys_read(in_state *st)
  * already answers to - so closed, with the face buttons hidden, the whole
  * shelf, every menu and Muse are still in reach:
  *
- *   tap = select what is under it, A on the selected item (touch_at), drag
+ *   tap = select what is under it, A on the selected item or on any menu row
+ *   (touch_at, plorpos-3yv.56), drag
  *   = d-pad, flick = d-pad that coasts on, swipe in from the left or right
  *   edge = B (Android's back, fired once TOUCH_SWIPE_PX in - plorpos-3yv.26),
  *   long press = Y on what is under it (favorite a game, Muse's mode, a
@@ -686,14 +687,15 @@ static void touch_at(in_button then)
 {
 	float s = plat_scale() > 0 ? plat_scale() : 1;
 	int b = 0, n = 0;
+	bool act = false;
 
-	switch (ui_hit_find((int)(touch.x0 / s), (int)(touch.y0 / s), &b, &n)) {
+	switch (ui_hit_find((int)(touch.x0 / s), (int)(touch.y0 / s), &b, &n, &act)) {
 	case UI_HIT_UNMAPPED: touch_queue(then, 1); break;
 	case UI_HIT_NONE:     break;
 	case UI_HIT_OUTSIDE:  if (then == IN_ACCEPT) touch_queue(IN_BACK, 1); break;
 	case UI_HIT_ITEM:
 		touch_queue((in_button)b, n);
-		if (n == 0 || then != IN_ACCEPT) touch_queue(then, 1);
+		if (n == 0 || act || then != IN_ACCEPT) touch_queue(then, 1);
 		break;
 	case UI_HIT_ID:       ui_hit_give(n); break;   /* any kind of tap */
 	}

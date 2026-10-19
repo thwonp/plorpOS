@@ -4010,7 +4010,7 @@ static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect
 	int dir = i > sel ? 1 : -1, k = sel, c = 0;
 
 	while (k != i && c < n) { k = menu_step_sel(rows, n, k, dir); c++; }
-	if (k == i) ui_hit(r, dir > 0 ? IN_DOWN : IN_UP, c);
+	if (k == i) ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, c);
 }
 
 static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,

@@ -1389,7 +1389,7 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 #ifdef PLATFORM_ROTATE
 #define HIT_MAX 64
 
-typedef struct { SDL_Rect r; int button, n; bool id; } ui_target;  /* id: n is an id */
+typedef struct { SDL_Rect r; int button, n; bool id, act; } ui_target;  /* id: n is an id */
 typedef struct {
 	ui_target t[HIT_MAX];
 	int       n;
@@ -1401,12 +1401,17 @@ static ui_targets hit_draw, hit_shown;
 
 void ui_hit(const SDL_Rect *r, int button, int n)
 {
-	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false };
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false, false };
+}
+
+void ui_hit_act(const SDL_Rect *r, int button, int n)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false, true };
 }
 
 void ui_hit_id(const SDL_Rect *r, int id)
 {
-	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, 0, id, true };
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, 0, id, true, false };
 }
 
 void ui_hit_clear(void)
@@ -1441,7 +1446,7 @@ void ui_hit_frame(void)
 	hit_draw.modal = false;
 }
 
-ui_hit_kind ui_hit_find(int x, int y, int *button, int *n)
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act)
 {
 	SDL_Point p = { x, y };
 	int i;
@@ -1451,6 +1456,7 @@ ui_hit_kind ui_hit_find(int x, int y, int *button, int *n)
 		if (SDL_PointInRect(&p, &hit_shown.t[i].r)) {
 			*button = hit_shown.t[i].button;
 			*n = hit_shown.t[i].n;
+			*act = hit_shown.t[i].act;
 			return hit_shown.t[i].id ? UI_HIT_ID : UI_HIT_ITEM;
 		}
 	if (hit_shown.modal)
