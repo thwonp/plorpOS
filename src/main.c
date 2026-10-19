@@ -14839,6 +14839,11 @@ int main(int argc, char *argv[])
 	}
 
 done:
+	/* A book's place and the music queue, as power_off writes them: a
+	 * SIGTERM - a reboot, a session restart - comes this way, and each keeps
+	 * them only every 30 and 5 seconds otherwise (plorpos-3yv.70). */
+	book_keep(true);
+	if (g_queue_file[0]) musec_queue_save(g_queue_file);
 	free_all_textures(&a);
 	/* First, and before IMG_Quit: the worker is inside IMG_Load, and the
 	 * views it decodes into are freed just below. The resizer too, for the
