@@ -8578,6 +8578,25 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
 	ui_text(a->r, ui_font(UI_F_META),
 	        "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite",
 	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 40 - line_meta, 0, UI_TEXT_DIM);
+	/* Each hint is its button to a tap (plorpos-3yv.58): its own words plus
+	 * half the gap to the next, and a finger's height. */
+	{
+		static const struct { const char *s; in_button b; } hint[] = {
+			{ "A Play", IN_ACCEPT }, { "X Remove", IN_X }, { "Y Favorite", IN_Y },
+		};
+		TTF_Font *f = ui_font(UI_F_META);
+		int gap = ui_text_width(f, "   \xC2\xB7   "), x;
+		int y = TORTOS_SCREEN_H - 40 - line_meta;
+
+		x = TORTOS_SCREEN_W / 2 - ui_text_width(f,
+		    "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite") / 2;
+		for (k = 0; k < 3; k++) {
+			int w = ui_text_width(f, hint[k].s);
+
+			ui_hit_id(&(SDL_Rect){ x - gap / 2, y - 30, w + gap, line_meta + 60 }, hint[k].b);
+			x += w + gap;
+		}
+	}
 }
 
 /* What the switcher ended with. */
@@ -8619,10 +8638,15 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	plat_touch_free(true);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+	ui_hit_take();          /* a tap from before the switcher is not ours */
 
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
+		{
+			int hint = ui_hit_take();   /* a footer hint tapped: its button */
+			if (hint >= 0) a->in.pressed[hint] = true;
+		}
 		if (n > 0) {
 			/* A step slides too: the row starts where it was and eases in. */
 			if (in_repeat(&a->in, IN_LEFT)  && sel > 0)     { sel--; off -= SW_STEP; }
