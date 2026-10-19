@@ -8376,8 +8376,9 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
  * The recent games (recent.h), one at a time and large like the slot strip:
  * each game's Auto picture - the moment resuming it gives back - or its box
  * art when it has never been left. Its neighbors sit dimmed at the sides, so
- * left and right read as a row. A resumes, B closes, X (or a swipe up on the
- * card, which arrives as Down) takes it off the list, Y favorites it.
+ * left and right read as a row. A (or a pull down on the card) resumes, B
+ * closes, X (or a swipe up on the card, which arrives as Down) takes it off
+ * the list, Y favorites it.
  *
  * A game the library no longer has (its file is gone, its system removed)
  * is left out rather than shown as a card that cannot launch. */
@@ -8476,7 +8477,8 @@ static SDL_Rect sw_box(float p)
 }
 
 /* off: how far the row has been dragged (layout units, + to the right);
- * lift: how far the middle card has been pushed up, on its way off. */
+ * lift: how far the middle card has been pushed up, on its way off - or,
+ * negative, pulled down, on its way to being played (plorpos-3yv.57). */
 static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
 {
 	const int bw = 12;
@@ -8515,9 +8517,9 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
 			sw_load(a, &e[k]);
 			box = sw_box(p);
 			r = sw_fit(e[k].tex, box);
-			if (k == sel && lift > 0) {
+			if (k == sel && lift != 0) {
 				r.y -= (int)lift;
-				alpha = 255 - (int)(lift * 255 / 450);
+				alpha = 255 - (int)(fabsf(lift) * 255 / 450);
 				if (alpha < 0) alpha = 0;
 			}
 			lum = (Uint8)(255 - (t > 1 ? 1 : t) * 165);
@@ -8629,10 +8631,10 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	ui_pace pace = { 0 };
 	/* The row's drag and the middle card's lift (plorpos-gl5.5): both in
 	 * layout units, both easing back to 0 when nothing holds them. axis:
-	 * 0 undecided, 1 across, 2 up, 3 down (nothing). */
+	 * 0 undecided, 1 across, 2 up (remove), 3 down (play). */
 	float off = 0, lift = 0;
 	int axis = 0;
-	bool removing = false;
+	bool removing = false, launching = false;
 
 	*powered = false;
 	plat_touch_free(true);
@@ -8657,7 +8659,7 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 			float sc = plat_scale() > 0 ? plat_scale() : 1;
 
 			plat_touch_drag_get(&d);
-			if (n > 0 && d.active && !removing) {
+			if (n > 0 && d.active && !removing && !launching) {
 				float dx = d.dx / sc, dy = d.dy / sc;
 
 				if (!axis) axis = fabsf(dx) >= fabsf(dy) ? 1 : dy < 0 ? 2 : 3;
@@ -8667,6 +8669,8 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 					if ((sel == 0 && off > 0) || (sel == n - 1 && off < 0)) off *= 0.35f;
 				} else if (axis == 2) {
 					lift = dy < 0 ? -dy : 0;
+				} else {
+					lift = dy > 0 ? -dy : 0;     /* down: to be played */
 				}
 				ui_redraw_now();
 			} else if (d.released) {
@@ -8677,6 +8681,8 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 					else if ((off < -SW_STEP * 0.3f || vx < -0.6f) && sel < n - 1) { sel++; off += SW_STEP; }
 				} else if (axis == 2 && (lift > 220 || vy < -0.8f)) {
 					removing = true;   /* on its way off the top */
+				} else if (axis == 3 && (lift < -220 || vy > 0.8f)) {
+					launching = true;  /* and off the bottom, into the game */
 				}
 				axis = 0;
 				ui_redraw_now();
@@ -8684,9 +8690,12 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 				if (removing) {
 					lift += 70;
 					if (lift > 700) { removing = false; lift = 0; a->in.pressed[IN_X] = true; }
-				} else if (lift > 0) {
+				} else if (launching) {
+					lift -= 70;
+					if (lift < -700) { launching = false; lift = 0; a->in.pressed[IN_ACCEPT] = true; }
+				} else if (lift != 0) {
 					lift *= 0.6f;
-					if (lift < 2) lift = 0;
+					if (fabsf(lift) < 2) lift = 0;
 				}
 				if (off != 0) {
 					off *= 0.6f;

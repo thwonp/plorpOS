@@ -826,8 +826,11 @@ static void touch_poll(in_state *st)
 {
 	if (touch.pulsing) { set_btn(st, touch.up, false); touch.pulsing = false; }
 	if (touch.coasting) touch_coast();
+	/* Not a drag the screen follows itself (touch.free): a slow pull of a
+	 * switcher card is still short of TOUCH_SWIPE_PX at 500 ms, and was a
+	 * Favorite (plorpos-3yv.57). */
 	if (touch.fingers == 1 && touch.most == 1 && !touch.held && touch.steps == 0 &&
-	    plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
+	    !(touch.free && touch.moved) && plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
 		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
 		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
 			touch.held = true;
