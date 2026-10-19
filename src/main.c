@@ -12176,6 +12176,10 @@ static void launch_one(app *a)
 	/* Whether this game should be heard - quiet while Muse plays, Diatom's
 	 * ADR-0032. Stated before the RUN goes out, which sends it. */
 	plat_resident_quiet(musec_playing());
+#if defined(PLAT_PIPEWIRE)
+	/* No game's sound before the speaker is at the level (plorpos-3yv.63). */
+	plat_audio_settle(5000);
+#endif
 
 	if (!native && plat_resident_ready_wait()) {
 		/* The emulator is already up, holding its context and every core,

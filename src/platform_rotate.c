@@ -988,6 +988,8 @@ void levels_save(void)
 static pthread_mutex_t vol_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  vol_cv = PTHREAD_COND_INITIALIZER;
 static int             vol_want = -1;
+static int             vol_resync = -1;   /* a speaker serial: a rung beside first */
+static int             speaker_synced = -1; /* the serial the last re-sync landed on */
 
 static void *vol_worker(void *arg)
 {
@@ -999,15 +1001,25 @@ static void *vol_worker(void *arg)
 		pid_t pid;
 		int st, want;
 
+		int resync;
+
 		pthread_mutex_lock(&vol_mu);
 		while (vol_want < 0) pthread_cond_wait(&vol_cv, &vol_mu);
 		want = vol_want;
-		vol_want = -1;
+		resync = vol_resync;
+		vol_want = vol_resync = -1;
 		pthread_mutex_unlock(&vol_mu);
 
+		/* A real change first: the same level again is a no-op to PipeWire. */
+		if (resync >= 0) {
+			snprintf(pct, sizeof pct, "%d%%", (want > 0 ? want - 1 : 1) * 100 / VOL_MAX);
+			if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+				waitpid(pid, &st, 0);
+		}
 		snprintf(pct, sizeof pct, "%d%%", want * 100 / VOL_MAX);
 		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
 			waitpid(pid, &st, 0);
+		if (resync >= 0) __atomic_store_n(&speaker_synced, resync, __ATOMIC_RELEASE);
 	}
 	return NULL;
 }
@@ -1049,6 +1061,30 @@ static bool route_bt;               /* PipeWire has a Bluetooth sink */
 static bool route_usb;              /* PipeWire has a USB DAC's sink */
 static int  sink_level = -1;        /* the default sink's volume, in rungs */
 static bool route_music;            /* Muse is heard (musec_heard), from the main thread */
+static bool route_known;            /* route_eval has run once */
+static bool route_on_speaker;       /* ... and chose the built-in speaker */
+/* At a session's start WirePlumber restores the speaker's volume to the
+ * card's route, and the sink's node can miss the copy down (its log:
+ * "ignoring set_param on already destroyed objects"): the route - and so
+ * wpctl - says the player's level while the sound goes out at 100%. A set to
+ * the same level is a no-op that leaves it so; the first real change, a
+ * volume key, copies it down. A game resumed at power-on played at full
+ * volume until then (plorpos-3yv.63). So each speaker sink this process has
+ * not seen - by pactl's index, the never-reused object.serial - gets a rung
+ * beside the level and then the level (vol_worker), and no game starts
+ * before that has landed (plat_audio_settle). */
+static int  speaker_id = -1;        /* the speaker sink's serial, -1 none yet */
+static bool speaker_fresh;          /* a new one, not yet re-synced */
+
+/* From the main thread: the level, re-synced, onto the speaker seen last. */
+static void speaker_resync(int level)
+{
+	pthread_mutex_lock(&vol_mu);
+	vol_want   = level;
+	vol_resync = __atomic_load_n(&speaker_id, __ATOMIC_ACQUIRE);
+	pthread_cond_signal(&vol_cv);
+	pthread_mutex_unlock(&vol_mu);
+}
 
 void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
 bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
@@ -1110,13 +1146,19 @@ static void route_eval(int *on)
 	/* By name: a USB DAC is an alsa_output too (alsa_output.usb-...). */
 	while (fgets(line, sizeof line, f)) {
 		char name[128];
-		if (sscanf(line, "%*s %127s", name) != 1) continue;
+		int id;
+		if (sscanf(line, "%d %127s", &id, name) != 2) continue;
 		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
 			snprintf(bt, sizeof bt, "%s", name);
 		else if (!strncmp(name, "alsa_output.usb-", 16) && !usb[0])
 			snprintf(usb, sizeof usb, "%s", name);
-		else if (!strncmp(name, "alsa_output.", 12) && !builtin[0])
+		else if (!strncmp(name, "alsa_output.", 12) && !builtin[0]) {
 			snprintf(builtin, sizeof builtin, "%s", name);
+			if (id != speaker_id) {
+				__atomic_store_n(&speaker_id, id, __ATOMIC_RELEASE);
+				__atomic_store_n(&speaker_fresh, true, __ATOMIC_RELEASE);
+			}
+		}
 	}
 	pclose(f);
 	if ((f = popen("pactl get-default-sink 2>/dev/null", "r"))) {
@@ -1138,6 +1180,9 @@ static void route_eval(int *on)
 	else if (usb[0])                     want = usb;
 	else                                 want = bt;
 	*on = want == usb ? ON_USB : want == bt ? ON_BT : ON_BUILTIN;
+	__atomic_store_n(&route_on_speaker, *on == ON_BUILTIN, __ATOMIC_RELAXED);
+	/* Not from an empty list: pactl answers nothing before pipewire-pulse is up. */
+	if (builtin[0] || bt[0] || usb[0]) __atomic_store_n(&route_known, true, __ATOMIC_RELEASE);
 	/* Muted before the default moves, so a stream never reaches it unmuted. */
 	if (want != builtin) route_hold = false;
 	speaker_mute(builtin, want != builtin || route_hold);
@@ -1226,6 +1271,15 @@ void plat_sink_follow(bool game)
 	unsigned now = plat_now_ms();
 
 	__atomic_store_n(&route_music, musec_heard(), __ATOMIC_RELAXED);
+	/* In a game too, at the game's level: the level is unchanged, only
+	 * copied down, so it is no fight with Diatom's ownership. */
+	if (have >= 0 && __atomic_exchange_n(&speaker_fresh, false, __ATOMIC_ACQUIRE)) {
+		seen = -1;
+		fprintf(stderr, "audio: new speaker sink %d, level %d\n",
+		        __atomic_load_n(&speaker_id, __ATOMIC_RELAXED), have);
+		speaker_resync(have);
+		return;
+	}
 	if (want < 0 || have < 0 || want == have) { seen = -1; return; }
 	if (want != seen) { seen = want; since = now; return; }
 	if (now - since < 500) return;
@@ -1233,6 +1287,36 @@ void plat_sink_follow(bool game)
 	fprintf(stderr, "audio: output is at level %d, was %d\n", want, have);
 	if (game) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", want, VOL_MAX + 1);
 	else      plat_volume_nudge(want - have);
+}
+
+/* Before a game starts: the speaker re-synced at the player's level, so no
+ * game's sound can start on a sink that plays at another (plorpos-3yv.63).
+ * A headset or DAC keeps its own level, so only the speaker waits. With no
+ * speaker sink inside `ms` there is nothing to be heard on; one that comes
+ * later is re-synced by plat_sink_follow as it appears. */
+void plat_audio_settle(unsigned ms)
+{
+	unsigned t0 = plat_now_ms();
+
+	if (cur_vol < 0) return;
+	while (plat_now_ms() - t0 < ms) {
+		if (__atomic_load_n(&route_known, __ATOMIC_ACQUIRE)) {
+			int id = __atomic_load_n(&speaker_id, __ATOMIC_ACQUIRE);
+			if (!__atomic_load_n(&route_on_speaker, __ATOMIC_RELAXED)) return;
+			if (__atomic_exchange_n(&speaker_fresh, false, __ATOMIC_ACQUIRE)) {
+				fprintf(stderr, "audio: new speaker sink %d, level %d\n", id, cur_vol);
+				speaker_resync(cur_vol);
+			}
+			if (id >= 0 && __atomic_load_n(&speaker_synced, __ATOMIC_ACQUIRE) == id) {
+				if (plat_now_ms() - t0 >= 100)
+					fprintf(stderr, "audio: speaker %d re-synced after %u ms\n",
+					        id, plat_now_ms() - t0);
+				return;
+			}
+		}
+		usleep(20 * 1000);
+	}
+	fprintf(stderr, "audio: speaker not re-synced after %u ms\n", ms);
 }
 
 /* A headset's buttons, platform_gkd.c's: BlueZ gives each AVRCP headset a

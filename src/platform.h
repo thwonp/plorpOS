@@ -478,6 +478,7 @@ void plat_audio_speaker_only(bool on);
 bool plat_bt_audio(void);
 bool plat_usb_audio(void);          /* a USB DAC's sink exists */
 void plat_sink_follow(bool game);   /* a headset's own volume -> the level */
+void plat_audio_settle(unsigned ms); /* before a game: the speaker at the level */
 #endif
 /* kind: 1 = brightness, 2 = volume */
 void plat_osd_show(int kind, int val, int max);

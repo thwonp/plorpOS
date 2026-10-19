@@ -948,6 +948,9 @@ void plat_settings_init(void)
 void plat_audio_jack_poll(void) { }
 bool plat_headphones_present(void) { return __atomic_load_n(&jack_in, __ATOMIC_RELAXED); }
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
+/* The Rotate's speaker check (plorpos-3yv.63); whether the GKD needs it is
+ * plorpos-3yv.67. */
+void plat_audio_settle(unsigned ms) { (void)ms; }
 bool plat_muted(void) { return false; }
 /* No switch: Muse Settings' Sleep Button Lock stands in for the Brick's
  * switch held down in button lock (gkd.34), under the same db key. */
