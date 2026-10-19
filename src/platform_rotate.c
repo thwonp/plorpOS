@@ -201,6 +201,11 @@ static bool place(pid_t pid, bool on_screen);
 
 void plat_present(SDL_Renderer *r)
 {
+	/* sway shares plorpos.service and takes the same SIGTERM, so a present
+	 * during shutdown waits on a frame callback from a compositor that has
+	 * gone - SDL spins in wl_display_prepare_read_queue until systemd's 90 s
+	 * SIGKILL (plorpos-3yv.65: after a game, launch_one's black frame). */
+	if (g_terminating) return;
 	ui_hit_frame();   /* a tap now means what this frame shows */
 	SDL_RenderPresent(r);
 	/* The menu's first frame is up: only now does the paused game go
