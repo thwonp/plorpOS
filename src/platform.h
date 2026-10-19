@@ -289,6 +289,9 @@ void        plat_hotkey_modifier_set(const char *wire);
  * its mode or rect can change, settling included (its ADR-0022), so the last
  * one heard is current. */
 bool plat_resident_rect(SDL_Rect *out);
+/* The mode Diatom said it is drawing in, the same way: a DS's Display Mode
+ * hotkey changes it under the launcher (plorpos-3yv.62). NULL until said. */
+const char *plat_resident_mode(void);
 /* Draw the paused game's preview where Diatom is drawing the game, or over the
  * whole screen until it has said. Diatom's rect is in the panel's own
  * pixels, which are layout units only where plat_scale() is 1. */

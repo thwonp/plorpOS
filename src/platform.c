@@ -798,6 +798,7 @@ static size_t dused;
 static char   d_preview[1024];
 static SDL_Rect d_rect;
 static bool     d_rect_known;
+static char     d_mode[24];     /* DISPLAY's mode=, "" until said */
 static int    d_pend_vol = -1, d_pend_vol_n;      /* LEVEL events, held until */
 static int    d_pend_bri = -1, d_pend_bri_n;      /* EXIT hands levels back  */
 /* Diatom's QUIET, its ADR-0032: what the launcher wants, and what this
@@ -1035,6 +1036,7 @@ bool plat_resident_send(const plat_game *g)
 		if (!dconnect()) return false;
 		d_preview[0] = '\0';
 		d_rect_known = false;
+		d_mode[0] = '\0';
 		d_pend_vol = d_pend_bri = -1;
 
 		/* Before RUN, not after. mgba_sgb_borders and mgba_use_bios are both
@@ -1343,14 +1345,17 @@ static void d_note_turbo(const char *l)
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
 static void d_note_display(const char *l)
 {
-	const char *r = strstr(l, "rect=");
+	const char *r = strstr(l, "rect="), *m = strstr(l, "mode=");
 	int w, h, x, y;
 
+	if (m) snprintf(d_mode, sizeof d_mode, "%.*s", (int)strcspn(m + 5, "\t\n"), m + 5);
 	if (!r || sscanf(r + 5, "%dx%d+%d+%d", &w, &h, &x, &y) != 4) return;
 	if (w <= 0 || h <= 0) return;
 	d_rect.w = w; d_rect.h = h; d_rect.x = x; d_rect.y = y;
 	d_rect_known = true;
 }
+
+const char *plat_resident_mode(void) { return d_mode[0] ? d_mode : NULL; }
 
 bool plat_resident_rect(SDL_Rect *out)
 {

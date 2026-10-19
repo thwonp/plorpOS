@@ -143,7 +143,7 @@ static const db_default library_defaults[] = {
 #endif
 #if defined(PLATFORM_ROTATE)
 	/* The Nintendo DS (plorpos-3yv.47): melonDS DS stacks the two screens
-	 * top over bottom in one frame and Diatom lays them out (Layout A/B,
+	 * top over bottom in one frame and Diatom lays them out (Display Mode,
 	 * its ds-a/ds-b); one layout, no gap, so the frame is always that
 	 * shape. The panel is the stylus: touch mode, and no cursor drawn
 	 * over the bottom screen. JIT and the threaded renderer are what hold
@@ -157,7 +157,7 @@ static const db_default library_defaults[] = {
 	{ "coreopt.NDS.melonds_render_mode",               "software" },
 	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
 	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
-	/* Swap Screens on Menu+X out of the box: the DS's own X stays a game
+	/* Display Mode on Menu+X out of the box: the DS's own X stays a game
 	 * button alone (plorpos-3yv.47). */
 	{ "hotkey.NDS",                                    "x:swap" },
 #endif

@@ -152,8 +152,12 @@ static const struct { const char *name, *label; } DMODES[] = {
 	/* The Nintendo DS's two-screen layouts (plorpos-3yv.47), and the only
 	 * modes its shelf offers - none of the three above mean anything for a
 	 * frame that is two screens. See dmode_step. */
-	{ "ds-a",    "Layout A" },
-	{ "ds-b",    "Layout B" },
+	/* Display Mode (plorpos-3yv.62): the top screen big, the bottom one
+	 * big, or the two the same size. Ids are Diatom's and are what is
+	 * saved, so a card set to the old Layout A/B keeps its choice. */
+	{ "ds-a",      "Focus Top" },
+	{ "ds-a-swap", "Focus Bottom" },
+	{ "ds-b",      "Even Split" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -357,7 +361,7 @@ static void display_load(app *a)
 		for (k = 0; k < DMODE_COUNT; k++)
 			if (!strcmp(DMODES[k].name, name)) { a->view[i].dmode = k; break; }
 	}
-	/* Each system inside its own slice (Layout A for a DS never set). */
+	/* Each system inside its own slice (Focus Top for a DS never set). */
 	for (i = 0; i < a->sys.count; i++)
 		a->view[i].dmode = dmode_step(a->sys.systems[i].tag, a->view[i].dmode, 0);
 }
@@ -8821,6 +8825,18 @@ static void game_switch(app *a)
 
 /* Change the mode, keep it, tell the running game, and take back the rect so
  * the backdrop behind the menu redraws where the game is about to be. */
+/* The mode the paused game is drawn in: Diatom's word for it when it has
+ * said, since the DS's Display Mode hotkey changes it for that run only
+ * (plorpos-3yv.62); else the saved one. */
+static int gm_dmode_now(const sysview *v)
+{
+	const char *m = plat_resident_mode();
+
+	for (int k = 0; m && k < DMODE_COUNT; k++)
+		if (!strcmp(DMODES[k].name, m)) return k;
+	return v->dmode;
+}
+
 static void gm_cycle_display(app *a, int d)
 {
 	/* The OWNER's, so a mode chosen while playing a favorite is set for the
@@ -8829,7 +8845,9 @@ static void gm_cycle_display(app *a, int d)
 	 * by every game launched from there, whatever machine it came from. */
 	sysview *v = owner_view(a);
 
-	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode, d);
+	/* From what is on screen, which a DS's Display Mode hotkey may have
+	 * moved on from the saved one (plorpos-3yv.62). */
+	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, gm_dmode_now(v), d);
 	display_save(a);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[v->dmode].name);
 	plat_resident_sync_rect(150);
@@ -8844,7 +8862,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	/* The owner's, the mode gm_cycle_display changes: on Favorites the
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
-	u.dmode  = DMODES[owner_view(a)->dmode].label;
+	u.dmode  = DMODES[gm_dmode_now(owner_view(a))].label;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
 	u.shaders = a->shaders.count > 1;
 	{
@@ -10622,8 +10640,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[128];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Swap Screens is the DS's, its last action row; elsewhere the screen is
-	 * a row shorter (plorpos-3yv.47). */
+	/* Display Mode is the DS's, its last action row; elsewhere the screen is
+	 * a row shorter (plorpos-3yv.47, .62). */
 	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 1;
 	const int RW_ROW = FIRST_ACT + nact, NROWS = RW_ROW + 1;
 	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
