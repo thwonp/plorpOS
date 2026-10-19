@@ -7009,10 +7009,12 @@ static bool stats_screen(app *a)
 			 * is not row 3 of anything else. */
 			bool changed = false;
 
-			if (in_repeat(&a->in, IN_RIGHT)) {
+			/* The footer says L/R, and the shoulders are what a player
+			 * reaches for; the d-pad's left/right stay (plorpos-3yv.64). */
+			if (in_repeat(&a->in, IN_RIGHT) || in_repeat(&a->in, IN_R1)) {
 				win = (win + 1) % STATS_WINDOWS; changed = true;
 			}
-			if (in_repeat(&a->in, IN_LEFT)) {
+			if (in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_L1)) {
 				win = (win + STATS_WINDOWS - 1) % STATS_WINDOWS;
 				changed = true;
 			}
