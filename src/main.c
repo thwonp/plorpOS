@@ -157,19 +157,22 @@ static const struct { const char *name, *label; } DMODES[] = {
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
-/* UI Settings > Font (plorpos-8m1.3): the body face - menu items, game
- * titles, notes; the headings stay Fredoka (head.ttf). Files beside menu.ttf
- * (P_FONT), which is Quicksand, the default; each with the width correction
- * that makes a line of it as wide as Josefin Sans' (ui.c). */
+/* UI Settings > Header Font and Body Font (plorpos-8m1.3, plorpos-3yv.60):
+ * the same four faces for the headings - titles, menu headings, cards - and
+ * for the body - menu items, game titles, notes. Defaults Fredoka over
+ * Quicksand, the look before there was a choice. Files beside menu.ttf
+ * (P_FONT); each with the width correction that makes a line of it as wide
+ * as Josefin Sans' (ui.c). */
 static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
+	{ "fredoka",   "Fredoka",      "head.ttf",    1.00f },
 	{ "josefin",   "Josefin Sans", "josefin.ttf", 1.00f },
 	{ "quicksand", "Quicksand",    "menu.ttf",    0.98f },
 	{ "lato",      "Lato",         "lato.ttf",    1.03f },
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
-static int g_font = 1;
+static int g_head = 0, g_font = 2;
 
-static void font_apply(int k)
+static void font_apply(bool head, int k)
 {
 	char path[512];
 	const char *slash = strrchr(P_FONT, '/');
@@ -177,8 +180,8 @@ static void font_apply(int k)
 	snprintf(path, sizeof path, "%.*s%s", slash ? (int)(slash - P_FONT + 1) : 0,
 	         P_FONT, FONTS[k].file);
 	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
-	g_font = k;
-	ui_set_body(path, FONTS[k].scale);
+	*(head ? &g_head : &g_font) = k;
+	ui_set_face(head, path, FONTS[k].scale);
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   3
@@ -4900,6 +4903,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
 		u.font      = FONTS[g_font].name;
+		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
@@ -7803,11 +7807,14 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* The body face, applied at once: the fonts are reopened under the open
-	 * menu, and the shelf's cards - some carry text - drawn again. */
-	if (sel == US_FONT && (d || key == IN_ACCEPT)) {
-		font_apply((g_font + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
-		db_set_str(db_dev(), "font", FONTS[g_font].id);
+	/* A face, applied at once: the fonts are reopened under the open menu,
+	 * and the shelf's cards - some carry text - drawn again. */
+	if ((sel == US_FONT || sel == US_HEADFONT) && (d || key == IN_ACCEPT)) {
+		bool head = sel == US_HEADFONT;
+		int *k = head ? &g_head : &g_font;
+
+		font_apply(head, (*k + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
+		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
 		free_all_textures(a);
 		prime_sys_window(a);
 		return MENU_STAY;
@@ -14560,7 +14567,10 @@ int main(int argc, char *argv[])
 
 		db_get_str(db_dev(), "font", id, sizeof id, "quicksand");
 		for (k = 0; k < FONT_COUNT; k++)
-			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(k);
+			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(false, k);
+		db_get_str(db_dev(), "headfont", id, sizeof id, "fredoka");
+		for (k = 0; k < FONT_COUNT; k++)
+			if (!strcmp(FONTS[k].id, id) && k != g_head) font_apply(true, k);
 	}
 	t_mark("font+settings");
 

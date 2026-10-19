@@ -47,9 +47,10 @@ static bool is_head(int role)
 {
 	return role == UI_F_TITLE || role == UI_F_LABEL || role == UI_F_CARD;
 }
-/* UI Settings > Font: set by ui_set_body, used by ui_init. */
-static char  body_path[512];
-static float body_scale = BODY_SCALE;
+/* UI Settings > Header Font and Body Font (plorpos-8m1.3, plorpos-3yv.60):
+ * set by ui_set_face, used by ui_init. Empty = the shipped face. */
+static char  head_path[512], body_path[512];
+static float head_scale = HEAD_SCALE, body_scale = BODY_SCALE;
 static const float font_mul[UI_F_COUNT] = {
 	[UI_F_TITLE] = 1.62f,   /* 52 */
 	[UI_F_MENU]  = 1.34f,   /* 43 */
@@ -135,9 +136,10 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 		snprintf(head, sizeof head, "%.*shead.ttf",
 		         slash ? (int)(slash - font_path + 1) : 0, font_path);
 		if (access(head, R_OK) != 0) snprintf(head, sizeof head, "%s", font_path);
+		if (head_path[0]) snprintf(head, sizeof head, "%s", head_path);
 		for (i = 0; i < UI_F_COUNT; i++) {
 			const char *path = is_head(i) ? head : body_path[0] ? body_path : font_path;
-			float k = is_head(i) ? HEAD_SCALE : body_scale;
+			float k = is_head(i) ? head_scale : body_scale;
 			int pt = (int)(FONT_BASE * font_mul[i] * k * ts + 0.5f);
 
 			fonts[i] = TTF_OpenFont(path, pt);
@@ -165,22 +167,24 @@ void ui_quit(void)
 	TTF_Quit();
 }
 
-void ui_set_body(const char *path, float scale)
+void ui_set_face(bool head, const char *path, float scale)
 {
+	char *kept = head ? head_path : body_path;
+	float *k = head ? &head_scale : &body_scale;
 	int i;
 
-	snprintf(body_path, sizeof body_path, "%s", path ? path : "");
-	body_scale = scale > 0 ? scale : BODY_SCALE;
+	snprintf(kept, sizeof body_path, "%s", path ? path : "");
+	*k = scale > 0 ? scale : head ? HEAD_SCALE : BODY_SCALE;
 	if (!fonts[UI_F_MENU]) return;            /* not open yet: ui_init will */
+	if (!kept[0]) return;
 	for (i = 0; i < UI_F_COUNT; i++) {
-		const char *p = body_path[0] ? body_path : font_path_kept;
 		int pt;
 		TTF_Font *f;
 
-		if (is_head(i)) continue;
-		pt = (int)(FONT_BASE * font_mul[i] * body_scale * ts + 0.5f);
-		if (!(f = TTF_OpenFont(p, pt))) {
-			fprintf(stderr, "font %s @%d: %s\n", p, pt, TTF_GetError());
+		if (is_head(i) != head) continue;
+		pt = (int)(FONT_BASE * font_mul[i] * *k * ts + 0.5f);
+		if (!(f = TTF_OpenFont(kept, pt))) {
+			fprintf(stderr, "font %s @%d: %s\n", kept, pt, TTF_GetError());
 			continue;                         /* keep the face it had */
 		}
 		TTF_CloseFont(fonts[i]);
