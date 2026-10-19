@@ -10,6 +10,10 @@ static const char *const NAMES[CTL_PAGES] = {
 	[CTL_GAME]     = "In a game",
 	[CTL_MUSE]     = "In Muse",
 	[CTL_ANYWHERE] = "Anywhere",
+#ifdef PLATFORM_ROTATE
+	[CTL_TOUCH]      = "Touch",
+	[CTL_TOUCH_MORE] = "More touch",
+#endif
 };
 
 const char *ctl_page_name(ctl_page p)
@@ -113,6 +117,41 @@ static int anywhere(menu_row *out)
 	return n;
 }
 
+#ifdef PLATFORM_ROTATE
+/* What touch_at, touch_drag and touch_poll make of a finger: a tile comes into
+ * focus and opens on a second tap, a menu row is chosen at once
+ * (plorpos-3yv.56), and a hold, two fingers and three are Y, X and MENU on
+ * what is under them. */
+static int touch(menu_row *out)
+{
+	int n = 0;
+
+	out[n++] = (menu_row){ "Tap a tile",    "Focus, then open", false };
+	out[n++] = (menu_row){ "Tap a row",     "Choose it",        false };
+	out[n++] = (menu_row){ "Drag or flick", "Move",             false };
+	out[n++] = (menu_row){ "Hold",          "Favorite, as Y",   false };
+	out[n++] = (menu_row){ "Two fingers",   "Game details",     false };
+	out[n++] = (menu_row){ "Three fingers", "Menu",             false };
+	return n;
+}
+
+/* The edges - the sides anywhere but a game, the top and bottom in a game
+ * too (gesture_read) - the switcher's cards (plorpos-gl5.5, plorpos-3yv.57),
+ * and the DS's lower screen, which is the game's (plorpos-3yv.47). */
+static int touch_more(menu_row *out)
+{
+	int n = 0;
+
+	out[n++] = (menu_row){ "Side edge in",     "Back",          false };
+	out[n++] = (menu_row){ "Top edge down",    "Muse",          false };
+	out[n++] = (menu_row){ "Bottom edge up",   "Recent",        false };
+	out[n++] = (menu_row){ "Recent: card up",  "Remove",        false };
+	out[n++] = (menu_row){ "Recent: card down", "Play",         false };
+	out[n++] = (menu_row){ "DS lower screen",  "DS touch",      false };
+	return n;
+}
+#endif
+
 int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 {
 	int n;
@@ -122,6 +161,10 @@ int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 	case CTL_GAME:     n = game(out);        break;
 	case CTL_MUSE:     n = muse(out);        break;
 	case CTL_ANYWHERE: n = anywhere(out);    break;
+#ifdef PLATFORM_ROTATE
+	case CTL_TOUCH:      n = touch(out);      break;
+	case CTL_TOUCH_MORE: n = touch_more(out); break;
+#endif
 	default:           n = moving(dir, out); break;
 	}
 	/* The page is one of several and says so, the way Play Time's footer names
