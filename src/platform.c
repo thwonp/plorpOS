@@ -912,7 +912,14 @@ unsigned plat_resident_generation(void) { return d_generation; }
  * only after. A launch that gave it 400 ms, as every caller once did, lost
  * that race on every resume at power-on and fell back to a standalone
  * emulator, where Menu ends the game (plorpos-7ny.34). */
-static bool dconnect_within(unsigned ready_ms)
+/* `connect_ms`: how long to wait for the socket to exist at all. No file
+ * yet is a Diatom still starting - launch.sh removes the socket and starts
+ * it only once the speaker's sink is up, up to 5 s on the Rotate - and a
+ * resume at power-on gets here ~0.4 s into the launcher. Without the wait
+ * it fell back to a standalone emulator every time (plorpos-3yv.66), the
+ * case ready_ms was meant to remove. A dead Diatom leaves its file, which
+ * refuses at once, so that fallback is still immediate. */
+static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 {
 	struct sockaddr_un a;
 	const char *path = plat_resident_socket();
@@ -936,7 +943,13 @@ static bool dconnect_within(unsigned ready_ms)
 	memset(&a, 0, sizeof a);
 	a.sun_family = AF_UNIX;
 	snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
-	if (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) { dclose(); return false; }
+	t0 = plat_now_ms();
+	while (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) {
+		if (errno != ENOENT || plat_now_ms() - t0 >= connect_ms) { dclose(); return false; }
+		usleep(50 * 1000);
+	}
+	if (plat_now_ms() - t0 >= 100)
+		fprintf(stderr, "diatom: socket up after %u ms\n", plat_now_ms() - t0);
 
 	t0 = plat_now_ms();
 	while (dsock >= 0 && plat_now_ms() - t0 < ready_ms &&
@@ -960,7 +973,7 @@ static bool dconnect_within(unsigned ready_ms)
 	return false;
 }
 
-static bool dconnect(void) { return dconnect_within(400); }
+static bool dconnect(void) { return dconnect_within(0, 400); }
 
 bool plat_resident_ready(void)
 {
@@ -969,7 +982,7 @@ bool plat_resident_ready(void)
 
 bool plat_resident_ready_wait(void)
 {
-	return dconnect_within(8000);
+	return dconnect_within(6000, 8000);
 }
 
 
