@@ -29,12 +29,12 @@
 /* Five pages, because six rows is what a panel holds under its heading and
  * the shelf's seven buttons do not fit on one: the pad and the shoulders move
  * you, the face buttons act on what you moved to. */
-/* The Rotate's touch panel has two more, from its gestures as
+/* The Rotate's touch panel has one more, from its gestures as
  * platform_rotate.c reads them (plorpos-3yv.59). */
 typedef enum {
 	CTL_MOVING, CTL_SHELF, CTL_GAME, CTL_MUSE, CTL_ANYWHERE,
 #ifdef PLATFORM_ROTATE
-	CTL_TOUCH, CTL_TOUCH_MORE,
+	CTL_TOUCH,
 #endif
 	CTL_PAGES
 } ctl_page;
