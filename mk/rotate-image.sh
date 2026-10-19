@@ -77,6 +77,10 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
+	# No text consoles to set a font on (plorpos-3yv.49.2): its setfont
+	# repaints fbcon and wipes the kernel boot logo.
+	ln -sf /dev/null /r/etc/systemd/system/console-setup.service
+	ln -sf /dev/null /r/etc/udev/rules.d/90-console-setup.rules
 	# Wi-Fi is the launcher'"'"'s (plorpos-3yv.17): not netplan'"'"'s, and not the
 	# D-Bus wpa_supplicant either, which owns no interface here.
 	rm -f /r/etc/netplan/20-wifi.yaml
