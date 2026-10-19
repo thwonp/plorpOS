@@ -1140,9 +1140,44 @@ static void speaker_mute(const char *builtin, bool mute)
 	pactl_run(argv);
 }
 
+/* A headset or DAC is a new node too, at 1.0 until WirePlumber's restore
+ * reaches it - and it can miss, as the speaker's did (plorpos-3yv.63): IEMs on
+ * a DAC at 100% is hearing damage (plorpos-3yv.68). So each new one gets a
+ * real change and back at its own stored level - the route, which wpctl
+ * reads; pactl reads the node - before it can become the default. wpctl
+ * takes the object id, which only pactl's long list gives by name. */
+static void sink_resync(const char *name)
+{
+	char line[256], id[16] = "";
+	bool mine = false;
+	FILE *f = popen("pactl list sinks 2>/dev/null", "r");
+
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		char *v = strstr(line, "Name: ");
+		if (v) { v += 6; v[strcspn(v, "\n")] = '\0'; mine = !strcmp(v, name); }
+		else if (mine && (v = strstr(line, "object.id = \"")) && !id[0])
+			snprintf(id, sizeof id, "%.*s", (int)strcspn(v + 13, "\""), v + 13);
+	}
+	pclose(f);
+	if (!id[0]) { fprintf(stderr, "audio: no id for %s, not re-synced\n", name); return; }
+	{
+		char *up[] = { "wpctl", "set-volume", id, "0.01+", NULL };
+		char *dn[] = { "wpctl", "set-volume", id, "0.01-", NULL };
+		pactl_run(up);
+		pactl_run(dn);
+	}
+	fprintf(stderr, "audio: new output %s re-synced\n", name);
+}
+
+static int sink_seen = -1;          /* the newest sink serial route_eval looked at */
+
 static void route_eval(int *on)
 {
+	static char set_last[128];          /* the default this process set last */
 	char line[256], bt[128] = "", usb[128] = "", builtin[128] = "", def[128] = "";
+	char fresh[2][128] = { "", "" };
+	int newest = sink_seen;
 	const char *want;
 	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
 	FILE *f = popen("pactl list short sinks 2>/dev/null", "r");
@@ -1153,6 +1188,12 @@ static void route_eval(int *on)
 		char name[128];
 		int id;
 		if (sscanf(line, "%d %127s", &id, name) != 2) continue;
+		if (id > newest) newest = id;
+		/* pactl's index is the serial: never reused, so newer = new. */
+		if (id > sink_seen && (!strncmp(name, "bluez_output.", 13) ||
+		                       !strncmp(name, "alsa_output.usb-", 16)))
+			for (int i = 0; i < 2; i++)
+				if (!fresh[i][0]) { snprintf(fresh[i], sizeof fresh[i], "%s", name); break; }
 		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
 			snprintf(bt, sizeof bt, "%s", name);
 		else if (!strncmp(name, "alsa_output.usb-", 16) && !usb[0])
@@ -1166,6 +1207,8 @@ static void route_eval(int *on)
 		}
 	}
 	pclose(f);
+	for (int i = 0; i < 2 && fresh[i][0]; i++) sink_resync(fresh[i]);
+	sink_seen = newest;
 	if ((f = popen("pactl get-default-sink 2>/dev/null", "r"))) {
 		if (fgets(def, sizeof def, f)) def[strcspn(def, "\n")] = '\0';
 		pclose(f);
@@ -1191,9 +1234,13 @@ static void route_eval(int *on)
 	/* Muted before the default moves, so a stream never reaches it unmuted. */
 	if (want != builtin) route_hold = false;
 	speaker_mute(builtin, want != builtin || route_hold);
-	if (want[0] && strcmp(want, def)) {
+	/* Also when PipeWire already fell back to it: the default WirePlumber
+	 * keeps is the one last SET, so a DAC that left stays it and on its
+	 * return takes the streams at once, before the re-sync above. */
+	if (want[0] && (strcmp(want, def) || strcmp(want, set_last))) {
 		char *argv[] = { "pactl", "set-default-sink", (char *)want, NULL };
 
+		snprintf(set_last, sizeof set_last, "%s", want);
 		fprintf(stderr, "audio: output %s\n",
 		        want == usb ? "USB DAC" : want == bt ? "bluetooth" : "built-in");
 		pactl_run(argv);
@@ -1212,6 +1259,7 @@ static void *route_worker(void *arg)
 		bool speaker = !route_speaker_only;
 
 		speaker_muted = -1;                     /* a new session: apply afresh */
+		sink_seen = -1;                         /* and its serials start again */
 
 		if (pipe(fd) < 0) { sleep(2); continue; }
 		/* Not posix_spawn: pactl ignores SIGPIPE, so a launcher that died

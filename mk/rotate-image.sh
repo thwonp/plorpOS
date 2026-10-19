@@ -43,7 +43,8 @@ ln -s ../plorpos.service "$O/etc/systemd/system/multi-user.target.wants/plorpos.
 ln -s ../plorpos-firstboot.service \
 	"$O/etc/systemd/system/multi-user.target.wants/plorpos-firstboot.service"
 cp "$ROOT/sd/rotate/image/20-wlan0.network" "$O/etc/systemd/network/"
-cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$O/etc/wireplumber/wireplumber.conf.d/"
+cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$ROOT/sd/rotate/image/99-rotate-volume.conf" \
+	"$O/etc/wireplumber/wireplumber.conf.d/"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -74,7 +75,8 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 	cp -a /w/overlay/. /r/
 	chown -R 0:0 /r/usr/share/plorpos /r/etc/systemd/system/plorpos*.service \
 		/r/etc/systemd/network/20-wlan0.network \
-		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf
+		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf \
+		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
 	# No text consoles to set a font on (plorpos-3yv.49.2): its setfont
