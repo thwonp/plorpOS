@@ -1151,10 +1151,13 @@ static void speaker_mute(const char *builtin, bool mute)
  * real change and back at its own stored level - the route, which wpctl
  * reads; pactl reads the node - before it can become the default. wpctl
  * takes the object id, which only pactl's long list gives by name. */
+#define OUT_CAP 6   /* the highest level a headset or DAC arrives at */
+
 static void sink_resync(const char *name)
 {
 	char line[256], id[16] = "";
 	bool mine = false;
+	int lv = -1;
 	FILE *f = popen("pactl list sinks 2>/dev/null", "r");
 
 	if (!f) return;
@@ -1167,6 +1170,23 @@ static void sink_resync(const char *name)
 	}
 	pclose(f);
 	if (!id[0]) { fprintf(stderr, "audio: no id for %s, not re-synced\n", name); return; }
+	snprintf(line, sizeof line, "wpctl get-volume %s 2>/dev/null", id);
+	if ((f = popen(line, "r"))) {
+		float v;
+		if (fscanf(f, "Volume: %f", &v) == 1) lv = (int)(v * VOL_MAX + 0.5f);
+		pclose(f);
+	}
+	/* Its stored level can be a loud one - the user's DAC came back at 10 -
+	 * so never above OUT_CAP on arrival (plorpos-3yv.73). The set is itself
+	 * the real change the re-sync needs. */
+	if (lv > OUT_CAP) {
+		char cap[8];
+		char *set[] = { "wpctl", "set-volume", id, cap, NULL };
+		snprintf(cap, sizeof cap, "%.2f", (float)OUT_CAP / VOL_MAX);
+		pactl_run(set);
+		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n", name, OUT_CAP, lv);
+		return;
+	}
 	{
 		char *up[] = { "wpctl", "set-volume", id, "0.01+", NULL };
 		char *dn[] = { "wpctl", "set-volume", id, "0.01-", NULL };
