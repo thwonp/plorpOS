@@ -1615,10 +1615,31 @@ bool plat_sleep_supported(void)
 	return strstr(st, "mem") != NULL && access(POWER_STATE, W_OK) == 0;
 }
 
-bool plat_sleep(void)
+/* wlan0 administratively up - Wi-Fi on in the menu. */
+static bool wlan_up(void)
 {
-	if (!plat_sleep_supported()) return false;
-	sync();
+	char buf[16] = "";
+	int fd = open("/sys/class/net/wlan0/flags", O_RDONLY | O_CLOEXEC);
+	ssize_t n = fd >= 0 ? read(fd, buf, sizeof buf - 1) : -1;
+
+	if (fd >= 0) close(fd);
+	return n > 0 && (strtol(buf, NULL, 16) & 1);   /* IFF_UP */
+}
+
+static void wlan_set(bool up)
+{
+	char *argv[] = { "/sbin/ip", "link", "set", "dev", "wlan0", up ? "up" : "down", NULL };
+	helper(argv);
+}
+
+/* Suspend leaves two things powered that the kernel does not stop: the
+ * panel and display controller (~55 mA - light sleep only zeroes the
+ * backlight) and the Wi-Fi firmware, still associated (~60 mA). 149 mA
+ * suspended with both, 35 mA without (rtcwake runs, plorpos-3yv.72). So the
+ * output goes off and wlan0 down around the write; wpa_supplicant stays and
+ * re-associates in ~4 s after the wake. */
+static bool sleep_mem(void)
+{
 	/* A pending wake source makes the kernel refuse with EBUSY; a few tries
 	 * a second apart get past a stray one, as on the H700. */
 	for (int tries = 0; tries < 5; tries++) {
@@ -1634,6 +1655,23 @@ bool plat_sleep(void)
 		if (power_key_within(1000, 1)) return true;
 	}
 	return false;
+}
+
+bool plat_sleep(void)
+{
+	char *off[] = { "swaymsg", "output * power off", NULL };
+	char *on[]  = { "swaymsg", "output * power on", NULL };
+	bool wifi, ok;
+
+	if (!plat_sleep_supported()) return false;
+	sync();
+	wifi = wlan_up();
+	if (wifi) wlan_set(false);
+	helper(off);
+	ok = sleep_mem();
+	helper(on);
+	if (wifi) wlan_set(true);
+	return ok;
 }
 
 /* ---- battery ---- */
