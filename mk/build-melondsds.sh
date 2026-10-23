@@ -17,6 +17,9 @@
 #    19.7 -> 7.2 MB, serialize 13.7 -> 4.4 ms (savestate minor 1; older states
 #    still load);
 #  - JIT code slices give their pages back when freed (34 MB stayed resident).
+#  - "attempt to restore CPSR under bad mode" at Debug, not Warn: Pokemon
+#    Pearl does it ~750,000 times a second, harmlessly, and Diatom writes every
+#    Warn to the SD card (plorpos-3yv.81/.83).
 #
 # And PGO: profile-guided optimization, trained on the device with the
 # mk/pgo/melondsds.tgz profile (tools/ds-pgo-train.sh regenerates it). The
@@ -36,7 +39,7 @@ SRC=${SRC:-/tmp/tortos-melondsds}
 MODE=${1:-use}
 CORE_PIN=f394adbacb5722ee97c1b37c8064da9a25818310     # JesseTG/melonds-ds v1.4.0
 MELONDS=16f127dbb587a73371827ce79689c5d237c4b59b      # JesseTG/melonDS jtg/fix-uninitialized-opengl
-SHA=85dbaf507d39c99160f75e95dda21436f677995d37de2b4dc275130e79d8a9db
+SHA=b9a11a2894fd1a73b999bb006e161fd6476505b4bf7a569a8dfd408a741f4f81
 IMAGE=rotate-cores-cross
 FLAGS="-mcpu=cortex-a75.cortex-a55"
 

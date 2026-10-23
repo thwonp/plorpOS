@@ -2,15 +2,29 @@ From da721b52f145bc07ab1560f1a3c0576187c378dd Mon Sep 17 00:00:00 2001
 From: plorpOS <noreply@plorpos>
 Date: Sun, 18 Oct 2026 15:16:44 -0400
 Subject: [PATCH] plorpOS: hardware CRC32, DS-mode states hold 4 MiB of main
- RAM, JIT slices release their pages
+ RAM, JIT slices release their pages, CPSR restore warning at Debug
 
 ---
+ src/ARM.cpp           |  2 +-
  src/ARMJIT_Global.cpp |  6 ++++++
  src/CRC32.cpp         | 24 ++++++++++++++++++++++++
  src/NDS.cpp           |  9 ++++++++-
  src/Savestate.h       |  3 ++-
- 4 files changed, 40 insertions(+), 2 deletions(-)
+ 5 files changed, 41 insertions(+), 3 deletions(-)
 
+diff --git a/src/ARM.cpp b/src/ARM.cpp
+index 3937a994..9edc2c6d 100644
+--- a/src/ARM.cpp
++++ b/src/ARM.cpp
+@@ -436,7 +436,7 @@ void ARM::RestoreCPSR()
+         break;
+ 
+     default:
+-        Log(LogLevel::Warn, "!! attempt to restore CPSR under bad mode %02X, %08X\n", CPSR&0x1F, R[15]);
++        Log(LogLevel::Debug, "!! attempt to restore CPSR under bad mode %02X, %08X\n", CPSR&0x1F, R[15]);
+         break;
+     }
+ 
 diff --git a/src/ARMJIT_Global.cpp b/src/ARMJIT_Global.cpp
 index e4aa42f9..1c016a3f 100644
 --- a/src/ARMJIT_Global.cpp
