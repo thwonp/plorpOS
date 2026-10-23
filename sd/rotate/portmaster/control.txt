@@ -1,0 +1,51 @@
+#!/bin/bash
+#
+# plorpOS's PortMaster control.txt (plorpos-3yv.86.2). Unofficial: PortMaster
+# does not know plorpOS, so pm-run.sh copies this over the stock one before
+# every run (a PortMaster self-update puts the stock one back). Every port
+# sources it; modelled on PortMaster's spruce/control.txt.
+#
+# SPDX-License-Identifier: MIT
+
+CUR_TTY=/dev/null
+
+export controlfolder="/mnt/SDCARD/.userdata/shared/portmaster/PortMaster"
+# Ports keep their files in "/$directory/ports/<name>": Roms/Ports on the card
+# (exFAT looks names up case-blind).
+export directory="mnt/SDCARD/Roms"
+
+# Root already: through sudo the Wayland session's environment is lost.
+export ESUDO=""
+export ESUDOKILL="-1"
+export ESUDOKILL2="-1"
+
+SDLDBFILE="$controlfolder/gamecontrollerdb.txt"
+SDLDBUSERFILE="${HOME}/.config/SDL-GameControllerDB/gamecontrollerdb.txt"
+
+# The pad by its SDL GUID, mapped as SDL maps it itself. Without a DEVICE the
+# stock get_controls hands every port the whole 470 KB database, and exporting
+# it fails every exec past the 128 KB argument limit ("Argument list too long").
+get_controls() {
+  DEVICE="19007b94010000000100000000010000"
+  param_device="rgrotate"
+  LOWRES="N"
+  ANALOGSTICKS="$ANALOG_STICKS"
+  export SDL_GAMECONTROLLERCONFIG_FILE="/tmp/gamecontrollerdb.txt"
+  echo "$DEVICE,gpio-keys-gamepad,a:b0,b:b1,x:b2,y:b3,back:b8,guide:b10,start:b9,rightstick:b11,leftshoulder:b4,rightshoulder:b5,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,lefttrigger:b6,righttrigger:b7,platform:Linux," \
+    > "$SDL_GAMECONTROLLERCONFIG_FILE"
+  sdl_controllerconfig="$(< "$SDL_GAMECONTROLLERCONFIG_FILE")"
+}
+
+source $controlfolder/device_info.txt
+source $controlfolder/funcs.txt
+
+# plorpOS runs ports on its sway the way ROCKNIX on Panfrost does, and
+# westonwrap only skips its own compositor for that name (portmaster-spike-findings.md).
+export CFW_NAME="ROCKNIX"
+
+# SDL's PipeWire driver never starts some ports' streams (SDL Sopwith waits on
+# it forever); its pulseaudio one goes through pipewire-pulse.
+export SDL_AUDIODRIVER=pulseaudio
+
+export GPTOKEYB2="$ESUDO env LD_PRELOAD=$controlfolder/libinterpose.${DEVICE_ARCH}.so $controlfolder/gptokeyb2 $ESUDOKILL2"
+export GPTOKEYB="$ESUDO $controlfolder/gptokeyb $ESUDOKILL"

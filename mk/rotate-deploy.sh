@@ -44,6 +44,8 @@ stage() {
 	# The Rotate's own cores and shelves (config/systems-rotate.cfg).
 	cp "$ROOT"/vendor/cores-rotate/*_libretro.so "$S/cores/"
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
+	mkdir -p "$S/rotate/portmaster"
+	cp "$ROOT/sd/rotate/portmaster/"* "$S/rotate/portmaster/"
 	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
 	cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/head.ttf" "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$ROOT/res/singles.png" \
 	   "$ROOT/res/ssl/cacert.pem" "$S/"
