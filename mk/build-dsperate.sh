@@ -16,7 +16,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-/tmp/tortos-dsperate}
-REPO=${DSPERATE_LR:-$HOME/projects/git/dsperate-lr}
+REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
 LR=a262c505fd1a78551c72d49ca40475fd4a39d697        # dsperate-lr, DSperate v3.0.5
 SHA=0660843b26861291727f5efdddae95d6e7e3ac6fc3dac07c81bde117d1c179f7
 IMAGE=dsperate-lr-cross
