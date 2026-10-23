@@ -73,14 +73,15 @@ fi
 UUID=$(awk '$2 == "/" { sub("UUID=", "", $1); print $1 }' "$W/fstab")
 
 # 2b. p2 as Armbian ships it plus the plorpOS kernel, DT and extlinux.conf:
-#    no dev kernels or backups, and no initramfs with firmware in it -
+#    no dev kernels or backups, no first-boot markers (plorpos-fw.done
+#    would skip the firmware setup), and no initramfs with firmware in it -
 #    Armbian's initrd.img/uInitrd (regenerated with agdsp; nothing boots
 #    them) go, and initrd-fw.cpio.gz becomes dev/console + pm_bootcode,
 #    which plorpos-firmware.sh rewrites on the first boot.
 echo "image: stripping p2"
 cp "$W/p2.img" "$W/p2-out.img"
 mdir -i "$W/p2-out.img" -/ -b ::/ | grep -E \
-	'^::/(Image-plorpos(\.uimg\..+)?|initrd-fw\.cpio\.gz\..+|initrd\.img-.+|uInitrd|dtb/sprd/.+\.dtb\..+|extlinux/extlinux\.conf\..+)$' |
+	'^::/(Image-plorpos(\.uimg\..+)?|initrd-fw\.cpio\.gz\..+|plorpos-fw\..+|initrd\.img-.+|uInitrd|dtb/sprd/.+\.dtb\..+|extlinux/extlinux\.conf\..+)$' |
 	xargs -r mdel -i "$W/p2-out.img"
 KBUILD=${KBUILD:-$HOME/projects/git/build-ums512}
 sh "$ROOT/mk/rotate-pm-bootcode.sh" "$W/pm_bootcode.bin" > /dev/null
