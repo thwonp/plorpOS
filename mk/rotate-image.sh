@@ -30,20 +30,23 @@ ssh_() { ssh -n -i "$KEY" -o IdentitiesOnly=yes "$HOST" "$@"; }
 mkdir -p "$W"
 rm -rf "$W/overlay"
 # 1. What plorpOS adds to the rootfs: the plorpOS folder to seed the card
-#    with, the session and first-boot units (enabled), the data partition's
-#    mount, no getty on tty1, and the CM4 boot code built from source
-#    (mk/rotate-pm-bootcode.sh).
+#    with, the session, first-boot and firmware units (enabled), the data
+#    partition's mount, no getty on tty1, and the CM4 boot code built from
+#    source (mk/rotate-pm-bootcode.sh).
 O=$W/overlay
 mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants" \
 	"$O/etc/systemd/network" "$O/etc/wireplumber/wireplumber.conf.d" "$O/usr/lib/firmware/sprd"
 sh "$ROOT/mk/rotate-pm-bootcode.sh" "$O/usr/lib/firmware/sprd/pm_bootcode.bin" > /dev/null
 ROTATE_STAGE="$O/usr/share/plorpos/plorpOS" sh "$ROOT/mk/rotate-deploy.sh" stage
-cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$O/usr/share/plorpos/"
+cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$ROOT/sd/rotate/image/plorpos-firmware.sh" \
+	"$O/usr/share/plorpos/"
 cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.service" \
-	"$O/etc/systemd/system/"
+	"$ROOT/sd/rotate/image/plorpos-firmware.service" "$O/etc/systemd/system/"
 ln -s ../plorpos.service "$O/etc/systemd/system/multi-user.target.wants/plorpos.service"
 ln -s ../plorpos-firstboot.service \
 	"$O/etc/systemd/system/multi-user.target.wants/plorpos-firstboot.service"
+ln -s ../plorpos-firmware.service \
+	"$O/etc/systemd/system/multi-user.target.wants/plorpos-firmware.service"
 cp "$ROOT/sd/rotate/image/20-wlan0.network" "$O/etc/systemd/network/"
 cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$ROOT/sd/rotate/image/99-rotate-volume.conf" \
 	"$O/etc/wireplumber/wireplumber.conf.d/"

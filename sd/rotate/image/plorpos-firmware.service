@@ -1,0 +1,17 @@
+# The RG Rotate card: this unit's audio and sleep firmware into the boot
+# initrd, then power off, on the first boot only
+# (sd/rotate/image/plorpos-firmware.sh). Skipped once it has run.
+[Unit]
+Description=plorpOS audio and sleep firmware
+After=local-fs.target rotate-extract-firmware.service plorpos-firstboot.service
+Before=plorpos.service
+ConditionPathExists=!/boot/plorpos-fw.done
+ConditionPathExists=!/boot/plorpos-fw.failed
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/share/plorpos/plorpos-firmware.sh
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
