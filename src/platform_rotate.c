@@ -278,6 +278,7 @@ bool plat_input_init(void)
 #define TOUCH_SWIPE_PX  60     /* farther than this is a swipe: the first step */
 #define TOUCH_STEP_PX   200    /* then each this much farther, one more */
 #define TOUCH_HOLD_MS   500
+#define TOUCH_SLOP_PX   30     /* a tap or long press never strayed farther than this */
 #define TOUCH_EDGE_PX   32     /* a touch starting this close to a side is back */
 #define FLICK_MIN_PX    200    /* a flick has come this far: shorter is a nudge */
 #define FLICK_MIN_PXMS  3.0f   /* lifted moving this fast (px/ms): it coasts */
@@ -293,6 +294,7 @@ static struct {
 	float  x0, y0, x, y;       /* the first finger, in panel pixels */
 	unsigned t0;
 	bool   held;               /* the long press (or the edge's back) fired */
+	float  far;                /* the farthest the first finger got, squared */
 	int    edge;               /* started at the left side +1, right -1, else 0 */
 	int    vedge;              /* else at the top +1 (Muse), bottom -1, else 0 */
 	int    axis;               /* -1 until the first step, then 0 x / 1 y */
@@ -734,6 +736,7 @@ static void touch_event(const SDL_Event *e)
 			touch.y0 = touch.y = e->tfinger.y * h;
 			touch.t0 = plat_now_ms();
 			touch.held = false;
+			touch.far = 0;
 			touch.axis = -1;
 			touch.steps = 0;
 			touch.caught = touch.coasting;
@@ -748,7 +751,11 @@ static void touch_event(const SDL_Event *e)
 			touch.most = touch.fingers;
 	} else if (e->type == SDL_FINGERMOTION) {
 		if (touch.fingers == 1) {
+			float fx, fy;
+
 			touch.x = e->tfinger.x * w; touch.y = e->tfinger.y * h;
+			fx = touch.x - touch.x0; fy = touch.y - touch.y0;
+			if (fx * fx + fy * fy > touch.far) touch.far = fx * fx + fy * fy;
 			if (touch.free) {
 				unsigned now = plat_now_ms();
 				float mx = touch.x - touch.x0, my = touch.y - touch.y0;
@@ -803,7 +810,10 @@ static void touch_event(const SDL_Event *e)
 			}
 		} else if (touch.most >= 3) touch_queue(IN_MENU, 1);
 		else if (touch.most == 2)   touch_at(IN_X);
-		else if (!touch.caught)     touch_at(IN_ACCEPT);
+		/* Nor a tap after a slow drag that fell short of a step: it would be A
+		 * on the item under the finger - a launch (plorpos-3yv.69). */
+		else if (!touch.caught && touch.far <= TOUCH_SLOP_PX * TOUCH_SLOP_PX)
+			touch_at(IN_ACCEPT);
 	}
 }
 
@@ -827,16 +837,15 @@ static void touch_poll(in_state *st)
 {
 	if (touch.pulsing) { set_btn(st, touch.up, false); touch.pulsing = false; }
 	if (touch.coasting) touch_coast();
-	/* Not a drag the screen follows itself (touch.free): a slow pull of a
-	 * switcher card is still short of TOUCH_SWIPE_PX at 500 ms, and was a
-	 * Favorite (plorpos-3yv.57). */
+	/* A finger that stayed put: one that wandered is a drag, even a slow
+	 * one still short of TOUCH_SWIPE_PX at 500 ms - a careful pull on a
+	 * shelf was a Favorite (plorpos-3yv.69), a switcher card's the same
+	 * (plorpos-3yv.57, whose touch.moved check stays for its 16 px). */
 	if (touch.fingers == 1 && touch.most == 1 && !touch.held && touch.steps == 0 &&
-	    !(touch.free && touch.moved) && plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
-		float dx = touch.x - touch.x0, dy = touch.y - touch.y0;
-		if (dx * dx + dy * dy <= TOUCH_SWIPE_PX * TOUCH_SWIPE_PX) {
-			touch.held = true;
-			touch_at(IN_Y);
-		}
+	    !(touch.free && touch.moved) && touch.far <= TOUCH_SLOP_PX * TOUCH_SLOP_PX &&
+	    plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
+		touch.held = true;
+		touch_at(IN_Y);
 	}
 	if (touch.qn > 0) {
 		touch.up = touch.queue[0];
