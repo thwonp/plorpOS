@@ -186,8 +186,9 @@ typedef struct {
 	/* The system menu */
 	const char *sys_name;
 	const char *sys_core;
-	/* PICO-8's shelf: the engine's label, shown in Core's place and turned
-	 * over there. NULL on every other shelf, whose Core is a fact. */
+	/* PICO-8's shelf: the engine's label; a shelf with two cores (main.c
+	 * ALT_CORES): the core's. Shown in Core's place and turned over there.
+	 * NULL on every other shelf, whose Core is a fact. */
 	const char *engine;
 	int         game_count;
 	const char *dmode;

@@ -105,6 +105,9 @@ typedef struct {
 	 * than fake08. Zero is fake08, so a card nobody has touched - a new
 	 * install included - plays in diatom. */
 	bool native;
+	/* A shelf with a second core (ALT_CORES) runs that one instead. Zero is
+	 * the shelf's own core from systems.cfg. */
+	bool alt;
 	/* Index into SORTS. Zero is by name, which is what every shelf was
 	 * before this existed and what an untouched one still is. On Muse's
 	 * shelf an ml_order instead, whose zero is by artist. */
@@ -491,30 +494,74 @@ static void disc_save(app *a, int sys, const game_entry *g, int i)
 /* What diatom said when the in-game menu opened: count 0 = no Disc row. */
 static struct { int index, count; char label[24]; } g_disc;
 
-/* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
- * fake08: only a shelf someone has turned to native has one. */
+/* Shelves with a second libretro core the owner can pick in the system
+ * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
+ * that ship are listed: the Rotate's DS pair. */
+static const struct { const char *core, *label, *alt, *alt_label; } ALT_CORES[] = {
+	{ "melondsds", "melonDS DS", "dsperate", "DSperate" },
+};
+
+/* Index into ALT_CORES, or -1 for a shelf with one core. */
+static int alt_core(const system_cfg *s)
+{
+	size_t k;
+
+	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
+		if (!strcmp(s->core, ALT_CORES[k].core)) return (int)k;
+	return -1;
+}
+
+/* The core a shelf's games launch with: its own, or the alternative it was
+ * turned to. */
+static const char *shelf_core(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	int k = alt_core(s);
+
+	return k >= 0 && a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+}
+
+/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
+ * with two. No row means the default (fake08, the shelf's own core): only a
+ * shelf someone has turned has one. */
 static void engine_load(app *a)
 {
 	char key[CFG_STR + 16], name[CFG_STR];
-	int i;
+	int i, k;
 
 	for (i = 0; i < a->sys.count; i++) {
-		if (!is_pico8(&a->sys.systems[i])) continue;
+		k = alt_core(&a->sys.systems[i]);
+		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
-		if (db_get_str(db_dev(), key, name, sizeof name, NULL))
-			a->view[i].native = !strcmp(name, "native");
+		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
+		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
+		else a->view[i].native = !strcmp(name, "native");
 	}
 }
 
 static void engine_save(app *a, int sys)
 {
 	char key[CFG_STR + 16];
+	int k = alt_core(&a->sys.systems[sys]);
 
 	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, a->view[sys].native ? "native" : "fake08");
+	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys)
+	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
+
+/* The Core row's value: PICO-8's engine, the core of a shelf with two, or
+ * NULL for a shelf whose row only reports. */
+static const char *engine_label(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	int k = alt_core(s);
+
+	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
+	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
+	return NULL;
+}
 
 /* ---------- per-system sort order ----------------------------------------- */
 
@@ -1021,12 +1068,27 @@ static const char *slot_name(int slot)
 	return buf;
 }
 
+/* A system's folder under .tortos/: its states and previews. A shelf turned
+ * to its alternative core keeps that core's own beside them, in a folder
+ * named after it - a state is one emulator's, and melonDS DS handed a
+ * DSperate state (or the other way round) can only refuse it. Battery saves
+ * are a raw chip image either core reads, and stay shared in Saves/. */
+static const char *persist_folder(app *a, int s)
+{
+	static char buf[CFG_STR * 2 + 2];
+	const system_cfg *sc = &a->sys.systems[s];
+
+	if (alt_core(sc) < 0 || !a->view[s].alt) return sc->folder;
+	snprintf(buf, sizeof buf, "%s/%s", sc->folder, shelf_core(a, s));
+	return buf;
+}
+
 static void preview_path(app *a, int s, const game_entry *g, char *out, size_t n)
 {
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(SLOT_AUTO));
+	         P_SHARED, persist_folder(a, s), base, slot_name(SLOT_AUTO));
 }
 
 /* Where Diatom writes the frame it hands over, which is NOT the Auto card's
@@ -1063,7 +1125,7 @@ static void slot_state_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.state",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
 }
 
 static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
@@ -1072,7 +1134,7 @@ static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
 }
 
 static void state_path(app *a, int s, const game_entry *g, char *out, size_t n)
@@ -1111,6 +1173,8 @@ static void persist_dir_ensure(app *a, int s)
 	snprintf(d, sizeof d, "%s/.tortos", P_SHARED);
 	mkdir(d, 0755);
 	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, a->sys.systems[s].folder);
+	mkdir(d, 0755);
+	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s));
 	mkdir(d, 0755);
 }
 
@@ -4893,7 +4957,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
-		u.engine     = is_pico8(sc) ? ENGINE_LABEL(a->view[sys].native) : NULL;
+		u.engine     = engine_label(a, sys);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
@@ -7313,6 +7377,15 @@ static int menu_shelf_width(app *a)
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
+		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
+			int c = alt_core(&a->sys.systems[i]), mw;
+
+			for (k = 0; k < 2; k++) {
+				rows[SM_CORE].value = k ? ALT_CORES[c].alt_label : ALT_CORES[c].label;
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
+			}
+		}
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
 			int mw;
 			rows[srow].value = muse ? ml_order_label((ml_order)k, false) : SORTS[k].label;
@@ -7932,15 +8005,17 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * knew that from the day the menu was cut to two rows, and left and
 		 * right on Favorites' Sort By did nothing at all. */
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
-		/* PICO-8's engine, fake08 or the owner's pico8_64. Two values, so
-		 * left, right and A all turn it over, saved at once like Display
-		 * Mode. No check for the binary here: a missing one says so at
-		 * launch, the same as Splore. */
+		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
+		 * shelf with two (ALT_CORES). Two values, so left, right and A all
+		 * turn it over, saved at once like Display Mode. No check for the
+		 * binary here: a missing one says so at launch, the same as Splore. */
 		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
-		    is_pico8(&a->sys.systems[a->sys_cursor])) {
+		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
+		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->native = !v->native;
+			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
+			else v->alt = !v->alt;
 			engine_save(a, a->sys_cursor);
 			return MENU_STAY;
 		}
@@ -12064,7 +12139,7 @@ static void launch_one(app *a)
 
 	if (v->list.count == 0) return;
 
-	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, s->core);
+	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
 	/* Captured once, beside the path it goes into: play time is keyed on the
 	 * launch path the same way favorites are, and reading the cursor again
