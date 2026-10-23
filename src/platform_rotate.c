@@ -1632,6 +1632,36 @@ static void wlan_set(bool up)
 	helper(argv);
 }
 
+/* Bounded: with no bluetoothd, bluetoothctl waits for one forever. */
+static bool bt_powered(void)
+{
+	char *argv[] = { "timeout", "2", "sh", "-c",
+	                 "bluetoothctl show | grep -q 'Powered: yes'", NULL };
+	return helper(argv);
+}
+
+static void bt_set(bool on)
+{
+	char *argv[] = { "timeout", "5", "bluetoothctl", "power", on ? "on" : "off", NULL };
+	helper(argv);
+}
+
+/* The radios come back behind the wake, not in front of it: with wlan0
+ * down the Wi-Fi driver lets the chip power off, and bringing it up again
+ * downloads the firmware - ~1.2 s inside `ip link set up` (plorpos-3yv.74.20)
+ * that the screen and the shelf must not wait for. */
+static pthread_t radios_thread;
+static bool      radios_pending;
+static bool      radios_wifi, radios_bt;
+
+static void *radios_restore(void *unused)
+{
+	(void)unused;
+	if (radios_wifi) wlan_set(true);
+	if (radios_bt)   bt_set(true);
+	return NULL;
+}
+
 /* Suspend leaves two things powered that the kernel does not stop: the
  * panel and display controller (~55 mA - light sleep only zeroes the
  * backlight) and the Wi-Fi firmware, still associated (~60 mA). 149 mA
@@ -1669,17 +1699,33 @@ bool plat_sleep(void)
 	 * wake. A stream that is playing keeps the sink up regardless. 26 ms. */
 	char *quiet[] = { "pactl", "suspend-sink",
 	                  "alsa_output.platform-sound_0.HiFi__Speaker__sink", "1", NULL };
-	bool wifi, ok;
+	bool wifi, bt, ok;
 
 	if (!plat_sleep_supported()) return false;
+	/* A sleep straight after a wake: the last restore first, or wlan0 and
+	 * Bluetooth read as off here and stay off after this wake. */
+	if (radios_pending) {
+		pthread_join(radios_thread, NULL);
+		radios_pending = false;
+	}
 	sync();
 	wifi = wlan_up();
+	/* Bluetooth off too: it holds the chip powered by itself (~0.8 mA
+	 * asleep with Wi-Fi's share gone, plorpos-3yv.74.20), and it lets a
+	 * headset go to a phone instead of the Rotate taking it back. */
+	bt = bt_powered();
 	if (wifi) wlan_set(false);
+	if (bt) bt_set(false);
 	helper(off);
 	helper(quiet);
 	ok = sleep_mem();
 	helper(on);
-	if (wifi) wlan_set(true);
+	radios_wifi = wifi;
+	radios_bt = bt;
+	if ((wifi || bt) && pthread_create(&radios_thread, NULL, radios_restore, NULL) == 0)
+		radios_pending = true;
+	else if (wifi || bt)
+		radios_restore(NULL);
 	return ok;
 }
 
