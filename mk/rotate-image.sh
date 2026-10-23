@@ -31,10 +31,12 @@ mkdir -p "$W"
 rm -rf "$W/overlay"
 # 1. What plorpOS adds to the rootfs: the plorpOS folder to seed the card
 #    with, the session and first-boot units (enabled), the data partition's
-#    mount, and no getty on tty1.
+#    mount, no getty on tty1, and the CM4 boot code built from source
+#    (mk/rotate-pm-bootcode.sh).
 O=$W/overlay
 mkdir -p "$O/usr/share/plorpos" "$O/etc/systemd/system/multi-user.target.wants" \
-	"$O/etc/systemd/network" "$O/etc/wireplumber/wireplumber.conf.d"
+	"$O/etc/systemd/network" "$O/etc/wireplumber/wireplumber.conf.d" "$O/usr/lib/firmware/sprd"
+sh "$ROOT/mk/rotate-pm-bootcode.sh" "$O/usr/lib/firmware/sprd/pm_bootcode.bin" > /dev/null
 ROTATE_STAGE="$O/usr/share/plorpos/plorpOS" sh "$ROOT/mk/rotate-deploy.sh" stage
 cp "$ROOT/sd/rotate/image/plorpos-firstboot.sh" "$O/usr/share/plorpos/"
 cp "$ROOT/sd/rotate/plorpos.service" "$ROOT/sd/rotate/image/plorpos-firstboot.service" \
@@ -76,7 +78,8 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 	chown -R 0:0 /r/usr/share/plorpos /r/etc/systemd/system/plorpos*.service \
 		/r/etc/systemd/network/20-wlan0.network \
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf \
-		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf
+		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf \
+		/r/usr/lib/firmware/sprd/pm_bootcode.bin
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
 	# No text consoles to set a font on (plorpos-3yv.49.2): its setfont
