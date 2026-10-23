@@ -1661,6 +1661,14 @@ bool plat_sleep(void)
 {
 	char *off[] = { "swaymsg", "output * power off", NULL };
 	char *on[]  = { "swaymsg", "output * power on", NULL };
+	/* Diatom lets go of the speaker between games and in its menu, but
+	 * PipeWire keeps an idle sink's PCM open ~5 s before suspending it, and
+	 * a sleep inside that window holds the codec analog on: 8.1 mA asleep
+	 * against 5.4 (plorpos-3yv.74.19.1). Suspending it now closes the PCM;
+	 * the next stream resumes it by itself, so nothing undoes this at the
+	 * wake. A stream that is playing keeps the sink up regardless. 26 ms. */
+	char *quiet[] = { "pactl", "suspend-sink",
+	                  "alsa_output.platform-sound_0.HiFi__Speaker__sink", "1", NULL };
 	bool wifi, ok;
 
 	if (!plat_sleep_supported()) return false;
@@ -1668,6 +1676,7 @@ bool plat_sleep(void)
 	wifi = wlan_up();
 	if (wifi) wlan_set(false);
 	helper(off);
+	helper(quiet);
 	ok = sleep_mem();
 	helper(on);
 	if (wifi) wlan_set(true);
