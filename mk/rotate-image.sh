@@ -1,10 +1,11 @@
 #!/bin/sh
 # The RG Rotate card image (plorpos-3yv.13), ALPHA: built from a set-up
 # device's own SD card, over ssh - its rootfs (Armbian trixie + the runtime
-# packages: sway, PipeWire, Mesa, SDL2, FFmpeg), its U-Boot and its /boot
-# (whose initramfs carries the WCN/AGDSP firmware Armbian extracted from
-# THAT unit's eMMC, which every RG Rotate has the same of). Nothing on the
-# device is written. Rootless: the rootfs is unpacked and packed again
+# packages: sway, PipeWire, Mesa, SDL2, FFmpeg), its U-Boot and its /boot.
+# No Unisoc firmware goes in (plorpos-3yv.13.2.3): agdsp, wcnmodem and
+# pm_sys are left out, and the card's first boot takes the unit's own off
+# its eMMC (Armbian's rotate-extract-firmware, plorpos-firmware.sh), then
+# powers off. Nothing on the device is written. Rootless: the rootfs is unpacked and packed again
 # (mke2fs -d) inside a podman container, so its owners survive.
 #
 #   mk/rotate-image.sh [OUT]   (default ~/projects/misc/rg-rotate/image/plorpos-rotate.img)
@@ -62,12 +63,32 @@ UUID=$(awk '$2 == "/" { sub("UUID=", "", $1); print $1 }' "$W/fstab")
 ssh_ 'tar -C / --one-file-system --numeric-owner -cf - \
 	--exclude=./mnt/SDCARD --exclude=./tmp/* --exclude=./var/tmp/* \
 	--exclude=./var/log/journal/* --exclude=./var/cache/apt/archives/*.deb \
-	--exclude=./root/.bash_history --exclude=./root/*.py --exclude=./root/*.sh \
-	--exclude=./root/*.orig --exclude=./root/k --exclude=./root/wp.env \
+	--exclude=./root/.bash_history --exclude="./root/[!.]*" \
+	--exclude=./usr/lib/firmware/updates/agdsp.bin \
+	--exclude=./usr/lib/firmware/updates/wcnmodem.bin \
+	--exclude="./usr/lib/firmware/sprd/*" \
 	--exclude=./swapfile . | zstd -1 -T0' > "$W/rootfs.tar.zst"
 fi
 [ -s "$W/rootfs.tar.zst" ] || { echo "image: no rootfs read" >&2; exit 1; }
 UUID=$(awk '$2 == "/" { sub("UUID=", "", $1); print $1 }' "$W/fstab")
+
+# 2b. p2 as Armbian ships it plus the plorpOS kernel, DT and extlinux.conf:
+#    no dev kernels or backups, and no initramfs with firmware in it -
+#    Armbian's initrd.img/uInitrd (regenerated with agdsp; nothing boots
+#    them) go, and initrd-fw.cpio.gz becomes dev/console + pm_bootcode,
+#    which plorpos-firmware.sh rewrites on the first boot.
+echo "image: stripping p2"
+cp "$W/p2.img" "$W/p2-out.img"
+mdir -i "$W/p2-out.img" -/ -b ::/ | grep -E \
+	'^::/(Image-plorpos(\.uimg\..+)?|initrd-fw\.cpio\.gz\..+|initrd\.img-.+|uInitrd|dtb/sprd/.+\.dtb\..+|extlinux/extlinux\.conf\..+)$' |
+	xargs -r mdel -i "$W/p2-out.img"
+KBUILD=${KBUILD:-$HOME/projects/git/build-ums512}
+sh "$ROOT/mk/rotate-pm-bootcode.sh" "$W/pm_bootcode.bin" > /dev/null
+printf '%s\n' 'dir /dev 0755 0 0' 'nod /dev/console 0600 0 0 c 5 1' 'dir /lib 0755 0 0' \
+	'dir /lib/firmware 0755 0 0' 'dir /lib/firmware/sprd 0755 0 0' \
+	"file /lib/firmware/sprd/pm_bootcode.bin $W/pm_bootcode.bin 0644 0 0" > "$W/initrd.list"
+"$KBUILD/usr/gen_init_cpio" -t 0 "$W/initrd.list" | gzip -9 -n > "$W/initrd-fw.cpio.gz"
+mcopy -o -i "$W/p2-out.img" "$W/initrd-fw.cpio.gz" ::/initrd-fw.cpio.gz
 
 # 3. The rootfs filesystem, inside a container (root there = this user, so
 #    owners are kept). fstab gains the data partition; Armbian's resize stays
@@ -114,7 +135,7 @@ start=34816, size=1048576, type=BC13C2FF-59E6-4262-A352-B275FD6F7172, name="boot
 start=$P3_START, size=$P3_SECT, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
 SFD
 dd if="$W/p1.img" of="$OUT" bs=512 seek=2048 conv=notrunc status=none
-dd if="$W/p2.img" of="$OUT" bs=512 seek=34816 conv=notrunc status=none
+dd if="$W/p2-out.img" of="$OUT" bs=512 seek=34816 conv=notrunc status=none
 dd if="$W/p3.img" of="$OUT" bs=512 seek=$P3_START conv=notrunc status=none
 sha256sum "$OUT" > "$OUT.sha256"
 echo "image: $OUT ($(du -h "$OUT" | cut -f1)), $(cut -c1-16 "$OUT.sha256")"
