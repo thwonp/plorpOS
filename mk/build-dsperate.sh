@@ -17,8 +17,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-/tmp/tortos-dsperate}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=a262c505fd1a78551c72d49ca40475fd4a39d697        # dsperate-lr, DSperate v3.0.5
-SHA=0660843b26861291727f5efdddae95d6e7e3ac6fc3dac07c81bde117d1c179f7
+LR=4c3bd9a5282f3823419c6e31237ab8413d2f8a81        # dsperate-lr, DSperate v3.0.5 + its load-state fix
+SHA=14507e551a2f05511b4cc45085dd01af69843789056b13751f90d3954d4b5b21
 IMAGE=dsperate-lr-cross
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
