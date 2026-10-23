@@ -69,6 +69,11 @@ take l_agdsp 5242880 agdsp_ok "$T/lib/firmware/updates/agdsp.bin" || fail "no va
 take pm_sys 1048576 pm_sys_ok "$T/lib/firmware/sprd/pm_sys.bin" || fail "no valid pm_sys_a|b" pm_sys
 cp "$BOOTCODE" "$T/lib/firmware/sprd/" || fail "no $BOOTCODE" pm_bootcode
 chmod 644 "$T"/lib/firmware/*/*.bin
+# The rootfs gets pm_sys too: the firmware cache re-reads every loaded
+# firmware before each suspend, from there.
+cp "$T/lib/firmware/sprd/pm_sys.bin" /usr/lib/firmware/sprd/pm_sys.bin.new &&
+	mv -f /usr/lib/firmware/sprd/pm_sys.bin.new /usr/lib/firmware/sprd/pm_sys.bin ||
+	fail "could not write /usr/lib/firmware/sprd/pm_sys.bin" rootfs
 
 ( cd "$T" && find . -mindepth 1 | cpio -o -H newc -R 0:0 --quiet ) | gzip -9 > "$BOOT/initrd-fw.cpio.gz.new" &&
 	mv -f "$BOOT/initrd-fw.cpio.gz.new" "$BOOT/initrd-fw.cpio.gz" &&

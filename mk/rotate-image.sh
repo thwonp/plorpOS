@@ -105,6 +105,11 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf \
 		/r/usr/lib/firmware/sprd/pm_bootcode.bin
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
+	# armbian-firmware'"'"'s wcnmodem.bin -> uwe5622/ is another module'"'"'s
+	# firmware: on the first boot, before the unit'"'"'s own lands in
+	# updates/, the WCN driver loads it and oopses (plorpos-3yv.13.2.4).
+	# Without it the driver waits for the real one.
+	rm -f /r/usr/lib/firmware/wcnmodem.bin
 	ln -sf /dev/null /r/etc/systemd/system/getty@tty1.service
 	# No text consoles to set a font on (plorpos-3yv.49.2): its setfont
 	# repaints fbcon and wipes the kernel boot logo.
