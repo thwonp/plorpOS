@@ -1875,7 +1875,9 @@ bool plat_light_sleep(unsigned waited_ms)
 
 	plat_input_flush();                   /* PAD_reset */
 	backlight_off();
+#if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0) apply_volume(0);
+#endif
 	sync();
 
 	since = plat_now_ms() - waited_ms;    /* already dark that long */
@@ -1895,7 +1897,17 @@ bool plat_light_sleep(unsigned waited_ms)
 	}
 
 	apply_brightness(cur_bright);
+#if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+#else
+	/* Not on the Rotate: its volume is a PipeWire sink's, which WirePlumber
+	 * saves - the 0 became a headset's stored level - and the default sink
+	 * here can be another than at the mute, a headset gone across the
+	 * suspend, so the speaker took the headset's level (plorpos-3yv.76).
+	 * Nothing plays to be muted: Muse is paused by sleep_cycle, a game by
+	 * its menu, and Diatom has let go of the speaker. */
+	(void)saved_vol;
+#endif
 	sync();
 	plat_input_flush();                   /* PAD_reset, and whatever was
 	                                       * pressed in the dark */
