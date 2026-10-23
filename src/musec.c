@@ -72,6 +72,7 @@ static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
 static bool     g_restored;         /* the queue came from the card and has not played */
+static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
@@ -250,7 +251,8 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
  * launcher may be playing in it. On its track: the queue goes on from there,
  * so the next track follows this one. Not in it - restarted within the five
  * seconds before a save, or a book: the queue is not this music's and goes,
- * and what Muse plays is still known to be playing. */
+ * and what Muse plays is still known to be playing - and kept as the orphan,
+ * for the launcher to give a book its files back (musec_adopt). */
 static void adopt(const char *line, const char *state)
 {
 	char path[LIB_PATH * 2 + 8];
@@ -266,6 +268,8 @@ static void adopt(const char *line, const char *state)
 	if (i == g_qn) {
 		queue_set(NULL, 0, 0, 0, false, 1.0, "", "");
 		g_now.index = g_now.count = 0;
+		if (!strncmp(path, g_root, rl) && path[rl] == '/')
+			snprintf(g_orphan, sizeof g_orphan, "%s", path + rl + 1);
 		return;
 	}
 	if (i != muq_current(&g_order)) {
@@ -526,6 +530,7 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
 	g_start_at = at > 0 ? at : 0;
 	g_ran_out = false;
 	g_restored = false;
+	g_orphan[0] = '\0';
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
 }
@@ -547,6 +552,26 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
 	g_now.len = 0;
+	g_now.index = g_order.pos;
+	g_now.count = g_qn;
+}
+
+const char *musec_orphan(void) { return g_orphan; }
+
+void musec_adopt(const char *const *paths, int n, int start, bool book, double speed,
+                 const char *artist, const char *album)
+{
+	int t;
+
+	if (n <= 0) { g_orphan[0] = '\0'; return; }
+	queue_set(paths, n, start, 0, book, speed, artist, album);
+	/* The title too: the one on show is the restored queue's track's. */
+	t = muq_current(&g_order);
+	if (t >= 0 && t < g_qn)
+		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+		              g_now.title, sizeof g_now.title);
+	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
+	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }

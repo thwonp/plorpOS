@@ -874,11 +874,14 @@ static void book_keep(bool now)
  * "" in a shot, which starts no Muse. */
 static char g_queue_file[CFG_STR * 2];
 
+static void muse_adopt_orphan(void);
+
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
  * Everything that polls Muse comes through here. */
 static void muse_poll(void)
 {
 	musec_poll();
+	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
@@ -892,6 +895,40 @@ static void book_speed_key(int al, char *out, size_t n)
 	const char *slash = strrchr(p, '/');
 
 	snprintf(out, n, "bookspeed.%.*s", slash ? (int)(slash - p) : 0, p);
+}
+
+static double book_speed(int al);
+
+/* A book Muse played on through a launcher restart (plorpos-3yv.71): its
+ * files were never in the kept queue, so musec let the queue go. Once the
+ * library is in, the book's files are the queue again, at the one playing -
+ * no PLAY, so it goes on where it is; without them Select opened the shelf
+ * and A on the book played it again from its saved place. Anything else
+ * playing out there (music restarted inside the 5 s before a save) stays as
+ * it was. */
+static void muse_adopt_orphan(void)
+{
+	const char *t = musec_orphan();
+	const mu_now *mn = musec_now();
+	const char **paths;
+	int al, i, start = 0;
+
+	if (!t[0] || g_walk_thread || g_muse.ntracks == 0) return;
+	al = ml_album_of(&g_muse, t);
+	if (al < 0 || !g_muse.albums[al].book ||
+	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
+	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
+		musec_adopt(NULL, 0, 0, false, 1.0, "", "");   /* nothing to give it: let it go */
+		return;
+	}
+	for (i = 0; i < g_muse.albums[al].n; i++) {
+		paths[i] = g_muse.tracks[g_muse.albums[al].first + i].path;
+		if (!strcmp(paths[i], t)) start = i;
+	}
+	fprintf(stderr, "muse: %s adopted at file %d\n", g_muse.albums[al].name, start + 1);
+	musec_adopt(paths, g_muse.albums[al].n, start, true, book_speed(al),
+	            g_muse.artists[muse_artist_of(al)].name, g_muse.albums[al].name);
+	free(paths);
 }
 
 static double book_speed(int al)
