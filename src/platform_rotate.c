@@ -16,6 +16,7 @@
  * four buttons, not a hat. The nodes are found by name, as their numbers
  * follow probe order. Read straight from evdev, as on the GKD; sway's own
  * keyboard handling is off. */
+#include "bt.h"
 #include "atomic.h"
 #include "db.h"
 #include "platform.h"
@@ -1646,19 +1647,75 @@ static void bt_set(bool on)
 	helper(argv);
 }
 
+/* The headsets connected when Bluetooth went off for a sleep. Powering it
+ * off is a real disconnect, after which a headset does not come back by
+ * itself (it does after a link only dropped), so the wake reconnects them -
+ * these and no others, so one moved to a phone meanwhile is only asked, as
+ * launch.sh's bt_reconnect asks at a session's start. */
+#define BT_KEEP 2
+static char bt_was[BT_KEEP][18];
+
+static void bt_note_connected(void)
+{
+	char line[128];
+	int n = 0;
+	FILE *f = popen("timeout 2 bluetoothctl devices Connected 2>/dev/null", "r");
+
+	memset(bt_was, 0, sizeof bt_was);
+	if (!f) return;
+	while (n < BT_KEEP && fgets(line, sizeof line, f))
+		if (!strncmp(line, "Device ", 7) && strlen(line) >= 24) {
+			snprintf(bt_was[n], sizeof bt_was[n], "%.17s", line + 7);
+			if (bt_mac_valid(bt_was[n])) n++;
+			else bt_was[n][0] = '\0';
+		}
+	pclose(f);
+}
+
+static bool bt_is_connected(const char *mac)
+{
+	char cmd[96];
+
+	snprintf(cmd, sizeof cmd, "bluetoothctl info %s | grep -q 'Connected: yes'", mac);
+	{
+		char *argv[] = { "timeout", "2", "sh", "-c", cmd, NULL };
+		return helper(argv);
+	}
+}
+
 /* The radios come back behind the wake, not in front of it: with wlan0
  * down the Wi-Fi driver lets the chip power off, and bringing it up again
  * downloads the firmware - ~1.2 s inside `ip link set up` (plorpos-3yv.74.20)
- * that the screen and the shelf must not wait for. */
+ * that the screen and the shelf must not wait for. A sleep that comes
+ * before this is done cancels what is left of it. */
 static pthread_t radios_thread;
 static bool      radios_pending;
-static bool      radios_wifi, radios_bt;
+static bool      radios_wifi, radios_bt, radios_cancel;
 
 static void *radios_restore(void *unused)
 {
 	(void)unused;
 	if (radios_wifi) wlan_set(true);
-	if (radios_bt)   bt_set(true);
+	if (!radios_bt) return NULL;
+	bt_set(true);
+	for (int i = 0; i < BT_KEEP && bt_was[i][0]; i++) {
+		/* By info, never by connect's return (bt_reconnect's rule). */
+		for (int round = 0; round < 3; round++) {
+			char *argv[] = { "timeout", "5", "bluetoothctl", "connect", bt_was[i], NULL };
+
+			if (__atomic_load_n(&radios_cancel, __ATOMIC_ACQUIRE)) return NULL;
+			helper(argv);
+			if (bt_is_connected(bt_was[i])) {
+				fprintf(stderr, "bluetooth: reconnected %s after the wake (round %d)\n",
+				        bt_was[i], round + 1);
+				break;
+			}
+			if (round == 2)
+				fprintf(stderr, "bluetooth: %s did not reconnect after the wake\n", bt_was[i]);
+			else
+				sleep(2);
+		}
+	}
 	return NULL;
 }
 
@@ -1702,11 +1759,15 @@ bool plat_sleep(void)
 	bool wifi, bt, ok;
 
 	if (!plat_sleep_supported()) return false;
-	/* A sleep straight after a wake: the last restore first, or wlan0 and
-	 * Bluetooth read as off here and stay off after this wake. */
+	helper(off);
+	/* A sleep straight after a wake: the last restore first - ended early,
+	 * behind the dark screen - or wlan0 and Bluetooth read as off here and
+	 * stay off after this wake. */
 	if (radios_pending) {
+		__atomic_store_n(&radios_cancel, true, __ATOMIC_RELEASE);
 		pthread_join(radios_thread, NULL);
 		radios_pending = false;
+		__atomic_store_n(&radios_cancel, false, __ATOMIC_RELEASE);
 	}
 	sync();
 	wifi = wlan_up();
@@ -1714,9 +1775,9 @@ bool plat_sleep(void)
 	 * asleep with Wi-Fi's share gone, plorpos-3yv.74.20), and it lets a
 	 * headset go to a phone instead of the Rotate taking it back. */
 	bt = bt_powered();
+	if (bt) bt_note_connected();
 	if (wifi) wlan_set(false);
 	if (bt) bt_set(false);
-	helper(off);
 	helper(quiet);
 	ok = sleep_mem();
 	helper(on);
