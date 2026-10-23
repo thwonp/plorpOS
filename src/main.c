@@ -8017,6 +8017,10 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
 			else v->alt = !v->alt;
 			engine_save(a, a->sys_cursor);
+			/* Each core keeps its own states, and a card with no art shows
+			 * its game's Auto preview: the other core's, until the cards are
+			 * read again (seq 139). */
+			free_view_textures(v);
 			return MENU_STAY;
 		}
 		/* Display mode, saved the moment it changes because there is no
