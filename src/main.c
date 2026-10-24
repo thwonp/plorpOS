@@ -12087,15 +12087,18 @@ static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t
 	return false;
 }
 
-/* First on the shelf, whenever PortMaster is on the card to run. */
+/* First on the shelf, whenever PortMaster is on the card to run - or in the
+ * payload, which pm-run.sh unpacks the first time it is opened
+ * (plorpos-3yv.86.4). */
 static void portmaster_add(const system_cfg *s, game_list *l)
 {
-	char sh[LIB_PATH];
+	char sh[LIB_PATH], zip[LIB_PATH];
 	game_entry *items;
 
 	if (!is_ports(s)) return;
 	pm_data(sh, sizeof sh, "PortMaster/PortMaster.sh");
-	if (access(sh, R_OK) != 0) return;
+	snprintf(zip, sizeof zip, "%s/rotate/portmaster/PortMaster.zip", P_ROOT);
+	if (access(sh, R_OK) != 0 && access(zip, R_OK) != 0) return;
 	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
 	if (!items) return;
 	memmove(items + 1, items, (size_t)l->count * sizeof *items);

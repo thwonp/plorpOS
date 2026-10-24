@@ -369,21 +369,27 @@ static void group_kill(pid_t pid, int sig)
 	if (kill(-pid, sig) != 0) kill(pid, sig);
 }
 
-/* sig to the group but its leader, so a port's script outlives its game and
- * runs its own cleanup after it (pm_finish: gptokeyb, the runtimes' mounts) -
- * and not to the script's tee (exec > >(tee log.txt)), whose end would take
- * the script down with SIGPIPE mid-cleanup. A child with nothing under it
- * gets sig itself. CONT as well: a stopped process does not act on TERM.
- * Ending is TERM, then KILL this way after 3 s (Sopwith ignores TERM), and
- * the whole group only GROUP_KILL_MS later, if the script is still there. */
-#define GROUP_KILL_MS 4500
+/* Ending a child: TERM to the group but its leader, so a port's script
+ * outlives its game and runs its own cleanup after it (pm_finish, westonwrap
+ * cleanup: gptokeyb, the runtimes' mounts) - and not to the script's tee
+ * (exec > >(tee log.txt)), whose end would take the script down with SIGPIPE
+ * mid-cleanup. A child with nothing under it gets the TERM itself. CONT as
+ * well: a stopped process does not act on TERM. After 3 s KILL to those same
+ * processes, if still there (Sopwith ignores TERM) - not to the cleanup the
+ * script started since, which a KILL to the group then cut short, leaving
+ * /tmp/godot mounted (plorpos-3yv.86.4). The whole group only at
+ * GROUP_KILL_MS, if the script is still there. */
+#define GROUP_KILL_MS 8000
+#define GROUP_MAX     64
 
-static void group_term(pid_t pid, int sig)
+typedef struct { pid_t p[GROUP_MAX]; int n; } termed;
+
+static void group_term(pid_t pid, termed *t)
 {
 	DIR *d = opendir("/proc");
 	struct dirent *e;
-	int n = 0;
 
+	t->n = 0;
 	while (d && (e = readdir(d))) {
 		pid_t p = (pid_t)atoi(e->d_name);
 		char path[64], comm[32] = "";
@@ -395,13 +401,19 @@ static void group_term(pid_t pid, int sig)
 			if (!fgets(comm, sizeof comm, f)) comm[0] = '\0';
 			fclose(f);
 		}
-		if (!strcmp(comm, "tee\n")) continue;
-		kill(p, sig);
-		n++;
+		if (!strcmp(comm, "tee\n") || t->n == GROUP_MAX) continue;
+		kill(p, SIGTERM);
+		t->p[t->n++] = p;
 	}
 	if (d) closedir(d);
-	if (!n) kill(pid, sig);
+	if (!t->n) t->p[t->n++] = pid, kill(pid, SIGTERM);
 	group_kill(pid, SIGCONT);
+}
+
+static void group_term_kill(pid_t pid, const termed *t)
+{
+	for (int i = 0; i < t->n; i++)
+		if (t->p[i] == pid || getpgid(t->p[i]) == pid) kill(t->p[i], SIGKILL);
 }
 #endif
 
@@ -412,11 +424,12 @@ static void group_term(pid_t pid, int sig)
 static void run_end(pid_t pid)
 {
 	int ms, status;
+	termed t;
 
-	group_term(pid, SIGTERM);
+	group_term(pid, &t);
 	for (ms = 0; ms < GROUP_KILL_MS; ms += 100) {
 		if (waitpid(pid, &status, WNOHANG) != 0) break;
-		if (ms == 3000) group_term(pid, SIGKILL);
+		if (ms == 3000) group_term_kill(pid, &t);
 		usleep(100 * 1000);
 	}
 	if (ms >= GROUP_KILL_MS) {
@@ -613,6 +626,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
 	bool term_killed = false;   /* its game KILLed, the script let finish */
+	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
 	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
 	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
@@ -773,15 +787,18 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
 		if (g_terminating) quit = true;
 		if (quit && !term_at) {
-			group_term(pid, SIGTERM);
+			group_term(pid, &ending);
 			term_at = plat_now_ms() | 1;
 			term_killed = false;
 		}
-		if (term_at && !term_killed && plat_now_ms() - term_at > 3000) {
-			group_term(pid, SIGKILL);
+		/* Signed: term_at is now | 1, one ahead of a clock that has not
+		 * moved, and unsigned that read as 49 days gone - KILL straight
+		 * after the TERM, about every other quit (plorpos-3yv.86.4). */
+		if (term_at && !term_killed && (int)(plat_now_ms() - term_at) > 3000) {
+			group_term_kill(pid, &ending);
 			term_killed = true;
 		}
-		if (term_at && plat_now_ms() - term_at > GROUP_KILL_MS) {
+		if (term_at && (int)(plat_now_ms() - term_at) > GROUP_KILL_MS) {
 			group_kill(pid, SIGKILL);
 			term_at = 0;
 		}

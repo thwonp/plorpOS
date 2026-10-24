@@ -46,6 +46,10 @@ stage() {
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
 	mkdir -p "$S/rotate/portmaster"
 	cp "$ROOT/sd/rotate/portmaster/"* "$S/rotate/portmaster/"
+	# PortMaster itself, unpacked on first use (plorpos-3yv.86.4; mk/fetch-vendor.sh).
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	cp "$ROOT/vendor/portmaster/PortMaster.zip" "$S/rotate/portmaster/"
 	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
 	cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/head.ttf" "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$ROOT/res/singles.png" \
 	   "$ROOT/res/ssl/cacert.pem" "$S/"

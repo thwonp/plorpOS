@@ -55,6 +55,13 @@ cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$ROOT/sd/rotate/image/99-rota
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
 if [ -z "${REUSE:-}" ]; then
+# The rootfs is the device's, so what it has installed is what the card gets.
+# PortMaster's ports need these beyond the launcher's own (plorpos-3yv.86.2):
+# SDL2_mixer and OpenAL for many ports, Xwayland for X11 ones, glxinfo
+# (mesa-utils) for weston_pkg's ROCKNIX check, zip for some installers.
+PM_PKGS="libsdl2-mixer-2.0-0 libopenal1 xwayland mesa-utils zip"
+[ "$(ssh_ "dpkg-query -W -f '\${db:Status-Status}\n' $PM_PKGS 2>&1" | sort -u)" = installed ] ||
+	{ echo "image: $HOST lacks PortMaster's packages; on it: apt install $PM_PKGS" >&2; exit 1; }
 echo "image: reading p1, p2 and the rootfs from $HOST"
 ssh_ 'dd if=/dev/mmcblk0p1 bs=1M status=none' > "$W/p1.img"
 ssh_ 'dd if=/dev/mmcblk0p2 bs=1M status=none' > "$W/p2.img"

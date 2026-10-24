@@ -41,7 +41,11 @@ source $controlfolder/funcs.txt
 
 # plorpOS runs ports on its sway the way ROCKNIX on Panfrost does, and
 # westonwrap only skips its own compositor for that name (portmaster-spike-findings.md).
-export CFW_NAME="ROCKNIX"
+# Ports only: PortMaster's own GUI stays generic (pm-run.sh sets
+# PLORPOS_PM_GUI), as for ROCKNIX it copies ROCKNIX's system PortMaster
+# (/usr/config/PortMaster) in on its first run and after every update - not
+# here, so a fresh install died on its first start (plorpos-3yv.86.4).
+[ -n "${PLORPOS_PM_GUI:-}" ] || export CFW_NAME="ROCKNIX"
 
 # SDL's PipeWire driver never starts some ports' streams (SDL Sopwith waits on
 # it forever); its pulseaudio one goes through pipewire-pulse.

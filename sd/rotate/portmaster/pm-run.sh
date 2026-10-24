@@ -26,7 +26,21 @@ mkdir -p "$HOME"
 grep -E " squashfs | $HOME/" /proc/mounts | cut -d" " -f2 | sort -r |
 	while read -r m; do umount "$m" 2>/dev/null || umount -l "$m"; done
 
+# PortMaster comes in the payload as its release zip, unpacked the first time
+# it is wanted (plorpos-3yv.86.4) - beside, then moved in, so a run cut short
+# leaves no half a PortMaster. After that it updates itself.
+if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
+	rm -rf "$PMDATA/.install"
+	python3 -m zipfile -e "$HERE/PortMaster.zip" "$PMDATA/.install" &&
+		rm -rf "$PM" && mv "$PMDATA/.install/PortMaster" "$PM" && rm -rf "$PMDATA/.install" ||
+		exit 1
+fi
+
 cmp -s "$HERE/control.txt" "$PM/control.txt" || cp "$HERE/control.txt" "$PM/control.txt"
+
+# PortMaster's GUI is not a port: control.txt names the system to it
+# as it is, not as ROCKNIX.
+[ "$(basename "$1")" = PortMaster.sh ] && export PLORPOS_PM_GUI=1
 
 cd "$(dirname "$1")" || exit 1
 exec bash "$@"
