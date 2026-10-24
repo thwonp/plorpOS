@@ -62,4 +62,12 @@ cmp -s "$HERE/control.txt" "$PM/control.txt" || cp "$HERE/control.txt" "$PM/cont
 [ "$(basename "$1")" = PortMaster.sh ] && export PLORPOS_PM_GUI=1
 
 cd "$(dirname "$1")" || exit 1
-exec bash "$@"
+[ -n "${PLORPOS_PM_GUI:-}" ] && exec bash "$@"
+
+# Older port scripts source device_info.txt again after control.txt, and its
+# probe names the system anew ("Debian GNU/Linux"): Stardew then took the
+# default GL path, gl4es on the display card, and found no GPU
+# (plorpos-3yv.86.18). PortMaster rewrites its files when it updates, so
+# none of them is patched: the script is sourced with a RETURN trap, which
+# names ROCKNIX again each time a file it sources finishes.
+exec bash -c 'trap "export CFW_NAME=ROCKNIX" RETURN; . "$0" "$@"' "$@"
