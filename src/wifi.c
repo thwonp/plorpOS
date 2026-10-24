@@ -684,6 +684,27 @@ bool wifi_forget(const char *ssid)
 	return hit;
 }
 
+#if defined(PLATFORM_ROTATE)
+/* SSH is Debian's ssh.service, off on a fresh card (plorpos-3yv.13.4), and
+ * the switch enables it, so it is still on after a reboot. Turning it off
+ * keeps the sessions already open. In the background: enable/disable reload
+ * systemd, ~4 s here, and the menu would stand still that long (measured). */
+bool wifi_svc_on(wifi_svc s)
+{
+	char *argv[] = { (char *)"/usr/bin/systemctl", (char *)"is-enabled", (char *)"--quiet",
+	                 (char *)"ssh", NULL };
+	return s == WIFI_SSH && run(argv, NULL, 0) == 0;
+}
+
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"/usr/bin/systemctl enable --now ssh > /dev/null 2>&1 &"
+		: (char *)"/usr/bin/systemctl disable --now ssh > /dev/null 2>&1 &", NULL };
+	return s == WIFI_SSH && run(argv, NULL, 0) == 0;
+}
+#endif
+
 #else  /* PLATFORM_GKD: ROCKNIX's ConnMan, driven the way ROCKNIX drives it */
 
 /* ROCKNIX keeps the network in system.cfg, not in ConnMan. At every boot, and
@@ -1105,7 +1126,8 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD)   /* no services to switch: WIFI_SVC_ROWS is 0 */
+#if !defined(PLATFORM_GKD) && !(defined(PLATFORM_ROTATE) && defined(__linux__))
+/* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }
 #endif

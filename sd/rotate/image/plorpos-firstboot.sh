@@ -10,6 +10,9 @@
 # plorpOS/ is seeded from the copy in the rootfs (/usr/share/plorpos/plorpOS);
 # an update is a newer plorpOS folder copied over it, as on the other devices.
 set -eu
+# The image has no ssh host keys: they would be every card's (plorpos-3yv.13.4).
+# Made here once; ssh itself stays off until Network Services turns it on.
+ssh-keygen -A
 ROOT=$(findmnt -no SOURCE /)
 DISK=/dev/$(lsblk -no PKNAME "$ROOT")
 DATA=${DISK}p4

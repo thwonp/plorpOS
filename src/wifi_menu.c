@@ -111,8 +111,9 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	 * before they moved here (plorpos-z0d.1). */
 	ADD((menu_row){ "Cheevos", w->ra_name ? w->ra_name : "sign in", true });
 	/* Not tied to the radio: they serve whatever network the device is on. */
-	if (WIFI_SVC_ROWS) {
+	if (WIFI_SVC_ROWS)
 		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
+	if (WIFI_SVC_ROWS > WIFI_SAMBA) {
 		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
 		/* On, it reads as where to manage it: the web UI, signed into as
 		 * root with ROCKNIX's root password. */

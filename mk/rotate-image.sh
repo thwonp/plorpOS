@@ -14,11 +14,13 @@
 # The image: p1 uboot and p2 bootfs as on the device, p3 the rootfs at a
 # fixed ROOT_MB with the device's UUID (extlinux and fstab name it), no p4:
 # the first boot makes the exFAT data partition across the rest of the card
-# (sd/rotate/image/plorpos-firstboot.sh). The rootfs carries the device's
-# root password and ssh keys: an image for its owner, not for handing out.
-# Wi-Fi is not in it: the launcher runs wpa_supplicant on the data
-# partition's saved networks (plorpos-3yv.17), so a fresh card joins one from
-# the Wi-Fi screen.
+# (sd/rotate/image/plorpos-firstboot.sh). None of the device's owner goes in
+# (plorpos-3yv.13.4): its users, /root, ssh host keys, logs, Bluetooth bonds
+# and machine-id are dropped; the login is root / plorpos (the install guide);
+# ssh is off until Network Services turns it on, with host keys made on the
+# first boot. Wi-Fi is not in it either: the launcher runs wpa_supplicant on
+# the data partition's saved networks (plorpos-3yv.17), so a fresh card joins
+# one from the Wi-Fi screen.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$HOME/projects/misc/rg-rotate/image/plorpos-rotate.img}
@@ -102,7 +104,9 @@ mcopy -o -i "$W/p2-out.img" "$W/initrd-fw.cpio.gz" ::/initrd-fw.cpio.gz
 #    owners are kept). fstab gains the data partition; Armbian's resize stays
 #    off (the data partition is what grows).
 echo "image: packing the rootfs (${ROOT_MB} MiB, UUID $UUID)"
-docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-slim sh -euc '
+ROOT_HASH=$(openssl passwd -6 plorpos)
+docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$ROOT_HASH" \
+	debian:trixie-slim sh -euc '
 	apt-get -qq update > /dev/null && apt-get -qq install -y e2fsprogs zstd > /dev/null
 	mkdir /r
 	zstd -dc /w/rootfs.tar.zst | tar -C /r --numeric-owner -xpf -
@@ -127,6 +131,21 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" debian:trixie-s
 	# D-Bus wpa_supplicant either, which owns no interface here.
 	rm -f /r/etc/netplan/20-wifi.yaml
 	ln -sf /dev/null /r/etc/systemd/system/wpa_supplicant.service
+	# A card for anyone (plorpos-3yv.13.4): the owner'"'"'s accounts, /root,
+	# history and logs go; root / plorpos; ssh off (Network Services turns
+	# it on) and its host keys made on the first boot (plorpos-firstboot.sh);
+	# machine-id empty, so systemd makes one on the first boot.
+	awk -F: '"'"'$3 >= 1000 && $3 < 65534 { print $1 }'"'"' /r/etc/passwd |
+		while read -r u; do userdel -R /r -r "$u" 2> /dev/null || userdel -R /r "$u"; done
+	usermod -R /r -p "$ROOT_HASH" root
+	rm -rf /r/root && mkdir /r/root && cp -a /r/etc/skel/. /r/root/ && chmod 700 /r/root
+	rm -f /r/etc/ssh/ssh_host_* /r/etc/systemd/system/sshd.service \
+		/r/etc/systemd/system/multi-user.target.wants/ssh.service
+	# log.hdd: Armbian'"'"'s log2ram keeps the logs on disk there (Wi-Fi names
+	# were in its journal and syslog).
+	find /r/var/log /r/var/log.hdd -type f -delete 2> /dev/null || true
+	rm -rf /r/var/lib/bluetooth/* /r/var/lib/systemd/coredump/* /r/var/lib/systemd/random-seed
+	: > /r/etc/machine-id
 	grep -q PLORPOS /r/etc/fstab || echo "LABEL=PLORPOS /mnt/SDCARD exfat defaults,nofail,noatime,x-systemd.device-timeout=3s 0 0" >> /r/etc/fstab
 	mkdir -p /r/mnt/SDCARD
 	rm -f /w/p3.img

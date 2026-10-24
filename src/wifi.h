@@ -76,11 +76,14 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap);
 bool wifi_forget(const char *ssid);
 
 /* The network services a device lets you switch: SSH, Samba and Syncthing on
- * the GKD, where ROCKNIX runs them, and none on the Brick. On/off is ROCKNIX's own
- * setting, so it survives a reboot and the stock menu agrees with it. */
+ * the GKD, where ROCKNIX runs them, SSH alone on the Rotate (off on a fresh
+ * card, plorpos-3yv.13.4), and none on the Brick. On/off is the system's own
+ * setting, so it survives a reboot. */
 typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_SYNCTHING, WIFI_NSVC } wifi_svc;
 #ifdef PLATFORM_GKD
 #define WIFI_SVC_ROWS WIFI_NSVC
+#elif defined(PLATFORM_ROTATE)
+#define WIFI_SVC_ROWS 1
 #else
 #define WIFI_SVC_ROWS 0
 #endif
