@@ -665,6 +665,23 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
+			/* The Rotate's volume keys share POWER's node (platform_rotate.c
+			 * levels_fd) and were dropped here: no volume or brightness in
+			 * a port or native PICO-8, and Menu+Vol held on into the switcher
+			 * (plorpos-3yv.86.5). Elsewhere this node has POWER alone. */
+			if (ev.type == EV_KEY && (ev.code == KEY_VOLUMEUP || ev.code == KEY_VOLUMEDOWN)) {
+				int d = ev.code == KEY_VOLUMEUP ? 1 : -1;
+
+				if (ev.value == 1) {
+					bool bright = levels_alt();
+
+					level_nudge(bright, d);
+					lv_hold_start(&hold, fd_power, ev.code, bright, d);
+					if (bright) menu_spent = true;
+				} else if (ev.value == 0 && hold.fd == fd_power && hold.code == ev.code) {
+					hold.next = 0;
+				}
+			}
 #if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == LID_CLOSE_KEY && ev.value == 1)
 				lid_tap = true;
