@@ -1976,6 +1976,10 @@ bool plat_light_sleep(unsigned waited_ms)
 	for (;;) {
 		bool charging = false;
 
+		/* A SIGTERM ends the wait (its poll returns EINTR): a restart or a
+		 * shutdown during sleep waited systemd's 90 s for the SIGKILL
+		 * (plorpos-3yv.87). The caller sees quit_requested next poll. */
+		if (g_terminating) break;
 		if (power_key_within(200, 0)) break;
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
