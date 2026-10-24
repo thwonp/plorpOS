@@ -419,18 +419,25 @@ static bool helper(char *const argv[])
 #define HIDE_WS "plorpos-hidden"
 
 /* pid's window on screen (on top, fullscreen) or off it, on the hidden
- * workspace. A PortMaster port's window is not its script's: it is the game's,
- * a process in the script's group (platform.c run_fork), or Xwayland's for an
+ * workspace. Fullscreen again because the menu's window took it (one per
+ * workspace) - except Ren'Py's, which sway.conf floats at its own size: its
+ * software renderer never re-fetches its window surface after a resize and
+ * so freezes on the frame before it (plorpos-3yv.86.10). X11 windows have no
+ * app_id, so they are named by shell.
+ * A PortMaster port's window is not its script's: it is the game's, a
+ * process in the script's group (platform.c run_fork), or Xwayland's for an
  * X11 port - which only a port brings up while it runs. Those are found in
  * sway's tree and moved by container id (plorpos-3yv.86.3). */
 #define PLACE_MAX 8
+#define REFULL(c) c " app_id=\"^(?!startRENPY$)\"] fullscreen enable; " \
+                  c " shell=\"xwayland\"] fullscreen enable"
 
 static bool place(pid_t pid, bool on_screen)
 {
-	char crit[96], line[256];
+	char crit[160], line[256];
 	char *cmd[] = { "swaymsg", crit, NULL };
 	const char *what = on_screen
-	         ? "move container to workspace 1, focus, fullscreen enable"
+	         ? "move container to workspace 1, focus"
 	         : "move container to workspace " HIDE_WS;
 	long id = -1, ids[PLACE_MAX];
 	int n = 0, i, vp = 0;
@@ -438,7 +445,11 @@ static bool place(pid_t pid, bool on_screen)
 	FILE *f;
 
 	snprintf(crit, sizeof crit, "[pid=%d] %s", (int)pid, what);
-	if (helper(cmd)) return true;
+	if (helper(cmd)) {
+		snprintf(crit, sizeof crit, REFULL("[pid=%d"), (int)pid, (int)pid);
+		if (on_screen) helper(cmd);   /* one of the two never matches */
+		return true;
+	}
 	if (!(f = popen("swaymsg -t get_tree", "r"))) return false;
 	while (fgets(line, sizeof line, f)) {
 		char *k = line + strspn(line, " ");
@@ -452,7 +463,10 @@ static bool place(pid_t pid, bool on_screen)
 	pclose(f);
 	for (i = 0; i < n; i++) {
 		snprintf(crit, sizeof crit, "[con_id=%ld] %s", ids[i], what);
-		ok |= helper(cmd);
+		if (!helper(cmd)) continue;
+		ok = true;
+		snprintf(crit, sizeof crit, REFULL("[con_id=%ld"), ids[i], ids[i]);
+		if (on_screen) helper(cmd);
 	}
 	return ok;
 }
