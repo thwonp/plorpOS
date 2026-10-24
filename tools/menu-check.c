@@ -239,6 +239,8 @@ static void tortos_menu_offline(void)
 	   && !rows[PM_SYSTEM].value, "System Settings opens, with no value");
 	ck(!strcmp(rows[PM_UI].label, "UI Settings") && rows[PM_UI].live
 	   && !rows[PM_UI].value, "UI Settings opens, with no value");
+	ck(!strcmp(rows[PM_GAME].label, "Game Settings") && rows[PM_GAME].live
+	   && !rows[PM_GAME].value, "Game Settings opens, with no value");
 	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
 	ck(rows[PM_SCRAPING].live && !rows[PM_SCRAPING].value,
 	   "Scraping opens offline: gamelist import needs no network");

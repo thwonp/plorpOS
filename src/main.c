@@ -272,6 +272,9 @@ static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
 static bool is_ports(const system_cfg *s);
+/* Game Settings (plorpos-pyz): read where they act, so a change holds from
+ * the next launch on without anything to reload. */
+static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
 static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
 /* Network Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
@@ -2910,6 +2913,9 @@ static bool playing_restore(app *a)
 	if (fgets(file, sizeof file, f)) file[strcspn(file, "\r\n")] = 0;
 	fclose(f);
 	if (!tag[0] || !file[0]) { playing_clear(); return false; }
+	/* Games Auto-Resume Off: every game starts fresh, the one that was up at
+	 * power-off too - so the shelf, not a game from its title (plorpos-pyz.1). */
+	if (!gs_auto_resume()) { playing_clear(); return false; }
 
 	for (i = 0; i < a->sys.count; i++) {
 		if (strcmp(a->sys.systems[i].tag, tag) != 0) continue;
@@ -6466,6 +6472,8 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+static void game_settings_screen(app *a);
+static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
  * disc game's whole folder - the folder is the game - and its favorite.
@@ -8161,6 +8169,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_WIFI:         wifi_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
+	case PM_GAME:         game_settings_screen(a); break;
 	case PM_SCRAPING:     scraping_screen(a); break;
 	case PM_BT:           bt_screen(a); break;
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
@@ -10776,8 +10785,9 @@ static in_button hk_modifier_button(const char *wire)
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
 	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
-	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. The
-	 * rule and legend are drawn after them and are never selected. */
+	 * follow it, action i at row i + 1. Rewind Speed moved to Game Settings
+	 * (plorpos-pyz.3). The rule and legend are drawn after them and are never
+	 * selected. */
 	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
 	int trig_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 2];
@@ -10796,10 +10806,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	/* Display Mode is the DS's, its last action row; elsewhere the screen is
 	 * a row shorter (plorpos-3yv.47, .62). */
 	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 1;
-	const int RW_ROW = FIRST_ACT + nact, NROWS = RW_ROW + 1;
-	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
+	const int NROWS = FIRST_ACT + nact;
 
-	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
 	{
 		const char *cur = plat_hotkey_modifier();
 		while (mod < nmods - 1 && strcmp(mod_wire[mod], cur)) mod++;
@@ -10850,16 +10858,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 					plat_hotkey_modifier_set(mod_wire[mod]);
 					changed = true;
 				}
-			} else if (sel == RW_ROW) {
-				int d = 0;
-
-				if (in_repeat(&a->in, IN_LEFT))  d = -1;
-				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
-				if (d) {
-					rw = (rw + d + RW_COUNT) % RW_COUNT;
-					db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
-					plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
-				}
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
@@ -10906,7 +10904,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				         HK_TRIG_NAME[t]);
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 		}
-		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
 		rows[NROWS] = MENU_RULE;
 		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
 		                                     : "A: set    X: clear");
@@ -10923,6 +10920,98 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+}
+
+/* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
+ * for every system. Defaults are what plorpOS always did, Confirm off. */
+enum { GS_RESUME, GS_REWIND, GS_CONFIRM, GS_ROWS };
+
+static int gs_rewind(void)
+{
+	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
+
+	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
+	return rw;
+}
+
+static int game_settings_build(void *ctx, menu_row *rows, int max,
+                               const char **heading)
+{
+	(void)ctx; (void)max;
+	*heading = "Game Settings";
+	rows[GS_RESUME]   = (menu_row){ "Games Auto-Resume", gs_auto_resume() ? "on" : "off", true };
+	rows[GS_REWIND]   = (menu_row){ "Rewind Speed", RW_NAME[gs_rewind()], true };
+	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
+	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
+	return GS_ROWS;
+}
+
+/* Left, right and A all change the row: two of them are on/off, and Rewind
+ * Speed steps on with A too, as the shelf menus' cycling rows do. */
+static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const char *const keys[GS_ROWS] = { "autoresume", NULL, "confirmquit" };
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+
+	(void)a; (void)ctx;
+	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
+	if (sel == GS_REWIND) {
+		int rw = (gs_rewind() + d + RW_COUNT) % RW_COUNT;
+
+		db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
+		plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
+	} else {
+		db_set_int(db_dev(), keys[sel], !db_get_int(db_dev(), keys[sel], sel != GS_CONFIRM));
+	}
+	return MENU_STAY;
+}
+
+static void game_settings_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         game_settings_build, game_settings_key, NULL);
+}
+
+/* Reset and Quit ask first when Game Settings says so (plorpos-pyz.4):
+ * Cancel first, over the paused frame as the rest of the in-game menu. A
+ * power press here ends the game as from the Hotkeys screen. */
+static bool gm_confirm(app *a, SDL_Texture *bg, const char *what)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	menu_row rows[3];
+	int sel = 2;
+	ui_pace pace = {0};
+
+	if (!db_get_int(db_dev(), "confirmquit", 0)) return true;
+	rows[0] = (menu_row){ sv->list.count ? sv->list.items[sv->cursor].title : "", NULL, false };
+	rows[1] = (menu_row){ what, NULL, true };
+	rows[2] = (menu_row){ "Cancel", NULL, true };
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	for (;;) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested || want_quit) return false;
+		if (power_check(a) == PWR_POWEROFF) {
+			plat_note_power_pressed();
+			plat_resident_line("STOP");
+			return false;
+		}
+		if (menu_leaving(a)) return false;
+		if (in_repeat(&a->in, IN_UP) || in_repeat(&a->in, IN_DOWN)) sel = 3 - sel;
+		if (a->in.pressed[IN_ACCEPT]) {
+			plat_input_flush();
+			memset(&a->in, 0, sizeof a->in);
+			return sel == 1;
+		}
+		if (!screen_draw_due(a, &pace, menu_fingerprint(what, rows, 3, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		chv_backdrop(a, bg, false);
+		menu_draw(a, what, rows, 3, sel, 0, MENU_ACCENT);
+		draw_battery(a->r);
+		plat_present(a->r);
+	}
 }
 
 /* Measured across every mode label, so cycling the row does not resize the
@@ -11486,12 +11575,14 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	}
 	case GM_RESET:
+		if (!gm_confirm(a, c->bg, "Reset")) break;
 		plat_resident_line("RESET");
 		c->resume = true;
 		return MENU_DONE;
 	case GM_QUIT:
 		/* The wait loop carries on until EXIT arrives; quitting is asking,
 		 * not tearing down. */
+		if (!gm_confirm(a, c->bg, "Quit")) break;
 		plat_resident_line("STOP");
 		return MENU_DONE;
 	default: break;
@@ -12607,7 +12698,10 @@ static void launch_one(app *a)
 		char shf[1024];
 		plat_game g = {
 			.tag = s->tag, .core = core, .rom = rom,
-			.resume = st, .exit_state = st, .preview = pv, .save = save,
+			/* Games Auto-Resume Off (plorpos-pyz.1): the Auto state is not
+			 * loaded, but still written on the way out, as always. */
+			.resume = gs_auto_resume() ? st : NULL, .exit_state = st,
+			.preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
@@ -12818,7 +12912,7 @@ static void launch_one(app *a)
 		argv[n++] = (char *)"--system";          argv[n++] = bios;
 		argv[n++] = (char *)"--display";
 		argv[n++] = (char *)DMODES[a->view[o].dmode].name;
-		argv[n++] = (char *)"--load-state";      argv[n++] = st;
+		if (gs_auto_resume()) { argv[n++] = (char *)"--load-state"; argv[n++] = st; }
 		argv[n++] = (char *)"--state-on-exit";   argv[n++] = st;
 		if (disc >= 0) {
 			snprintf(discs, sizeof discs, "%d", disc);
