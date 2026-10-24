@@ -64,6 +64,11 @@ cp -a "$ROOT/vendor/rotate-mesa" "$O/usr/lib/plorpos-mesa"
 mkdir -p "$O/usr/lib/arm-linux-gnueabihf"
 ln -s lib/arm-linux-gnueabihf "$O/usr/lib32"
 ln -s libpulse-simple.so.0 "$O/usr/lib/arm-linux-gnueabihf/libpulse-simple.so"
+# SoLoud (Apotris) dlopens SDL as plain libSDL2.so, which only Debian's -dev
+# package links: without it no audio, and the first sound segfaulted
+# (plorpos-3yv.86.16).
+mkdir -p "$O/usr/lib/aarch64-linux-gnu"
+ln -s libSDL2-2.0.so.0 "$O/usr/lib/aarch64-linux-gnu/libSDL2.so"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -135,7 +140,8 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf \
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf \
 		/r/usr/lib/firmware/sprd/pm_bootcode.bin /r/usr/lib/plorpos-mesa
-	chown -h 0:0 /r/usr/lib32 /r/usr/lib/arm-linux-gnueabihf/libpulse-simple.so
+	chown -h 0:0 /r/usr/lib32 /r/usr/lib/arm-linux-gnueabihf/libpulse-simple.so \
+		/r/usr/lib/aarch64-linux-gnu/libSDL2.so
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	# armbian-firmware'"'"'s wcnmodem.bin -> uwe5622/ is another module'"'"'s
 	# firmware: on the first boot, before the unit'"'"'s own lands in
