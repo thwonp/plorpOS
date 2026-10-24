@@ -67,12 +67,14 @@
 #include <dirent.h>
 #include <math.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -269,6 +271,7 @@ static void rescan_all(app *a);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
+static bool is_ports(const system_cfg *s);
 static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
 /* Network Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
@@ -6475,6 +6478,32 @@ static int rm_one(const char *p, const struct stat *st, int flag, struct FTW *f)
 	return remove(p);
 }
 
+/* A port goes whole (plorpos-3yv.86.12): PortMaster's own uninstall takes
+ * what its port.json lists - the script and its folder, the saves in it
+ * included (user, seq 143) - and keeps what another port also lists. The
+ * script names its zip under the shebang ("# PORTMASTER: 2048.zip, 2048.sh").
+ * Without that line, or if the script is still there after, it goes as any
+ * file game does. */
+static void port_uninstall(const char *script)
+{
+	extern char **environ;
+	char line[256], zip[128] = "", run[LIB_PATH];
+	char *argv[] = { (char *)"/bin/sh", run, (char *)"--uninstall", zip, NULL };
+	FILE *f = fopen(script, "r");
+	pid_t pid;
+	int st = -1;
+
+	while (f && fgets(line, sizeof line, f) && line[0] == '#')
+		if (sscanf(line, "# PORTMASTER: %127[^,\n]", zip) == 1) break;
+	if (f) fclose(f);
+	if (!zip[0]) return;
+	snprintf(run, sizeof run, "%s/rotate/portmaster/pm-run.sh", P_ROOT);
+	if (posix_spawn(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+		waitpid(pid, &st, 0);
+	fprintf(stderr, "delete: PortMaster uninstall %s: exit %d\n", zip,
+	        WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+}
+
 static void game_delete(app *a, int owner, const game_entry *g)
 {
 	const system_cfg *s = &a->sys.systems[owner];
@@ -6490,8 +6519,9 @@ static void game_delete(app *a, int owner, const game_entry *g)
 	else
 		snprintf(path, sizeof path, "%s/%s/%s", P_ROMS, s->folder, g->file);
 	wait_panel(a, "Delete Game", "Deleting...");
+	if (!slash && is_ports(s)) port_uninstall(path);
 	ok = slash ? nftw(path, rm_one, 8, FTW_DEPTH | FTW_PHYS) == 0
-	           : remove(path) == 0;
+	           : access(path, F_OK) != 0 || remove(path) == 0;
 	fprintf(stderr, "delete: %s: %s\n", path, ok ? "gone" : strerror(errno));
 	/* Before the rescan: g points into the list it frees. */
 	if (ok && fav_is(s->tag, g->file)) {
@@ -6583,7 +6613,8 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 
 	if (!strcmp(rows[sel].label, "Delete Game")) {
 		/* Closes the screen when it went: there is no game left to show. */
-		if (confirm_panel(a, "Delete Game", c->g->title, "Delete")) {
+		if (confirm_panel(a, "Delete Game", c->g->title,
+		                  is_ports(&a->sys.systems[c->owner]) ? "Delete with saves" : "Delete")) {
 			game_delete(a, c->owner, c->g);
 			return MENU_DONE;
 		}
@@ -12045,6 +12076,14 @@ static void ports_titles(const system_cfg *s, game_list *l)
 	DIR *d;
 
 	if (!is_ports(s)) return;
+	/* A port is its script. lib_scan's folder pass would make a port's own
+	 * folder a game when it holds a .bin (to_the_moon's falcon_mkxp.bin), and
+	 * Delete on that card would take the folder (plorpos-3yv.86.15). */
+	for (int i = 0, n = l->count; i < n; i++)
+		if (strchr(l->items[i].file, '/')) {
+			memmove(&l->items[i], &l->items[i + 1], (size_t)(n - i - 1) * sizeof *l->items);
+			n--, i--, l->count--;
+		}
 	free(g_port_pics);
 	g_port_pics = NULL;
 	g_port_npics = 0;

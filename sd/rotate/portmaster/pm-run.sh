@@ -1,5 +1,6 @@
 #!/bin/sh
-# Runs PortMaster or a port on the RG Rotate (plorpos-3yv.86.2): pm-run.sh SCRIPT [ARGS].
+# Runs PortMaster or a port on the RG Rotate (plorpos-3yv.86.2): pm-run.sh SCRIPT [ARGS],
+# or removes one: pm-run.sh --uninstall ZIP.
 # The launcher starts every port through this, so plorpOS's control.txt is
 # back in place before each run even after PortMaster updated itself.
 #
@@ -18,6 +19,15 @@ export DISPLAY=${DISPLAY:-:0}
 # Ports mount runtimes and keep settings in $HOME: theirs, not the launcher's.
 export HOME=$PMDATA/home
 mkdir -p "$HOME"
+
+# pm-run.sh --uninstall ZIP: Delete Game on the Ports shelf (plorpos-3yv.86.12).
+# PortMaster's own uninstall removes what the port's port.json lists - its
+# script and folder, saves inside included - and keeps anything another
+# installed port also lists.
+if [ "$1" = --uninstall ]; then
+	cd "$PM" || exit 1
+	exec python3 harbourmaster --quiet --no-check uninstall "$2"
+fi
 
 # A port the launcher had to KILL never ran its own cleanup: its runtimes are
 # still mounted (squashfs) and renpy's conf bind mount still sits in $HOME.
