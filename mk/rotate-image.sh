@@ -58,6 +58,12 @@ cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$ROOT/sd/rotate/image/99-rota
 	{ echo "image: no ports Mesa; run mk/build-ports-mesa.sh" >&2; exit 1; }
 mkdir -p "$O/usr/lib"
 cp -a "$ROOT/vendor/rotate-mesa" "$O/usr/lib/plorpos-mesa"
+# 32-bit ports name ROCKNIX's /usr/lib32 (Braid preloads its unversioned
+# libpulse-simple.so from there): Debian's armhf multiarch dir stands in
+# (plorpos-3yv.86.14).
+mkdir -p "$O/usr/lib/arm-linux-gnueabihf"
+ln -s lib/arm-linux-gnueabihf "$O/usr/lib32"
+ln -s libpulse-simple.so.0 "$O/usr/lib/arm-linux-gnueabihf/libpulse-simple.so"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -69,6 +75,14 @@ if [ -z "${REUSE:-}" ]; then
 PM_PKGS="libsdl2-mixer-2.0-0 libopenal1 xwayland mesa-utils zip"
 [ "$(ssh_ "dpkg-query -W -f '\${db:Status-Status}\n' $PM_PKGS 2>&1" | sort -u)" = installed ] ||
 	{ echo "image: $HOST lacks PortMaster's packages; on it: apt install $PM_PKGS" >&2; exit 1; }
+# 32-bit (armhf) userland for box86 and the old gmloader (plorpos-3yv.86.14).
+# Debian's armhf SDL2 pulls its Mesa, LLVM included (~200 MB).
+ARMHF_PKGS="libc6:armhf libstdc++6:armhf libgcc-s1:armhf libsdl2-2.0-0:armhf libopenal1:armhf \
+libfreetype6:armhf zlib1g:armhf libpulse0:armhf libdbus-1-3:armhf libegl1:armhf \
+libgles2:armhf libgl1:armhf libegl-mesa0:armhf libglx-mesa0:armhf libudev1:armhf"
+[ "$(ssh_ "dpkg-query -W -f '\${db:Status-Status}\n' $ARMHF_PKGS 2>&1" | sort -u)" = installed ] ||
+	{ echo "image: $HOST lacks the armhf packages; on it: dpkg --add-architecture armhf;" \
+		"apt update; apt install --no-install-recommends" $ARMHF_PKGS >&2; exit 1; }
 echo "image: reading p1, p2 and the rootfs from $HOST"
 ssh_ 'dd if=/dev/mmcblk0p1 bs=1M status=none' > "$W/p1.img"
 ssh_ 'dd if=/dev/mmcblk0p2 bs=1M status=none' > "$W/p2.img"
@@ -121,6 +135,7 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf \
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf \
 		/r/usr/lib/firmware/sprd/pm_bootcode.bin /r/usr/lib/plorpos-mesa
+	chown -h 0:0 /r/usr/lib32 /r/usr/lib/arm-linux-gnueabihf/libpulse-simple.so
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	# armbian-firmware'"'"'s wcnmodem.bin -> uwe5622/ is another module'"'"'s
 	# firmware: on the first boot, before the unit'"'"'s own lands in
