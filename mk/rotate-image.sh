@@ -53,6 +53,11 @@ ln -s ../plorpos-firmware.service \
 cp "$ROOT/sd/rotate/image/20-wlan0.network" "$O/etc/systemd/network/"
 cp "$ROOT/sd/rotate/image/99-rotate-streams.conf" "$ROOT/sd/rotate/image/99-rotate-volume.conf" \
 	"$O/etc/wireplumber/wireplumber.conf.d/"
+# The ports' own Mesa (plorpos-3yv.86.13), built by mk/build-ports-mesa.sh.
+[ -d "$ROOT/vendor/rotate-mesa/lib" ] ||
+	{ echo "image: no ports Mesa; run mk/build-ports-mesa.sh" >&2; exit 1; }
+mkdir -p "$O/usr/lib"
+cp -a "$ROOT/vendor/rotate-mesa" "$O/usr/lib/plorpos-mesa"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
@@ -115,7 +120,7 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$
 		/r/etc/systemd/network/20-wlan0.network \
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-streams.conf \
 		/r/etc/wireplumber/wireplumber.conf.d/99-rotate-volume.conf \
-		/r/usr/lib/firmware/sprd/pm_bootcode.bin
+		/r/usr/lib/firmware/sprd/pm_bootcode.bin /r/usr/lib/plorpos-mesa
 	rm -f /r/etc/systemd/system/multi-user.target.wants/rotate-pad2key.service
 	# armbian-firmware'"'"'s wcnmodem.bin -> uwe5622/ is another module'"'"'s
 	# firmware: on the first boot, before the unit'"'"'s own lands in

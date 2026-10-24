@@ -16,6 +16,11 @@ export XDG_DATA_HOME=$PMDATA
 export HM_TOOLS_DIR=$PMDATA HM_PORTS_DIR=/mnt/SDCARD/Roms/Ports HM_SCRIPTS_DIR=/mnt/SDCARD/Roms/Ports
 # X11 ports: sway starts Xwayland on the first one (sway.conf).
 export DISPLAY=${DISPLAY:-:0}
+# Ports get plorpOS's own Mesa (mk/build-ports-mesa.sh): no LLVM, which
+# crashed Mono's ports, and GLES 1 (plorpos-3yv.86.13). A port's own libs
+# (gl4es, libs/) still go in front of it.
+[ -d /usr/lib/plorpos-mesa/lib ] &&
+	export LD_LIBRARY_PATH=/usr/lib/plorpos-mesa/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 # Ports mount runtimes and keep settings in $HOME: theirs, not the launcher's.
 export HOME=$PMDATA/home
 mkdir -p "$HOME"
