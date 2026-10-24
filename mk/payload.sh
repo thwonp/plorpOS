@@ -17,6 +17,7 @@
 # folders - plus that guide as INSTALL.md. BaseOS itself is the user's, on TF1.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+. "$ROOT/mk/plorpos-files.sh"
 PLATFORM=${PLATFORM:-brick}
 VERSION=${VERSION:-1.01}
 if [ "$PLATFORM" = gkd ]; then
@@ -61,10 +62,6 @@ mkdir -p "$P/cards" "$P/cores" "$P/res/web" \
 
 cp "$B/tortos.elf" "$P/"
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
-# diatom's GLSL passes and the in-game menu's list of them, one list on both
-# devices (plorpos-gkd.72, plorpos-reo.4)
-mkdir -p "$P/shaders"
-cp "$ROOT/res/shaders/"* "$P/shaders/"
 if [ "$PLATFORM" = gkd ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/gkd/launch.sh" "$P/"
@@ -123,60 +120,14 @@ fi
 # Both devices ship every system since plorpos-reo: the Brick dropped fbneo,
 # pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
 cp "$ROOT/config/systems.cfg" "$P/"
-cp -R "$ROOT/res/cards/." "$P/cards/"     # the classic/ and fancy/ sets, as adb-deploy.sh pushes them
-cp "$ROOT/res/fonts/head.ttf" "$P/"       # the heading face (ui.c, plorpos-8m1.2)
-cp "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$P/"   # UI Settings > Font (plorpos-8m1.3)
-cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
-cp "$ROOT/res/singles.png" "$P/"          # Muse's cover for Singles, the loose songs
-# Over The Hare's page. The launcher serves these off the card at P_WEB, so a
-# payload without them is a card whose transfer screen starts a server and then
-# answers its own page with a 404. adb-deploy.sh has always pushed them and
-# this did not, which is a difference that only shows on a built card - the
-# reason to build one before calling it a release. The font goes in twice
-# rather than being kept in the repo twice: the launcher reads $P/menu.ttf and
-# a browser asks for /web/menu.ttf.
-cp "$ROOT/res/web/"* "$P/res/web/"
-cp "$ROOT/res/fonts/menu.ttf" "$P/res/web/menu.ttf"
-# The device has curl and OpenSSL but nothing to trust - see res/ssl/README.md.
-# Without this, every HTTPS request fails verification and achievements never
-# arrive, with an error that reads like the network being down.
-cp "$ROOT/res/ssl/cacert.pem" "$P/"
-cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$P/"  # MIT, and which files are not (NOTICE)
-cp -r "$ROOT/LICENSES" "$P/"            # PolyForm Noncommercial, for the NextUI-derived parts
-cp "$ROOT/THIRD-PARTY-LICENSES.md" "$P/"  # notices for the redistributed software
-# What a core needs on the card besides itself, only when it ships.
-if grep -q '^sys|[^|]*|[^|]*|fbneo|' "$P/systems.cfg"; then
-	cp "$ROOT/res/fbneo-titles.tsv" "$P/res/"   # Arcade and Neo Geo titles (src/titles.c)
-	cp "$ROOT/LICENSE-FBNeo.txt" "$P/"     # FBNeo requires its full text, verbatim
-fi
-if grep -q '^sys|[^|]*|[^|]*|fake08|' "$P/systems.cfg"; then
-	cp "$ROOT/LICENSE-fake08.md" "$P/"     # fake08's MIT notice and its components' terms
-fi
+# Everything else in TortOS/ that every device ships, cores included (one
+# list with the Rotate's card, plorpos-3yv.89).
+plorpos_files "$P" "$ROOT/vendor/cores"
 cp "$DIATOM_ELF" "$P/diatom"
 
-# The cores are the ones the card's systems.cfg names - no more, no fewer.
-#
-# This used to be a glob over vendor/cores, which ships whatever that folder
-# happens to hold and says nothing about what is missing. That is how a card was
-# nearly built with four of nine systems dead - systems.cfg gained SNES and the
-# Sega machines, vendor/ still held the original three, and nothing failed. A
-# shelf whose cards open onto nothing is a worse failure than a build that
-# refuses.
-missing=
-for core in $(awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' \
-              "$P/systems.cfg" | sort -u); do
-	cp "$ROOT/vendor/cores/${core}_libretro.so" "$P/cores/" 2>/dev/null ||
-		missing="$missing $core"
-done
-if [ -n "$missing" ]; then
-	echo "payload: systems.cfg needs cores that vendor/ does not have:$missing" >&2
-	echo "payload: run mk/fetch-vendor.sh" >&2
-	exit 1
-fi
 
-# One ROM folder per system, with the .media folder box art goes in. Read from
-# systems.cfg (awk, not sed: folder names contain spaces).
-awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$P/systems.cfg" |
+# One ROM folder per system, with the .media folder box art goes in.
+plorpos_rom_folders "$P" |
 while IFS= read -r folder; do
 	mkdir -p "$CARD/Roms/$folder/.media"
 done

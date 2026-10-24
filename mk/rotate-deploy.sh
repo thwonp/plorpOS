@@ -6,13 +6,14 @@
 #
 # elf: the launcher alone. diatom: the resident emulator alone (../diatom,
 # PORT=rotate tools/brick-make.sh). all: both, the cores, Muse's tools, the session
-# scripts (sd/rotate) and the shared files payload.sh puts in plorpOS/
-# (systems.cfg, cards, font, web, CA bundle, shaders). boot: also installs
+# scripts (sd/rotate), the files every device's plorpOS/ holds (mk/plorpos-files.sh)
+# and a ROM folder per shelf. boot: also installs
 # plorpos.service into the rootfs and enables it in place of tty1's getty.
 # stage: the plorpOS folder into $ROTATE_STAGE, no device (mk/rotate-image.sh).
 # The runtime libraries are Debian's: apt, not this script.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+. "$ROOT/mk/plorpos-files.sh"
 MODE=${1:-elf}
 HOST=${ROTATE_HOST:-root@192.168.0.69}
 KEY=${ROTATE_KEY:-$HOME/.ssh/rgrotate}
@@ -31,33 +32,28 @@ if [ "$MODE" = diatom ]; then
 	echo "deployed diatom $(md5sum "$DIATOM" | cut -c1-8); the launcher restarts it"
 	exit 0
 fi
-# The plorpOS folder, as the card holds it, into $1: the launcher, Diatom
-# and its cores, Muse's tools, the session (sd/rotate) and the shared files
-# payload.sh puts in plorpOS/ (systems.cfg, cards, font, web, CA bundle,
-# shaders). No pico8sdl.so or wget shim: the Rotate's PICO-8 needs neither.
+# The plorpOS folder, as the card holds it, into $1: the launcher, Diatom,
+# Muse's tools and the session (sd/rotate), then what every device's plorpOS/
+# holds (mk/plorpos-files.sh: systems.cfg's cores, cards, fonts, web, CA bundle,
+# shaders, licences, arcade titles). No pico8sdl.so or wget shim: the Rotate's
+# PICO-8 needs neither.
 stage() {
 	S=$1
-	mkdir -p "$S/cards" "$S/res/web" "$S/shaders" "$S/rotate" "$S/cores"
+	mkdir -p "$S/rotate/portmaster"
 	cp "$B/tortos.elf" "$S/"
 	[ -f "$DIATOM" ] && cp "$DIATOM" "$S/diatom"
-	cp "$ROOT"/vendor/cores/*_libretro.so "$S/cores/"
-	# The Rotate's own cores and shelves (config/systems-rotate.cfg).
-	cp "$ROOT"/vendor/cores-rotate/*_libretro.so "$S/cores/"
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
-	mkdir -p "$S/rotate/portmaster"
 	cp "$ROOT/sd/rotate/portmaster/"* "$S/rotate/portmaster/"
 	# PortMaster itself, unpacked on first use (plorpos-3yv.86.4; mk/fetch-vendor.sh).
 	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
 		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
 	cp "$ROOT/vendor/portmaster/PortMaster.zip" "$S/rotate/portmaster/"
 	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
-	cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/head.ttf" "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$ROOT/res/singles.png" \
-	   "$ROOT/res/ssl/cacert.pem" "$S/"
+	# The Rotate's own shelves (config/systems-rotate.cfg) after everyone's.
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" > "$S/systems.cfg"
-	cp -R "$ROOT/res/cards/." "$S/cards/"
-	cp "$ROOT/res/web/"* "$S/res/web/"
-	cp "$ROOT/res/fonts/menu.ttf" "$S/res/web/menu.ttf"
-	cp "$ROOT/res/shaders/"* "$S/shaders/"
+	# Its own cores first (vendor/cores-rotate). DSperate is no shelf's core but
+	# the Nintendo DS shelf's Core row switches to it (main.c ALT_CORES).
+	plorpos_files "$S" "$ROOT/vendor/cores-rotate $ROOT/vendor/cores" dsperate
 }
 if [ "$MODE" = stage ]; then
 	[ -n "${ROTATE_STAGE:-}" ] || { echo "stage: set ROTATE_STAGE" >&2; exit 1; }
@@ -76,6 +72,9 @@ if [ "$MODE" = all ] || [ "$MODE" = boot ]; then
 	tar -C "$T" --exclude=./tortos.elf --exclude=./diatom -cf - . | ssh_ "tar -C $P --no-same-owner -xf -"
 	[ -f "$DIATOM" ] && put "$DIATOM" diatom
 	ssh_ "mkdir -p /mnt/SDCARD/Roms /mnt/SDCARD/Music /mnt/SDCARD/Bios /mnt/SDCARD/Saves" < /dev/null
+	# A ROM folder per shelf, as payload.sh makes them - a shelf added since the
+	# card was set up has one too (plorpos-3yv.89).
+	plorpos_rom_folders "$T" | ssh_ 'while IFS= read -r f; do mkdir -p "/mnt/SDCARD/Roms/$f/.media"; done'
 fi
 if [ "$MODE" = boot ]; then
 	ssh_ "cat > /etc/systemd/system/plorpos.service && systemctl daemon-reload && \
