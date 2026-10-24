@@ -419,16 +419,42 @@ static bool helper(char *const argv[])
 #define HIDE_WS "plorpos-hidden"
 
 /* pid's window on screen (on top, fullscreen) or off it, on the hidden
- * workspace. */
+ * workspace. A PortMaster port's window is not its script's: it is the game's,
+ * a process in the script's group (platform.c run_fork), or Xwayland's for an
+ * X11 port - which only a port brings up while it runs. Those are found in
+ * sway's tree and moved by container id (plorpos-3yv.86.3). */
+#define PLACE_MAX 8
+
 static bool place(pid_t pid, bool on_screen)
 {
-	char crit[96];
+	char crit[96], line[256];
 	char *cmd[] = { "swaymsg", crit, NULL };
+	const char *what = on_screen
+	         ? "move container to workspace 1, focus, fullscreen enable"
+	         : "move container to workspace " HIDE_WS;
+	long id = -1, ids[PLACE_MAX];
+	int n = 0, i, vp = 0;
+	bool ok = false;
+	FILE *f;
 
-	snprintf(crit, sizeof crit, on_screen
-	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d] move container to workspace " HIDE_WS, (int)pid);
-	return helper(cmd);
+	snprintf(crit, sizeof crit, "[pid=%d] %s", (int)pid, what);
+	if (helper(cmd)) return true;
+	if (!(f = popen("swaymsg -t get_tree", "r"))) return false;
+	while (fgets(line, sizeof line, f)) {
+		char *k = line + strspn(line, " ");
+
+		if (!strncmp(k, "\"id\": ", 6)) id = atol(k + 6), vp = 0;
+		else if (!strncmp(k, "\"pid\": ", 7)) vp = atoi(k + 7);
+		else if (!strncmp(k, "\"shell\": ", 9) && vp > 0 && n < PLACE_MAX &&
+		         (getpgid(vp) == pid || strstr(k, "\"xwayland\"")))
+			ids[n++] = id;
+	}
+	pclose(f);
+	for (i = 0; i < n; i++) {
+		snprintf(crit, sizeof crit, "[con_id=%ld] %s", ids[i], what);
+		ok |= helper(cmd);
+	}
+	return ok;
 }
 
 static void resident_place(bool on_screen)
@@ -466,17 +492,29 @@ void child_restore(pid_t pid, bool show)
  * stream is the one whose Client: is the child's (plorpos-3yv.18). */
 #define QUIET_CLIENTS 4
 
+/* Whether a pactl line names a process of the child's: the child, or one in
+ * its group - a PortMaster port's game is its script's grandchild
+ * (plorpos-3yv.86.3). */
+static bool quiet_ours(const char *line, pid_t pid)
+{
+	const char *k = strstr(line, "application.process.id = \"");
+	pid_t p;
+
+	if (!k) return false;
+	p = (pid_t)atoi(k + 26);
+	return p > 0 && (p == pid || getpgid(p) == pid);
+}
+
 static int quiet_stream(pid_t pid)
 {
-	char line[256], want[48];
+	char line[256];
 	int cur = -1, idx = -1, clients[QUIET_CLIENTS], nc = 0, c, i;
 	FILE *f = popen("pactl list clients 2>/dev/null", "r");
 
 	if (!f) return -1;
-	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
 	while (fgets(line, sizeof line, f)) {
 		if (!strncmp(line, "Client #", 8)) cur = atoi(line + 8);
-		else if (cur >= 0 && nc < QUIET_CLIENTS && strstr(line, want)) clients[nc++] = cur;
+		else if (cur >= 0 && nc < QUIET_CLIENTS && quiet_ours(line, pid)) clients[nc++] = cur;
 	}
 	pclose(f);
 	if (!(f = popen("pactl list sink-inputs 2>/dev/null", "r"))) return -1;
@@ -484,7 +522,7 @@ static int quiet_stream(pid_t pid)
 	while (fgets(line, sizeof line, f)) {
 		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
 		else if (idx >= 0) continue;
-		else if (strstr(line, want)) idx = cur;
+		else if (quiet_ours(line, pid)) idx = cur;
 		else if (sscanf(line, " Client: %d", &c) == 1)
 			for (i = 0; i < nc; i++) if (clients[i] == c) idx = cur;
 	}

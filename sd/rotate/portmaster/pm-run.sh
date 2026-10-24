@@ -19,6 +19,13 @@ export DISPLAY=${DISPLAY:-:0}
 export HOME=$PMDATA/home
 mkdir -p "$HOME"
 
+# A port the launcher had to KILL never ran its own cleanup: its runtimes are
+# still mounted (squashfs) and renpy's conf bind mount still sits in $HOME.
+# Nothing else on the system mounts either, and nothing of PortMaster's runs
+# now (plorpos-3yv.86.3).
+grep -E " squashfs | $HOME/" /proc/mounts | cut -d" " -f2 | sort -r |
+	while read -r m; do umount "$m" 2>/dev/null || umount -l "$m"; done
+
 cmp -s "$HERE/control.txt" "$PM/control.txt" || cp "$HERE/control.txt" "$PM/control.txt"
 
 cd "$(dirname "$1")" || exit 1

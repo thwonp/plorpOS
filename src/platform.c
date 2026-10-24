@@ -8,6 +8,7 @@
 #include "platform_dev.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <glob.h>
 #include <errno.h>
@@ -342,6 +343,7 @@ static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 	if (pid == 0) {
 		ssize_t w;
 
+		setpgid(0, 0);   /* a group of its own: see group_term */
 		if (workdir) {
 			if (chdir(workdir) != 0) { /* still try to run */ }
 		}
@@ -353,8 +355,55 @@ static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 		(void)w;
 		_exit(127);
 	}
+	if (pid > 0) setpgid(pid, pid);   /* both sides, so no signal beats it */
 	return pid;
 }
+
+#ifdef __linux__
+/* A child is a process group of its own (run_fork), and is frozen, thawed and
+ * killed as one: a PortMaster port is a script whose game is its grandchild,
+ * which a signal to the script alone never reached (plorpos-3yv.86.3). For
+ * Diatom and PICO-8 the group is the one process, as before. */
+static void group_kill(pid_t pid, int sig)
+{
+	if (kill(-pid, sig) != 0) kill(pid, sig);
+}
+
+/* sig to the group but its leader, so a port's script outlives its game and
+ * runs its own cleanup after it (pm_finish: gptokeyb, the runtimes' mounts) -
+ * and not to the script's tee (exec > >(tee log.txt)), whose end would take
+ * the script down with SIGPIPE mid-cleanup. A child with nothing under it
+ * gets sig itself. CONT as well: a stopped process does not act on TERM.
+ * Ending is TERM, then KILL this way after 3 s (Sopwith ignores TERM), and
+ * the whole group only GROUP_KILL_MS later, if the script is still there. */
+#define GROUP_KILL_MS 4500
+
+static void group_term(pid_t pid, int sig)
+{
+	DIR *d = opendir("/proc");
+	struct dirent *e;
+	int n = 0;
+
+	while (d && (e = readdir(d))) {
+		pid_t p = (pid_t)atoi(e->d_name);
+		char path[64], comm[32] = "";
+		FILE *f;
+
+		if (p <= 0 || p == pid || getpgid(p) != pid) continue;
+		snprintf(path, sizeof path, "/proc/%d/comm", (int)p);
+		if ((f = fopen(path, "r"))) {
+			if (!fgets(comm, sizeof comm, f)) comm[0] = '\0';
+			fclose(f);
+		}
+		if (!strcmp(comm, "tee\n")) continue;
+		kill(p, sig);
+		n++;
+	}
+	if (d) closedir(d);
+	if (!n) kill(pid, sig);
+	group_kill(pid, SIGCONT);
+}
+#endif
 
 #ifdef __linux__
 /* End a child and wait for it: TERM, then KILL after 3 s. CONT as well, as a
@@ -364,14 +413,17 @@ static void run_end(pid_t pid)
 {
 	int ms, status;
 
-	kill(pid, SIGTERM);
-	kill(pid, SIGCONT);
-	for (ms = 0; ms < 3000; ms += 100) {
-		if (waitpid(pid, &status, WNOHANG) != 0) return;
+	group_term(pid, SIGTERM);
+	for (ms = 0; ms < GROUP_KILL_MS; ms += 100) {
+		if (waitpid(pid, &status, WNOHANG) != 0) break;
+		if (ms == 3000) group_term(pid, SIGKILL);
 		usleep(100 * 1000);
 	}
-	kill(pid, SIGKILL);
-	waitpid(pid, &status, 0);
+	if (ms >= GROUP_KILL_MS) {
+		group_kill(pid, SIGKILL);
+		waitpid(pid, &status, 0);
+	}
+	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 }
 
 static void level_nudge(bool bright, int d)
@@ -560,6 +612,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
+	bool term_killed = false;   /* its game KILLed, the script let finish */
 	lv_hold hold = { 0 };
 	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
 	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
@@ -615,9 +668,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				bool awake;
 
 				hold.next = 0;
-				kill(pid, SIGSTOP);
+				group_kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
-				kill(pid, SIGCONT);
+				group_kill(pid, SIGCONT);
 				run_asleep_ms += plat_now_ms() - t0;
 				fprintf(stderr, "sleep: %s after %us (child)\n",
 				        awake ? "awake" : "no suspend, powering off",
@@ -690,7 +743,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 #if !defined(PLAT_PIPEWIRE)
 			child_audio_release();
 #endif
-			kill(pid, SIGSTOP);
+			group_kill(pid, SIGSTOP);
 			if (child_hide(pid)) {
 				fprintf(stderr, "run: menu, child %d frozen\n", (int)pid);
 				c = on_menu(ctx);
@@ -709,7 +762,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				/* Muse may have started or stopped in the menu: said before
 				 * the game makes a sound, as game_menu does. */
 				if (on_tick) child_quiet(pid, on_tick(ctx));
-				kill(pid, SIGCONT);
+				group_kill(pid, SIGCONT);
 			}
 			else if (c == RUN_RESET) {
 				run_end(pid);
@@ -720,15 +773,20 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
 		if (g_terminating) quit = true;
 		if (quit && !term_at) {
-			kill(pid, SIGTERM);
-			kill(pid, SIGCONT);   /* a frozen child acts on TERM only once thawed */
+			group_term(pid, SIGTERM);
 			term_at = plat_now_ms() | 1;
+			term_killed = false;
 		}
-		if (term_at && plat_now_ms() - term_at > 3000) {
-			kill(pid, SIGKILL);
+		if (term_at && !term_killed && plat_now_ms() - term_at > 3000) {
+			group_term(pid, SIGKILL);
+			term_killed = true;
+		}
+		if (term_at && plat_now_ms() - term_at > GROUP_KILL_MS) {
+			group_kill(pid, SIGKILL);
 			term_at = 0;
 		}
 	}
+	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 #else
 	(void)on_menu; (void)on_tick; (void)ctx;
 	if (waitpid(pid, &status, 0) < 0) { free(env); return -1; }

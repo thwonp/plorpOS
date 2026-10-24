@@ -237,6 +237,7 @@ typedef struct {
 	                             * loop, the game menu and its screens */
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
+	bool in_port;               /* a PortMaster port runs: no Splore row */
 	SDL_Renderer *r;
 } app;
 
@@ -267,6 +268,8 @@ static void album_art_screen(app *a);
 static void rescan_all(app *a);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
+static bool is_portmaster(const system_cfg *s, const char *file);
+static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
 /* Network Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
@@ -629,8 +632,10 @@ static void sort_shelf(app *a, int sys)
 		sort_apply_owned(v->list.items, v->owner, v->list.count, v->sort, tags);
 		return;
 	}
-	/* Splore stays first in every order: the carts sort behind it. */
-	if (v->list.count && is_splore(&a->sys.systems[sys], v->list.items[0].file))
+	/* Splore stays first in every order: the carts sort behind it. So does
+	 * PortMaster on the Ports shelf (plorpos-3yv.86.3). */
+	if (v->list.count && (is_splore(&a->sys.systems[sys], v->list.items[0].file) ||
+	                      is_portmaster(&a->sys.systems[sys], v->list.items[0].file)))
 		sort_apply(v->list.items + 1, v->list.count - 1, v->sort,
 		           a->sys.systems[sys].tag);
 	else
@@ -1288,6 +1293,7 @@ static bool card_art_path(const system_cfg *s, const game_entry *g, char *out, s
 		snprintf(out, n, "%s/cards/splore.png", P_ROOT);
 		return true;
 	}
+	if (!box && port_art(s, g, out, n)) return true;
 
 	if (!box && fl > 7 && !strcasecmp(g->file + fl - 7, ".p8.png")) {
 		snprintf(out, n, "%s/%s/%s", P_ROMS, folder, g->file);
@@ -6123,7 +6129,7 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 	struct stat st;
 
 	memset(gi, 0, sizeof *gi);
-	gi->deletable = !is_splore(s, g->file);
+	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -11662,6 +11668,7 @@ typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
+	bool       port;       /* a PortMaster port: no Splore row at all */
 } nm_ctx;
 
 /* Also where the press-to-menu time is said: the second build comes right
@@ -11676,6 +11683,11 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
+	if (c->port) {
+		gm_native_rows(true, rows);
+		rows[GMN_SPLORE] = rows[GMN_QUIT];
+		return GMN_ROWS - 1;
+	}
 	return gm_native_rows(c->in_splore, rows);
 }
 
@@ -11705,6 +11717,7 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 	nm_ctx *c = ctx;
 
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
 	a->to_splore = sel == GMN_SPLORE;
@@ -11716,7 +11729,7 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 	menu_style st = { 0 };
 
 
@@ -11970,6 +11983,186 @@ static void splore_add(const system_cfg *s, game_list *l)
 	l->count++;
 }
 
+/* ---- PortMaster ----------------------------------------------------------
+ *
+ * The Ports shelf (plorpos-3yv.86, RG Rotate only: config/systems-rotate.cfg)
+ * lists the scripts PortMaster installs in Roms/Ports, and PortMaster itself
+ * first, as Splore is on PICO-8's. Everything runs through
+ * rotate/portmaster/pm-run.sh, which puts plorpOS's control.txt back first, as
+ * a native game under run_alone: Continue, Reset and Quit, power sleeps, Muse
+ * quiets it. A port is a script whose game is its grandchild, so plat_run
+ * signals the whole process group (platform.c group_term). */
+#define PORTMASTER "PortMaster"
+
+static bool is_ports(const system_cfg *s) { return !strcmp(s->core, "portmaster"); }
+
+static bool is_portmaster(const system_cfg *s, const char *file)
+{
+	return is_ports(s) && !strcmp(file, PORTMASTER);
+}
+
+static void pm_data(char *out, size_t n, const char *rel)
+{
+	snprintf(out, n, "%s/.userdata/shared/portmaster/%s", P_CARD, rel);
+}
+
+/* Each port's own picture, from its gameinfo.xml, by script name: rebuilt on
+ * every scan of the shelf. */
+typedef struct { char file[LIB_NAME]; char image[LIB_PATH]; } port_pic;
+static port_pic *g_port_pics;
+static int       g_port_npics;
+
+typedef struct { game_list *l; const char *dir; } port_scan;
+
+static void port_meta(void *ctx, const char *file, const game_meta *m)
+{
+	port_scan *ps = ctx;
+	port_pic *p;
+	int i;
+
+	for (i = 0; i < ps->l->count && strcmp(ps->l->items[i].file, file); i++)
+		;
+	if (i == ps->l->count) return;
+	if (m->title[0])
+		snprintf(ps->l->items[i].title, sizeof ps->l->items[i].title, "%s", m->title);
+	if (!m->image[0] || !(p = realloc(g_port_pics, (size_t)(g_port_npics + 1) * sizeof *p)))
+		return;
+	g_port_pics = p;
+	p += g_port_npics++;
+	snprintf(p->file, sizeof p->file, "%s", file);
+	/* Written relative to Roms/Ports, as <path> is: "./2048/screenshot.jpg". */
+	snprintf(p->image, sizeof p->image, "%s/%s",
+	         ps->dir, m->image + (strncmp(m->image, "./", 2) ? 0 : 2));
+}
+
+/* Titles and pictures from every Roms/Ports/<folder>/gameinfo.xml, the file
+ * each port ships for frontends. A title the owner set wins after this
+ * (titles_apply), as on every shelf. */
+static void ports_titles(const system_cfg *s, game_list *l)
+{
+	char dir[LIB_PATH], path[LIB_PATH * 2];
+	struct dirent *e;
+	DIR *d;
+
+	if (!is_ports(s)) return;
+	free(g_port_pics);
+	g_port_pics = NULL;
+	g_port_npics = 0;
+	snprintf(dir, sizeof dir, "%s/%s", P_ROMS, s->folder);
+	if (!(d = opendir(dir))) return;
+	while ((e = readdir(d))) {
+		port_scan ps = { l, dir };
+		FILE *f;
+		char *xml;
+		long len;
+
+		if (e->d_name[0] == '.') continue;
+		snprintf(path, sizeof path, "%s/%s/gameinfo.xml", dir, e->d_name);
+		if (!(f = fopen(path, "rb"))) continue;
+		if (fseek(f, 0, SEEK_END) == 0 && (len = ftell(f)) > 0 && len < 65536 &&
+		    fseek(f, 0, SEEK_SET) == 0 && (xml = malloc((size_t)len))) {
+			if (fread(xml, 1, (size_t)len, f) == (size_t)len)
+				gl_parse(xml, (size_t)len, port_meta, &ps);
+			free(xml);
+		}
+		fclose(f);
+	}
+	closedir(d);
+}
+
+static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n)
+{
+	int i;
+
+	if (!is_ports(s)) return false;
+	if (!strcmp(g->file, PORTMASTER)) {
+		snprintf(out, n, "%s/cards/portmaster.png", P_ROOT);
+		return true;
+	}
+	for (i = 0; i < g_port_npics; i++)
+		if (!strcmp(g_port_pics[i].file, g->file)) {
+			snprintf(out, n, "%s", g_port_pics[i].image);
+			return access(out, R_OK) == 0;
+		}
+	return false;
+}
+
+/* First on the shelf, whenever PortMaster is on the card to run. */
+static void portmaster_add(const system_cfg *s, game_list *l)
+{
+	char sh[LIB_PATH];
+	game_entry *items;
+
+	if (!is_ports(s)) return;
+	pm_data(sh, sizeof sh, "PortMaster/PortMaster.sh");
+	if (access(sh, R_OK) != 0) return;
+	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
+	if (!items) return;
+	memmove(items + 1, items, (size_t)l->count * sizeof *items);
+	memset(items, 0, sizeof *items);
+	snprintf(items[0].name, sizeof items[0].name, "%s", PORTMASTER);
+	snprintf(items[0].title, sizeof items[0].title, "%s", PORTMASTER);
+	snprintf(items[0].file, sizeof items[0].file, "%s", PORTMASTER);
+	l->items = items;
+	l->count++;
+}
+
+/* Said once, the first time PortMaster is opened (user, seq 142): a marker
+ * beside PortMaster, outside its folder, which its updates replace. */
+static void portmaster_notice(app *a)
+{
+	static const char *const TEXT =
+		"PortMaster is not officially supported on this build (yet). "
+		"Please report any bugs to plorpOS, NOT the PortMaster team.";
+	char lines[CHV_WRAP_LINES][CHV_WRAP_COLS], mark[LIB_PATH];
+	menu_row rows[CHV_WRAP_LINES + 2];
+	int n, i;
+	FILE *f;
+
+	pm_data(mark, sizeof mark, ".plorpos-notice");
+	if (access(mark, F_OK) == 0) return;
+	n = wrap_text(ui_font(UI_F_MENU), TEXT, menu_std_width(a), lines, CHV_WRAP_LINES);
+	for (i = 0; i < n; i++) rows[i] = (menu_row){ lines[i], MENU_BODY_MARK, true };
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE("A to continue");
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	note_panel(a, PORTMASTER, rows, n);
+	if (!a->running) return;
+	if ((f = fopen(mark, "w"))) fclose(f);
+}
+
+static int run_port(app *a, const system_cfg *s, const char *file)
+{
+	char run[LIB_PATH], script[LIB_PATH * 2];
+	char *argv[] = { (char *)"/bin/sh", run, script, NULL };
+	int r;
+
+	snprintf(run, sizeof run, "%s/rotate/portmaster/pm-run.sh", P_ROOT);
+	if (!strcmp(file, PORTMASTER)) {
+		portmaster_notice(a);
+		if (!a->running) return -1;
+		pm_data(script, sizeof script, "PortMaster/PortMaster.sh");
+	} else {
+		snprintf(script, sizeof script, "%s/%s/%s", P_ROMS, s->folder, file);
+	}
+	a->in_port = true;
+	a->pico8_splore = false;
+	r = run_alone(a, argv, native_menu, native_tick);
+	a->in_port = false;
+	/* PortMaster may have installed or removed ports: the shelf again, on
+	 * PortMaster's own entry, where it came back to. */
+	if (!strcmp(file, PORTMASTER)) {
+		sysview *v;
+
+		rescan_all(a);
+		v = &a->view[a->sys_cursor];
+		v->cursor = 0;
+		cf_reset(&v->cf, 0);
+	}
+	return r;
+}
+
 /* -home is where PICO-8 keeps everything it writes - config, log, cart data,
  * Splore's downloads - and -desktop its screenshots, which by default would
  * land beside the carts and show on the shelf as .png carts. Both under
@@ -12201,7 +12394,7 @@ static void launch_one(app *a)
 	 * too since plorpos-reo.3). PICO-8's is Saves/pico-8 on exFAT, which
 	 * ignores case: fake08 and native PICO-8 share cdata/, in one format. */
 	snprintf(save, sizeof save, "%s/Saves/%s", P_CARD, s->folder);
-	mkdir(save, 0755);
+	if (!is_ports(s)) mkdir(save, 0755);   /* ports keep their own */
 	snprintf(bios, sizeof bios, "%s/Bios", P_CARD);
 
 	/* A disc that needs firmware, before anything tries to run it.
@@ -12261,10 +12454,11 @@ static void launch_one(app *a)
 		memset(&a->in, 0, sizeof a->in);
 		return;
 	}
+	native |= is_ports(s);   /* run by the launcher too, never the resident */
 
 	/* Front of the switcher's list, in memory only - the tick writes it.
 	 * Splore is a place, not a game (plorpos-gl5.1). */
-	if (!is_splore(s, romfile)) recent_note(s->tag, romfile);
+	if (!is_splore(s, romfile) && !is_portmaster(s, romfile)) recent_note(s->tag, romfile);
 	snprintf(g_cur_tag, sizeof g_cur_tag, "%s", s->tag);
 	/* A DS's bottom screen takes touches: the edge band narrows and a
 	 * swipe must be quick (plorpos-3yv.47, platform.h). */
@@ -12522,7 +12716,16 @@ static void launch_one(app *a)
 		}
 	}
 
-	if (native) {
+	if (is_ports(s)) {
+		char from[LIB_PATH];
+
+		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
+		stats_begin(s->tag, from, plat_now_ms());
+		fprintf(stderr, "port exited %d\n", run_port(a, s, from));
+		stats_asleep(plat_run_asleep_ms());
+		stats_end(NULL, plat_now_ms());
+		if (!a->running) return;
+	} else if (native) {
 		/* Played time counts here too, begun and ended around plat_run,
 		 * less any sleep. No stats_tick checkpoints while it runs, so a
 		 * power cut mid-session loses that session's time. */
@@ -12625,7 +12828,8 @@ static void launch_one(app *a)
 
 		char art[LIB_PATH * 3];
 
-		if (v->tex[v->cursor] &&
+		/* (A rescan behind PortMaster can leave the shelf empty.) */
+		if (v->list.count && v->tex[v->cursor] &&
 		    !card_art_path(&a->sys.systems[o], g, art, sizeof art)) {
 			SDL_DestroyTexture(v->tex[v->cursor]);
 			v->tex[v->cursor] = NULL;
@@ -13649,10 +13853,12 @@ static void scan_all(app *a, bool bg)
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
 		lib_scan(P_ROMS, a->sys.systems[i].folder, a->sys.systems[i].exts, &v->list);
+		ports_titles(&a->sys.systems[i], &v->list);
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
 		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
 		splore_add(&a->sys.systems[i], &v->list);
+		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
