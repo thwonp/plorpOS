@@ -38,6 +38,10 @@ fi
 
 cmp -s "$HERE/control.txt" "$PM/control.txt" || cp "$HERE/control.txt" "$PM/control.txt"
 
+# RetroArch ports call /usr/bin/retroarch: Diatom stands in (plorpos-3yv.86.6).
+# Only where nothing is: a real RetroArch keeps its place.
+[ -e /usr/bin/retroarch ] || [ -L /usr/bin/retroarch ] || ln -s "$HERE/retroarch" /usr/bin/retroarch
+
 # PortMaster's GUI is not a port: control.txt names the system to it
 # as it is, not as ROCKNIX.
 [ "$(basename "$1")" = PortMaster.sh ] && export PLORPOS_PM_GUI=1

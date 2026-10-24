@@ -1,0 +1,31 @@
+#!/bin/sh
+# retroarch for PortMaster's RetroArch ports on the RG Rotate (plorpos-3yv.86.6).
+# There is no RetroArch on plorpOS: ports that ship a libretro core run
+# "$raloc/retroarch $raconf -L CORE [CONTENT]" (raloc is /usr/bin for ROCKNIX),
+# and pm-run.sh links /usr/bin/retroarch here. Diatom plays the core one-shot.
+#
+# Content is the first argument that is not an option, as RetroArch takes it:
+# none (2048, Mr. Boom), a file (Dinothawr), a folder (xrick) or the first of a
+# glob (Quake's id1/*). Saves and the system folder stay in the port's own
+# folder, the core's. Aspect, not stretch: several of these cores report no
+# aspect, and Diatom then keeps their frame's own shape. MENU is the launcher's
+# (it freezes the port and draws its own menu), so Diatom must not quit on it.
+#
+# SPDX-License-Identifier: MIT
+P=/mnt/SDCARD/plorpOS
+core= content=
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-L|--libretro) core=$2; shift ;;
+	-c|--config|--appendconfig) shift ;;
+	-*) ;;
+	*) [ -n "$content" ] || content=$1 ;;
+	esac
+	shift
+done
+[ -n "$core" ] || { echo "retroarch (plorpOS): no core (-L)" >&2; exit 1; }
+dir=$(dirname "$core")
+mkdir -p "$dir/saves"
+export LD_LIBRARY_PATH=$P/lib
+exec "$P/diatom" --core "$core" ${content:+--rom "$content"} \
+	--save "$dir/saves" --system "$dir" --display aspect --host-menu
