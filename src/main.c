@@ -10924,7 +10924,21 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_CONFIRM, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_ROWS };
+
+/* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
+ * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
+static const int FF_SPEEDS[] = { 2, 4, 8 };
+static const char *const FF_NAME[] = { "2x", "4x", "8x" };
+#define FF_COUNT ((int)(sizeof FF_SPEEDS / sizeof FF_SPEEDS[0]))
+
+static int gs_ff(void)
+{
+	int i = 0, x = db_get_int(db_dev(), "ffspeed", 4);
+
+	while (i < FF_COUNT - 1 && FF_SPEEDS[i] != x) i++;
+	return i;
+}
 
 static int gs_rewind(void)
 {
@@ -10941,16 +10955,17 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	*heading = "Game Settings";
 	rows[GS_RESUME]   = (menu_row){ "Games Auto-Resume", gs_auto_resume() ? "on" : "off", true };
 	rows[GS_REWIND]   = (menu_row){ "Rewind Speed", RW_NAME[gs_rewind()], true };
+	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
 	return GS_ROWS;
 }
 
-/* Left, right and A all change the row: two of them are on/off, and Rewind
- * Speed steps on with A too, as the shelf menus' cycling rows do. */
+/* Left, right and A all change the row: two of them are on/off, and the two
+ * speeds step on with A too, as the shelf menus' cycling rows do. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
-	static const char *const keys[GS_ROWS] = { "autoresume", NULL, "confirmquit" };
+	static const char *const keys[GS_ROWS] = { "autoresume", NULL, NULL, "confirmquit" };
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
 	(void)a; (void)ctx;
@@ -10960,6 +10975,11 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 		db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
 		plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
+	} else if (sel == GS_FF) {
+		int ff = (gs_ff() + d + FF_COUNT) % FF_COUNT;
+
+		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
+		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
 	} else {
 		db_set_int(db_dev(), keys[sel], !db_get_int(db_dev(), keys[sel], sel != GS_CONFIRM));
 	}

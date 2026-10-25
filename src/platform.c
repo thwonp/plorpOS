@@ -1229,6 +1229,9 @@ bool plat_resident_send(const plat_game *g)
 		 * its build default on every RUN, so it is re-sent every run, as
 		 * SETHOTKEYS is. Set on the Hotkeys screen. */
 		dsend("SETREWINDSPEED\tevery=%d", db_get_int(db_dev(), "rewindspeed", 5));
+		/* And the fast-forward hotkey's speed (plorpos-pyz.5), the same way:
+		 * Diatom puts it back to 4 at every RUN. Game Settings. */
+		dsend("SETFFSPEED\tspeed=%d", db_get_int(db_dev(), "ffspeed", 4));
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
 		 * it is done drawing the moment the game is up - so the last thing
