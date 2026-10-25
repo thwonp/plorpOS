@@ -754,7 +754,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
-		/* Menu held alone a second: the switcher, and its release is then
+		/* Menu held alone 700 ms: the switcher, and its release is then
 		 * nothing (plorpos-gl5.3). */
 		if (menu_held && !menu_spent && !menu &&
 		    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
@@ -1718,7 +1718,7 @@ static int diatom_wait(void)
 				 * ending, and its EXIT is what to wait for. */
 				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
 				if (d_gesture_asked && sent_stop) { d_gesture_asked = GESTURE_NONE; continue; }
-				/* Menu held a second in the game: Diatom's word for the
+				/* Menu held 700 ms in the game: Diatom's word for the
 				 * switcher, read the way a swipe's PAUSE is (plorpos-gl5.3). */
 				if (strstr(l, "\tfor=switcher") && d_gesture_asked == GESTURE_NONE)
 					d_gesture_asked = GESTURE_SWITCHER;

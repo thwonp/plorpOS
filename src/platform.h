@@ -69,7 +69,7 @@ extern const char *const plat_pico8_path;
  * ADR-0044). */
 bool plat_two_sticks(void);
 
-#define SWITCHER_HOLD_MS 1000
+#define SWITCHER_HOLD_MS 700
 
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
