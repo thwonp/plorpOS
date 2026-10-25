@@ -71,7 +71,7 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
 	SM_GAMES, SM_CORE, SM_SORT,
-	SM_DISPLAY, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
+	SM_DISPLAY, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
 } sm_row;
 
 /* What the Favorites shelf's menu is, which is two of those rows.
@@ -192,6 +192,11 @@ typedef struct {
 	const char *engine;
 	int         game_count;
 	const char *dmode;
+	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
+	 * and whether choosing one means anything: not without a list, and not
+	 * on PICO-8's shelf running native, which never goes through Diatom. */
+	const char *shader;
+	bool        shader_live;
 	/* The label of the shelf's sort order. A label rather than an index for
 	 * the same reason dmode is one: this file must not know the table, or a
 	 * check that links it would have to link the table too. */

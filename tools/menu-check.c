@@ -423,6 +423,7 @@ static void system_menu(void)
 	u.sys_core = "gambatte";
 	u.game_count = 412;
 	u.dmode = "Sharp";
+	u.shader = "Scanlines"; u.shader_live = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("system menu:\n");
@@ -431,6 +432,10 @@ static void system_menu(void)
 	ck(!strcmp(val(&rows[SM_GAMES]), "412"), "the count is the real one");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
+	ck(SM_SHADER == SM_DISPLAY + 1 && !strcmp(rows[SM_SHADER].label, "Shader"),
+	   "Shader sits under Display Mode");
+	ck(!strcmp(val(&rows[SM_SHADER]), "Scanlines") && rows[SM_SHADER].live,
+	   "and carries the system's shader");
 	ck(rows[SM_DISPLAY].live && rows[SM_RESCAN].live, "the two live rows are live");
 	ck(!rows[SM_GAMES].live && !rows[SM_CORE].live, "reported facts are not rows to press");
 	ck(rows[SM_BOXART].live, "Box Art is live on a network");
@@ -441,6 +446,12 @@ static void system_menu(void)
 	ck(!rows[SM_BOXART].live, "Box Art dies with the radio");
 	ck(!strcmp(val(&rows[SM_BOXART]), "needs Wi-Fi"), "and says why");
 	ck(rows[SM_RESCAN].live, "Rescan does not need a network");
+
+	/* No list, or PICO-8 running native: nothing a shader would reach. */
+	u.shader = NULL; u.shader_live = false;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[SM_SHADER]), "None") && !rows[SM_SHADER].live,
+	   "Shader reads None and is not a stop when it cannot apply");
 
 	/* Favorites, which is not a system: no core and no folder, so four of the
 	 * six rows have nothing to describe and one of them - Display Mode -
@@ -607,12 +618,14 @@ static void cursor_reaches(void)
 	u.wifi = WIFI_CONNECTED;
 	u.sys_name = "NES"; u.sys_core = "nestopia";
 	u.game_count = 3; u.dmode = "Native";
+	u.shader = "None"; u.shader_live = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
 	printf("system menu, what the cursor can reach:\n");
-	ck(k == 4, "four rows, not seven");
+	ck(k == 5, "five rows, not seven");
 	ck(holds(got, k, SM_DISPLAY), "Display Mode");
+	ck(holds(got, k, SM_SHADER), "Shader");
 	/* Live since sorting stopped being alphabetical-only. It was a
 	 * placeholder for long enough that this check counted three. */
 	ck(holds(got, k, SM_SORT), "Sort By");

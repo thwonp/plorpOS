@@ -266,7 +266,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 - **Achievements Sign-In:** your RetroAchievements account.
 - **Scraping:** Box Art, ScreenScraper, Import gamelist.xml metadata.
 
-**A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
+**A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Shader (the same list as the in-game menu's, for that console's games), Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
 **Favorites' menu:** Sort By, with a console's four orders.
 

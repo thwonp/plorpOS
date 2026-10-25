@@ -4965,6 +4965,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.engine     = engine_label(a, sys);
+		u.shader     = a->shaders.e[a->view[sys].shader].name;
+		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
@@ -6420,6 +6422,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 static void game_settings_screen(app *a);
+static void shelf_shader_screen(app *a, int sys);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -7400,6 +7403,13 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
+		/* And every shader name, as the in-game menu measures them. */
+		for (k = 0; !own && k < a->shaders.count; k++) {
+			int mw;
+			rows[SM_SHADER].value = a->shaders.e[k].name;
+			mw = menu_measure(rows, n, heading);
+			if (mw > w) w = mw;
+		}
 		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
 			int mw;
 			rows[SM_CORE].value = ENGINE_LABEL(k);
@@ -8059,6 +8069,20 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 
 			v->dmode = dmode_step(a->sys.systems[a->sys_cursor].tag, v->dmode, d);
 			display_save(a);
+			return MENU_STAY;
+		}
+		/* Shader (plorpos-8xu): left and right step through the list, as
+		 * Display Mode does; A opens it, as the in-game row does. Saved for
+		 * the system, which is what a launch and the in-game row both read. */
+		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
+			sysview *v = &a->view[a->sys_cursor];
+
+			if (d) {
+				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
+				shader_save(a, a->sys_cursor);
+			} else {
+				shelf_shader_screen(a, a->sys_cursor);
+			}
 			return MENU_STAY;
 		}
 		/* Sort order, on the same left/right idiom.
@@ -11289,14 +11313,15 @@ static pwr_action power_check(app *a)
 /* The in-game Shader list (plorpos-gkd.72.4), over the same paused frame and
  * under the same power rule as the menu it opens from. */
 typedef struct {
-	gm_ctx *gm;
+	app    *a;
+	gm_ctx *gm;        /* NULL from the shelf menu: no game to show it on */
 	int     sys;       /* the owner's: a per-system choice, as Display is */
 } sh_ctx;
 
 static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	sh_ctx *c = ctx;
-	app *a = c->gm->a;
+	app *a = c->a;
 	int i, n = a->shaders.count < max ? a->shaders.count : max;
 
 	for (i = 0; i < n; i++)
@@ -11336,7 +11361,7 @@ static menu_result sh_power(app *a, void *ctx) { return gm_power(a, ((sh_ctx *)c
 
 static void shader_screen(app *a, gm_ctx *gm)
 {
-	sh_ctx c = { gm, (int)(owner_view(a) - a->view) };
+	sh_ctx c = { a, gm, (int)(owner_view(a) - a->view) };
 	menu_style st = gm->st;
 
 	st.fixed_w  = 0;
@@ -11344,6 +11369,27 @@ static void shader_screen(app *a, gm_ctx *gm)
 	st.on_power = sh_power;
 	st.start    = a->view[c.sys].shader;
 	menu_run(a, &st, sh_build, sh_key, &c);
+}
+
+/* The same list from a shelf's system menu (plorpos-8xu). No game is running,
+ * so A only keeps the choice; the next launch draws with it. */
+static menu_result shs_key(app *a, void *ctx, in_button key, int sel)
+{
+	sh_ctx *c = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	a->view[c->sys].shader = sel;
+	shader_save(a, c->sys);
+	return MENU_DONE;
+}
+
+static void shelf_shader_screen(app *a, int sys)
+{
+	sh_ctx c = { a, NULL, sys };
+	menu_style st = { .accent = MENU_ACCENT, .follow_tint = true,
+	                  .start = a->view[sys].shader };
+
+	menu_run(a, &st, sh_build, shs_key, &c);
 }
 
 /* The in-game Palette list (plorpos-gkd.76), a Game Boy game's own. Same
