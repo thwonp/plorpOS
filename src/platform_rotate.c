@@ -429,27 +429,47 @@ static bool helper(char *const argv[])
  * X11 port - which only a port brings up while it runs. Those are found in
  * sway's tree and moved by container id (plorpos-3yv.86.3). */
 #define PLACE_MAX 8
-#define REFULL(c) c " app_id=\"^(?!startRENPY$)\"] fullscreen enable; " \
-                  c " shell=\"xwayland\"] fullscreen enable"
+#define ONTOP "move container to workspace 1, focus"
+
+/* One window, by sway criteria `sel` ("pid=N" or "con_id=N"), in ONE swaymsg
+ * per try: sway lays out and draws once per message. The move and then the
+ * fullscreen sent apart let it draw the window tiled beside the launcher's -
+ * the right half, showing the game's left half - until the client answered
+ * the resize, which a game busy quitting does late. Which criteria match
+ * decides the fullscreen: an xdg window but Ren'Py's, an X11 window, else
+ * (Ren'Py) the move alone. */
+static bool put(const char *sel, bool on_screen)
+{
+	static const char *const tail[] = {
+		" app_id=\"^(?!startRENPY$)\"] " ONTOP ", fullscreen enable",
+		" shell=\"xwayland\"] " ONTOP ", fullscreen enable",
+		"] " ONTOP,
+	};
+	char crit[160];
+	char *cmd[] = { "swaymsg", crit, NULL };
+	size_t i;
+
+	if (!on_screen) {
+		snprintf(crit, sizeof crit, "[%s] move container to workspace " HIDE_WS, sel);
+		return helper(cmd);
+	}
+	for (i = 0; i < sizeof tail / sizeof *tail; i++) {
+		snprintf(crit, sizeof crit, "[%s%s", sel, tail[i]);
+		if (helper(cmd)) return true;
+	}
+	return false;
+}
 
 static bool place(pid_t pid, bool on_screen)
 {
-	char crit[160], line[256];
-	char *cmd[] = { "swaymsg", crit, NULL };
-	const char *what = on_screen
-	         ? "move container to workspace 1, focus"
-	         : "move container to workspace " HIDE_WS;
+	char sel[32], line[256];
 	long id = -1, ids[PLACE_MAX];
 	int n = 0, i, vp = 0;
 	bool ok = false;
 	FILE *f;
 
-	snprintf(crit, sizeof crit, "[pid=%d] %s", (int)pid, what);
-	if (helper(cmd)) {
-		snprintf(crit, sizeof crit, REFULL("[pid=%d"), (int)pid, (int)pid);
-		if (on_screen) helper(cmd);   /* one of the two never matches */
-		return true;
-	}
+	snprintf(sel, sizeof sel, "pid=%d", (int)pid);
+	if (put(sel, on_screen)) return true;
 	if (!(f = popen("swaymsg -t get_tree", "r"))) return false;
 	while (fgets(line, sizeof line, f)) {
 		char *k = line + strspn(line, " ");
@@ -462,11 +482,8 @@ static bool place(pid_t pid, bool on_screen)
 	}
 	pclose(f);
 	for (i = 0; i < n; i++) {
-		snprintf(crit, sizeof crit, "[con_id=%ld] %s", ids[i], what);
-		if (!helper(cmd)) continue;
-		ok = true;
-		snprintf(crit, sizeof crit, REFULL("[con_id=%ld"), ids[i], ids[i]);
-		if (on_screen) helper(cmd);
+		snprintf(sel, sizeof sel, "con_id=%ld", ids[i]);
+		if (put(sel, on_screen)) ok = true;
 	}
 	return ok;
 }
