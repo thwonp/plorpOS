@@ -1091,6 +1091,20 @@ static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
 void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
 static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
 static bool d_turbo_gba;
+static char d_turbo_key[600];     /* "turbo.<TAG>/<rom file>": this game's saved bits */
+
+/* Persistent Turbo (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
+ * the session - one row per game in the library db, beside its hotkeys, saved
+ * on every change and read back at RUN. Off is session-only, as before, and
+ * leaves saved rows alone, so turning it back On brings them back. */
+static bool d_turbo_persist(void) { return db_get_int(db_dev(), "persistturbo", 0) != 0; }
+
+static void d_turbo_save(void)
+{
+	if (!d_turbo_persist() || !d_turbo_key[0]) return;
+	if (d_turbo) db_set_int(db_lib(), d_turbo_key, (int)d_turbo);
+	else         db_del(db_lib(), d_turbo_key);
+}
 static void d_turbo_send(void);
 
 static void (*d_on_tick)(void);
@@ -1204,7 +1218,13 @@ bool plat_resident_send(const plat_game *g)
 		 * that was never sent, one that was refused, and a test rig that could
 		 * not press the button - which cost an hour on 2026-08-31. Diatom logs
 		 * the receiving half for the same reason. */
-		d_turbo = 0;
+		{
+			const char *f = g->rom ? strrchr(g->rom, '/') : NULL;
+
+			snprintf(d_turbo_key, sizeof d_turbo_key, "turbo.%s/%s", tag ? tag : "",
+			         f ? f + 1 : g->rom ? g->rom : "");
+		}
+		d_turbo = d_turbo_persist() ? (uint32_t)db_get_int(db_lib(), d_turbo_key, 0) : 0;
 		d_turbo_gba = tag && !strcmp(tag, "GBA");
 		d_turbo_send();
 
@@ -1423,6 +1443,7 @@ static void d_note_turbo(const char *l)
 	} else if (strstr(l, "clear=1")) {
 		d_turbo = 0;
 		d_turbo_send();
+		d_turbo_save();
 		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
 	} else if ((v = strstr(l, "btn="))) {
 		for (i = 0; i < TURBO_N; i++)
@@ -1430,6 +1451,7 @@ static void d_note_turbo(const char *l)
 		if (i == TURBO_N) return;
 		d_turbo ^= 1u << i;
 		d_turbo_send();
+		d_turbo_save();
 		for (int k = 0; turbo_names[i][k] && k < 3; k++)
 			up[k] = (char)toupper((unsigned char)turbo_names[i][k]);
 		if (d_on_turbo)

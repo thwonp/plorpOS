@@ -10921,7 +10921,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_CHEEVOS, GS_RA, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -10955,6 +10955,9 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
+	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
+	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo",
+	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
 	/* The account moved here from Network Services (plorpos-pyz.7), beside
 	 * the switch it is for. */
 	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
@@ -10971,6 +10974,7 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
 		[GS_RESUME]  = { "autoresume", 1 },
 		[GS_CONFIRM] = { "confirmquit", 0 },
+		[GS_TURBO]   = { "persistturbo", 0 },
 		[GS_CHEEVOS] = { "cheevos", 1 },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
