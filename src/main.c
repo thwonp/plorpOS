@@ -8117,7 +8117,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 	case PM_GAME:         game_settings_screen(a); break;
-	case PM_SCRAPING:     scraping_screen(a); break;
 	case PM_BT:           bt_screen(a); break;
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
@@ -10871,7 +10870,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA,
+       GS_SCRAPE, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -10913,12 +10913,15 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
 	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
 	                                ra_signed_in() ? ra_user() : "sign in", true };
+	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
+	 * import needs no network - see sys_menu_scraping_build. */
+	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
 	return GS_ROWS;
 }
 
 /* Left, right and A all change the row: the on/off ones flip, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In is
- * a door, so only A opens it. */
+ * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In and
+ * Scraping are doors, so only A opens them. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
@@ -10931,8 +10934,11 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
-	if (sel == GS_RA) {
-		if (key == IN_ACCEPT) ra_signin_screen(a);
+	if (sel == GS_RA || sel == GS_SCRAPE) {
+		if (key == IN_ACCEPT) {
+			if (sel == GS_RA) ra_signin_screen(a);
+			else scraping_screen(a);
+		}
 		return MENU_STAY;
 	}
 	if (sel == GS_REWIND) {

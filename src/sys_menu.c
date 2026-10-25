@@ -147,10 +147,6 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
 	/* How games start, stop and rewind (plorpos-pyz). */
 	out[PM_GAME]         = (menu_row){ "Game Settings", NULL,   true  };
-	/* Box Art and the ScreenScraper account moved under here with gamelist
-	 * import (TortOS-mh0) - see sys_menu_scraping_build. Always live: the
-	 * import needs no network, whatever the other two do. */
-	out[PM_SCRAPING]     = (menu_row){ "Scraping",  NULL,      true  };
 	/* What every button does, per screen. Needs nothing of the device, which
 	 * is the point: it is the page you reach when the thing you have forgotten
 	 * is which button opens Muse. See src/controls.h. */

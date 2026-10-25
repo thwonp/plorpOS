@@ -254,7 +254,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 <details>
 <summary>What's in each menu</summary>
 
-**The plorpOS menu,** MENU on the consoles row: Play Time; Network Services (Wi-Fi, SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order, Header Font, Body Font); Game Settings (see below); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
+**The plorpOS menu,** MENU on the consoles row: Play Time; Network Services (Wi-Fi, SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order, Header Font, Body Font); Game Settings (see below); Controls; About.
 
 **Game Settings,** for every console:
 - **Games Auto-Resume:** on, a game starts where you left it. Off, it starts fresh; the autosave is still written, so you can load it from the in-game menu.
@@ -264,6 +264,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 - **Persistent Turbo:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.
 - **Achievements Enabled:** off, games start without RetroAchievements.
 - **Achievements Sign-In:** your RetroAchievements account.
+- **Scraping:** Box Art, ScreenScraper, Import gamelist.xml metadata.
 
 **A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
@@ -289,7 +290,7 @@ Check the folder name against the table above, spelled exactly, and that the fil
 <details>
 <summary><b>A game has no box art.</b></summary>
 
-**MENU > Scraping > Box Art** fetches every missing cover over Wi-Fi. Sign in to a free [ScreenScraper](https://www.screenscraper.fr) account under **MENU > Scraping > ScreenScraper** and it asks there first, and brings each game's year, genre and synopsis for its details screen. Without an account, or for a game ScreenScraper doesn't have, it uses [libretro's thumbnail collection](https://thumbnails.libretro.com), looking a game up by its file name and, for zipped games, by checksum.
+**MENU > Game Settings > Scraping > Box Art** fetches every missing cover over Wi-Fi. Sign in to a free [ScreenScraper](https://www.screenscraper.fr) account under **MENU > Game Settings > Scraping > ScreenScraper** and it asks there first, and brings each game's year, genre and synopsis for its details screen. Without an account, or for a game ScreenScraper doesn't have, it uses [libretro's thumbnail collection](https://thumbnails.libretro.com), looking a game up by its file name and, for zipped games, by checksum.
 
 Some games aren't in either collection, like fan translations and homebrew. Add your own: a PNG named exactly like the game file, in `Roms/<console>/.media/`. `Black Castle.gb` wants `Black Castle.png`. Around 512 pixels on the long side is plenty.
 

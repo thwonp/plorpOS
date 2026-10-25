@@ -237,8 +237,6 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[PM_GAME].label, "Game Settings") && rows[PM_GAME].live
 	   && !rows[PM_GAME].value, "Game Settings opens, with no value");
 	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
-	ck(rows[PM_SCRAPING].live && !rows[PM_SCRAPING].value,
-	   "Scraping opens offline: gamelist import needs no network");
 	n = sys_menu_scraping_build(&u, rows, &heading);
 	ck(n == SC_ROWS && !strcmp(heading, "Scraping"), "Scraping submenu");
 	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
@@ -634,7 +632,6 @@ static void cursor_reaches(void)
 	ck(holds(got, k, PM_BT), "Bluetooth is reachable with no network");
 	ck(k == PM_ROWS, "every row is a stop: nothing here needs the network now");
 	ck(holds(got, k, PM_SYSTEM) && holds(got, k, PM_UI), "both settings submenus");
-	ck(holds(got, k, PM_SCRAPING), "Scraping is reachable with no network");
 	ck(holds(got, k, PM_WIFI), "Network Services is reachable, which is how you fix that");
 	ck(holds(got, k, PM_ABOUT), "About is reachable");
 	/* Play Time reads what is already stored and asks nothing of the network,
