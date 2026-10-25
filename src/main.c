@@ -12748,6 +12748,10 @@ static void launch_one(app *a)
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
 			.shader = shader_fields(a, o, shf, sizeof shf),
+			/* The mode is Diatom's own global and survives from the last
+			 * game, so a system never set would otherwise inherit whatever
+			 * the previous one chose; on RUN so the first frame has it. */
+			.mode   = DMODES[a->view[o].dmode].name,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -12763,14 +12767,6 @@ static void launch_one(app *a)
 			 * purpose, because a millisecond bought here is the first of
 			 * several. See stats.h. */
 			stats_begin(s->tag, romfile, plat_now_ms());
-
-			/* Straight after RUN and the levels, and for the same reason: the
-			 * mode is Diatom's own global and survives from the last game, so
-			 * a system that has never been set would otherwise inherit
-			 * whatever the previous one chose. Ordered on the same socket, so
-			 * it lands before the first frame. */
-			plat_resident_line("SETDISPLAY\tmode=%s",
-			                   DMODES[a->view[o].dmode].name);
 
 			/* No idle anything during play: NextUI disables autosleep for
 			 * the whole of a running game (minarch.c's PWR_disableAutosleep)

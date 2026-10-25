@@ -1197,10 +1197,14 @@ bool plat_resident_send(const plat_game *g)
 		/* shots= is the Screenshot hotkey's folder (plorpos-gkd.86.2), at
 		 * the card's root beside Roms and Saves, where a player looks; Diatom
 		 * makes it on the first shot. */
-		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s"
+		/* mode= on RUN, not a SETDISPLAY after it: RUN's warmup draws three
+		 * frames before Diatom reads another message, so a GBA in Aspect or
+		 * a DS layout showed full-screen first (2026-10-25, the shader's
+		 * flash above over again). */
+		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
 		           "\tconsole=%d\tcheevos=%s%s\tshots=%s/Screenshots",
-		           g->core, g->rom, tag,
+		           g->core, g->rom, tag, g->mode ? g->mode : "",
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
