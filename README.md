@@ -127,11 +127,11 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 - **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
-- **RetroAchievements:** sign in on the device, under **MENU > Network Services > Cheevos**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
+- **RetroAchievements:** sign in on the device, under **MENU > Game Settings > Achievements Sign-In**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
 - **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
-- **Turbo Assign:** a hotkey that turns any face or shoulder button into a turbo button for the rest of the game, on every console.
+- **Turbo Assign:** a hotkey that turns any face or shoulder button into a turbo button for the rest of the game, on every console. Turn on Persistent Turbo and each game remembers its turbo buttons.
 - **Bluetooth headphones,** paired on the device, with its volume buttons reaching them and their own buttons playing and skipping in Muse. Plug in wired ones and they take over.
 - **Muse, a music and audiobook player:** your albums and books on a shelf of their own covers, and every book picks up where you left it. SELECT opens Muse from anywhere, even the in-game menu, and it keeps playing when you close it. While it plays, the game is silent.
 - **Play Time:** how long you've played each game or console, today, this week, this month, this year or ever.
@@ -254,7 +254,16 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 <details>
 <summary>What's in each menu</summary>
 
-**The plorpOS menu,** MENU on the consoles row: Play Time; Network Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order, Header Font, Body Font); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
+**The plorpOS menu,** MENU on the consoles row: Play Time; Network Services (Wi-Fi, SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction, System Order, Header Font, Body Font); Game Settings (see below); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
+
+**Game Settings,** for every console:
+- **Games Auto-Resume:** on, a game starts where you left it. Off, it starts fresh; the autosave is still written, so you can load it from the in-game menu.
+- **Rewind Speed:** 1x to 10x, or Disabled.
+- **Fast-Forward Speed:** 2x, 4x or 8x, for the Fast-Forward hotkey. 4x by default.
+- **Confirm Reset/Quit:** on, Reset and Quit in the in-game menu ask first. Off by default.
+- **Persistent Turbo:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.
+- **Achievements Enabled:** off, games start without RetroAchievements.
+- **Achievements Sign-In:** your RetroAchievements account.
 
 **A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
@@ -291,14 +300,14 @@ Don't like a cover? Press X on the game and choose **Replace Box Art**. It looks
 <details>
 <summary><b>How do achievements work?</b></summary>
 
-Sign in to your RetroAchievements account under **MENU > Network Services > Cheevos**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later.
+Sign in to your RetroAchievements account under **MENU > Game Settings > Achievements Sign-In**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later. To play without them, turn off **Achievements Enabled** on the same screen.
 
 </details>
 
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** is on the same screen.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
 - **Brick:** Menu or Select.
@@ -327,7 +336,7 @@ Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotk
 - **Press Turbo Assign twice** to change your mind before picking a button.
 - **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
-A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. A button the console doesn't use, like X on the NES, does nothing as turbo either.
+A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 
 </details>
 

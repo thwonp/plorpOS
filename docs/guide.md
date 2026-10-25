@@ -140,11 +140,12 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else |
+| **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Disabled`. **Fast-Forward Speed**: `2x`, `4x` or `8x`, what the Fast-Forward hotkey runs at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in` |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
 | **About** | version, address, battery, uptime |
@@ -160,9 +161,9 @@ west to east. On the Brick the zone is New York until you choose one; on the
 GKD and the RG SP it reads `System`, the device's own, until you do.
 
 Over The Hare and Box Art need a network, and go quiet without one rather than
-disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable
-either way, because signing in is the thing you go there to do, and Bluetooth
-and Play Time need no network at all.
+disappearing - a row that vanishes teaches nobody why. Achievements Sign-In,
+in Game Settings, stays reachable either way, because signing in is the thing
+you go there to do, and Bluetooth and Play Time need no network at all.
 
 **Import gamelist.xml metadata** reads the `gamelist.xml` (or
 `miyoogamelist.xml`) an EmulationStation-style scraper left in each
@@ -222,7 +223,8 @@ screen; this is the same thing by hand, for a card written some other way.
 game, press it and then a button, and that button presses itself about ten
 times a second for as long as you hold it; the same again turns it back. Hold
 Turbo Assign two seconds to clear every turbo button. It lasts until the game
-quits. How it works, and why X and Y are no longer turbo by default, is in
+quits, unless **Persistent Turbo** is on in Game Settings: then each game keeps
+its own turbo buttons for next time. How it works, and why X and Y are no longer turbo by default, is in
 [turbo.md](turbo.md).
 
 Volume and brightness draw the same thin line across the top of the screen in

@@ -157,7 +157,8 @@ not a second and a half of re-initializing a display.
   twice.
 - **Auto-resume.** Every launch hands over the game's autosave,
   `<ROM file>.auto.state`. If one is there the game comes up exactly where it
-  was left; if not it starts fresh.
+  was left; if not it starts fresh. Games Auto-Resume off (Game Settings)
+  hands none over, and the autosave is still written on the way out.
 - **Manual save and load**, six slots, from the in-game menu (`MENU`).
   Silent - the device shows no in-game chrome.
 
@@ -191,7 +192,7 @@ The launcher declares which console the game is and hands over the set, and
 diatom watches every frame
 (its ADR-0025 and ADR-0026).
 
-**The device does the normal thing.** Sign in once under `MENU` -> Network Services -> Cheevos,
+**The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> Achievements Sign-In,
 and the first time you launch a game TortOS hashes the ROM, asks
 RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
