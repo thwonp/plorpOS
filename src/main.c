@@ -2968,42 +2968,6 @@ static void restore_place(app *a)
 
 /* ---------- drawing ------------------------------------------------------- */
 
-/* One cell of the shell: a filled hexagon as a six-triangle fan, because
- * SDL_RenderGeometry is the only primitive here that antialiases nothing and
- * therefore looks identical to the boot animation's rasterizer. */
-static void draw_hex(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color col)
-{
-	SDL_Vertex v[7];
-	int idx[18], i;
-	v[0].position.x = cx; v[0].position.y = cy;
-	for (i = 0; i < 6; i++) {
-		float a = (float)(M_PI / 6.0 + i * M_PI / 3.0);
-		v[i + 1].position.x = cx + rad * cosf(a);
-		v[i + 1].position.y = cy + rad * sinf(a);
-	}
-	for (i = 0; i < 7; i++) {
-		v[i].color = col;
-		v[i].tex_coord.x = v[i].tex_coord.y = 0;
-	}
-	for (i = 0; i < 6; i++) {
-		idx[i * 3 + 0] = 0;
-		idx[i * 3 + 1] = 1 + i;
-		idx[i * 3 + 2] = 1 + (i + 1) % 6;
-	}
-	SDL_RenderGeometry(r, NULL, v, 7, idx, 18);
-}
-
-/* The mark, drawn about its own center.
- *
- * `head` slides the dark cell back along the lattice: 1.0 is where it sits at
- * rest, 0.0 is home on the center. `dim` then fades that same dark over the
- * blue center cell, 0 to 1.
- *
- * The two are separate because at head = 0 the dark cell lands exactly on the
- * center and is drawn UNDER the blue, so on its own the head just disappears.
- * `dim` is what makes its arrival visible: the blue is the one lit thing in
- * either mark - the same color as the boot line and the menu chrome - so
- * covering it is the light going out, and the shell closes dark. */
 /* A heart, as a fan over the classic parametric curve:
  *
  *     x = 16 sin^3 t
@@ -3011,13 +2975,13 @@ static void draw_hex(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color c
  *
  * Mirrors markdef.heart(), which is the definition - tools/genfavcard.py draws
  * the same shape into res/cards/FAVORITES.png, and the two are meant to match.
- * Change one, change both. Same standing arrangement as draw_shell and CELLS.
+ * Change one, change both.
  *
  * Fanned from a point BELOW the center rather than from the center itself. The
  * notch between the lobes is the one concave part of the shape, and a fan
  * apex level with it produces slivers that cross the notch and fill it in.
  * Dropping the apex puts every boundary point in view of it. Same primitive as
- * draw_hex for the same reason: SDL has no polygon fill.
+ * draw_orb for the same reason: SDL has no polygon fill.
  */
 #define HEART_N 48
 
@@ -3052,38 +3016,32 @@ static void draw_heart(SDL_Renderer *r, float cx, float cy, float rad,
 	SDL_RenderGeometry(r, NULL, v, HEART_N + 1, idx, HEART_N * 3);
 }
 
-static void draw_shell(SDL_Renderer *r, float cx, float cy, float rad,
-                       float head, float dim, Uint8 alpha)
-{
-	/* Mirrors tools/markdef.py, which is the definition. C cannot import it,
-	 * so this is the one hand-kept copy: change one, change both. The ring
-	 * alternates light, mid, light, mid, light, mid for three-fold symmetry. */
-	static const struct { float i, j; Uint8 c[3]; } cells[] = {
-		{ -0.5f, -1.0f, { 128, 176, 118 } }, {  0.5f, -1.0f, { 104, 138,  96 } },
-		{  1.0f,  0.0f, { 128, 176, 118 } }, {  0.5f,  1.0f, { 104, 138,  96 } },
-		{ -0.5f,  1.0f, { 128, 176, 118 } }, { -1.0f,  0.0f, { 104, 138,  96 } },
-	};
-	float dx = 1.7320508f * rad, dy = 1.5f * rad;
-	SDL_Color col;
-	int k;
+/* A filled circle, as a fan from its center like draw_heart. */
+#define ORB_N 40
 
-	/* Head first, so the shell cells draw over it as it withdraws. */
-	col.r = 61; col.g = 89; col.b = 67; col.a = alpha;
-	draw_hex(r, cx + 2.0f * dx * head, cy, rad * 0.95f, col);
-	for (k = 0; k < 6; k++) {
-		col.r = cells[k].c[0]; col.g = cells[k].c[1]; col.b = cells[k].c[2];
-		col.a = alpha;
-		draw_hex(r, cx + cells[k].i * dx, cy + cells[k].j * dy, rad * 0.95f, col);
+static void draw_orb(SDL_Renderer *r, float cx, float cy, float rad,
+                     SDL_Color col)
+{
+	SDL_Vertex v[ORB_N + 1];
+	int idx[ORB_N * 3], i;
+
+	v[0].position.x = cx;
+	v[0].position.y = cy;
+	for (i = 0; i < ORB_N; i++) {
+		float t = (float)(2.0 * M_PI * i / ORB_N);
+		v[i + 1].position.x = cx + rad * cosf(t);
+		v[i + 1].position.y = cy + rad * sinf(t);
 	}
-	/* markdef.CYAN, and the same value as MENU_ACCENT below. */
-	col.r = 61; col.g = 214; col.b = 255; col.a = alpha;
-	draw_hex(r, cx, cy, rad * 0.95f, col);
-	if (dim > 0.0f) {
-		SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-		col.r = 61; col.g = 89; col.b = 67;
-		col.a = (Uint8)(alpha * (dim > 1.0f ? 1.0f : dim));
-		draw_hex(r, cx, cy, rad * 0.95f, col);
+	for (i = 0; i <= ORB_N; i++) {
+		v[i].color = col;
+		v[i].tex_coord.x = v[i].tex_coord.y = 0;
 	}
+	for (i = 0; i < ORB_N; i++) {
+		idx[i * 3 + 0] = 0;
+		idx[i * 3 + 1] = 1 + i;
+		idx[i * 3 + 2] = 1 + (i + 1) % ORB_N;
+	}
+	SDL_RenderGeometry(r, NULL, v, ORB_N + 1, idx, ORB_N * 3);
 }
 
 /* The gauge, read at most every 5 s: each read is two sysfs files opened,
@@ -3954,52 +3912,44 @@ static void anim_launch(app *a, unsigned ms)
 	plat_present(a->r);
 }
 
-/* The send-off, and the inverse of the boot animation's gesture: there he
- * launches head-first out of frame, here he arrives and pulls the head in.
+/* The send-off: three purple orbs pass right to left, the middle one larger,
+ * slowest as they cross the center (plorpos-3yv.91, the user's design).
  *
  * Timed against the shutdown rather than chosen. Measured 2026-08-28: 1.42 s
- * from the Power off press to adbd dying, of which the old 620 ms animation
- * was the first slice - the rest was a black screen while sync and the kernel
- * finished. So the animation runs to about 900 ms and then DOES NOT clear: the
- * closed shell is its last frame. power_off turns the backlight off right
- * after, rather than leaving the shell lit until the kernel cuts the panel
- * (which is how it was until 2026-10-02). */
+ * from the Power off press to adbd dying, and the animation is only the first
+ * slice of it. It ends with the orbs gone and the screen black; power_off
+ * then turns the backlight off for the rest of the shutdown. */
 static void anim_poweroff(app *a)
 {
-	const unsigned T_IN = 430, T_HEAD = 260, T_DIM = 210;
-	const unsigned ms = T_IN + T_HEAD + T_DIM;
+	const unsigned MS = 700, LAG = 45;
 	const float cx = TORTOS_SCREEN_W / 2.0f, cy = TORTOS_SCREEN_H / 2.0f;
-	const float rad = 46.0f;
+	const float rad = 22.0f, gap = 72.0f;
+	const SDL_Color col = { UI_CYAN_R, UI_CYAN_G, UI_CYAN_B, 255 };
 	unsigned t0 = plat_now_ms(), now;
 
-	while ((now = plat_now_ms()) - t0 < ms) {
+	while ((now = plat_now_ms()) - t0 < MS) {
 		unsigned t = now - t0;
-		float x = cx, head = 1.0f, dim = 0.0f;
-		if (t < T_IN) {
-			/* In from the left, decelerating onto the center. */
-			float k = (float)t / (float)T_IN;
-			float e = 1.0f - (1.0f - k) * (1.0f - k) * (1.0f - k);
-			x = -TORTOS_SCREEN_W * 0.35f + (cx + TORTOS_SCREEN_W * 0.35f) * e;
-		} else if (t < T_IN + T_HEAD) {
-			float k = (float)(t - T_IN) / (float)T_HEAD;
-			head = 1.0f - k * k;          /* accelerating in, like a flinch */
-		} else {
-			float k = (float)(t - T_IN - T_HEAD) / (float)T_DIM;
-			head = 0.0f;
-			dim = 1.0f - (1.0f - k) * (1.0f - k) * (1.0f - k);
-		}
-		SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
+		int i;
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 		SDL_RenderClear(a->r);
-		draw_shell(a->r, x, cy, rad, head, dim, 255);
+		for (i = 0; i < 3; i++) {
+			/* The left orb leads; each of the others is LAG behind it, so the
+			 * three bunch up crossing the center and spread out leaving. */
+			unsigned d = (unsigned)i * LAG;
+			float k = t < d ? 0.0f : (float)(t - d) / (float)(MS - 2 * LAG);
+			float s;
+			if (k > 1.0f) k = 1.0f;
+			s = 2.0f * k - 1.0f;
+			s = s * s * s;
+			draw_orb(a->r,
+			         cx + (i - 1) * gap - s * (TORTOS_SCREEN_W * 0.5f + 2.0f * gap),
+			         cy, i == 1 ? rad * 1.4f : rad, col);
+		}
 		plat_present(a->r);
 		SDL_Delay(6);
 	}
-	/* Land on the closed state exactly, in case the loop exited a frame early,
-	 * and then deliberately no clear: the dark shell is the last thing on
-	 * screen and stays there while the device powers down. */
-	SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 	SDL_RenderClear(a->r);
-	draw_shell(a->r, cx, cy, rad, 0.0f, 1.0f, 255);
 	plat_present(a->r);
 }
 

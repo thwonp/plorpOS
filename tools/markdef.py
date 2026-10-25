@@ -8,8 +8,9 @@ the same table in four places - the identical failure the system accents had,
 where six of nine cards had drifted from config/systems.cfg.
 
 So: this module is the source. tools/genboot.py and tools/genmark.py import it.
-src/main.c cannot, being C, and carries the only hand-kept copy - draw_shell()
-names this file so the two can be compared when either changes.
+src/main.c used to hand-keep a copy for the shutdown animation (draw_shell,
+checked by tools/checkmark.py); the shutdown is three purple orbs since
+plorpos-3yv.91, so both are gone.
 
 CYAN is canonical for the whole system as of 2026-08-28, and is the same value
 as MENU_ACCENT in src/main.c and UI_CYAN_* in src/ui.h. The mark used to carry

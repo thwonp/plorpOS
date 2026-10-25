@@ -21,7 +21,7 @@ BRICK ?= 192.168.1.100
 SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
        -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@$(BRICK)
 
-.PHONY: all clean native toolchain vendor boot checkmark payload release install-card \
+.PHONY: all clean native toolchain vendor boot payload release install-card \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
@@ -731,14 +731,7 @@ build-native/museart-check: tools/museart-check.c src/museart.c src/museart.h \
 check-backlog:
 	@python3 tools/backlog-check.py
 
-# src/main.c hand-keeps a copy of the mark that C cannot import from
-# tools/markdef.py. payload depends on this for the same reason payload.sh
-# refuses a card whose systems.cfg names cores vendor/ does not have: the
-# failure is silent otherwise, and it ships.
-checkmark:
-	python3 tools/checkmark.py
-
-payload: all checkmark
+payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
 # payload.sh names the zip: out/plorpOS-brick-v$(VERSION).zip for the Brick,
