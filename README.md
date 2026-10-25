@@ -272,7 +272,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 
 **Muse's menu,** MENU on its shelf: Show (music or audiobooks, when the card has both), Sort By (artist, album title or year, or author or title for books), Album Art, and Rescan Folder for anything copied since the device was turned on.
 
-**The in-game menu:** Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (games with more than one disc), Cheevos, Hotkeys, Reset, Quit. In native PICO-8: Continue, Reset, Splore, Quit.
+**The in-game menu:** Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (games with more than one disc), Achievements, Hotkeys, Reset, Quit. In native PICO-8: Continue, Reset, Splore, Quit.
 
 </details>
 

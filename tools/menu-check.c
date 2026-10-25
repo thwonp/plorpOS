@@ -751,8 +751,8 @@ static void info_rows(void)
 
 	n = gi_rows(rows, &gi, true);
 	printf("game info, nothing scraped, art present and a network:\n");
-	ck(n == 2, "Cheevos and the art action, and nothing else to say");
-	ck(!strcmp(rows[0].label, "Cheevos"), "Cheevos leads when nothing describes the game");
+	ck(n == 2, "Achievements and the art action, and nothing else to say");
+	ck(!strcmp(rows[0].label, "Achievements"), "Achievements leads when nothing describes the game");
 	ck(!strcmp(val(&rows[0]), "12 of 78"), "and carries the count");
 	ck(rows[0].live, "and opens the set, the way the in-game row does");
 	ck(!strcmp(rows[1].label, "Replace Box Art"), "art present offers a replace");
@@ -796,7 +796,7 @@ static void info_rows(void)
 	   "then when it came out");
 	ck(!strcmp(rows[2].label, "Genre") && !strcmp(val(&rows[2]), "Platform,Shoot'em Up"),
 	   "then what kind, as the scrape joined it");
-	ck(!strcmp(rows[3].label, "Cheevos"),
+	ck(!strcmp(rows[3].label, "Achievements"),
 	   "then what there is to shoot for, which is worth seeing before starting");
 	ck(!strcmp(rows[4].label, "Replace Box Art"), "and the action last");
 	k = reachable(rows, n, got, GI_MAX);
@@ -820,7 +820,7 @@ static void info_rows(void)
 	n = gi_rows(rows, &gi, true);
 	printf("game info, scraped with neither year nor genre:\n");
 	ck(n == 3, "both are simply absent");
-	ck(!strcmp(rows[1].label, "Cheevos"), "leaving the prose and the two actions");
+	ck(!strcmp(rows[1].label, "Achievements"), "leaving the prose and the two actions");
 
 	/* A game on the card (everything but Splore): Delete Game, last, and
 	 * live without a network. plorpos-gkd.69. */
@@ -881,7 +881,7 @@ static void ingame_rows(void)
 	   "Disc is under Palette (plorpos-gkd.47)");
 	ck(!strcmp(val(&rows[GM_DISC]), "Disc 2"), "and carries the disc in the drive");
 	ck(rows[GM_DISC].live, "and is reachable on an .m3u game");
-	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
+	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Achievements counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
 	ck(!strcmp(rows[GM_CHEEVOS + 1].label, "Hotkeys"),
 	   "no Sleep: Hotkeys follows Cheevos (a POWER tap sleeps)");
@@ -893,7 +893,7 @@ static void ingame_rows(void)
 	u.earned = 0; u.total = 0;
 	n = gm_rows(&u, rows, &b);
 	printf("in-game menu, a game with no set:\n");
-	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Cheevos says none");
+	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Achievements says none");
 	ck(!rows[GM_CHEEVOS].live, "and does nothing");
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(k == GM_ROWS - 1, "so the cursor steps over it");
@@ -935,8 +935,8 @@ static void ingame_rows(void)
 			if (!strcmp(rows[i].label, "Disc")) disc = 1;
 		}
 		ck(!shader && !palette && !disc, "no such label is anywhere");
-		ck(ids[GM_SHADER] == GM_CHEEVOS && !strcmp(rows[GM_SHADER].label, "Cheevos"),
-		   "the row under Display reads back as Cheevos");
+		ck(ids[GM_SHADER] == GM_CHEEVOS && !strcmp(rows[GM_SHADER].label, "Achievements"),
+		   "the row under Display reads back as Achievements");
 		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Quit"),
 		   "and the last as Quit");
 		ck(!rows[GM_SHADER].live,

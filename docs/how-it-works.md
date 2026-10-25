@@ -62,7 +62,7 @@ The in-game menu is the launcher's own: MENU makes diatom hand the display
 over with a preview of the paused frame, and Continue, Save, Load, Reset and
 Quit act through one protocol line each. **Display** cycles the running game's
 mode as you press it, which is the one to use when you want to see the
-difference rather than guess at it, and **Cheevos** shows how much of this
+difference rather than guess at it, and **Achievements** shows how much of this
 game's set you have earned, or reads `none` and stays unselectable when there
 is no set. Volume and brightness set in a game
 come back to the launcher's settings when the game ends, because the two

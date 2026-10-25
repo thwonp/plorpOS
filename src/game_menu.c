@@ -44,7 +44,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 	 * comes from. Reading "4/54" and having nowhere to go with it is the
 	 * question half-answered: which four, and what are the other fifty. A game
 	 * with no set has nothing to open and says so. */
-	out[n++] = (menu_row){ "Cheevos", gi->cheevos, gi->has_cheevos };
+	out[n++] = (menu_row){ "Achievements", gi->cheevos, gi->has_cheevos };
 	/* WHAT THIS SCREEN NO LONGER SAYS, and why, because each was removed on a
 	 * reason rather than to make the list shorter:
 	 *
@@ -99,7 +99,7 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
 		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Disc",
-		"Cheevos", "Hotkeys", "Reset", "Quit"
+		"Achievements", "Hotkeys", "Reset", "Quit"
 	};
 	int i;
 

@@ -6578,7 +6578,7 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	if (!strcmp(rows[sel].label, "Cheevos")) {
+	if (!strcmp(rows[sel].label, "Achievements")) {
 		/* The set the gatherer loaded to count this row is still the loaded
 		 * one, so the list has what it needs without reloading it. Over the
 		 * shelf rather than a paused frame: no game is running here. */
