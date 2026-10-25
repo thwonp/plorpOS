@@ -12,7 +12,7 @@
 #   REUSE=1 mk/rotate-image.sh  repacks from the last read (work/), no device
 #
 # The image: p1 uboot and p2 bootfs as on the device, p3 the rootfs at a
-# fixed ROOT_MB with the device's UUID (extlinux and fstab name it), no p4:
+# fixed ROOT_MB with the device's UUID (fstab names it) and PARTUUID (extlinux's root=), no p4:
 # the first boot makes the exFAT data partition across the rest of the card
 # (sd/rotate/image/plorpos-firstboot.sh). None of the device's owner goes in
 # (plorpos-3yv.13.4): its users, /root, ssh host keys, logs, Bluetooth bonds
@@ -179,7 +179,14 @@ docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$
 '
 
 # 4. The card: the device's GPT, with p3 cut to the rootfs and nothing after.
-echo "image: assembling $OUT"
+# p3 keeps the PARTUUID extlinux boots: the initrd is firmware only, with no
+# init to find a filesystem UUID, so the kernel finds root by PARTUUID - and
+# a fresh GPT gives p3 a random one, which hung the 2026-10-25 card at the
+# logo (rootwait, for ever). Anything but root=PARTUUID= stops the build.
+PARTUUID=$(mtype -i "$W/p2-out.img" ::/extlinux/extlinux.conf |
+	sed -n 's/.*root=PARTUUID=\([0-9a-fA-F-]*\).*/\1/p' | head -1)
+[ -n "$PARTUUID" ] || { echo "image: extlinux.conf does not boot root=PARTUUID=; refusing" >&2; exit 1; }
+echo "image: assembling $OUT (p3 PARTUUID $PARTUUID)"
 P3_START=1083392
 P3_SECT=$((ROOT_MB * 2048))
 TOTAL=$((P3_START + P3_SECT + 2048))
@@ -190,7 +197,7 @@ label: gpt
 first-lba: 2048
 start=2048, size=32768, type=8DA63339-0007-60C0-C436-083AC8230908, name="uboot"
 start=34816, size=1048576, type=BC13C2FF-59E6-4262-A352-B275FD6F7172, name="bootfs"
-start=$P3_START, size=$P3_SECT, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+start=$P3_START, size=$P3_SECT, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=$PARTUUID
 SFD
 dd if="$W/p1.img" of="$OUT" bs=512 seek=2048 conv=notrunc status=none
 dd if="$W/p2-out.img" of="$OUT" bs=512 seek=34816 conv=notrunc status=none
