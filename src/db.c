@@ -157,6 +157,11 @@ static const db_default library_defaults[] = {
 	{ "coreopt.NDS.melonds_render_mode",               "software" },
 	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
 	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
+	/* The real mic, always listening like a DS's (plorpos-3yv.75): the
+	 * core's default is Hold, on RetroPad L3, which the Rotate does not
+	 * have - so out of the box the mic would never open. */
+	{ "coreopt.NDS.melonds_mic_input",                 "microphone" },
+	{ "coreopt.NDS.melonds_mic_input_active",          "always" },
 	/* Display Mode on Menu+X out of the box: the DS's own X stays a game
 	 * button alone (plorpos-3yv.47). */
 	{ "hotkey.NDS",                                    "x:swap" },
