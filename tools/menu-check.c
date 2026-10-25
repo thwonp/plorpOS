@@ -56,20 +56,17 @@ static void off_state(void)
 
 	printf("radio off:\n");
 	ck(heading && !strcmp(heading, "Network Services"), "the screen names itself");
-	ck(n == WIFI_TOP_ROWS + 2, "switch, Cheevos, OTH, rule, note");
+	ck(n == WIFI_TOP_ROWS + 2, "switch, OTH, rule, note");
 	ck(rows[WIFI_ROW_SWITCH].live, "the switch is live");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].label, "Wi-Fi"), "row 0 is the switch");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].value, "off"), "the switch reads off");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].label, "Cheevos"), "Cheevos is under it");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "sign in"), "and invites a sign in");
-	ck(rows[WIFI_ROW_CHEEVOS].live, "and is reachable signed out, radio off");
 	ck(!strcmp(rows[WIFI_ROW_XFER].label, "Over The Hare"), "OTH is under it too");
 	ck(!strcmp(rows[WIFI_ROW_XFER].value, "needs Wi-Fi"), "OTH says why it is dead");
 	ck(!rows[WIFI_ROW_XFER].live, "OTH is not selectable offline");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS, "the rule separates the footer");
 	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 1]), "the footer is a note");
 	ck(!rows[WIFI_TOP_ROWS + 1].live, "the footer is not selectable");
-	ck(live_count(rows, n) == 2, "only the switch and Cheevos can be chosen");
+	ck(live_count(rows, n) == 1, "only the switch can be chosen (Cheevos went to Game Settings)");
 }
 
 /* The state the async scan produces on entry: saved networks up immediately,
@@ -96,7 +93,7 @@ static void scanning_state(void)
 
 	printf("scanning, two saved networks:\n");
 	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, two networks, rule, note");
-	ck(live_count(rows, n) == 4, "switch, Cheevos and both networks are choosable");
+	ck(live_count(rows, n) == 3, "switch and both networks are choosable");
 	ck(!strcmp(rows[WIFI_TOP_ROWS].label, "ReinFi"), "the first saved network is listed");
 	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "saved"), "no signal word before the scan lands");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 2, "rule after the networks");
@@ -136,7 +133,7 @@ static void scanned_state(void)
 	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "strong - saved"), "a saved network in range shows both");
 }
 
-/* Connected and signed in: Over The Hare opens, Cheevos names the account,
+/* Connected: Over The Hare opens
  * and the footer says where the device is - the network, then the address
  * another machine types in (plorpos-z0d.1). wifi_label asks the radio, which
  * a build machine does not have, so the connection is stated after it. */
@@ -157,12 +154,10 @@ static void connected_state(void)
 	wifi_label(&w);
 	w.connected = true;
 	snprintf(w.conn, sizeof w.conn, "kitchen · 192.168.0.55");
-	w.ra_name = "eric";
 	n = wifi_build(&w, rows, 64, &heading);
 
-	printf("connected, signed in:\n");
+	printf("connected:\n");
 	ck(rows[WIFI_ROW_XFER].live && !rows[WIFI_ROW_XFER].value, "OTH is live and unqualified");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "eric"), "Cheevos shows the account");
 	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, network, rule, where, legend");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 1, "rule after the network");
 	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "kitchen · 192.168.0.55"),

@@ -275,8 +275,13 @@ static bool is_ports(const system_cfg *s);
 /* Game Settings (plorpos-pyz): read where they act, so a change holds from
  * the next launch on without anything to reload. */
 static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
+/* Achievements Enabled (plorpos-pyz.7): Off, a launch hands no set over and
+ * fetches none, so the game plays as one RetroAchievements has never seen.
+ * Unlocks already owed to the account still go. */
+static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", 1) != 0; }
 static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
-/* Network Services opens both, and they are written after it. */
+/* Game Settings opens the first and Network Services the second; both are
+ * written after this. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
 /* And again: Play Time can send you to a game's shelf, which is the input
@@ -5542,14 +5547,7 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 
 	/* The switch. Saved on every change rather than on the way out: the way out
 	 * of a handheld is often the power button. */
-	/* The two that moved here from the plorpOS menu (plorpos-z0d.1). The
-	 * account is read again on the way back, since signing in or out is what
-	 * the screen behind it is for. */
-	if (sel == WIFI_ROW_CHEEVOS) {
-		ra_signin_screen(a);
-		w->ra_name = ra_signed_in() ? ra_user() : NULL;
-		return MENU_STAY;
-	}
+	/* Over The Hare, which moved here from the plorpOS menu (plorpos-z0d.1). */
 	if (sel == WIFI_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
 
 	if (sel == WIFI_ROW_SWITCH) {
@@ -5626,7 +5624,6 @@ static void wifi_screen(app *a)
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and
 	 * the act of opening it turned wifi on. */
 	w.on = wifi_status(NULL, 0, NULL, 0) != WIFI_OFF;
-	w.ra_name = ra_signed_in() ? ra_user() : NULL;
 	if (w.on) wifi_begin_scan(&w);
 
 	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
@@ -10924,7 +10921,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_CHEEVOS, GS_RA, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -10958,18 +10955,32 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
+	/* The account moved here from Network Services (plorpos-pyz.7), beside
+	 * the switch it is for. */
+	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
+	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
+	                                ra_signed_in() ? ra_user() : "sign in", true };
 	return GS_ROWS;
 }
 
-/* Left, right and A all change the row: two of them are on/off, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. */
+/* Left, right and A all change the row: the on/off ones flip, and the two
+ * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In is
+ * a door, so only A opens it. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
-	static const char *const keys[GS_ROWS] = { "autoresume", NULL, NULL, "confirmquit" };
+	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
+		[GS_RESUME]  = { "autoresume", 1 },
+		[GS_CONFIRM] = { "confirmquit", 0 },
+		[GS_CHEEVOS] = { "cheevos", 1 },
+	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
-	(void)a; (void)ctx;
+	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
+	if (sel == GS_RA) {
+		if (key == IN_ACCEPT) ra_signin_screen(a);
+		return MENU_STAY;
+	}
 	if (sel == GS_REWIND) {
 		int rw = (gs_rewind() + d + RW_COUNT) % RW_COUNT;
 
@@ -10980,8 +10991,9 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
 		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
-	} else {
-		db_set_int(db_dev(), keys[sel], !db_get_int(db_dev(), keys[sel], sel != GS_CONFIRM));
+	} else if (onoff[sel].key) {
+		db_set_int(db_dev(), onoff[sel].key,
+		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));
 	}
 	return MENU_STAY;
 }
@@ -12653,9 +12665,13 @@ static void launch_one(app *a)
 		/* Never played here, so there is no set to hand over. The game starts
 		 * anyway and the set is found behind it - see ra_fetch_begin. Nothing
 		 * in front of the launch. */
-		first_play = ra_signed_in() && access(set, R_OK) != 0 && net_online();
+		first_play = gs_cheevos() && ra_signed_in() && access(set, R_OK) != 0
+		             && net_online();
 
-		if (chv_load(set)) {
+		/* Cleared rather than left alone when Off: what is loaded is what
+		 * the in-game menu's Achievements shows, and it is the last game's. */
+		if (!gs_cheevos()) chv_clear();
+		else if (chv_load(set)) {
 			/* Reconcile with the account BEFORE deciding what to watch.
 			 * Without this the launcher filters against what this device
 			 * happens to have seen, which is not the same question and does
