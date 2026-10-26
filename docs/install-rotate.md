@@ -40,9 +40,11 @@ A unit that already runs base618 has it: skip this step.
 
 ## 1. Flash the card
 
-Check `plorpos-rotate.img.xz` against `SHA256SUMS` and write it to a microSD card of 8 GB or more, e.g.
-`xz -dc plorpos-rotate.img.xz | sudo dd of=/dev/sdX bs=4M conv=fsync`, or with Rufus / Raspberry Pi
-Imager / etc.
+Check `plorpOS-rotate-v<version>.img.xz` against `SHA256SUMS`, **extract it** (7-Zip on Windows,
+`xz -d` on Linux/macOS) and write the extracted `.img` to a microSD card of 8 GB or more, with balenaEtcher /
+Rufus / Raspberry Pi Imager / etc., or `sudo dd if=plorpOS-rotate-v<version>.img of=/dev/sdX bs=4M conv=fsync`.
+Don't give the `.xz` to the flashing tool itself: balenaEtcher calls it corrupted, and other tools can write a card
+that doesn't boot.
 
 ## 2. First boot
 
