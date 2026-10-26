@@ -1341,6 +1341,35 @@ static bool card_art_path(const system_cfg *s, const game_entry *g, char *out, s
 	return box;
 }
 
+/* The frame trace (plorpos-3yv.97), TORTOS_FRAME_TRACE=1 or a
+ * .userdata/<device>/frame-trace file only: a line for
+ * every shelf frame over FT_SLOW_US, with what the frame spent on the art
+ * paths it looked up for cards still loading and on the covers it put on the
+ * GPU. An instrument: off, it costs a branch. */
+#define FT_SLOW_US 25000u
+static bool g_ft;
+static unsigned g_ft_path_us, g_ft_paths, g_ft_up_us, g_ft_ups;
+
+static unsigned ft_us(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (unsigned)(t.tv_sec * 1000000u + t.tv_nsec / 1000);
+}
+
+static void ft_frame(const char *where, unsigned t0, unsigned t1, unsigned t2,
+                     int cursor, int count)
+{
+	if (g_ft && t2 - t0 > FT_SLOW_US)
+		fprintf(stderr, "frame: %s %u ms (update %u, draw %u), paths %u in %u ms, "
+		        "uploads %u in %u ms, card %d/%d, at %u\n", where,
+		        (t2 - t0) / 1000, (t1 - t0) / 1000, (t2 - t1) / 1000,
+		        g_ft_paths, g_ft_path_us / 1000, g_ft_ups, g_ft_up_us / 1000,
+		        cursor + 1, count, t2 / 1000);
+	g_ft_path_us = g_ft_paths = g_ft_up_us = g_ft_ups = 0;
+}
+
 /* Muse's half of the card machinery, defined with the rest of Muse. */
 static void muse_card_want(app *a, int s, int i);
 static void cover_shape(SDL_Surface **s);
@@ -1359,10 +1388,12 @@ static SDL_Texture *game_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 		muse_card_want(a, s, i);
 	} else if (!v->tex[i]) {
 		char art[LIB_PATH * 3], prev[LIB_PATH * 3];
+		unsigned ft0 = g_ft ? ft_us() : 0;
 
 		card_art_path(&a->sys.systems[o], &v->list.items[i],
 		              art, sizeof art);
 		preview_path(a, o, &v->list.items[i], prev, sizeof prev);
+		if (g_ft) { g_ft_path_us += ft_us() - ft0; g_ft_paths++; }
 		/* Hand it to the worker and draw nothing this frame. Asking is cheap
 		 * and ignores a card already in hand, so callers ask every frame. */
 		if (!texload_want(s, i, art, prev)) {
@@ -1398,8 +1429,12 @@ static void texload_drain(app *a)
 	SDL_Surface *surf;
 	int s, i;
 
+	unsigned ft0 = g_ft ? ft_us() : 0, ft_n = 0;
+
 	while (texload_take(&s, &i, &surf)) {
 		sysview *v;
+
+		ft_n++;
 
 		if (s == SYS_CARDS_SHELF) {
 			if (i >= 0 && i < a->sys.count && !a->sys_tex[i]) {
@@ -1447,6 +1482,7 @@ static void texload_drain(app *a)
 			v->cb[i] = 1.0f;
 		}
 	}
+	if (g_ft && ft_n) { g_ft_up_us += ft_us() - ft0; g_ft_ups += ft_n; }
 }
 
 static void evict_far(sysview *v, int keep)
@@ -10338,9 +10374,12 @@ static void muse_shelf_screen(app *a, bool now)
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
 
+		unsigned ft0, ft1;
+
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
+		ft0 = g_ft ? ft_us() : 0;
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
 			pwr_action pa = power_check(a);
@@ -10401,9 +10440,11 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
+		ft1 = g_ft ? ft_us() : 0;
 		if (screen_draw_due(a, &pace, 0)) {
 			tick_tint(a);
 			render(a);
+			ft_frame("Muse", ft0, ft1, ft_us(), v->cursor, v->list.count);
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}
@@ -15326,8 +15367,18 @@ int main(int argc, char *argv[])
 	ui_pace pace = {0};
 	bool first_frame = false;   /* for the startup log's mark */
 
+	{
+		char ftm[LIB_PATH];
+
+		snprintf(ftm, sizeof ftm, "%s/frame-trace", P_USERDATA);
+		g_ft = getenv("TORTOS_FRAME_TRACE") != NULL || access(ftm, F_OK) == 0;
+		if (g_ft) fprintf(stderr, "frame: trace on, frames over %u ms\n", FT_SLOW_US / 1000);
+	}
 	while (a.running) {
+		unsigned ft0, ft1;
+
 		plat_input_poll(&a.in);
+		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
 
 		/* Followed here as well as during a game. Diatom is resident and takes
@@ -15411,11 +15462,18 @@ int main(int argc, char *argv[])
 		if (a.screen == SCREEN_SYSTEMS) update_systems(&a);
 		else update_games(&a);
 		if (!a.running) break;
+		ft1 = g_ft ? ft_us() : 0;
 
 		if (screen_draw_due(&a, &pace, 0)) {
 			tick_tint(&a);
 			render(&a);
 			if (!first_frame) { t_mark("first frame"); first_frame = true; }
+			if (g_ft) {
+				bool sys = a.screen == SCREEN_SYSTEMS;
+				ft_frame(sys ? "systems" : a.sys.systems[a.sys_cursor].name, ft0, ft1, ft_us(),
+				         sys ? a.sys_cursor : a.view[a.sys_cursor].cursor,
+				         sys ? a.sys.count : a.view[a.sys_cursor].list.count);
+			}
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}
