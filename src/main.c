@@ -10799,7 +10799,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * off. The ring's memory is fixed, so a slower speed holds less history;
  * the player chose that trade. 5 matches both builds' default. */
 static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
-static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled" };
+static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Off" };
 #define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
 #define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
 
