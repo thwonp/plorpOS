@@ -127,7 +127,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 - **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
-- **RetroAchievements:** sign in on the device, under **MENU > Game Settings > Achievements Sign-In**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
+- **RetroAchievements:** sign in on the device, under **MENU > Game Settings > Achievements Sign-In**. A game's achievements download once and then work offline, and anything you unlock offline is sent later. **Download Achievement Sets** fetches the whole library's at once, so games you have never started online have theirs too.
 - **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
@@ -264,6 +264,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 - **Persistent Turbo Assignments:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.
 - **Achievements Enabled:** off, games start without RetroAchievements.
 - **Achievements Sign-In:** your RetroAchievements account.
+- **Download Achievement Sets:** every game's achievements onto the card at once, for playing offline. Games already downloaded are skipped, so running it again is quick.
 - **Scraping:** Box Art, ScreenScraper, Import gamelist.xml metadata.
 
 **A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Shader (the same list as the in-game menu's, for that console's games), Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
@@ -301,7 +302,7 @@ Don't like a cover? Press X on the game and choose **Replace Box Art**. It looks
 <details>
 <summary><b>How do achievements work?</b></summary>
 
-Sign in to your RetroAchievements account under **MENU > Game Settings > Achievements Sign-In**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later. To play without them, turn off **Achievements Enabled** on the same screen.
+Sign in to your RetroAchievements account under **MENU > Game Settings > Achievements Sign-In**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later. To get every game's achievements in one go before you leave Wi-Fi, use **Download Achievement Sets** on the same screen; it counts the games with no achievements to earn (hacks, translations, dumps RetroAchievements never listed, and many arcade sets). To play without them, turn off **Achievements Enabled** on the same screen.
 
 </details>
 

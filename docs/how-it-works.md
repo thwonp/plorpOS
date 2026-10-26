@@ -198,6 +198,22 @@ RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
 that the launch is instant and works with Wi-Fi off.
 
+**Game Settings -> Download Achievement Sets** does that first-play fetch for
+the whole library at once (plorpos-3yv.107.3), so a game never started online
+still has its set offline. One game at a time, one request started or polled
+per frame; the ROM is hashed on a thread, since a whole GBA cartridge is 32 MB
+and would otherwise hold the frame. A cached set costs one `access()`, so a
+second run only asks about what is missing. Hacks and translations come back
+as no game, or as RetroAchievements' "Unsupported Game Version" placeholder,
+and many arcade sets as a game with nothing to earn; all three are counted as
+"No achievements", apart from real failures; five failures in a row stop the run
+as offline. Unlocks earned offline are kept on the card and sent the next time
+a game ends with the device online.
+
+A DS game is hashed the way RetroAchievements does it - header, ARM9, ARM7 and
+icon, read where the header points - through rcheevos' own `hash_rom.c`, not
+as the whole 128 MB cartridge.
+
 That needs HTTPS, which the Brick turns out to have: `curl 7.54.1` against
 `OpenSSL/1.1.0i`. What it does not have is anything to trust, so
 `res/ssl/cacert.pem` ships with the launcher - see

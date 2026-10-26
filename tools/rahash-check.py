@@ -38,7 +38,7 @@ def main():
         print(f"  skip: no ROM library at {roms}")
         return 0
 
-    systems = rac.systems_from_cfg(os.path.join(ROOT, "config", "systems.cfg"))
+    systems = rac.all_systems(ROOT)
     total = mismatched = failed = 0
     for folder, tag, exts in systems:
         d = os.path.join(roms, folder)

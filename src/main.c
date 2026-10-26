@@ -6445,6 +6445,192 @@ static void art_screen(app *a, const char *only, const char *one,
 	memset(&a->in, 0, sizeof a->in);
 }
 
+/* Game Settings > Download Achievement Sets (plorpos-3yv.107.3): every shelf's
+ * sets onto the card, so a game never launched online still has its
+ * achievements offline. A set is otherwise fetched on a game's first online
+ * play; this is that, for the whole library, at once. A game whose set is
+ * already cached costs one access() and no request, so running it again is
+ * cheap and a stopped run is free to restart.
+ *
+ * One game at a time through the same requests a first play makes
+ * (ra_fetch_*), one step per frame. Hashing reads the ROM - a whole GBA
+ * cartridge is 32 MB - so it runs on a thread, or a big one would hold the
+ * frame, and with it B and the power button, for a second. */
+static struct {
+	SDL_Thread  *th;
+	SDL_atomic_t done;
+	bool         ok;
+	char         rom[LIB_PATH * 2], tag[CFG_STR], hash[33];
+} g_rs;
+
+static int rs_hash_main(void *unused)
+{
+	(void)unused;
+	g_rs.ok = ra_hash_rom(g_rs.rom, g_rs.tag, g_rs.hash);
+	SDL_AtomicSet(&g_rs.done, 1);
+	return 0;
+}
+
+static void rs_hash_join(void)
+{
+	if (!g_rs.th) return;
+	SDL_WaitThread(g_rs.th, NULL);
+	g_rs.th = NULL;
+}
+
+/* Shelves RetroAchievements has no console for. */
+static bool rs_skip_shelf(const system_cfg *s)
+{
+	return is_pico8(s) || is_ports(s) || is_muse(s);
+}
+
+static void ra_sets_screen(app *a)
+{
+	enum { RS_NEXT, RS_HASH, RS_FETCH, RS_DONE } st = RS_NEXT;
+	const char *problem = NULL;
+	char set[LIB_PATH * 2], head[192], fit[128] = "", where[64], counts[96];
+	char nunk[16], nfail[16];
+	menu_row rows[5];
+	int nrows;
+	int sys = 0, k = 0, systems = 0, sys_done = 0, i;
+	int found = 0, unknown = 0, failed = 0, cached = 0, fails_in_row = 0;
+
+	for (i = 0; i < a->sys.count; i++)
+		if (!rs_skip_shelf(&a->sys.systems[i]) && a->view[i].list.count > 0) systems++;
+
+	if (!ra_signed_in())  { problem = "Sign in first"; st = RS_DONE; }
+	else if (!net_online()) { problem = "No network"; st = RS_DONE; }
+
+	/* The one async slot: an account answer or an unlock flush from the last
+	 * game may still hold it. */
+	sync_abandon();
+	ra_flush_stop();
+
+	while (a->running) {
+		/* ---- work: at most one request started or polled per frame ---- */
+		if (st == RS_NEXT) {
+			/* Cached games are only an access() each; take many a frame, or a
+			 * second run over a full card would crawl through them. */
+			for (i = 0; i < 64 && st == RS_NEXT; i++) {
+				const system_cfg *s;
+				const game_entry *g;
+
+				if (sys >= a->sys.count) { st = RS_DONE; break; }
+				s = &a->sys.systems[sys];
+				if (rs_skip_shelf(s) || k >= a->view[sys].list.count) {
+					if (!rs_skip_shelf(s) && a->view[sys].list.count > 0) sys_done++;
+					sys++;
+					k = 0;
+					continue;
+				}
+				g = &a->view[sys].list.items[k++];
+				chv_path(P_ROMS, s->folder, g->name, set, sizeof set);
+				if (access(set, R_OK) == 0) { cached++; continue; }
+
+				snprintf(g_rs.rom, sizeof g_rs.rom, "%s/%s/%s", P_ROMS, s->folder, g->file);
+				snprintf(g_rs.tag, sizeof g_rs.tag, "%s", s->tag);
+				ui_fit_text(ui_font(UI_F_LABEL), g->name, fit, sizeof fit,
+				            TORTOS_SCREEN_W * 3 / 4);
+				SDL_AtomicSet(&g_rs.done, 0);
+				g_rs.th = SDL_CreateThread(rs_hash_main, "rahash", NULL);
+				if (!g_rs.th) {
+					fprintf(stderr, "cheevos: no thread to hash %s\n", g_rs.rom);
+					failed++;
+					continue;
+				}
+				st = RS_HASH;
+			}
+		} else if (st == RS_HASH && SDL_AtomicGet(&g_rs.done)) {
+			rs_hash_join();
+			if (!g_rs.ok) {
+				fprintf(stderr, "cheevos: could not hash %s\n", g_rs.rom);
+				failed++;                  /* unreadable, or a kind rahash refuses */
+				st = RS_NEXT;
+			} else {
+				ra_fetch_begin(g_rs.hash, set);
+				st = RS_FETCH;
+			}
+		} else if (st == RS_FETCH) {
+			int rc = ra_fetch_step();
+
+			if (rc == 1) { found++; fails_in_row = 0; st = RS_NEXT; }
+			else if (rc < 0) {
+				if (ra_fetch_unknown()) { unknown++; fails_in_row = 0; }
+				else { failed++; fails_in_row++; }
+				st = RS_NEXT;
+				/* Wi-Fi gone, or RetroAchievements down: every game after
+				 * would fail the same way. Stop and say so. */
+				if (fails_in_row >= 5) {
+					problem = net_online() ? "RetroAchievements is not answering"
+					                       : "No network";
+					st = RS_DONE;
+				}
+			}
+		}
+
+		/* ---- the panel ---- */
+		snprintf(where, sizeof where, "%d of %d", sys_done, systems);
+		snprintf(counts, sizeof counts, "%d new, %d already", found, cached);
+		snprintf(nunk, sizeof nunk, "%d", unknown);
+		snprintf(nfail, sizeof nfail, "%d", failed);
+		nrows = 0;
+		rows[nrows++] = (menu_row){ "Systems", where, false };
+		rows[nrows++] = (menu_row){ "Sets", counts, false };
+		/* Not failures: a dump RetroAchievements never listed (a hack, a
+		 * translation), or a game it lists with nothing to earn - most of an
+		 * arcade shelf. The log names each by hash or game id. */
+		if (unknown) rows[nrows++] = (menu_row){ "No achievements", nunk, false };
+		if (failed)  rows[nrows++] = (menu_row){ "Failed", nfail, false };
+		if (st == RS_DONE) {
+			snprintf(head, sizeof head, "Achievement Sets\n%s",
+			         problem ? problem : "Done");
+			rows[nrows++] = (menu_row){ "B to close", NULL, false };
+		} else {
+			snprintf(head, sizeof head, "Achievement Sets\n%s",
+			         st == RS_NEXT ? "starting" : fit);
+			rows[nrows++] = (menu_row){ "B to stop", NULL, false };
+		}
+
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) a->running = false;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				rs_hash_join();
+				net_async_abort();
+				power_off(a);
+				return;
+			}
+		}
+		if (!a->running || menu_leaving(a)) break;
+
+		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
+		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
+		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		tick_tint(a);
+		draw_shelf(a);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
+		SDL_RenderFillRect(a->r, NULL);
+		menu_draw(a, head, rows, nrows, -1, menu_std_width(a), MENU_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+		SDL_Delay(8);
+	}
+
+	/* Stopped mid-game: the hash finishes on its own (it is the one ROM), and
+	 * a request in flight is dropped - the next ra_fetch_begin starts clean. */
+	rs_hash_join();
+	if (st == RS_FETCH) net_async_abort();
+	fprintf(stderr, "cheevos: set download %s: %d new, %d already, %d with no "
+	        "achievements, %d failed\n", st == RS_DONE ? "done" : "stopped",
+	        found, cached, unknown, failed);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
 /* One game, and the two things you can do to it from here.
  *
  * X on the shelf, because Y is already favorite and the pair reads as a
@@ -11024,7 +11210,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
 enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA,
-       GS_SCRAPE, GS_ROWS };
+       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -11066,6 +11252,8 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
 	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
 	                                ra_signed_in() ? ra_user() : "sign in", true };
+	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
+	rows[GS_RA_SETS]  = (menu_row){ "Download Achievement Sets", NULL, true };
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
@@ -11073,8 +11261,8 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 }
 
 /* Left, right and A all change the row: the on/off ones flip, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In and
- * Scraping are doors, so only A opens them. */
+ * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
+ * Download Achievement Sets and Scraping are doors, so only A opens them. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
@@ -11087,9 +11275,10 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
-	if (sel == GS_RA || sel == GS_SCRAPE) {
+	if (sel == GS_RA || sel == GS_RA_SETS || sel == GS_SCRAPE) {
 		if (key == IN_ACCEPT) {
 			if (sel == GS_RA) ra_signin_screen(a);
+			else if (sel == GS_RA_SETS) ra_sets_screen(a);
 			else scraping_screen(a);
 		}
 		return MENU_STAY;
@@ -12802,6 +12991,11 @@ static void launch_one(app *a)
 		 * in front of the launch. */
 		first_play = gs_cheevos() && ra_signed_in() && access(set, R_OK) != 0
 		             && net_online();
+		/* Said, not silent (plorpos-3yv.107.4): from the shelf this is
+		 * indistinguishable from a game with no achievements. */
+		if (gs_cheevos() && !first_play && access(set, R_OK) != 0)
+			fprintf(stderr, "cheevos: no set cached for %s and %s; none this play\n",
+			        romfile, !ra_signed_in() ? "not signed in" : "offline");
 
 		/* Cleared rather than left alone when Off: what is loaded is what
 		 * the in-game menu's Achievements shows, and it is the last game's. */

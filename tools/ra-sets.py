@@ -148,7 +148,7 @@ def main():
         sys.exit("ra-sets: login failed")
     del pw
 
-    systems = rac.systems_from_cfg(os.path.join(ROOT, "config", "systems.cfg"))
+    systems = rac.all_systems(ROOT)
     if a.system:
         systems = [s for s in systems if s[0] == a.system]
         if not systems:

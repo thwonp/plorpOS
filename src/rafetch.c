@@ -141,6 +141,10 @@ static char *read_whole(const char *path, size_t *len)
 
 /* The conversion, separated from the fetch so it can be checked against real
  * responses with no network - see tools/raset-check.c. */
+/* Set by ra_set_from_json: the set parsed and held nothing playable - the
+ * "Unsupported Game Version" placeholder, or a game with no achievements. */
+static bool g_set_empty;
+
 bool ra_set_from_json(const char *json, size_t len, long gameid,
                       const char *out_path)
 {
@@ -209,6 +213,7 @@ bool ra_set_from_json(const char *json, size_t len, long gameid,
 	}
 	fclose(out);
 
+	g_set_empty = kept == 0;
 	if (kept == 0) { unlink(tmp); return false; }
 	if (rename(tmp, out_path) != 0) { unlink(tmp); return false; }
 	if (warned)
@@ -224,11 +229,13 @@ enum { FQ_IDLE, FQ_GAMEID, FQ_PATCH, FQ_DONE, FQ_FAILED };
 
 static int  g_fq_state = FQ_IDLE;
 static long g_fq_game;
+static bool g_fq_unknown;
 static char g_fq_hash[33];
 static char g_fq_set[1024];
 static char g_fq_tmp[256];
 
 long ra_fetch_gameid(void) { return g_fq_game; }
+bool ra_fetch_unknown(void) { return g_fq_unknown; }
 
 static void fq_stop(int state)
 {
@@ -242,8 +249,13 @@ void ra_fetch_begin(const char *rom_hash, const char *set_path)
 
 	g_fq_state = FQ_IDLE;
 	g_fq_game = 0;
+	g_fq_unknown = false;
 	if (!rom_hash || !*rom_hash || !set_path || !*set_path) return;
-	if (!ra_signed_in() || !net_online()) return;
+	if (!ra_signed_in() || !net_online()) {
+		fprintf(stderr, "ra: no lookup for %s: %s\n", rom_hash,
+		        ra_signed_in() ? "offline" : "not signed in");
+		return;
+	}
 
 	snprintf(g_fq_hash, sizeof g_fq_hash, "%s", rom_hash);
 	snprintf(g_fq_set, sizeof g_fq_set, "%s", set_path);
@@ -268,29 +280,56 @@ int ra_fetch_step(void)
 
 	rc = net_async_poll();
 	if (rc == 0) return 0;                         /* still running */
-	if (rc < 0) { fq_stop(FQ_FAILED); return -1; }
+	if (rc < 0) {
+		/* Logged, not silent (plorpos-3yv.107.4): offline mid-request, or
+		 * RetroAchievements not answering, reads exactly like a game with no
+		 * set from the shelf. */
+		fprintf(stderr, "ra: %s request for %s failed\n",
+		        g_fq_state == FQ_GAMEID ? "lookup" : "set", g_fq_hash);
+		fq_stop(FQ_FAILED);
+		return -1;
+	}
 
 	body = read_whole(g_fq_tmp, &len);
-	if (!body) { fq_stop(FQ_FAILED); return -1; }
+	if (!body) {
+		fprintf(stderr, "ra: no reply body for %s\n", g_fq_hash);
+		fq_stop(FQ_FAILED);
+		return -1;
+	}
 	root = js_root(body, len);
 
 	if (g_fq_state == FQ_GAMEID) {
 		net_field f[4];
 		static char g[24];       /* static: net_post_async keeps the pointer */
 
-		if (!js_member(root, "GameID", &v)) { free(body); fq_stop(FQ_FAILED); return -1; }
+		if (!js_member(root, "GameID", &v)) {
+			fprintf(stderr, "ra: lookup for %s answered without a GameID: %.80s\n",
+			        g_fq_hash, body);
+			free(body);
+			fq_stop(FQ_FAILED);
+			return -1;
+		}
 		g_fq_game = js_int(v);
 		free(body);
 		/* 0 is RetroAchievements saying it has never seen this ROM, which for
 		 * a fan translation is the permanent and correct answer. */
-		if (g_fq_game <= 0) { fq_stop(FQ_FAILED); return -1; }
+		if (g_fq_game <= 0) {
+			fprintf(stderr, "ra: %s is no game RetroAchievements knows\n", g_fq_hash);
+			g_fq_unknown = true;
+			fq_stop(FQ_FAILED);
+			return -1;
+		}
 
 		snprintf(g, sizeof g, "%ld", g_fq_game);
 		f[0].k = "r"; f[0].v = "patch";
 		f[1].k = "g"; f[1].v = g;
 		f[2].k = "u"; f[2].v = g_user;
 		f[3].k = "t"; f[3].v = g_token;
-		if (!net_post_async(f, 4, g_fq_tmp, 30)) { fq_stop(FQ_FAILED); return -1; }
+		if (!net_post_async(f, 4, g_fq_tmp, 30)) {
+			fprintf(stderr, "ra: could not ask for game %ld's set\n", g_fq_game);
+			fq_stop(FQ_FAILED);
+			return -1;
+		}
 		g_fq_state = FQ_PATCH;
 		return 0;
 	}
@@ -305,7 +344,17 @@ int ra_fetch_step(void)
 		slash = strrchr(dir, '/');
 		if (slash) { *slash = '\0'; mkdir(dir, 0755); }
 
+		g_set_empty = false;
 		ok = ra_set_from_json(body, len, g_fq_game, g_fq_set);
+		if (!ok && g_set_empty) {
+			/* Not a failure: nothing here to earn with this ROM. */
+			fprintf(stderr, "ra: game %ld has no achievements for %s\n",
+			        g_fq_game, g_fq_hash);
+			g_fq_unknown = true;
+		} else if (!ok) {
+			fprintf(stderr, "ra: game %ld's set did not parse or write: %.80s\n",
+			        g_fq_game, body);
+		}
 		free(body);
 		fq_stop(ok ? FQ_DONE : FQ_FAILED);
 		return ok ? 1 : -1;
