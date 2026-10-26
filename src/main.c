@@ -511,9 +511,11 @@ static struct { int index, count; char label[24]; } g_disc;
 
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
- * that ship are listed: the Rotate's DS pair. */
-static const struct { const char *core, *label, *alt, *alt_label; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS" },
+ * that ship are listed: the Rotate's DS pair. `bare` is the core whose states
+ * live in the shelf's own .tortos folder - the one that was there first -
+ * whichever is the default now (plorpos-3yv.105). */
+static const struct { const char *core, *label, *alt, *alt_label, *bare; } ALT_CORES[] = {
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds" },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
@@ -1148,18 +1150,22 @@ static const char *slot_name(int slot)
 	return buf;
 }
 
-/* A system's folder under .tortos/: its states and previews. A shelf turned
- * to its alternative core keeps that core's own beside them, in a folder
- * named after it - a state is one emulator's, and melonDS DS handed a
- * DSperate state (or the other way round) can only refuse it. Battery saves
- * are a raw chip image either core reads, and stay shared in Saves/. */
+/* A system's folder under .tortos/: its states and previews. On a shelf with
+ * two cores, the one that is not ALT_CORES' `bare` keeps its own beside them,
+ * in a folder named after it - a state is one emulator's, and melonDS DS
+ * handed a DSperate state (or the other way round) can only refuse it, then
+ * write over it. Tied to the core, not to which one is the default, so
+ * changing the default moves nobody's states. Battery saves are a raw chip
+ * image either core reads, and stay shared in Saves/. */
 static const char *persist_folder(app *a, int s)
 {
 	static char buf[CFG_STR * 2 + 2];
 	const system_cfg *sc = &a->sys.systems[s];
+	const char *core = shelf_core(a, s);
+	int k = alt_core(sc);
 
-	if (alt_core(sc) < 0 || !a->view[s].alt) return sc->folder;
-	snprintf(buf, sizeof buf, "%s/%s", sc->folder, shelf_core(a, s));
+	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
+	snprintf(buf, sizeof buf, "%s/%s", sc->folder, core);
 	return buf;
 }
 
