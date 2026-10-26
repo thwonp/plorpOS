@@ -258,7 +258,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 
 **Game Settings,** for every console:
 - **Games Auto-Resume:** on, a game starts where you left it. Off, it starts fresh; the autosave is still written, so you can load it from the in-game menu.
-- **Rewind Speed:** 1x to 10x, or Disabled.
+- **Rewind Speed:** 1x to 10x, or Disabled (the default).
 - **Fast-Forward Speed:** 2x, 4x or 8x, for the Fast-Forward hotkey. 4x by default.
 - **Confirm Reset/Quit:** on, Reset and Quit in the in-game menu ask first. Off by default.
 - **Persistent Turbo Assignments:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.

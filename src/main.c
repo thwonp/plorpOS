@@ -10913,7 +10913,7 @@ static int gs_ff(void)
 
 static int gs_rewind(void)
 {
-	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
+	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 0);
 
 	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
 	return rw;
