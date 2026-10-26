@@ -131,7 +131,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 - **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
-- **Turbo Assign:** a hotkey that turns any face or shoulder button into a turbo button for the rest of the game, on every console. Turn on Persistent Turbo and each game remembers its turbo buttons.
+- **Turbo Assign:** a hotkey that turns any face or shoulder button into a turbo button for the rest of the game, on every console. Turn on Persistent Turbo Assignments and each game remembers its turbo buttons.
 - **Bluetooth headphones,** paired on the device, with its volume buttons reaching them and their own buttons playing and skipping in Muse. Plug in wired ones and they take over.
 - **Muse, a music and audiobook player:** your albums and books on a shelf of their own covers, and every book picks up where you left it. SELECT opens Muse from anywhere, even the in-game menu, and it keeps playing when you close it. While it plays, the game is silent.
 - **Play Time:** how long you've played each game or console, today, this week, this month, this year or ever.
@@ -261,7 +261,7 @@ The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with 
 - **Rewind Speed:** 1x to 10x, or Disabled.
 - **Fast-Forward Speed:** 2x, 4x or 8x, for the Fast-Forward hotkey. 4x by default.
 - **Confirm Reset/Quit:** on, Reset and Quit in the in-game menu ask first. Off by default.
-- **Persistent Turbo:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.
+- **Persistent Turbo Assignments:** on, each game keeps the turbo buttons you gave it with Turbo Assign. Off by default.
 - **Achievements Enabled:** off, games start without RetroAchievements.
 - **Achievements Sign-In:** your RetroAchievements account.
 - **Scraping:** Box Art, ScreenScraper, Import gamelist.xml metadata.
@@ -337,7 +337,7 @@ Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotk
 - **Press Turbo Assign twice** to change your mind before picking a button.
 - **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
-A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
+A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo Assignments** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 
 </details>
 

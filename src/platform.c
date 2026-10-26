@@ -1093,7 +1093,7 @@ static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
 static bool d_turbo_gba;
 static char d_turbo_key[600];     /* "turbo.<TAG>/<rom file>": this game's saved bits */
 
-/* Persistent Turbo (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
+/* Persistent Turbo Assignments (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
  * the session - one row per game in the library db, beside its hotkeys, saved
  * on every change and read back at RUN. Off is session-only, as before, and
  * leaves saved rows alone, so turning it back On brings them back. */

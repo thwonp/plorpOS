@@ -16,7 +16,7 @@ cannot. A notice says what happened each time.
 **It lasts for the game.** The in-game menu and Muse leave it alone; quitting
 ends it, and the next game starts with none.
 
-**Persistent Turbo** (Game Settings, off by default) keeps it instead: every
+**Persistent Turbo Assignments** (Game Settings, off by default) keeps it instead: every
 change is saved for that game, as `turbo.<TAG>/<ROM file>` in the library
 database beside its hotkeys, and the next launch of the same game starts with
 it. Off, nothing is read or written, and rows already saved stay for when it

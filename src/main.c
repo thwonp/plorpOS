@@ -10930,7 +10930,7 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
 	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
-	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo",
+	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo Assignments",
 	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
 	/* The account moved here from Network Services (plorpos-pyz.7), beside
 	 * the switch it is for. */
