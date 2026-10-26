@@ -513,7 +513,7 @@ static struct { int index, count; char label[24]; } g_disc;
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
  * that ship are listed: the Rotate's DS pair. */
 static const struct { const char *core, *label, *alt, *alt_label; } ALT_CORES[] = {
-	{ "melondsds", "melonDS DS", "dsperate", "DSperate-lr" },
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS" },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */

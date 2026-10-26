@@ -51,9 +51,9 @@ stage() {
 	for f in muse musectl btplayer; do cp "$B/$f" "$S/"; done
 	# The Rotate's own shelves (config/systems-rotate.cfg) after everyone's.
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" > "$S/systems.cfg"
-	# Its own cores first (vendor/cores-rotate). DSperate is no shelf's core but
-	# the Nintendo DS shelf's Core row switches to it (main.c ALT_CORES).
-	plorpos_files "$S" "$ROOT/vendor/cores-rotate $ROOT/vendor/cores" dsperate
+	# Its own cores first (vendor/cores-rotate). melonDS DS is no shelf's core
+	# but the Nintendo DS shelf's Core row switches to it (main.c ALT_CORES).
+	plorpos_files "$S" "$ROOT/vendor/cores-rotate $ROOT/vendor/cores" melondsds
 }
 if [ "$MODE" = stage ]; then
 	[ -n "${ROTATE_STAGE:-}" ] || { echo "stage: set ROTATE_STAGE" >&2; exit 1; }
