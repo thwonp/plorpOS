@@ -23,10 +23,11 @@ unmodified; to update, replace the files from the pinned upstream and rebuild.
 
 ## rcheevos: what is here
 
-`src/rhash/` `hash.c`, `hash_disc.c`, `cdreader.c`, `md5.c` and their headers,
-`src/rc_compat.c`, and the three public headers they include. Compiled with
-`RC_HASH_NO_ROM`, `RC_HASH_NO_ENCRYPTED` and `RC_HASH_NO_ZIP`: cartridges are
-still hashed by `src/rahash.c`, and no shelf has encrypted or zipped discs.
+`src/rhash/` `hash.c`, `hash_disc.c`, `hash_rom.c`, `cdreader.c`, `md5.c` and
+their headers, `src/rc_compat.c`, and the three public headers they include.
+Compiled with `RC_HASH_NO_ENCRYPTED` and `RC_HASH_NO_ZIP`: other cartridges are
+still hashed by `src/rahash.c` - `hash_rom.c` is here for the DS, whose hash
+reads only the parts its header names - and no shelf has encrypted or zipped discs.
 `RC_NO_THREADS` drops `rc_compat`'s mutexes, which only `rc_client` uses.
 
 rcheevos has no CHD reader of its own - each frontend brings one. Ours is
