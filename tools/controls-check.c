@@ -44,9 +44,7 @@ static const char *const BUTTONS[] = {
  * past it and scrolls; "auto (speaker)" beside "Audio Output" sits inside it.
  * Under this and a row is safe whatever it is beside; over it and the shot is
  * what settles it. */
-#define VALUE_MAX 32   /* 22 until Muse's "Favorite album (hold: favorites)"
-                        * (plorpos-3yv.98, the user's wording, who judged
-                        * there was room): a device shot settles it. */
+#define VALUE_MAX 22
 
 /* Rows of TEXT a page can have - its buttons, any note, and the footer - before
  * the panel runs out. The rule is not counted: it is a couple of pixels and the

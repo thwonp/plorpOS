@@ -89,7 +89,7 @@ static int muse(menu_row *out)
 	 * user's wording 2026-10-25): on the album shelf it marks a favorite and,
 	 * held, shows only those; on Now Playing it is the play mode, or a book's
 	 * speed (2026-09-30). */
-	out[n++] = (menu_row){ "Y (coverflow)",   "Favorite album (hold: favorites)", false };
+	out[n++] = (menu_row){ "Y (coverflow)",   "Favorite (hold: view)", false };
 	out[n++] = (menu_row){ "Y (Now Playing)", "Mode/speed", false };
 	/* B is not here. It goes back in Muse exactly as it does everywhere else,
 	 * and the shelf's page already says so. */
