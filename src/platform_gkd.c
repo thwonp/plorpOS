@@ -382,10 +382,13 @@ static void pad_read(in_state *st)
 		if (ev.type != EV_KEY || ev.value == 2) continue;
 		bool down = ev.value == 1;
 		switch (ev.code) {
-		case BTN_DPAD_LEFT:  pad_dir[0] = down; continue;
-		case BTN_DPAD_RIGHT: pad_dir[1] = down; continue;
-		case BTN_DPAD_UP:    pad_dir[2] = down; continue;
-		case BTN_DPAD_DOWN:  pad_dir[3] = down; continue;
+		/* A press counts when it comes, not only if it is still held after
+		 * the read: a quick tap's release can arrive in the same read, and
+		 * the tap was lost (plorpos-3yv.97). */
+		case BTN_DPAD_LEFT:  pad_dir[0] = down; if (down) set_btn(st, IN_LEFT, true);  continue;
+		case BTN_DPAD_RIGHT: pad_dir[1] = down; if (down) set_btn(st, IN_RIGHT, true); continue;
+		case BTN_DPAD_UP:    pad_dir[2] = down; if (down) set_btn(st, IN_UP, true);    continue;
+		case BTN_DPAD_DOWN:  pad_dir[3] = down; if (down) set_btn(st, IN_DOWN, true);  continue;
 		case BTN_TRIGGER_HAPPY1: home_down = down; set_btn(st, IN_HOME, down); continue;
 		}
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)

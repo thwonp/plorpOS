@@ -407,9 +407,15 @@ static void pad_read(in_state *st)
 	if (switcher_pulse) { set_btn(st, IN_SWITCHER, false); switcher_pulse = false; }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS && (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y)) {
-			bool *d = &hat_dir[ev.code == ABS_HAT0X ? 0 : 2];
+			int base = ev.code == ABS_HAT0X ? 0 : 2;
+			bool *d = &hat_dir[base];
 			d[0] = ev.value < 0;
 			d[1] = ev.value > 0;
+			/* A press counts when it comes, not only if it is still held
+			 * after the read: a quick tap's release can arrive in the
+			 * same read, and the tap was lost (plorpos-3yv.97). */
+			for (int j = 0; j < 2; j++)
+				if (d[j]) set_btn(st, (in_button)(IN_LEFT + base + j), true);
 			continue;
 		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
