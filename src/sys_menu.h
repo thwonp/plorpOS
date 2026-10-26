@@ -48,7 +48,11 @@ typedef enum {
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
-	ST_CLOCK, ST_AUTO_OFF, ST_SLEEP, ST_BATTPCT,
+	ST_CLOCK,
+#if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
+	ST_AUTO_OFF,
+#endif
+	ST_SLEEP, ST_BATTPCT,
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
 	ST_MUTESW,
 #endif

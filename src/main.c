@@ -1742,13 +1742,19 @@ static void auto_off_save(int seconds)
  * shape rather than sharing it - mutually exclusive with Auto Sleep above,
  * matching NextUI, so the two get independent ladders and db keys even
  * though today they hold the same values. */
+#if !defined(PLATFORM_ROTATE)
 static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
 #define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+#endif
 
 static int auto_poweroff_load(void)
 {
+#if defined(PLATFORM_ROTATE)
+	return 0;     /* no Auto Off on the Rotate, whatever an old card saved (plorpos-3yv.100) */
+#else
 	int v = db_get_int(db_dev(), "autopoweroff", -1);
 	return v >= 0 ? v : 0;                    /* the default: never */
+#endif
 }
 
 static void auto_poweroff_save(int seconds)
@@ -7871,6 +7877,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
 	 * it - see that block's comment. */
+#if !defined(PLATFORM_ROTATE)
 	if (d && sel == ST_AUTO_OFF) {
 		int k, at = 0;
 
@@ -7888,6 +7895,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		a->idle.since_ms = plat_now_ms();
 		return MENU_STAY;
 	}
+#endif
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {

@@ -172,8 +172,10 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* Date & Time leads: setup, where the timers are settings (upstream
 	 * b3b4483, which put it in the top menu; ours is regrouped - z0d.1). */
 	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
+#if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
+#endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
 	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every

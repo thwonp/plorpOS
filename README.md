@@ -348,7 +348,7 @@ They're under **MENU > System Settings**. The device has two ways to rest: **sle
 
 - **Auto Sleep** (default 1 minute): how long the device sits untouched before it sleeps, exactly as if you'd tapped POWER.
 - **Suspend** comes 10 seconds after the device falls asleep, however it fell asleep. When music ends with the screen dark, it suspends 30 seconds later. Neither is a setting.
-- **Auto Off** (default Never): how long the device sits untouched before it powers itself off. Next time you turn it on, you're back where you were. Auto Off and Auto Sleep can't both be on: setting one turns the other to Never.
+- **Auto Off** (default Never; not on the RG Rotate): how long the device sits untouched before it powers itself off. Next time you turn it on, you're back where you were. Auto Off and Auto Sleep can't both be on: setting one turns the other to Never.
 
 Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse's own **Screen Off** setting decides when the screen goes dark instead. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
 
