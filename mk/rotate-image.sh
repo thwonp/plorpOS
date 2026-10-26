@@ -96,6 +96,7 @@ UUID=$(awk '$2 == "/" { sub("UUID=", "", $1); print $1 }' "$W/fstab")
 ssh_ 'tar -C / --one-file-system --numeric-owner -cf - \
 	--exclude=./mnt/SDCARD --exclude=./tmp/* --exclude=./var/tmp/* \
 	--exclude=./var/log/journal/* --exclude=./var/cache/apt/archives/*.deb \
+	--exclude="./var/lib/systemd/pstore/*" --exclude="./var/lib/systemd/network/dhcp-server-lease/*" \
 	--exclude=./root/.bash_history --exclude="./root/[!.]*" \
 	--exclude=./usr/lib/firmware/updates/agdsp.bin \
 	--exclude=./usr/lib/firmware/updates/wcnmodem.bin \
