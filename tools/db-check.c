@@ -66,7 +66,6 @@ static void opens_and_seeds(void)
 	 * shipped default to "never", which is exactly what it did the first
 	 * time. */
 	ck(db_get_int(d, "autooff", -1) == 60, "auto sleep seeded to a minute");
-	ck(db_get_int(d, "suspendtimeout", -1) == 30, "suspend timeout seeded to 30s");
 	db_close(d);
 }
 

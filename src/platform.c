@@ -1969,7 +1969,7 @@ static unsigned resume_at;
  * sound muted, neither persisted (NextUI's SetRawVolume, not SetVolume - a
  * crash asleep must not boot dark and silent).
  *
- * Left unwoken for the Suspend Timeout it escalates into real suspend,
+ * Left unwoken for PLAT_SUSPEND_AFTER_S it escalates into real suspend,
  * plat_sleep(), and returns once that resumes. Charging, or a computer
  * attached, puts the escalation off a minute at a time instead - suspending
  * on external power hangs this kernel (TortOS-2pv), which is why NextUI
@@ -1991,7 +1991,7 @@ bool plat_light_sleep(unsigned waited_ms)
 	bool awake = true;
 #ifdef __linux__
 	int saved_vol = cur_vol;
-	int timeout_ms = plat_suspend_timeout_secs() * 1000;
+	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
 	unsigned since;
 
 	plat_input_flush();                   /* PAD_reset */
@@ -2070,11 +2070,6 @@ bool plat_usb_host(void)
 	return host;
 }
 
-int plat_suspend_timeout_secs(void)
-{
-	int v = db_get_int(db_dev(), "suspendtimeout", 30);
-	return v > 0 ? v : 30;          /* NextUI's default; 0 is not a choice */
-}
 
 #define POWER_HOLD_MS 400u
 

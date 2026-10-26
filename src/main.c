@@ -1693,14 +1693,6 @@ static void auto_poweroff_save(int seconds)
 	db_set_int(db_dev(), "autopoweroff", seconds);
 }
 
-/* Suspend Timeout: how long light sleep waits for the power button before
- * escalating into real suspend. NextUI's "Suspend timeout" exactly - its
- * sleep_timeout_secs ladder and CFG_DEFAULT_SUSPENDTIMEOUTSECS. No 0 on
- * purpose, as in NextUI: once the screen is off some escalation always
- * applies. Independent of both rows above. platform.c reads the same key. */
-static const int SUSPEND_TIMEOUT[] = { 30, 60, 120, 300, 600 };
-#define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
-
 
 /* Defined with the Wi-Fi screen it began in, and used here because signing in
  * and syncing are the other two things that make the player wait. */
@@ -4984,7 +4976,6 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.sys_order = SYS_ORDERS[g_order].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
-		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
 		{
 			static char clk[32];
@@ -7826,22 +7817,6 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 			auto_off_save(0);
 		}
 		a->idle.since_ms = plat_now_ms();
-		return MENU_STAY;
-	}
-	/* Suspend Timeout, same idiom, and independent of both rows above: it
-	 * governs light sleep however it began. Clamped at both ends - there is
-	 * no "never", as in NextUI. */
-	if (d && sel == ST_SUSPEND) {
-		int k, at = SUSPEND_TIMEOUT_COUNT - 1;
-
-		/* The first rung at or above, as Auto Sleep: an older ladder's 5 or
-		 * 45 steps from 30 or 60. */
-		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
-			if (SUSPEND_TIMEOUT[k] >= plat_suspend_timeout_secs()) { at = k; break; }
-		at += d;
-		if (at < 0) at = 0;
-		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
-		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
@@ -11173,15 +11148,15 @@ static void checkpoint_game(app *a)
  * other button is ignored, and only POWER wakes.
  *
  * Once the music stops - paused here, by a headset, or the album's end - it
- * stays dark with the same buttons live for the Suspend Timeout, so a pause
- * in the dark can be undone in the dark (TortOS-28l); music again cancels
- * the countdown. Only when it runs out does whatever asked for sleep carry
- * on: suspend, at once - *waited is the time already spent, which light
- * sleep counts toward the same timeout - or Auto Off's power-off. So the
- * Suspend Timeout is ALSO Auto Off's grace after the music stops: one
- * setting rather than a new one, the user's call 2026-09-28, and in the
- * README. Never suspend while playing: suspend is where the sound would
- * stop. */
+ * stays dark with the same buttons live for MUSIC_GRACE_MS, so a pause in
+ * the dark can be undone in the dark (TortOS-28l); music again cancels the
+ * countdown. Only when it runs out does whatever asked for sleep carry on:
+ * suspend, at once - *waited is the time already spent, already past light
+ * sleep's PLAT_SUSPEND_AFTER_S - or Auto Off's power-off. Fixed, no setting
+ * (plorpos-3yv.95, the user's call 2026-10-25). On a charger light sleep
+ * then waits on, as always. Never suspend while playing: suspend is where
+ * the sound would stop. */
+#define MUSIC_GRACE_MS 30000u
 typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
 
 static dark_end music_dark(app *a, unsigned *waited)
@@ -11189,7 +11164,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 	static const char *const said[] = { "woke", "music stopped", "power off" };
 	dark_end end = DARK_STOPPED;
 	unsigned t0 = plat_now_ms();
-	unsigned grace = (unsigned)plat_suspend_timeout_secs() * 1000u;
+	unsigned grace = MUSIC_GRACE_MS;
 	unsigned stopped = 0;                 /* when it stopped; 0 while playing */
 	bool wake = db_get_int(db_dev(), "muse.wake", 1);
 	int b;
@@ -11300,7 +11275,7 @@ static pwr_action power_check(app *a)
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
-		 * music has been stopped for the Suspend Timeout (music_dark). A
+		 * music has been stopped for MUSIC_GRACE_MS (music_dark). A
 		 * hold is not idle, and still does what it says at once. */
 		if (pa == PWR_POWEROFF && musec_playing() &&
 		    music_dark(a, NULL) == DARK_WOKE)

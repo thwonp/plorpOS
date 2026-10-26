@@ -119,7 +119,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Achievements, Hotkeys, Reset, Quit |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
-| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends after the **Suspend Timeout**; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
+| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
 
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
@@ -143,7 +143,7 @@ than any one console:
 | **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
-| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
+| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else |
 | **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Disabled` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what the Fast-Forward hotkey runs at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
 | **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
@@ -151,7 +151,7 @@ than any one console:
 | **About** | version, address, battery, uptime |
 
 Charging, or plugged into a computer, the device never sleeps, suspends or
-turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
+turns itself off: Auto Off, Auto Sleep and suspend all wait until it is
 unplugged. As in NextUI - suspending on external power hangs the Brick.
 
 Date & Time has a row for each part of the clock and one for the time zone,
@@ -424,10 +424,9 @@ button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
 (MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
-the same buttons keep working for the **Suspend Timeout**, so a pause in the
-dark can be undone in the dark. Then the device suspends, or with Auto Off it
-powers down: the Suspend Timeout is also Auto Off's grace once the music
-stops. NextUI pauses the music to sleep; this is TortOS's own.
+the same buttons keep working for 30 seconds, so a pause in the dark can be
+undone in the dark. Then the device suspends, or with Auto Off it powers
+down. NextUI pauses the music to sleep; this is TortOS's own.
 
 For a pocket, set **Mute Switch** (System Settings) to `muse button lock`. The switch
 then no longer mutes; it works like an iPod's hold switch. While it is down

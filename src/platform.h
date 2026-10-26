@@ -330,12 +330,12 @@ bool plat_sleep_supported(void);
 bool plat_sleep(void);
 
 /* NextUI's PWR_sleep: screen off, sound muted, CPU awake, until the power
- * button is released - or, left for the Suspend Timeout, real suspend via
+ * button is released - or, left for PLAT_SUSPEND_AFTER_S, real suspend via
  * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
  * whole of it. Returns false only when escalation found no suspend to go to,
  * which NextUI answers by powering off; the caller does that. waited_ms is
  * time the screen has already been dark (main.c's music_dark, after the
- * music stopped), counted toward the Suspend Timeout; 0 otherwise. */
+ * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
 
 /* END PolyForm-Noncommercial-1.0.0 */
@@ -363,9 +363,10 @@ void plat_clock_zone(const char *id);
 bool plat_usb_host(void);
 /* END PolyForm-Noncommercial-1.0.0 */
 
-/* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
- * light sleep waits unwoken before real suspend. Never 0. */
-int plat_suspend_timeout_secs(void);
+/* How long light sleep waits unwoken before real suspend, in seconds - fixed,
+ * no setting since plorpos-3yv.95 (it was NextUI's Suspend timeout, 30 s by
+ * default). On battery only: plat_light_sleep puts it off on a charger. */
+#define PLAT_SUSPEND_AFTER_S 10
 
 /* A tap sleeps (or powers off, when "power.tap" says to); a hold still powers off immediately, same as it always has - see
  * platform.c for the 400ms line between the two. Fed the button's current

@@ -94,8 +94,6 @@ static const db_default device_defaults[] = {
 	{ "audioout",   "auto" },  /* auto | speaker - see src/audioout.h */
 	{ "autooff",    "60" },    /* Auto Sleep, seconds without input, 0 is off -
 	                              NextUI's Screen timeout default */
-	{ "suspendtimeout", "30" }, /* light sleep to real suspend, seconds, never
-	                              0 - NextUI's Suspend timeout default */
 	{ "autopoweroff", "0"  },  /* Auto Off, seconds without input, 0 is off -
 	                              mutually exclusive with autooff */
 	{ "wifi",       "0"  },    /* what THIS device was last doing, not the */

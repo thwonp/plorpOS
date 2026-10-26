@@ -222,7 +222,6 @@ static void tortos_menu_offline(void)
 	u.cards_dir = "Horizontal";
 	u.sys_order = "Year";
 	u.auto_off = 120;
-	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("plorpOS menu, radio off:\n");
@@ -247,8 +246,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
 	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off follows it");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(val(&rows[ST_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
-	ck(rows[ST_SUSPEND].live, "Suspend Timeout is reachable offline");
+	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
+	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
 	   "Battery Percentage defaults to off");

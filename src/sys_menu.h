@@ -45,10 +45,10 @@ typedef enum {
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
-/* Settings > System Settings: the clock, the three timers, the battery
+/* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
-	ST_CLOCK, ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND, ST_BATTPCT,
+	ST_CLOCK, ST_AUTO_OFF, ST_SLEEP, ST_BATTPCT,
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
 	ST_MUTESW,
 #endif
@@ -133,7 +133,7 @@ _Static_assert(MENU_MAX_ROWS >= ST_ROWS, "MENU_MAX_ROWS < ST_ROWS");
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
  * keeps it alive as long as it keeps the rows. */
-typedef struct { char a[24], b[CFG_STR], c[16], d[40], e[16]; } menu_bufs;
+typedef struct { char a[24], b[CFG_STR], c[16], d[40]; } menu_bufs;
 
 /* Everything either menu needs to know about the device, gathered by the
  * caller. A struct rather than a dozen arguments so that adding a fact to a
@@ -166,8 +166,6 @@ typedef struct {
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
-	int         suspend_timeout; /* seconds light sleep waits before real
-	                              * suspend, never 0 - see PM_SUSPEND */
 	const char *clock;       /* now, as Date & Time's row shows it */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */

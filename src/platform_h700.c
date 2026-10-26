@@ -669,7 +669,7 @@ void plat_settings_init(void)
  * host side and leaves POWER as the wake key - opening the lid alone does not
  * wake it. ALSA's mixer is BaseOS's to save and restore.
  *
- * Reached only from platform.c's light sleep, after the Suspend Timeout,
+ * Reached only from platform.c's light sleep, after PLAT_SUSPEND_AFTER_S,
  * which treats false as "no suspend here" and powers off - so false is kept
  * for a kernel that truly cannot, not for a write that was merely refused. */
 #define POWER_STATE "/sys/power/state"
