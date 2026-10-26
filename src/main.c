@@ -8467,8 +8467,12 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
-		if (in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_RIGHT)) {
-			int dir = in_repeat(&a->in, IN_RIGHT) ? 1 : -1, next = sel;
+		/* Each asked once a frame: in_repeat spends the repeat it reports,
+		 * so asking Right again said no, and a held Right went left. */
+		int step = in_repeat(&a->in, IN_RIGHT) ? 1 : in_repeat(&a->in, IN_LEFT) ? -1 : 0;
+
+		if (step) {
+			int dir = step, next = sel;
 			do {
 				next = (next + dir + GM_SLOTS + 1) % (GM_SLOTS + 1);
 			} while ((saving ? next == 0 : !sv.have[next]) && next != sel);
