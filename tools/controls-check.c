@@ -44,7 +44,9 @@ static const char *const BUTTONS[] = {
  * past it and scrolls; "auto (speaker)" beside "Audio Output" sits inside it.
  * Under this and a row is safe whatever it is beside; over it and the shot is
  * what settles it. */
-#define VALUE_MAX 22
+#define VALUE_MAX 32   /* 22 until Muse's "Favorite album (hold: favorites)"
+                        * (plorpos-3yv.98, the user's wording, who judged
+                        * there was room): a device shot settles it. */
 
 /* Rows of TEXT a page can have - its buttons, any note, and the footer - before
  * the panel runs out. The rule is not counted: it is a couple of pixels and the
@@ -54,17 +56,23 @@ static const char *const BUTTONS[] = {
  * Eight drew the footer half off the panel; seven with a rule left the last
  * row faded at the window's edge, which is a page that scrolls itself while
  * somebody is reading a button off it. */
-#define PAGE_MAX 6
+#define PAGE_MAX 7      /* 6 until Muse's page took a second Y row (plorpos-3yv.98) */
 
 /* A note runs the panel's width and is cut at about here: "On Genesis and
  * SNES, X and Y are the pad's own buttons" showed thirty characters of
  * fifty-four in a shot on 2026-09-19. */
 #define NOTE_MAX 30
 
+/* A button, or a button and where it means that: "Y (Now Playing)". */
 static int is_button(const char *s)
 {
+	const char *ctx = strstr(s, " (");
+	size_t n = ctx ? (size_t)(ctx - s) : strlen(s);
 	int i;
-	for (i = 0; i < NBUTTONS; i++) if (!strcmp(BUTTONS[i], s)) return 1;
+
+	if (ctx && s[strlen(s) - 1] != ')') return 0;
+	for (i = 0; i < NBUTTONS; i++)
+		if (strlen(BUTTONS[i]) == n && !strncmp(BUTTONS[i], s, n)) return 1;
 	return 0;
 }
 

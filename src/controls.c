@@ -85,15 +85,14 @@ static int muse(menu_row *out)
 	/* Ten seconds a tap and further held - see seek_step in main.c. Said as
 	 * what it does, since the numbers do not fit in a value. */
 	out[n++] = (menu_row){ "Left/Right", "Seek, faster held", false };
-	/* "Mode" rather than "Mode, on Now Playing": you press it on Now Playing,
-	 * where the mark beside the track count changes in front of you. Eric's,
-	 * 2026-09-20 - the rest of that sentence was saying what the screen was
-	 * about to show anyway. "Or speed" since 2026-09-30: on a book, which
-	 * plays in order, Y is its speed instead. */
-	out[n++] = (menu_row){ "Y",          "Mode or speed", false };
+	/* Y does two things in Muse, so it says where (plorpos-3yv.98, the
+	 * user's wording 2026-10-25): on the album shelf it marks a favorite and,
+	 * held, shows only those; on Now Playing it is the play mode, or a book's
+	 * speed (2026-09-30). */
+	out[n++] = (menu_row){ "Y (coverflow)",   "Favorite album (hold: favorites)", false };
+	out[n++] = (menu_row){ "Y (Now Playing)", "Mode/speed", false };
 	/* B is not here. It goes back in Muse exactly as it does everywhere else,
-	 * and the shelf's page already says so - and with the rule above the
-	 * footer this page has room for five, not six. */
+	 * and the shelf's page already says so. */
 	out[n++] = (menu_row){ "SELECT",     "Close Muse",    false };
 	return n;
 }

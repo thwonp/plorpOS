@@ -264,6 +264,7 @@ static int  shelf_letter_jump(sysview *v, int dir);
  * And sorting puts Muse's shelf in order by its own. */
 static bool is_muse(const system_cfg *s);
 static void muse_order_view(sysview *v);
+static void muse_album_dir(int al, char *out, size_t n);
 /* Muse's menu opens it, and the menu is up here. */
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
@@ -782,6 +783,32 @@ static void  year_fill(void);
  * card and a Show row in its menu, rather than a card for books beside it -
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
+
+/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, Y held
+ * MUSE_FAV_HOLD_MS shows only the marked ones. A mark is the card's
+ * "mfav.<album folder>" row - not favorites.c's set, which is games and
+ * makes the Favorites shelf. The view is this session's; it ends by itself
+ * when its last album is unmarked, or when the kind shown has none. */
+static bool g_muse_favs;
+static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
+#define MUSE_FAV_HOLD_MS 500u
+
+static bool muse_fav_is(const char *dir)
+{
+	char key[LIB_PATH + 8];
+
+	snprintf(key, sizeof key, "mfav.%s", dir);
+	return db_get_int(db_lib(), key, 0) == 1;
+}
+
+static void muse_fav_flip(const char *dir)
+{
+	char key[LIB_PATH + 8];
+
+	snprintf(key, sizeof key, "mfav.%s", dir);
+	if (muse_fav_is(dir)) db_del(db_lib(), key);
+	else db_set_str(db_lib(), key, "1");
+}
 
 /* Whether each album is a book listened to the end: one per album in g_muse,
  * rebuilt with it, like g_cov. A finished book is marked and not forgotten,
@@ -3556,7 +3583,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * scan-the-shelf signal it looked like, and it said one bit with no
 		 * legend about the one game you could already ask about directly. X
 		 * says "resume + 3" now, which is the same fact with a number on it. */
-		if (fav_is(gs->tag, g->file)) {
+		if (fav_is(gs->tag, g->file) || (is_muse(gs) && muse_fav_is(g->file))) {
 			/* Centered on the title's INK, not its em box. The box reserves a
 			 * descender's depth most titles never use, so a mark placed at
 			 * the box's middle sits visibly below the letters. Descent is
@@ -3619,7 +3646,13 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * the shelf slides along y a card height and a half per step and a
 		 * centered counter had every move drag a card and its reflection
 		 * straight across it. */
-		snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
+		if (is_muse(s) && SDL_GetTicks() < g_muse_note_until) {
+			snprintf(count, sizeof count, "No favorite albums");
+			ui_redraw_at(g_muse_note_until);
+		} else if (is_muse(s) && g_muse_favs)
+			snprintf(count, sizeof count, "Favorites  \xC2\xB7  %d / %d", idx + 1, v->list.count);
+		else
+			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
 		if (CARD_DIRS[g_dir].vertical)
 			ui_text(a->r, ui_font(UI_F_META), count, 24, STAGE_Y + 700,
 			        -1, UI_TEXT_DIM);
@@ -10192,6 +10225,53 @@ static int muse_card_of(const sysview *v, int album)
 	return -1;
 }
 
+/* The shelf rebuilt after a favorite or the Favorites view changed which
+ * albums it shows, on `album` if it is still there, else the card that took
+ * its place. Textures go first: a card may now be another album. */
+static void muse_refilter(sysview *v, int album)
+{
+	int k;
+
+	free_view_textures(v);
+	muse_order_view(v);
+	k = album >= 0 ? muse_card_of(v, album) : -1;
+	if (k < 0) k = v->cursor < v->list.count ? v->cursor : v->list.count - 1;
+	v->cursor = k > 0 ? k : 0;
+	cf_reset(&v->cf, v->cursor);
+	ui_redraw_now();
+}
+
+/* Y on the shelf (plorpos-3yv.98): a tap marks or unmarks the album under the
+ * cursor; held, the Favorites view on or off. */
+static void muse_fav_tap(sysview *v)
+{
+	if (v->list.count <= 0) return;
+	muse_fav_flip(v->list.items[v->cursor].file);
+	/* Unmarked in the view, it leaves it - and the last one ends it. */
+	if (g_muse_favs) muse_refilter(v, v->album[v->cursor]);
+	else ui_redraw_now();
+}
+
+static void muse_fav_hold(sysview *v)
+{
+	int al = v->list.count > 0 ? v->album[v->cursor] : -1, k;
+	char dir[LIB_PATH];
+
+	if (!g_muse_favs) {
+		for (k = 0; k < v->list.count; k++) {
+			muse_album_dir(v->album[k], dir, sizeof dir);
+			if (muse_fav_is(dir)) break;
+		}
+		if (k == v->list.count) {
+			g_muse_note_until = SDL_GetTicks() + 2000;
+			ui_redraw_now();
+			return;
+		}
+	}
+	g_muse_favs = !g_muse_favs;
+	muse_refilter(v, al);
+}
+
 /* MUSE'S SHELF, OPENED ON TOP OF WHATEVER WAS ON SCREEN. Eric's, 2026-09-20.
  *
  * SELECT used to open a list of artists, because this shelf belongs to the
@@ -10217,7 +10297,7 @@ static void muse_shelf_screen(app *a, bool now)
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	sysview *v;
 	int muse = -1, i, playing;
-	bool done = false;
+	bool done = false, y_down = false, y_spent = false;
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
@@ -10279,6 +10359,21 @@ static void muse_shelf_screen(app *a, bool now)
 		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		/* Y acts on release, so a hold can mean something else: held
+		 * MUSE_FAV_HOLD_MS it is the Favorites view, at once, and that
+		 * release does nothing. A tap whose press and release came in one
+		 * poll shows only as pressed. */
+		if (a->in.down[IN_Y] && !y_spent &&
+		    SDL_GetTicks() - a->in.down_since[IN_Y] >= MUSE_FAV_HOLD_MS) {
+			y_spent = true;
+			muse_fav_hold(v);
+		}
+		if ((y_down || a->in.pressed[IN_Y]) && !a->in.down[IN_Y]) {
+			if (!y_spent) muse_fav_tap(v);
+			y_spent = false;
+		}
+		y_down = a->in.down[IN_Y];
 
 		if (a->in.pressed[IN_ACCEPT]) {
 			/* SELECT from the tracks or Now Playing closes all of Muse, and
@@ -13582,6 +13677,19 @@ static void muse_order_view(sysview *v)
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
 	                               g_year, v->album);
+	if (g_muse_favs) {
+		int kept = 0;
+		char dir[LIB_PATH];
+
+		for (k = 0; k < v->list.count; k++) {
+			muse_album_dir(v->album[k], dir, sizeof dir);
+			if (muse_fav_is(dir)) v->album[kept++] = v->album[k];
+		}
+		/* None of this kind marked: every album, and the view is over. The
+		 * arrays are then as they were, so textures in hand still match. */
+		if (kept) v->list.count = kept;
+		else g_muse_favs = false;
+	}
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
 		int al = v->album[k];

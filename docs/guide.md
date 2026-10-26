@@ -109,7 +109,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **A** | open a system, or start a game |
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
-| **Y** | favorite it - Favorites is a shelf of its own. Nothing on Muse's shelf |
+| **Y** | favorite it - Favorites is a shelf of its own. On Muse's shelf, Y favorites the album, and held half a second shows only favorite albums (again to show them all) |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **F1/F2** | brightness, everywhere, including in game, held the same way. Home with the volume rocker on the GKD, MENU with it on the RG SP |
 | **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
