@@ -75,6 +75,7 @@ if [ "$MODE" = all ] || [ "$MODE" = boot ]; then
 	# A ROM folder per shelf, as payload.sh makes them - a shelf added since the
 	# card was set up has one too (plorpos-3yv.89).
 	plorpos_rom_folders "$T" | ssh_ 'while IFS= read -r f; do mkdir -p "/mnt/SDCARD/Roms/$f/.media"; done'
+	plorpos_save_folders "$T" | ssh_ 'while IFS= read -r f; do mkdir -p "/mnt/SDCARD/Saves/$f"; done'
 fi
 if [ "$MODE" = boot ]; then
 	ssh_ "cat > /etc/systemd/system/plorpos.service && systemctl daemon-reload && \

@@ -22,7 +22,7 @@ Roms/        NES/  SNES/  Game Boy/ ...   one per console
 Music/
 Audiobooks/
 Bios/
-Saves/       made per console on first play
+Saves/       one folder per console, ready for saves from another device
 ```
 
 ## 1. Prepare the card

@@ -38,4 +38,8 @@ mkdir -p /mnt/SDCARD/Roms /mnt/SDCARD/Saves /mnt/SDCARD/Bios /mnt/SDCARD/Music
 # devices' cards come (mk/plorpos-files.sh plorpos_rom_folders; plorpos-3yv.89).
 awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' /mnt/SDCARD/plorpOS/systems.cfg |
 while IFS= read -r f; do mkdir -p "/mnt/SDCARD/Roms/$f/.media"; done
+# A Saves folder per shelf too, but Ports (plorpos_save_folders, plorpos-3yv.96).
+awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); gsub(/^[ \t]+|[ \t]+$/,"",$4)
+	if ($4 != "portmaster") print $3}' /mnt/SDCARD/plorpOS/systems.cfg |
+while IFS= read -r f; do mkdir -p "/mnt/SDCARD/Saves/$f"; done
 sync

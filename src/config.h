@@ -11,8 +11,8 @@ typedef struct {
 	char name[CFG_STR];   /* display name, e.g. "TurboGrafx-16" */
 	char folder[CFG_STR]; /* ROM folder under Roms/            */
 	char core[CFG_STR];   /* core short name, e.g. "mednafen_pce_fast" */
-	char tag[8];          /* saves, states and per-game configs hang off this,
-	                       * so it is also the folder name under Saves/. Three
+	char tag[8];          /* states and per-game configs hang off this (the
+	                       * Saves/ folder is the ROM folder's name). Three
 	                       * characters at most: this array is the limit, and a
 	                       * longer tag is silently truncated into it. */
 	char card[CFG_STR];   /* card art filename under TortOS/cards/ */

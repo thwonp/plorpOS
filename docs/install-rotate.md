@@ -29,7 +29,7 @@ at the charging screen: hold Power** to go on. Unplugged, it starts on its own.
 
 The first start makes the data partition: an exFAT partition named
 **PLORPOS** across the rest of the card, with `TortOS/` (plorpOS itself) and
-empty `Roms/ Bios/ Saves/ Music/`. It takes a few seconds more than later
+`Roms/ Bios/ Saves/ Music/` (a folder per console in `Roms/` and `Saves/`). It takes a few seconds more than later
 starts. Then the shelf comes up.
 
 ## 3. Your games and files

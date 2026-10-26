@@ -78,7 +78,7 @@ Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console
 Music/
 Audiobooks/
 Bios/
-Saves/       made per console on first play
+Saves/       one folder per console, ready for saves from another device
 ```
 
 `Roms/Pico-8/` also holds a hidden file, `.disable_splore`. Keep it: without it

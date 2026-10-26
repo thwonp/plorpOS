@@ -131,6 +131,10 @@ plorpos_rom_folders "$P" |
 while IFS= read -r folder; do
 	mkdir -p "$CARD/Roms/$folder/.media"
 done
+plorpos_save_folders "$P" |
+while IFS= read -r folder; do
+	mkdir -p "$CARD/Saves/$folder"
+done
 # Bios/ is created above and stays FLAT. It is handed to the core as its system
 # directory and a core asks for a filename inside it - mgba wants gba_bios.bin,
 # mednafen wants syscard3.pce - so a folder per system is a place a BIOS goes to

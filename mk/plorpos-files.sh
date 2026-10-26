@@ -81,3 +81,11 @@ plorpos_files() {
 plorpos_rom_folders() {
 	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$1/systems.cfg"
 }
+# plorpos_save_folders P: the Saves folder of every system that keeps its saves
+# there - named as its ROM folder (main.c), Ports not (a port keeps its own).
+# Made up front so saves brought from another device have somewhere to go
+# (plorpos-3yv.96).
+plorpos_save_folders() {
+	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); gsub(/^[ \t]+|[ \t]+$/,"",$4)
+		if ($4 != "portmaster") print $3}' "$1/systems.cfg"
+}

@@ -27,7 +27,7 @@ everything in it to the root of a FAT32 or exFAT card:
 ```
 System/       the frontend hook BaseOS looks for (launch_frontend.sh)
 TortOS/       plorpOS itself
-Roms/ Bios/ Saves/ Music/ Audiobooks/   empty, for your games and files
+Roms/ Bios/ Saves/ Music/ Audiobooks/   for your games and files; Saves/ has a folder per console
 ```
 
 Put your games in `Roms/` (one folder per system, as `TortOS/systems.cfg`
