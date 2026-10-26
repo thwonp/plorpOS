@@ -92,7 +92,11 @@ start_resident() {
 			i=$((i + 1))
 		done
 		warm_codec
-		bt_reconnect &
+		# Only with Bluetooth on - boot.env again, as the player may have
+		# turned it on since this script started (plorpos-3yv.92).
+		BLUETOOTH=0
+		[ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
+		[ "$BLUETOOTH" = 1 ] && bt_reconnect &
 		exec "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 			--save "$SD/Saves" --system "$SD/Bios"
 	) >> "$LOG" 2>&1 &
@@ -104,6 +108,7 @@ start_resident() {
 # the address once the link is up (/etc/systemd/network/20-wlan0.network).
 # In the background: the shelf never waits for the radio.
 WIFI=0
+BLUETOOTH=0
 [ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
 WPA_CONF=$TORTOS_USERDATA/wpa_supplicant.conf
 if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ] &&
@@ -112,6 +117,22 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ] &&
 		i=0
 		while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 25 ]; do sleep 1; i=$((i + 1)); done
 		wpa_supplicant -B -D nl80211,wext -i wlan0 -C /run/wpa_supplicant -c "$WPA_CONF"
+	) >> "$LOG" 2>&1 &
+fi
+
+# Bluetooth as the player left it, off on a fresh card (plorpos-3yv.92).
+# BlueZ powers the adapter on by itself (AutoEnable) and the launcher shows
+# the adapter's state, so off has to be said; the adapter can register a
+# moment after this runs.
+if [ "$BLUETOOTH" != 1 ]; then
+	(
+		i=0
+		until timeout 2 bluetoothctl show 2> /dev/null | grep -q 'Powered:'; do
+			[ $i -ge 25 ] && exit 0
+			sleep 1
+			i=$((i + 1))
+		done
+		timeout 5 bluetoothctl power off > /dev/null
 	) >> "$LOG" 2>&1 &
 fi
 
