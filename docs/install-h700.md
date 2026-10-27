@@ -80,7 +80,7 @@ What to expect:
   Reset, Quit); Quit ends the port and returns to the shelf.
 - PortMaster needs python and bash, which BaseOS lacks, so they ship as one
   read-only image, `TortOS/h700/portmaster/pmtools.squashfs`, mounted only
-  while a port runs. The zip grows by about 29 MB for it and PortMaster.
+  while a port runs. The zip grows by about 48 MB (29 to 77) for it and PortMaster.
 - Ports that need a game's own files (Downwell, for one, wants your GOG
   installer or Steam `data.win`) have to be given them: put them where the
   port's page says. A port may also download a runtime the first time (Java
@@ -92,8 +92,8 @@ What to expect:
 - Some ports are built for a 720 px wide panel and crop the edges on a 640 px
   one (the RG35XX H). Apotris does: switch its screen shape from 3:2 to 4:3 in
   its settings.
-- The RG SP and RG35XX H have no analog sticks to PortMaster, so ports that
-  want one (Mindustry's cursor) cannot be steered by the d-pad.
+- Analog sticks are not passed to ports yet, so a port that wants one
+  (Mindustry steers its cursor with the left stick) cannot be played.
 - A port that is killed mid-run (power button hold) leaves a mount or two
   behind; the next port clears them.
 
