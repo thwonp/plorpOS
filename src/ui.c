@@ -69,6 +69,11 @@ static TTF_Font *f_mark;
  * every path below is the integer one it always was - the Brick draws exactly
  * what it drew before there was a scale. */
 static float ts = 1.0f;
+/* Type scale for the one panel narrower than the layout was tuned on: the
+ * RG35XX H is 640x480, 11% less width than the RG SP's 720 at the same
+ * height, so the SP's type crowds it - Muse's title scrolled and the hint
+ * line ran to the edge. Everything sized from a font follows. */
+static float font_k = 1.0f;
 
 static int px(int v) { return ts == 1.0f ? v : (int)(v * ts + 0.5f); }
 static int units(int v) { return ts == 1.0f ? v : (int)lroundf(v / ts); }
@@ -129,6 +134,9 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
 	ts = plat_scale();
+#if defined(PLATFORM_H700)
+	if (plat_screen_w * 3 <= plat_screen_h * 4) font_k = 0.88f;
+#endif
 	{
 		char head[512];
 		const char *slash = strrchr(font_path, '/');
@@ -140,7 +148,7 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 		for (i = 0; i < UI_F_COUNT; i++) {
 			const char *path = is_head(i) ? head : body_path[0] ? body_path : font_path;
 			float k = is_head(i) ? head_scale : body_scale;
-			int pt = (int)(FONT_BASE * font_mul[i] * k * ts + 0.5f);
+			int pt = (int)(FONT_BASE * font_mul[i] * k * font_k * ts + 0.5f);
 
 			fonts[i] = TTF_OpenFont(path, pt);
 			if (!fonts[i])
@@ -182,7 +190,7 @@ void ui_set_face(bool head, const char *path, float scale)
 		TTF_Font *f;
 
 		if (is_head(i) != head) continue;
-		pt = (int)(FONT_BASE * font_mul[i] * *k * ts + 0.5f);
+		pt = (int)(FONT_BASE * font_mul[i] * *k * font_k * ts + 0.5f);
 		if (!(f = TTF_OpenFont(kept, pt))) {
 			fprintf(stderr, "font %s @%d: %s\n", kept, pt, TTF_GetError());
 			continue;                         /* keep the face it had */
@@ -609,6 +617,43 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 		int lf = off < MQ_FADE_PX ? off : MQ_FADE_PX;
 		int rf = (over - off) < MQ_FADE_PX ? (over - off) : MQ_FADE_PX;
 
+		if (ts != 1.0f) {
+			/* Slices cut from the text texture by SOURCE rect, in whole
+			 * texture pixels, and placed at tx + c / ts. The text sits on a
+			 * panel-pixel boundary (snap), so every slice lands 1:1 and
+			 * neighbours share an edge exactly. The clip-rect slices below
+			 * round x and w separately under a render scale, and left a
+			 * dark column at some seams; SDL_RenderGeometry here drew only
+			 * some bands on this driver. */
+			float tx = snap((float)(x - off)), ty = snap((float)y);
+			int c0 = (int)lroundf((x - tx) * ts), c1 = c0 + (int)lroundf(w * ts);
+			int lp = (int)lroundf(lf * ts), rp = (int)lroundf(rf * ts), c;
+
+			if (c0 < 0) c0 = 0;
+			if (c1 > e->w) c1 = e->w;
+			if (lp + rp > c1 - c0) lp = rp = 0;
+			for (c = 0; c < 3; c++) {
+				/* 0 = left fade, 1 = the body, 2 = right fade */
+				int ca = c == 0 ? c0 : c == 1 ? c0 + lp : c1 - rp;
+				int cb = c == 0 ? c0 + lp : c == 1 ? c1 - rp : c1;
+				int cut = c == 1 ? cb - ca : 2, n;
+
+				if (cb <= ca) continue;
+				for (n = ca; n < cb; n += cut) {
+					int e1 = n + cut < cb ? n + cut : cb;
+					int d = c == 0 ? n - c0 : c1 - e1;   /* depth into the fade */
+					int span = c == 0 ? lp : rp;
+
+					SDL_SetTextureAlphaMod(e->tex,
+					        c == 1 ? col.a : (Uint8)(col.a * d / span));
+					SDL_RenderCopyF(r, e->tex, &(SDL_Rect){ n, 0, e1 - n, e->h },
+					                &(SDL_FRect){ tx + n / ts, ty, (e1 - n) / ts, e->h / ts });
+				}
+			}
+			SDL_SetTextureAlphaMod(e->tex, 255);
+			SDL_RenderSetClipRect(r, had ? &was : NULL);
+			return;
+		}
 		clip.x = x + lf;
 		clip.w = w - lf - rf;
 		if (clip.w > 0) {

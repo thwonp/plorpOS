@@ -109,6 +109,11 @@ SDL_Renderer *plat_renderer(void) { return ren; }
 
 bool plat_video_init(void)
 {
+	/* The window is the panel's size, read off fb0: 720x480 on the RG SP,
+	 * 640x480 on the RG35XX H. Asked for 720 on a 640 panel, the launcher
+	 * laid out for 720 and the right 80 px were cropped. */
+	int panel_w = 720, panel_h = 480;
+
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
@@ -128,13 +133,17 @@ bool plat_video_init(void)
 		int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
 		struct fb_var_screeninfo v, two;
 
+		if (fd >= 0 && ioctl(fd, FBIOGET_VSCREENINFO, &v) == 0 && v.xres > 0 && v.yres > 0) {
+			panel_w = (int)v.xres;
+			panel_h = (int)v.yres;
+		}
 		if (fd >= 0 && ioctl(fd, FBIOGET_VSCREENINFO, &v) == 0 && v.yres_virtual > 2 * v.yres) {
 			two = v;
 			two.yres_virtual = 2 * v.yres;
 			two.yoffset = 0;
 			if (ioctl(fd, FBIOPUT_VSCREENINFO, &two) == 0) {
 				/* The mali driver makes every window the whole panel. */
-				win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480,
+				win = SDL_CreateWindow("plorpOS", 0, 0, panel_w, panel_h,
 				                       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 				v.yoffset = 0;
 				ioctl(fd, FBIOPUT_VSCREENINFO, &v);
@@ -143,7 +152,7 @@ bool plat_video_init(void)
 		if (fd >= 0) close(fd);
 	}
 	if (!win)
-		win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+		win = SDL_CreateWindow("plorpOS", 0, 0, panel_w, panel_h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());
 		return false;
@@ -229,7 +238,7 @@ static int te_mark;   /* frames still to mark */
 
 static void te_mark_draw(SDL_Renderer *r)
 {
-	static SDL_Point pt[(720 / 16) * (480 / 16)];
+	static SDL_Point pt[(720 / 16) * (480 / 16)];   /* largest H700 panel */
 	SDL_BlendMode bm;
 	Uint8 cr, cg, cb, ca;
 	float sx, sy;
