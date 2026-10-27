@@ -8960,9 +8960,13 @@ static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
 		         fav_is(s->tag, g->file) ? "  \xC2\xB7  Favorite" : "");
 		ui_text(a->r, ui_font(UI_F_META), meta, TORTOS_SCREEN_W / 2,
 		        y + 6 + line_menu, 0, UI_TEXT_DIM);
-		snprintf(count, sizeof count, "%d / %d", mid + 1, n);
-		ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
-		        y + 18 + line_menu + line_meta, 0, UI_TEXT_DIM);
+		/* On a short panel (the RG SP's 480 px) the counter would land on
+		 * the hints below it; those win. */
+		if (y + 18 + line_menu + 2 * line_meta <= TORTOS_SCREEN_H - 40 - line_meta) {
+			snprintf(count, sizeof count, "%d / %d", mid + 1, n);
+			ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
+			        y + 18 + line_menu + line_meta, 0, UI_TEXT_DIM);
+		}
 	}
 	ui_text(a->r, ui_font(UI_F_META),
 	        "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite",
