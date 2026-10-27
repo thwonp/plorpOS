@@ -12,14 +12,18 @@
 #
 #   mk/build-dsperate.sh      build, install to vendor/cores-rotate and cores-gkd
 #
-# One build for both: plain ARMv8.0 (no -mcpu), so the GKD's A72 runs it too.
+# Both devices use the same ARMv8.0 + upstream PGO build. The six-game,
+# three-run A/B found no consistent benefit from -mcpu (plorpos-46o.13);
+# the user chose untuned for both. Keep tuning support in the pinned wrapper
+# for later measurements, but do not enable it in the shipped build.
 #
 # Needs: docker (podman), network for the first clone. ~5 minutes.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-/tmp/tortos-dsperate}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=198f7f530a6877fbba12d24fd220fe1cd2dccb26        # dsperate-lr, DSperate v3.0.5 + its load-state fix + the frontend mic (plorpos-3yv.75.3) + the achievements memory map (plorpos-3yv.107.2)
+LR=093d50fcbd10531273e0cc22a23c6644a26b9b71 # DSperate v3.0.5, load-state/mic/achievements fixes, optional tuning
+TUNE=
 SHA=400ac7b486ec3108de07785eb6f586a122536ccce49096343caab3cfbc1c2ca1
 IMAGE=dsperate-lr-cross
 
@@ -32,7 +36,7 @@ git -C "$SRC" clean -qfdx
 docker image inspect $IMAGE >/dev/null 2>&1 ||
 	docker build -q -t $IMAGE "$SRC" >/dev/null
 
-docker run --rm -v "$SRC:/w" -w /w $IMAGE sh -c "
+docker run --rm -e DSPERATE_TUNE="$TUNE" -v "$SRC:/w" -w /w $IMAGE sh -c "
 set -e
 ./build.sh /w/build | grep -v '^\['
 so=/w/build/dsperate_libretro.so
@@ -45,7 +49,7 @@ aarch64-linux-gnu-objdump -T \$so | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail
 
 SO=$SRC/build/dsperate_libretro.so
 GOT=$(shasum -a 256 "$SO" | cut -d' ' -f1)
-if [ -n "$SHA" ] && [ "$GOT" != "$SHA" ]; then
+if [ "$GOT" != "$SHA" ]; then
 	echo "!! dsperate sha256 $GOT, expected $SHA" >&2
 	echo "  The toolchain image, the source or the profile changed." >&2
 	echo "  Verify the core, then update SHA here." >&2
@@ -54,5 +58,5 @@ fi
 mkdir -p "$ROOT/vendor/cores-rotate" "$ROOT/vendor/cores-gkd"
 cp "$SO" "$ROOT/vendor/cores-rotate/"
 cp "$SO" "$ROOT/vendor/cores-gkd/"
-echo "  built  dsperate (dsperate-lr ${LR%${LR#???????}}) + PGO"
+echo "  built  dsperate (dsperate-lr ${LR%${LR#???????}}) + PGO, untuned ARMv8.0"
 echo "  sha256 $GOT"

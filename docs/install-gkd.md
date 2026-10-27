@@ -9,7 +9,7 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.6.zip`** from
+Download **`plorpOS-gkd-v1.6.1.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
@@ -91,6 +91,7 @@ Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
 Wi-Fi; the ports it installs land in `Roms/Ports/` and on the shelf. PortMaster
 itself is kept in `.userdata/shared/portmaster/`. It's unofficial support: report
 problems to plorpOS, not the PortMaster team.
+Ports open fullscreen; fixed-resolution SDL games are scaled to fit.
 
 Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
 **`games-external`** samba share, or connecting to it using "Over the Hare".
