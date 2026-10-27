@@ -17,7 +17,8 @@
 
 - **GKD 350H Ultra.** [Installing on the GKD](docs/install-gkd.md) - 
   plorpOS runs on top of the GKD's stock
-  ROCKNIX OS at the screen's full resolution.
+  ROCKNIX OS at the screen's full resolution, with the RG Rotate's Nintendo DS
+  and Ports shelves.
 - **TrimUI Brick Pro.** [Installing on Brick/Pro](docs/install-brick.md) - 
   One card works in both the Brick and the Brick Pro, plorpOS tells the two
   apart when it starts. The left stick is a second d-pad, and the
@@ -38,6 +39,13 @@
   - A cart you play in Splore lands on the shelf with its full artwork.
 - **Sega CD and 32X,** either combined on the Genesis shelf or on their own dedicated shelves.
 - **Achievements for disc games and arcade sets**
+- **Nintendo DS** on the RG Rotate and the GKD: DSperate-lr, or melonDS DS on
+  the shelf's Core row, with achievements. Display Mode lays the two screens
+  out (Focus Top, Focus Bottom, Even Split), and a hotkey swaps them. On the
+  GKD the stick moves a stylus cursor over the bottom screen and R2 touches.
+- **Ports** on the RG Rotate and the GKD: PortMaster is the first entry on the
+  Ports shelf, and what it installs appears there. Unofficial: report problems
+  to plorpOS, not the PortMaster team.
 
 **In a game**
 
@@ -158,6 +166,8 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
+| Nintendo DS (RG Rotate, GKD) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
+| Ports (RG Rotate, GKD) | `Roms/Ports` | installed by PortMaster | - |
 
 Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
 cartridges; use their own folders to give them their own cards.
@@ -170,6 +180,7 @@ cartridges; use their own folders to give them their own cards.
 - **PlayStation** runs without one; add `scph5500.bin`, `scph5501.bin` and `scph5502.bin` (Japan, US, Europe) for the best compatibility, and each disc uses its own region's.
 - **Game Boy Advance** runs without its BIOS; add `gba_bios.bin` if you want the original boot animation.
 - **Native PICO-8** needs `pico8_64` and `pico8.dat` from PICO-8's Raspberry Pi download. fake-08 needs nothing.
+- **Nintendo DS** runs most games on the cores' own free BIOS; encrypted dumps need `bios7.bin`, `bios9.bin` and `firmware.bin`.
 
 ## Install
 
@@ -309,7 +320,7 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Display Mode**, the next screen layout, MENU + X by default, and on the GKD **Stylus**, the button that touches where the stick's cursor is, R2 by default. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
 - **Brick:** Menu or Select.

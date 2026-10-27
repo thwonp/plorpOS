@@ -9,7 +9,7 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.5.2.zip`** from
+Download **`plorpOS-gkd-v1.6.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
@@ -74,7 +74,8 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
              menu.ttf  cacert.pem  LICENSE  NOTICE  ...
              cards/  cores/  res/  shaders/  LICENSES/
-Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console
+Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console,
+             Nintendo DS/ and Ports/ among them
 Music/
 Audiobooks/
 Bios/
@@ -85,6 +86,11 @@ Saves/       one folder per console, ready for saves from another device
 ROCKNIX puts an empty `Splore.png` there at every boot, for its own
 EmulationStation, and it would show up as a broken cart. It doesn't turn off
 Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
+
+**Ports:** open PortMaster, the first entry on the Ports shelf, with the GKD on
+Wi-Fi; the ports it installs land in `Roms/Ports/` and on the shelf. PortMaster
+itself is kept in `.userdata/shared/portmaster/`. It's unofficial support: report
+problems to plorpOS, not the PortMaster team.
 
 Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
 **`games-external`** samba share, or connecting to it using "Over the Hare".
@@ -97,6 +103,13 @@ does from now on.
 
 The services from step 2 take effect at the next boot, so a card put into the
 running GKD is one ROCKNIX fills with empty system folders. If this happened to you, you can leave the folders, or delete them if they bother you.
+
+## Updating from an earlier version
+
+Copy everything inside the new `copy_to_sd/` onto the card, replacing what's
+there. Your settings, saves, play time and achievements live in `.userdata/`
+and `Saves/` and stay as they are. The `system.d/` files are the same as
+before; leave them.
 
 ## If it starts EmulationStation instead
 
