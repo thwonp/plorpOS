@@ -1124,6 +1124,25 @@ static volatile int d_got_running;
 /* True once Diatom has said RUNNING for the game last sent; any thread. */
 bool plat_resident_running(void) { return d_got_running != 0; }
 
+/* Asks Diatom to put its SRAM on the card and says when it has. The pause no
+ * longer waits for that write (plorpos-2wl.12), so what needs it done - a
+ * sleep, which may never wake - asks here, with the screen already dark.
+ * Diatom answers FLUSHED whether a game is up, paused or none, so this is
+ * safe to call at any sleep; a Diatom that does not answer costs the timeout. */
+void plat_resident_flush(unsigned timeout_ms)
+{
+	unsigned t0 = plat_now_ms();
+	char *l;
+
+	if (dsock < 0 || !dsend("FLUSH")) return;
+	while (plat_now_ms() - t0 < timeout_ms) {
+		l = dline(100);
+		if (l && strncmp(l, "FLUSHED", 7) == 0) return;
+		if (dsock < 0) return;
+	}
+	fprintf(stderr, "flush: Diatom did not answer in %u ms\n", timeout_ms);
+}
+
 bool plat_resident_send(const plat_game *g)
 {
 	const char *tag = g->tag;
@@ -2023,6 +2042,9 @@ bool plat_light_sleep(unsigned waited_ms)
 #if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0) apply_volume(0);
 #endif
+	/* Dark first: the SRAM write can take a second or two on a slow card, and
+	 * nobody should watch the screen wait for it. Before the sync below. */
+	plat_resident_flush(8000);
 	sync();
 
 	since = plat_now_ms() - waited_ms;    /* already dark that long */
