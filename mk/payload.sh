@@ -97,6 +97,10 @@ elif [ "$PLATFORM" = h700 ]; then
 		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
 	[ -f "$B/pmtools.squashfs" ] ||
 		{ echo "no $B/pmtools.squashfs; run mk/build-pmtools-h700.sh" >&2; exit 1; }
+	[ -f "$B/lib32/libSDL2-2.0.so.0" ] ||
+		{ echo "no $B/lib32/libSDL2-2.0.so.0; run mk/build-sdl2-armhf.sh" >&2; exit 1; }
+	mkdir -p "$P/lib32"
+	cp "$B/lib32/libSDL2-2.0.so.0" "$P/lib32/"   # SDL2 for 32-bit ports (mk/build-sdl2-armhf.sh)
 	mkdir -p "$P/h700/portmaster"
 	cp "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" "$B/portcompat.so" "$P/h700/portmaster/"
 	# By soname, as the binaries ask for them; FFmpeg's LGPL text beside it

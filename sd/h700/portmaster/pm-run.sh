@@ -19,9 +19,11 @@ export HOME=$PMDATA/home
 mkdir -p "$HOME"
 
 # A port the launcher had to KILL never ran its own cleanup: its runtimes
-# (squashfs under PortMaster's folder) and bind mounts into $HOME are still
-# there. Only those: BaseOS itself runs /usr/lib from squashfs.
-grep -E " squashfs | $HOME/" /proc/mounts | cut -d" " -f2 | grep -E "^($PMDATA|$HOME|$TOOLS)" | sort -r |
+# (squashfs under PortMaster's folder) and bind mounts into $HOME or beside
+# PortMaster (Shovel Knight's saves) are still there. Only those: BaseOS itself
+# runs /usr/lib from squashfs. /proc/mounts writes a space in a path as \040, and
+# the card as /mnt/sdcard (-i).
+grep -iE " squashfs | $PMDATA/" /proc/mounts | cut -d" " -f2 | sed 's/\\040/ /g' | grep -iE "^($PMDATA|$HOME|$TOOLS)" | sort -r |
 	while read -r m; do umount "$m" 2>/dev/null || umount -l "$m"; done
 
 # Port scripts tee their log through bash's process substitution, which wants
@@ -32,7 +34,8 @@ mkdir -p "$TOOLS"
 mount -t squashfs -o loop,ro "$HERE/pmtools.squashfs" "$TOOLS" || exit 1
 export PATH=$TOOLS/bin:$TOOLS/python/bin:$PATH
 # Our SDL2 (BaseOS has no aarch64 one) and what a port may ask of it.
-export LD_LIBRARY_PATH=$CARD/TortOS/lib:$TOOLS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+# lib32: our SDL2 for 32-bit ports, ahead of the firmware's (mk/build-sdl2-armhf.sh).
+export LD_LIBRARY_PATH=$CARD/TortOS/lib:$CARD/TortOS/lib32:$TOOLS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export SSL_CERT_FILE=$CARD/TortOS/cacert.pem
 
 if [ "$1" = --uninstall ]; then
@@ -52,7 +55,9 @@ if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
 		exit 1
 fi
 
-cmp -s "$HERE/control.txt" "$PM/control.txt" || cp "$HERE/control.txt" "$PM/control.txt"
+for f in control.txt libgl_ROCKNIX.txt; do
+	cmp -s "$HERE/$f" "$PM/$f" || cp "$HERE/$f" "$PM/$f"
+done
 
 # RetroArch ports call /usr/bin/retroarch (raloc is /usr/bin for ROCKNIX):
 # Diatom stands in, where nothing is already (plorpos-3yv.86.6).

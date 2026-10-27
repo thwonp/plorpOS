@@ -39,12 +39,13 @@ ln -s ../bash "$DL/tree/bin/bash"
 # card's copy: dlopen finds the same file, so the same SDL.
 mkdir -p "$DL/tree/lib"
 ln -s /mnt/SDCARD/TortOS/lib/libSDL2-2.0.so.0 "$DL/tree/lib/libSDL2.so"
+# zip too: Mindustry's script repacks its jar with it, and BaseOS has unzip only.
 # Libraries the ports' runtimes link and BaseOS lacks: LOVE (Balatro) wants
 # OpenAL, Vorbis and mpg123. Debian bookworm's arm64 builds, which is BaseOS's
 # userland (glibc 2.36, gcc 12's libstdc++: trixie's libopenal wants 2.38).
 # What they need besides libc and libasound is carried here too (sndio, bsd,
 # md, Ogg, Vorbis). The versions that went in are listed in lib/VERSIONS.
-PM_DEBS="libopenal1 libsndio7.0 libbsd0 libmd0 libvorbisfile3 libvorbis0a libvorbisenc2 libmpg123-0 libogg0"
+PM_DEBS="libopenal1 libsndio7.0 libbsd0 libmd0 libvorbisfile3 libvorbis0a libvorbisenc2 libmpg123-0 libogg0 zip"
 docker run --rm -v "$DL:/s:Z" docker.io/library/debian:bookworm-slim sh -c "
 	dpkg --add-architecture arm64 && apt-get update -qq > /dev/null 2>&1 &&
 	apt-get install -y -qq squashfs-tools > /dev/null 2>&1 &&
@@ -54,6 +55,7 @@ docker run --rm -v "$DL:/s:Z" docker.io/library/debian:bookworm-slim sh -c "
 	for so in libopenal.so.1 libvorbisfile.so.3 libvorbis.so.0 libvorbisenc.so.2 libmpg123.so.0 libogg.so.0 libsndio.so.7.0 libbsd.so.0 libmd.so.0; do
 		cp -L /x/usr/lib/aarch64-linux-gnu/\$so /s/tree/lib/\$so || exit 1
 	done &&
+	cp /x/usr/bin/zip /s/tree/bin/zip &&
 	mkdir -p /s/tree/lib/licenses && cp -r /x/usr/share/doc/. /s/tree/lib/licenses/ &&
 	mksquashfs /s/tree /s/pmtools.squashfs -comp xz -all-root -noappend -quiet"
 mv "$DL/pmtools.squashfs" "$OUT/pmtools.squashfs"

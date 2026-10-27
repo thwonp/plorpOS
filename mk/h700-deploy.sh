@@ -50,6 +50,10 @@ if [ "$MODE" = all ]; then
 	for f in "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so"; do
 		[ -f "$f" ] && adb push "$f" "$CARD/TortOS/h700/portmaster/" > /dev/null
 	done
+	if [ -f "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" ]; then
+		adb shell "mkdir -p $CARD/TortOS/lib32"
+		adb push "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" "$CARD/TortOS/lib32/" > /dev/null
+	fi
 	adb shell "chmod +x $CARD/TortOS/h700/portmaster/pm-run.sh $CARD/TortOS/h700/portmaster/retroarch"
 fi
 case $MODE in muse|all)
