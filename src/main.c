@@ -11696,6 +11696,11 @@ static bool sleep_cycle(app *a)
 	unsigned t0, waited = 0;
 	bool awake;
 
+	/* Dark before the checkpoint, not after: it is a synced state write, 1-4 s
+	 * on the RG35XX H's card, and the screen sat on for all of it after the
+	 * power tap. The save is still made before anything sleeps
+	 * (plorpos-2wl.12). */
+	if (a->game_on) plat_screen_off();
 	checkpoint_game(a);
 	if (musec_playing()) {
 		dark_end end = music_dark(a, &waited);

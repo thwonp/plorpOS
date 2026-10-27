@@ -2029,6 +2029,15 @@ static unsigned resume_at;
  * (the music player) is paused by the caller, main.c's sleep_cycle; the
  * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
  * (TortOS-1v7.1.2.11). */
+/* The screen off, for a caller that has work to do before it sleeps and
+ * should not make anyone watch it (plorpos-2wl.12). */
+void plat_screen_off(void)
+{
+#ifdef __linux__
+	backlight_off();
+#endif
+}
+
 bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;

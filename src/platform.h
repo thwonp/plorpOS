@@ -212,6 +212,7 @@ bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
 bool plat_resident_running(void);
 void plat_resident_flush(unsigned timeout_ms);
+void plat_screen_off(void);
 
 /* Called from inside plat_resident_wait when Diatom reports an achievement
  * unlocked. A callback rather than a queue because the wait blocks: anything
