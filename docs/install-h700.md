@@ -64,6 +64,39 @@ Your settings, saves, play time and achievements live in `.userdata/` and
   USB-A to USB-C cable attached before the device is turned on. A USB-C to
   USB-C cable from a USB-C-only computer powers nothing and connects nothing.
 
+## Ports (PortMaster)
+
+The **Ports** shelf is last. Its first entry is **PortMaster**; open it with
+the device on Wi-Fi to install ports, which land in `Roms/Ports/` and appear
+on the shelf. A port is a script (`Name.sh`) beside a folder of the same name,
+so ports can also be copied onto the card. PortMaster itself lives in
+`.userdata/shared/portmaster/`. This is unofficial support: report problems
+to plorpOS, not the PortMaster team.
+
+What to expect:
+
+- Ports run fullscreen at the panel's size and play through the speaker or
+  Bluetooth like a game. **Menu** opens the plorpOS menu over a port (Continue,
+  Reset, Quit); Quit ends the port and returns to the shelf.
+- PortMaster needs python and bash, which BaseOS lacks, so they ship as one
+  read-only image, `TortOS/h700/portmaster/pmtools.squashfs`, mounted only
+  while a port runs. The zip grows by about 29 MB for it and PortMaster.
+- Ports that need a game's own files (Downwell, for one, wants your GOG
+  installer or Steam `data.win`) have to be given them: put them where the
+  port's page says. A port may also download a runtime the first time (Java
+  for Mindustry, about 47 MB; LOVE ships with PortMaster), so do that on Wi-Fi.
+- 32-bit ports (Shovel Knight) run through box86 and use plorpOS's own 32-bit
+  SDL2, in `TortOS/lib32/`.
+- First launches can be slow: Balatro patches the game for about 30 seconds,
+  Mindustry takes about 20.
+- Some ports are built for a 720 px wide panel and crop the edges on a 640 px
+  one (the RG35XX H). Apotris does: switch its screen shape from 3:2 to 4:3 in
+  its settings.
+- The RG SP and RG35XX H have no analog sticks to PortMaster, so ports that
+  want one (Mindustry's cursor) cannot be steered by the d-pad.
+- A port that is killed mid-run (power button hold) leaves a mount or two
+  behind; the next port clears them.
+
 ## Removing plorpOS
 
 Delete `System/` and `TortOS/` from the TF2 card. BaseOS then says there is no

@@ -102,6 +102,24 @@ tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
 script above rebuilds the shipped libraries from it. The LGPL's text ships on
 the card beside them as `TortOS/lib/COPYING.LGPLv2.1`.
 
+### Ports on the H700 (`TortOS/lib32/`, `TortOS/h700/portmaster/`)
+
+PortMaster (MIT; the release zip, unpacked on first use) runs the ports on the
+H700 with these, none of them modified:
+
+| What | Version | License |
+|---|---|---|
+| SDL2 for 32-bit ARM (`TortOS/lib32/libSDL2-2.0.so.0`), `mk/build-sdl2-armhf.sh` | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib |
+| `pmtools.squashfs`: CPython (python-build-standalone) | 3.12.16 | PSF License |
+| `pmtools.squashfs`: bash (robxu9/bash-static) | 5.2.015 | GPL 3 or later |
+| `pmtools.squashfs`: zip, libopenal, libvorbis, libvorbisfile, libvorbisenc, libogg, libmpg123, libsndio, libbsd, libmd | Debian bookworm arm64 packages | Info-ZIP, LGPL 2 or later, BSD, ISC and others; each package's `copyright` file is in `lib/licenses/` inside the squashfs |
+
+`mk/build-pmtools-h700.sh` builds the squashfs from the pinned downloads, so
+the corresponding source of the GPL and LGPL parts is the upstream releases and
+Debian source packages named in it and in `lib/VERSIONS`. The squashfs is
+loop-mounted read-only while a port runs, so any of the files can be replaced
+by rebuilding it.
+
 ---
 
 ## Launcher code derived from NextUI (sleep and suspend, CHD reading)
