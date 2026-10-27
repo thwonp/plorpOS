@@ -213,7 +213,7 @@ int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
 #if defined(PLATFORM_GKD)
 	return 4;
 #else
-	return plat_is_brick_pro() ? 4 : 2;
+	return plat_two_sticks() ? 4 : 2;
 #endif
 }
 

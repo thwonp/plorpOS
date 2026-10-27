@@ -327,6 +327,7 @@ Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** an
 - **Brick Pro:** Menu, Select, L Stick Click or R Stick Click.
 - **GKD:** Menu, Home, Stick Click or Select.
 - **RG SP:** Menu or Select.
+- **RG35XX H:** Menu, Select, L Stick Click or R Stick Click.
 
 With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it. Holding MENU on its own for about 0.7 s opens the game switcher instead, whatever the modifier is set to.
 

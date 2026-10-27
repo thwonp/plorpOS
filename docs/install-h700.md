@@ -92,8 +92,9 @@ What to expect:
 - Some ports are built for a 720 px wide panel and crop the edges on a 640 px
   one (the RG35XX H). Apotris does: switch its screen shape from 3:2 to 4:3 in
   its settings.
-- Analog sticks are not passed to ports yet, so a port that wants one
-  (Mindustry steers its cursor with the left stick) cannot be played.
+- The RG35XX H's two sticks and their clicks (L3/R3) reach ports as an
+  ordinary gamepad's. The RG SP has no sticks, so a port that needs one
+  (Mindustry steers its cursor with the left stick) cannot be played there.
 - A port that is killed mid-run (power button hold) leaves a mount or two
   behind; the next port clears them.
 

@@ -24,7 +24,11 @@ SDLDBUSERFILE="${HOME}/.config/SDL-GameControllerDB/gamecontrollerdb.txt"
 
 # The pad as the launcher gives it to native PICO-8 (platform_h700.c
 # plat_pico8_pad): SDL numbers the evdev buttons from BTN_JOYSTICK up, and
-# its own guess crosses Start and R2. Menu (b8) is the launcher's. No sticks.
+# its own guess crosses Start and R2. Menu (b8) is the launcher's.
+# The RG35XX H has two sticks and the RG SP none, and tells by the axes its
+# pad reports (ABS_Z..ABS_RZ, bits 2-5): the H's stick clicks (codes 313 and
+# 316) sit between Menu and L2, moving L2/R2 up to b10/b11, and SDL numbers
+# its axes Z,RX,RY,RZ as a0..a3 - left X/Y, right X/Y.
 # Without a DEVICE the stock get_controls hands every port the whole 470 KB
 # database, and exporting it fails every exec past the argument limit.
 get_controls() {
@@ -32,9 +36,17 @@ get_controls() {
   param_device="anbernic"
   LOWRES="N"
   ANALOGSTICKS="0"
+  local abs
+  abs="$(grep -A8 'Name="ANBERNIC-keys"' /proc/bus/input/devices | sed -n 's/^B: ABS=//p')"
+  [ -n "$abs" ] && (( (0x$abs & 0x3c) == 0x3c )) && ANALOGSTICKS="2"
   export SDL_GAMECONTROLLERCONFIG_FILE="/tmp/gamecontrollerdb.txt"
-  echo "$DEVICE,ANBERNIC-keys,a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,lefttrigger:b9,righttrigger:b10,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux," \
-    > "$SDL_GAMECONTROLLERCONFIG_FILE"
+  local map="a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,"
+  if [ "$ANALOGSTICKS" = "2" ]; then
+    map="a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,leftstick:b9,lefttrigger:b10,righttrigger:b11,rightstick:b12,leftx:a0,lefty:a1,rightx:a2,righty:a3,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,"
+  else
+    map="${map}lefttrigger:b9,righttrigger:b10,"
+  fi
+  echo "$DEVICE,ANBERNIC-keys,$map" > "$SDL_GAMECONTROLLERCONFIG_FILE"
   sdl_controllerconfig="$(< "$SDL_GAMECONTROLLERCONFIG_FILE")"
 }
 

@@ -112,8 +112,8 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Y** | favorite it - Favorites is a shelf of its own. On Muse's shelf, Y favorites the album, and held half a second shows only favorite albums (again to show them all) |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **F1/F2** | brightness, everywhere, including in game, held the same way. Home with the volume rocker on the GKD, MENU with it on the RG SP |
-| **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
-| **Right stick, stick clicks** (Brick Pro) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
+| **Left stick** (Brick Pro, RG35XX H) | the d-pad, in menus and in game; on the Brick Pro FN1/FN2 are its brightness keys |
+| **Right stick, stick clicks** (Brick Pro, RG35XX H) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Achievements, Hotkeys, Reset, Quit |

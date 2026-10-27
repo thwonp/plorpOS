@@ -59,7 +59,10 @@ const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
 
 bool plat_is_brick_pro(void) { return false; }
-bool plat_two_sticks(void) { return false; }
+/* The RG35XX H has two sticks and the RG SP none, from the same build: the
+ * pad node says which, by whether it reports the axes (probe_sticks). */
+static bool has_sticks;
+bool plat_two_sticks(void) { return has_sticks; }
 /* No brightness keys: Menu held turns the volume keys into them. */
 const char *plat_bright_keys(void) { return "Menu+Vol"; }
 
@@ -73,6 +76,8 @@ static const struct { int code; in_button b; } padmap[] = {
 	{ 304, IN_ACCEPT }, { 305, IN_BACK }, { 306, IN_Y }, { 307, IN_X },
 	{ 308, IN_L1 }, { 309, IN_R1 }, { 314, IN_L2 }, { 315, IN_R2 },
 	{ 310, IN_SELECT }, { 311, IN_START },
+	/* The stick clicks: only the RG35XX H reports them. */
+	{ 313, IN_L3 }, { 316, IN_R3 },
 };
 /* The same buttons for native PICO-8's SDL. With no mapping SDL guesses one
  * from the evdev names, and these cross them: Start (BTN_TR) went to the
@@ -92,7 +97,12 @@ static SDL_Renderer *ren;
 static int fd_pad = -1;
 
 /* Order: left, right, up, down. */
-static bool hat_dir[4];
+static bool hat_dir[4], stick_dir[4], rstick_dir[4];
+/* The RG35XX H's sticks, measured 2026-10-27: ABS_Z/ABS_RX are the left
+ * stick's X and Y, ABS_RY/ABS_RZ the right's, each -4096..4096 with up and
+ * left negative. Half travel presses and a third lets go, as on the Brick Pro,
+ * so a stick resting near the line cannot chatter. */
+static int stick_press = 2048, stick_release = 1365;
 /* Menu is a modifier as well as a button: held with another button it goes
  * down with it (the hotkey combos), with a volume key it is spent on
  * brightness, and alone it is a press on release. menu_pulse lets that
@@ -304,11 +314,27 @@ void screen_yield(bool to_game) { if (!to_game) te_mark = 3; }
 
 /* ---- input: raw evdev, no SDL joystick --------------------------------- */
 
+static void probe_sticks(int fd)
+{
+	unsigned char bits[(ABS_MAX + 8) / 8] = { 0 };
+	struct input_absinfo ai;
+
+	if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof bits), bits) < 0) return;
+	has_sticks = true;
+	for (int c = ABS_Z; c <= ABS_RZ; c++)
+		if (!(bits[c / 8] >> (c % 8) & 1)) has_sticks = false;
+	if (has_sticks && ioctl(fd, EVIOCGABS(ABS_Z), &ai) == 0 && ai.maximum > 0) {
+		stick_press = ai.maximum / 2;
+		stick_release = ai.maximum / 3;
+	}
+}
+
 bool plat_input_init(void)
 {
 	if (fd_power < 0) fd_power = open(POWER_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fd_pad = open(PAD_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fprintf(stderr, "input: %s: %s\n", PAD_NODE, strerror(errno));
+	else probe_sticks(fd_pad);
 	return fd_pad >= 0;
 }
 
@@ -322,6 +348,8 @@ void plat_input_flush(void)
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	memset(hat_dir, 0, sizeof hat_dir);
+	memset(stick_dir, 0, sizeof stick_dir);
+	memset(rstick_dir, 0, sizeof rstick_dir);
 	menu_sent = menu_pulse = switcher_pulse = false;
 	/* Menu still held - the hold that opened the switcher - is spent: its
 	 * release must not arrive as a fresh Menu and close what it opened. */
@@ -427,6 +455,14 @@ static void pad_read(in_state *st)
 				if (d[j]) set_btn(st, (in_button)(IN_LEFT + base + j), true);
 			continue;
 		}
+		if (ev.type == EV_ABS && has_sticks && ev.code >= ABS_Z && ev.code <= ABS_RZ) {
+			bool *d = ev.code <= ABS_RX ? stick_dir : rstick_dir;
+			bool *neg_pos = &d[ev.code == ABS_Z || ev.code == ABS_RY ? 0 : 2];
+
+			neg_pos[0] = ev.value < -(neg_pos[0] ? stick_release : stick_press);
+			neg_pos[1] = ev.value >  (neg_pos[1] ? stick_release : stick_press);
+			continue;
+		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
 		bool down = ev.value == 1;
 		in_button vol = IN_NONE, bright = IN_NONE;
@@ -456,8 +492,13 @@ static void pad_read(in_state *st)
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
 	}
-	for (int i = 0; i < 4; i++)
-		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i]);
+	/* The left stick is a second d-pad; the right one drives only the hotkey
+	 * triggers (diatom's ADR-0044). */
+	for (int i = 0; i < 4; i++) {
+		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i] || stick_dir[i]);
+		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
+		set_btn(st, (in_button)(IN_RSLEFT + i), rstick_dir[i]);
+	}
 	if (menu_down && !menu_sent && !menu_spent &&
 	    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
 		menu_spent = true;
