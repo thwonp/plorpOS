@@ -2956,15 +2956,34 @@ static void playing_path(char *out, size_t n)
  * an fsync and a whole-card sync on exFAT, and measured on the RG35XX H they
  * took 255-1819 ms between the press and the game being sent - whatever else
  * was dirty on the card. The game does not need either to start; they need to
- * be on the card soon, which a thread behind the launch does. Strings are
- * copied in: by the time it runs, the shelf may have moved. */
-struct bookmarks { char root[CFG_STR * 2], tag[CFG_STR], file[LIB_PATH], own[CFG_STR]; };
+ * be on the card soon, which a thread behind the launch does.
+ *
+ * And not before the game has been read: the card serves one queue, and those
+ * small synced writes sat ahead of the ROM read, tripling it (median 555 ms
+ * without them, 1557 ms with, cold GBA games, plorpos-2wl.12). So a resident
+ * launch waits here for Diatom's RUNNING, which comes once the ROM is loaded.
+ * The cost is a power cut inside that load leaves no `.playing`, so the next
+ * boot opens the shelf on the game instead of resuming it. Strings are copied
+ * in: by the time it runs, the shelf may have moved. */
+struct bookmarks { char root[CFG_STR * 2], tag[CFG_STR], file[LIB_PATH], own[CFG_STR]; bool wait; };
+
+static pthread_t g_bm_thr;
+static bool g_bm_live;
+static volatile int g_bm_stop;
 
 static void *bookmarks_write(void *arg)
 {
 	struct bookmarks *b = arg;
 	char p[CFG_STR * 2 + 16];
 	FILE *f;
+	int i;
+
+	/* 15 s is longer than any load; past it, write anyway. Stopped early when
+	 * the launch ended without ever running (core refused, Diatom died): a
+	 * `.playing` written after that would outlive the game. */
+	for (i = 0; b->wait && i < 750 && !g_bm_stop && !plat_resident_running(); i++)
+		usleep(20000);
+	if (g_bm_stop) { free(b); return NULL; }
 
 	snprintf(p, sizeof p, "%s/.last", b->root);
 	if ((f = atomic_open(p, 0644))) {
@@ -2980,12 +2999,23 @@ static void *bookmarks_write(void *arg)
 	return NULL;
 }
 
-static void bookmarks_behind(app *a)
+/* Before the marker is cleared and before the next launch: no write may land
+ * after the game it describes is over. */
+static void bookmarks_finish(void)
+{
+	if (!g_bm_live) return;
+	g_bm_stop = 1;
+	pthread_join(g_bm_thr, NULL);
+	g_bm_stop = 0;
+	g_bm_live = false;
+}
+
+static void bookmarks_behind(app *a, bool wait)
 {
 	sysview *v = &a->view[a->sys_cursor];
 	struct bookmarks *b;
-	pthread_t t;
 
+	bookmarks_finish();
 	if (v->list.count == 0) return;
 	if (!(b = calloc(1, sizeof *b))) return;
 	snprintf(b->root, sizeof b->root, "%s", P_ROOT);
@@ -2993,7 +3023,8 @@ static void bookmarks_behind(app *a)
 	snprintf(b->own, sizeof b->own, "%s",
 	         a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
 	snprintf(b->file, sizeof b->file, "%s", v->list.items[v->cursor].file);
-	if (pthread_create(&t, NULL, bookmarks_write, b) == 0) pthread_detach(t);
+	b->wait = wait;
+	if (pthread_create(&g_bm_thr, NULL, bookmarks_write, b) == 0) g_bm_live = true;
 	else free(b);
 }
 
@@ -13129,7 +13160,7 @@ static void launch_one(app *a)
 	t_c = plat_now_ms();
 	/* Started before the launch, not after: a device that loses power during
 	 * the load was still playing this game. Written behind it. */
-	bookmarks_behind(a);
+	bookmarks_behind(a, !native);
 	t_d = plat_now_ms();
 
 	/* Read and cleared together. Leaving it set would have the NEXT game
@@ -13455,6 +13486,7 @@ static void launch_one(app *a)
 	/* Past both power checks, so this is a real return to the shelf rather
 	 * than a shutdown. Everything above leaves the marker standing, which is
 	 * what makes the next boot able to tell them apart. */
+	bookmarks_finish();
 	playing_clear();
 
 	/* Straight to the shelf, no fade. The card decode inside this render is

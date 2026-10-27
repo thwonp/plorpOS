@@ -1119,7 +1119,10 @@ void plat_resident_on_tick(void (*fn)(void)) { d_on_tick = fn; }
  * that in a loop, returning to it after every in-game menu, and a local reset
  * to 0 on each re-entry made a running game look like one that never started.
  * The cost was not cosmetic - see the ERROR arm in diatom_wait. */
-static int d_got_running;
+static volatile int d_got_running;
+
+/* True once Diatom has said RUNNING for the game last sent; any thread. */
+bool plat_resident_running(void) { return d_got_running != 0; }
 
 bool plat_resident_send(const plat_game *g)
 {
