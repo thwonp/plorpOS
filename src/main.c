@@ -6481,7 +6481,9 @@ static void rs_hash_join(void)
 /* Shelves RetroAchievements has no console for. */
 static bool rs_skip_shelf(const system_cfg *s)
 {
-	return is_pico8(s) || is_ports(s) || is_muse(s);
+	/* Favorites too: its games are other shelves', hashed there, and it has
+	 * no folder of its own - each one failed as Roms//<file>. */
+	return is_pico8(s) || is_ports(s) || is_muse(s) || !strcmp(s->tag, "FAV");
 }
 
 static void ra_sets_screen(app *a)
