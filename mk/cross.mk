@@ -123,6 +123,12 @@ $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
 		-o $@ $< -ldl
 
+# Preloaded into PortMaster ports on the H700 (sd/h700/portmaster/pm-run.sh).
+$(BUILD)/portcompat.so: tools/portcompat.c
+	mkdir -p $(BUILD)
+	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC \
+		-o $@ $< -ldl
+
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -std=gnu11 -o $@ $<

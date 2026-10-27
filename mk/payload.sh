@@ -90,6 +90,15 @@ elif [ "$PLATFORM" = h700 ]; then
 	cp "$ROOT/sd/h700/radio.sh" "$P/"     # Bluetooth: sourced by launch_frontend.sh AND by plat_sleep()
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # one ALSA PCM per bonded headset, as on the Brick
 	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS (the shim says why)
+	# PortMaster's runner, PortMaster itself (unpacked on first use) and the
+	# python and bash it needs (plorpos-2wl.10; mk/fetch-vendor.sh,
+	# mk/build-pmtools-h700.sh).
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	[ -f "$B/pmtools.squashfs" ] ||
+		{ echo "no $B/pmtools.squashfs; run mk/build-pmtools-h700.sh" >&2; exit 1; }
+	mkdir -p "$P/h700/portmaster"
+	cp "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" "$B/portcompat.so" "$P/h700/portmaster/"
 	# By soname, as the binaries ask for them; FFmpeg's LGPL text beside it
 	# (THIRD-PARTY-LICENSES.md).
 	L=$ROOT/sysroot-h700/usr/lib
@@ -127,6 +136,8 @@ fi
 # Both devices ship every system since plorpos-reo: the Brick dropped fbneo,
 # pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
 cp "$ROOT/config/systems.cfg" "$P/"
+# The H700 has the Rotate's Ports shelf (plorpos-2wl.10), and not its DS one.
+[ "$PLATFORM" = h700 ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # Everything else in TortOS/ that every device ships, cores included (one
 # list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
 # and Ports shelves too, its own builds of their cores first, and melonDS DS
@@ -161,7 +172,8 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
-h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
+h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
+	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" ;;
 esac
 if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then

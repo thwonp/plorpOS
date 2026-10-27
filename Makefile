@@ -33,7 +33,7 @@ all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscr
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
-all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
 else ifeq ($(PLATFORM),rotate)
 all: build/rotate/tortos.elf build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 else
@@ -225,13 +225,13 @@ build/h700/tortos.elf: $(SRC_H700) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY
 	done
 
 # btplayer with them: same container, and it needs nothing from the sysroot.
-build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &: $(wildcard src/muse/*.c) \
-                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c mk/cross.mk
+build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so &: $(wildcard src/muse/*.c) \
+                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c tools/portcompat.c mk/cross.mk
 	@[ -f sysroot-h700/usr/include/libavcodec/avcodec.h ] || { \
 		echo "no FFmpeg in the H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
-		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
 
 # The RG Rotate on Armbian (plorpos-3yv): Debian trixie's own SDL2 and FFmpeg,
 # unpacked by mk/fetch-rotate-sysroot.sh - no device needed.

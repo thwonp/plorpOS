@@ -12609,6 +12609,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 {
 #if defined(PLATFORM_GKD)
 	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_H700)
+	snprintf(out, n, "%s/h700/portmaster/%s", P_ROOT, leaf);
 #else
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
 #endif

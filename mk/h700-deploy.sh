@@ -45,6 +45,12 @@ if [ "$MODE" = all ]; then
 	adb shell "mkdir -p $CARD/TortOS/pico8"
 	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
 	adb shell "chmod +x $CARD/TortOS/pico8/wget"
+	# PortMaster's runner and what it runs on (plorpos-2wl.10)
+	adb shell "mkdir -p $CARD/TortOS/h700/portmaster"
+	for f in "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so"; do
+		[ -f "$f" ] && adb push "$f" "$CARD/TortOS/h700/portmaster/" > /dev/null
+	done
+	adb shell "chmod +x $CARD/TortOS/h700/portmaster/pm-run.sh $CARD/TortOS/h700/portmaster/retroarch"
 fi
 case $MODE in muse|all)
 	adb shell "mkdir -p $CARD/TortOS/lib"
