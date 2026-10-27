@@ -127,7 +127,24 @@ bool plat_video_init(void)
 /* sway takes the frozen child off the screen (child_hide), so the menu over
  * it is an ordinary window. */
 bool plat_video_init_over_child(void) { return plat_video_init(); }
-void plat_present(SDL_Renderer *r) { SDL_RenderPresent(r); }
+
+static bool resident_away_pending;
+static void resident_place(bool on_screen);
+static bool helper(char *const argv[]);
+static void launcher_place(bool on_screen);
+
+void plat_present(SDL_Renderer *r)
+{
+	SDL_RenderPresent(r);
+	/* The menu's first frame is up: only now does the paused game go
+	 * (screen_yield). */
+	if (resident_away_pending) {
+		resident_away_pending = false;
+		launcher_place(true);
+		resident_place(false);
+		SDL_RenderSetVSync(r, 1);
+	}
+}
 
 void plat_video_quit(void)
 {
@@ -136,16 +153,58 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-/* Two fullscreen windows under sway, and sway does not reliably show the one
- * that drew last: a game started under the shelf played unseen (2026-09-29).
- * So only one is ever mapped - Diatom hides its own at every handover, and
- * this hides the shelf's while a game runs. Pumping flushes the unmap to sway
- * before Diatom's first frame, as Diatom does. */
+/* Each side stays mapped on a separate workspace until it has a fresh frame.
+ * Remapping the launcher exposed a black EGL buffer even with the Rotate's
+ * draw-then-hide handover (plorpos-f5d). A paused Diatom keeps its last frame:
+ *
+ *   pause:  the launcher draws its first frame off-screen, is moved onto
+ *           workspace 1, THEN the game goes to the hidden workspace
+ *           (plat_present) - the menu is there complete the instant it is.
+ *   resume: the game comes back on top, still showing its paused frame,
+ *           THEN the launcher moves to its own hidden workspace.
+ *
+ * Diatom hiding its own window first left sway's black background up until
+ * the launcher's first buffer. At a game's start and
+ * end there is no resident window to move; the move fails quietly. */
+static void resident_place(bool on_screen)
+{
+	char crit[96];
+	char *cmd[] = { "swaymsg", crit, NULL };
+	pid_t pid = diatom_pid();
+
+	if (pid <= 0) return;
+	snprintf(crit, sizeof crit, on_screen
+	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d] move container to workspace plorpos-hidden", (int)pid);
+	helper(cmd);
+}
+
+static void launcher_place(bool on_screen)
+{
+	char cmd[128];
+	char *argv[] = { "swaymsg", cmd, NULL };
+
+	snprintf(cmd, sizeof cmd, on_screen
+	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d] move container to workspace plorpos-launcher", (int)getpid());
+	helper(argv);
+}
+
 void screen_yield(bool to_game)
 {
 	if (!win) return;
-	if (to_game) { SDL_HideWindow(win); SDL_PumpEvents(); }
-	else SDL_ShowWindow(win);
+	if (to_game) {
+		resident_away_pending = false;
+		resident_place(true);
+		launcher_place(false);
+	} else {
+		/* Keep the launcher mapped off-screen. Remapping with ShowWindow
+		 * exposes its stale/black EGL buffer before the menu is drawn (f5d).
+		 * Hidden surfaces get no frame callbacks: submit this first fresh
+		 * frame without waiting for vsync, then bring it on-screen. */
+		SDL_RenderSetVSync(ren, 0);
+		resident_away_pending = true;
+	}
 }
 
 /* ---- input ------------------------------------------------------------
