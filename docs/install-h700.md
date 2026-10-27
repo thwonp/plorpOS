@@ -38,6 +38,12 @@ names them) and BIOS files in `Bios/`.
 Put the card in the slot marked **TF2** and turn the device on. BaseOS starts
 plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
 
+## Updating from an earlier version
+
+Copy everything in the new zip onto the plorpOS card, replacing what's there.
+Your settings, saves, play time and achievements live in `.userdata/` and
+`Saves/` and stay as they are. Restart the device afterwards.
+
 ## Notes
 
 - **Saved Wi-Fi networks** live on the plorpOS card, in
