@@ -29,7 +29,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
-all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -166,6 +166,12 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 # ROCKNIX's pipewire-alsa plugin provides - no source change from the Brick.
 build/gkd/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
+
+build/gkd/portfullscreen.so: tools/portfullscreen.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
+		-I/work/sysroot-gkd/usr/include/SDL2 -o $@ $< -ldl
 
 # Grouped (&:), so that any one of the three missing runs the build.
 build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \

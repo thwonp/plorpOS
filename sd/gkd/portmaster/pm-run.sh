@@ -44,8 +44,22 @@ if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
 		exit 1
 fi
 
+# Every port fullscreen (plorpos-46o.14). ROCKNIX's helper fullscreens the
+# window whose app_id is the binary's name, and a port whose window is named
+# otherwise ran in a small one in the middle (Hydra Castle Labyrinth, Cave
+# Story Evo). Everything plorpOS shows is fullscreen anyway - the launcher,
+# Diatom - so the rule is for every window, Wayland and X11 alike. Once per
+# boot: sway keeps for_window rules until it restarts.
+if [ ! -e /run/plorpos-fullscreen ]; then
+	export SWAYSOCK=${SWAYSOCK:-$(ls "$XDG_RUNTIME_DIR"/sway-ipc.*.sock 2>/dev/null | head -1)}
+	swaymsg 'for_window [app_id=".*"] fullscreen enable' >/dev/null &&
+		swaymsg 'for_window [shell="xwayland"] fullscreen enable' >/dev/null &&
+		: > /run/plorpos-fullscreen
+fi
+
 # Always: 2 KB, and ROCKNIX's BusyBox has no cmp.
 cp "$HERE/control.txt" "$PM/control.txt"
 
 cd "$(dirname "$1")" || exit 1
+export LD_PRELOAD="$HERE/portfullscreen.so${LD_PRELOAD:+:$LD_PRELOAD}"
 exec bash "$@"

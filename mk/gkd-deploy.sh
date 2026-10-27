@@ -44,6 +44,7 @@ case $WHAT in elf)
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" | $S "cat > $P/systems.cfg"
 	$S "mkdir -p $P/gkd/portmaster"
 	put "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$GKD:$P/gkd/portmaster/"
+	put "$ROOT/build/gkd/portfullscreen.so" "$GKD:$P/gkd/portmaster/"
 	echo "  + launcher, PortMaster runner"
 	# Muse runs until it is told to quit or dies; the launcher starts the new
 	# one the next time it finds no socket.

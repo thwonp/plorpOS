@@ -79,6 +79,7 @@ if [ "$PLATFORM" = gkd ]; then
 		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
 	mkdir -p "$P/gkd/portmaster"
 	cp "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$P/gkd/portmaster/"
+	cp "$B/portfullscreen.so" "$P/gkd/portmaster/"
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
