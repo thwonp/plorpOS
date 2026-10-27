@@ -1,0 +1,52 @@
+#!/bin/bash
+#
+# plorpOS's PortMaster control.txt on the GKD 350H Ultra (plorpos-46o.5).
+# Unofficial: pm-run.sh copies this over the stock one before every run.
+# ROCKNIX's own (/usr/config/PortMaster/control.txt) with PortMaster on the
+# card where plorpOS keeps it, and the pad by name rather than through
+# EmulationStation's input config, which plorpOS never writes.
+#
+# SPDX-License-Identifier: MIT
+
+. /etc/profile
+
+CUR_TTY=/dev/null
+
+export controlfolder="/storage/games-external/.userdata/shared/portmaster/PortMaster"
+# Ports keep their files in "/$directory/ports/<name>": /roms is the card's
+# Roms/, and exFAT looks "ports" up as Ports.
+export directory="roms"
+
+export ESUDO=""
+export ESUDOKILL="-1"
+export ESUDOKILL2="-1"
+
+SDLDBFILE="$controlfolder/gamecontrollerdb.txt"
+SDLDBUSERFILE="${HOME}/.config/SDL-GameControllerDB/gamecontrollerdb.txt"
+export clibs="/usr/lib/compat/"
+export raloc="/usr/bin"
+export raconf="--config /storage/.config/retroarch/retroarch.cfg"
+
+# The pad by the GUID SDL 2.32 gives it, which carries a CRC of its name:
+# ROCKNIX's SDL-GameControllerDB keys it 19008d96, which never matches, and
+# SDL then maps it by position - A as B, in PortMaster's own menus too.
+# Labels as on the case and the launcher (platform_gkd.c): A east, B south,
+# L1/R1 BTN_TL/TR, L2/R2 BTN_TL2/TR2. Without a DEVICE the stock get_controls
+# hands every port the whole database.
+get_controls() {
+  DEVICE="1900c3cb010000000321000000010000"
+  param_device="gkd"
+  LOWRES="N"
+  ANALOGSTICKS="1"
+  export SDL_GAMECONTROLLERCONFIG_FILE="/tmp/gamecontrollerdb.txt"
+  echo "$DEVICE,gkd_atom_joypad,b:b0,a:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,back:b8,start:b9,guide:b10,leftstick:b11,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,leftx:a0,lefty:a1,platform:Linux," \
+    > "$SDL_GAMECONTROLLERCONFIG_FILE"
+  export LD_LIBRARY_PATH=${clibs}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+  sdl_controllerconfig="$(< "$SDL_GAMECONTROLLERCONFIG_FILE")"
+}
+
+source $controlfolder/device_info.txt
+source $controlfolder/funcs.txt
+
+export GPTOKEYB2="$ESUDO env LD_PRELOAD=$controlfolder/libinterpose.${DEVICE_ARCH}.so $controlfolder/gptokeyb2 $ESUDOKILL2"
+export GPTOKEYB="$ESUDO $controlfolder/gptokeyb $ESUDOKILL"

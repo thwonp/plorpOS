@@ -290,14 +290,23 @@ static bool helper(char *const argv[])
  * hold every press made in the menu and act on them when it thaws. */
 #define HIDE_WS "plorpos-hidden"
 
+/* By workspace, not by pid: a PortMaster port's window is its game's, the
+ * script's grandchild, and sway knows only the game (plorpos-46o.5). Here
+ * that is exact - the launcher has no window while a child runs (it tears
+ * its own down for it, and its menu's goes again before the child thaws), so
+ * whatever is on workspace 1 is the child's, and whatever is on HIDE_WS. One
+ * swaymsg each way: the menu's own time to come up is the budget. */
+static bool sway_cmd(const char *cmd)
+{
+	char *argv[] = { "swaymsg", (char *)cmd, NULL };
+
+	return helper(argv);
+}
+
 bool child_hide(pid_t pid)
 {
-	char crit[80];
-	char *move[] = { "swaymsg", crit, NULL };
-
-	snprintf(crit, sizeof crit, "[pid=%d] move container to workspace " HIDE_WS,
-	         (int)pid);
-	if (!helper(move)) {
+	(void)pid;
+	if (!sway_cmd("[workspace=1] move container to workspace " HIDE_WS)) {
 		fprintf(stderr, "run: sway would not hide the child\n");
 		return false;
 	}
@@ -308,15 +317,11 @@ bool child_hide(pid_t pid)
 
 void child_restore(pid_t pid, bool show)
 {
-	char crit[80];
-	char *cmd[] = { "swaymsg", crit, NULL };
-
+	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
 	if (!show) return;
-	snprintf(crit, sizeof crit,
-	         "[pid=%d] move container to workspace 1, focus, fullscreen enable",
-	         (int)pid);
-	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
+	if (!sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
+		fprintf(stderr, "run: sway would not show the child\n");
 }
 
 /* The child's own PipeWire stream, found by its pid. pactl is a process,
@@ -325,15 +330,19 @@ void child_restore(pid_t pid, bool show)
  * is sent only when it changes. */
 static int quiet_stream(pid_t pid)
 {
-	char line[256], want[48];
+	char line[256];
 	int cur = -1, idx = -1;
 	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
 
 	if (!f) return -1;
-	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
+	/* The child's, or a process in its group's: a port's game is its
+	 * script's grandchild (plorpos-46o.5, as platform_rotate.c). */
 	while (fgets(line, sizeof line, f)) {
+		const char *k = strstr(line, "application.process.id = \"");
+		pid_t p = k ? (pid_t)atoi(k + 26) : 0;
+
 		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
-		else if (idx < 0 && strstr(line, want)) idx = cur;
+		else if (idx < 0 && p > 0 && (p == pid || getpgid(p) == pid)) idx = cur;
 	}
 	pclose(f);
 	return idx;

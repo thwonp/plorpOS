@@ -139,7 +139,7 @@ static const db_default library_defaults[] = {
 	 * A53s run pcsx_rearmed at native resolution, as NextUI ships it. */
 	{ "coreopt.PS.pcsx_rearmed_neon_enhancement_enable", "enabled" },
 #endif
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	/* The Nintendo DS (plorpos-3yv.47): melonDS DS stacks the two screens
 	 * top over bottom in one frame and Diatom lays them out (Display Mode,
 	 * its ds-a/ds-b); one layout, no gap, so the frame is always that
@@ -155,6 +155,16 @@ static const db_default library_defaults[] = {
 	{ "coreopt.NDS.melonds_render_mode",               "software" },
 	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
 	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
+#endif
+#if defined(PLATFORM_GKD)
+	/* No panel on the GKD (plorpos-46o.4): "touch" is still the pointer,
+	 * which Diatom moves with the stick and presses with Stylus - R2,
+	 * which the DS has no button for. Its own cursor is Diatom's, so
+	 * melonDS draws none. FF and rewind stay off the stick, which is the
+	 * cursor while a DS game runs. */
+	{ "hotkey.NDS",                                    "x:swap,d.r2:stylus" },
+#endif
+#if defined(PLATFORM_ROTATE)
 	/* The real mic, always listening like a DS's (plorpos-3yv.75): the
 	 * core's default is Hold, on RetroPad L3, which the Rotate does not
 	 * have - so out of the box the mic would never open. */

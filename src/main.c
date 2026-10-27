@@ -273,6 +273,7 @@ static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
 static bool is_ports(const system_cfg *s);
+static void pm_here(char *out, size_t n, const char *leaf);
 /* Game Settings (plorpos-pyz): read where they act, so a change holds from
  * the next launch on without anything to reload. */
 static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
@@ -6715,7 +6716,7 @@ static void port_uninstall(const char *script)
 		if (sscanf(line, "# PORTMASTER: %127[^,\n]", zip) == 1) break;
 	if (f) fclose(f);
 	if (!zip[0]) return;
-	snprintf(run, sizeof run, "%s/rotate/portmaster/pm-run.sh", P_ROOT);
+	pm_here(run, sizeof run, "pm-run.sh");
 	if (posix_spawn(&pid, argv[0], NULL, NULL, argv, environ) == 0)
 		waitpid(pid, &st, 0);
 	fprintf(stderr, "delete: PortMaster uninstall %s: exit %d\n", zip,
@@ -11090,9 +11091,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[128];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Display Mode is the DS's, its last action row; elsewhere the screen is
-	 * a row shorter (plorpos-3yv.47, .62). */
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 1;
+	/* Display Mode is the DS's, and Stylus the DS's where there is no panel
+	 * to touch, its last two action rows; elsewhere the screen is that much
+	 * shorter (plorpos-3yv.47, .62, plorpos-46o.4). */
+#if defined(PLATFORM_ROTATE)
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 1 : HK_ROW_COUNT - 2;
+#else
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 2;
+#endif
 	const int NROWS = FIRST_ACT + nact;
 
 	{
@@ -12486,6 +12492,17 @@ static void pm_data(char *out, size_t n, const char *rel)
 	snprintf(out, n, "%s/.userdata/shared/portmaster/%s", P_CARD, rel);
 }
 
+/* The device's runner and the PortMaster zip beside it, in the plorpOS
+ * folder: sd/<device>/portmaster on the card (plorpos-46o.5). */
+static void pm_here(char *out, size_t n, const char *leaf)
+{
+#if defined(PLATFORM_GKD)
+	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
+#else
+	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
+#endif
+}
+
 /* Each port's own picture, from its gameinfo.xml, by script name: rebuilt on
  * every scan of the shelf. */
 typedef struct { char file[LIB_NAME]; char image[LIB_PATH]; } port_pic;
@@ -12585,7 +12602,7 @@ static void portmaster_add(const system_cfg *s, game_list *l)
 
 	if (!is_ports(s)) return;
 	pm_data(sh, sizeof sh, "PortMaster/PortMaster.sh");
-	snprintf(zip, sizeof zip, "%s/rotate/portmaster/PortMaster.zip", P_ROOT);
+	pm_here(zip, sizeof zip, "PortMaster.zip");
 	if (access(sh, R_OK) != 0 && access(zip, R_OK) != 0) return;
 	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
 	if (!items) return;
@@ -12629,7 +12646,7 @@ static int run_port(app *a, const system_cfg *s, const char *file)
 	char *argv[] = { (char *)"/bin/sh", run, script, NULL };
 	int r;
 
-	snprintf(run, sizeof run, "%s/rotate/portmaster/pm-run.sh", P_ROOT);
+	pm_here(run, sizeof run, "pm-run.sh");
 	if (!strcmp(file, PORTMASTER)) {
 		portmaster_notice(a);
 		if (!a->running) return -1;

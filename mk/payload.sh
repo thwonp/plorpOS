@@ -73,6 +73,12 @@ if [ "$PLATFORM" = gkd ]; then
 	# it as a cart. It does nothing to plorpOS's Splore (plorpos-gkd.32.8).
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
+	# PortMaster's runner and PortMaster itself, unpacked on first use
+	# (plorpos-46o.5; mk/fetch-vendor.sh).
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	mkdir -p "$P/gkd/portmaster"
+	cp "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$P/gkd/portmaster/"
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
@@ -121,8 +127,15 @@ fi
 # pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
 cp "$ROOT/config/systems.cfg" "$P/"
 # Everything else in TortOS/ that every device ships, cores included (one
-# list with the Rotate's card, plorpos-3yv.89).
-plorpos_files "$P" "$ROOT/vendor/cores"
+# list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
+# and Ports shelves too, its own builds of their cores first, and melonDS DS
+# for the DS shelf's Core row (plorpos-46o).
+if [ "$PLATFORM" = gkd ]; then
+	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores" melondsds
+else
+	plorpos_files "$P" "$ROOT/vendor/cores"
+fi
 cp "$DIATOM_ELF" "$P/diatom"
 
 
@@ -146,7 +159,7 @@ done
 
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
-gkd)  chmod +x "$P/launch.sh" "$P/musectl" ;;
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
 *)    chmod +x "$P/launch.sh" ;;
 esac

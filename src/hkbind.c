@@ -49,10 +49,11 @@ int hk_trig_from(int input, int mod)
 const char *const HK_ACTION_LABEL[] = {
 	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Screenshot",
 	"Turbo Assign",  /* plorpos-tkh, Diatom's ADR-0045 */
-	"Display Mode"   /* the DS's, last so other shelves drop it (plorpos-3yv.47, .62) */
+	"Display Mode",  /* the DS's, last so other shelves drop it (plorpos-3yv.47, .62) */
+	"Stylus"         /* the DS's on a port with no panel (the GKD's cursor, plorpos-46o.4) */
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap"
+	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "stylus"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from

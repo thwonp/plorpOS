@@ -10,7 +10,9 @@
 # without theirs). Ubuntu 24.04's glibc (2.39) is older than trixie's, so the
 # core loads on the card.
 #
-#   mk/build-dsperate.sh      build, install to vendor/cores-rotate
+#   mk/build-dsperate.sh      build, install to vendor/cores-rotate and cores-gkd
+#
+# One build for both: plain ARMv8.0 (no -mcpu), so the GKD's A72 runs it too.
 #
 # Needs: docker (podman), network for the first clone. ~5 minutes.
 set -e
@@ -49,7 +51,8 @@ if [ -n "$SHA" ] && [ "$GOT" != "$SHA" ]; then
 	echo "  Verify the core, then update SHA here." >&2
 	exit 1
 fi
-mkdir -p "$ROOT/vendor/cores-rotate"
+mkdir -p "$ROOT/vendor/cores-rotate" "$ROOT/vendor/cores-gkd"
 cp "$SO" "$ROOT/vendor/cores-rotate/"
+cp "$SO" "$ROOT/vendor/cores-gkd/"
 echo "  built  dsperate (dsperate-lr ${LR%${LR#???????}}) + PGO"
 echo "  sha256 $GOT"

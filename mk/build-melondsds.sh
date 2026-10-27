@@ -30,6 +30,8 @@
 # that branch had for 1.4.0 (= upstream master 906e9eb + one GL-only fix).
 #
 #   mk/build-melondsds.sh                 build with the profile, install to vendor/cores-rotate
+#   PLATFORM=gkd mk/build-melondsds.sh    the GKD 350H's (Cortex-A72/A53, ARMv8.0: the
+#                                         Rotate's v8.2 build would SIGILL), to vendor/cores-gkd
 #   mk/build-melondsds.sh --instrument    build the training core -> $SRC/out/melondsds_libretro.pgo.so
 #
 # Needs: docker (podman), network for the first clone. ~3 minutes.
@@ -39,9 +41,19 @@ SRC=${SRC:-/tmp/tortos-melondsds}
 MODE=${1:-use}
 CORE_PIN=f394adbacb5722ee97c1b37c8064da9a25818310     # JesseTG/melonds-ds v1.4.0
 MELONDS=16f127dbb587a73371827ce79689c5d237c4b59b      # JesseTG/melonDS jtg/fix-uninitialized-opengl
-SHA=b9a11a2894fd1a73b999bb006e161fd6476505b4bf7a569a8dfd408a741f4f81
 IMAGE=rotate-cores-cross
-FLAGS="-mcpu=cortex-a75.cortex-a55"
+# The profile was trained on the Rotate; it describes the code's branches, not
+# the CPU, so the GKD's build uses it too. Trixie's glibc (2.38 needed) and
+# libstdc++ (3.4.29) are both older than the GKD's ROCKNIX (2.40, 3.4.33).
+if [ "${PLATFORM:-rotate}" = gkd ]; then
+	SHA=
+	FLAGS="-mcpu=cortex-a72.cortex-a53"
+	DEST=$ROOT/vendor/cores-gkd
+else
+	SHA=b9a11a2894fd1a73b999bb006e161fd6476505b4bf7a569a8dfd408a741f4f81
+	FLAGS="-mcpu=cortex-a75.cortex-a55"
+	DEST=$ROOT/vendor/cores-rotate
+fi
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 docker image inspect $IMAGE >/dev/null 2>&1 ||
@@ -99,13 +111,13 @@ if [ "$MODE" = --instrument ]; then
 	exit 0
 fi
 GOT=$(shasum -a 256 "$SO" | cut -d' ' -f1)
-if [ "$GOT" != "$SHA" ]; then
+if [ -n "$SHA" ] && [ "$GOT" != "$SHA" ]; then
 	echo "!! melondsds sha256 $GOT, expected $SHA" >&2
 	echo "  The toolchain image, the source, the patches or the profile changed." >&2
 	echo "  Verify the core, then update SHA here." >&2
 	exit 1
 fi
-mkdir -p "$ROOT/vendor/cores-rotate"
-cp "$SO" "$ROOT/vendor/cores-rotate/"
+mkdir -p "$DEST"
+cp "$SO" "$DEST/"
 echo "  built  melondsds 1.4.0 + plorpOS patches + PGO"
 echo "  sha256 $GOT"
