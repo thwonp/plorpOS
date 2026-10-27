@@ -44,7 +44,7 @@ endif
 # SDL function the shipped libraries lack.
 LDFLAGS := -L$(SYSROOT)/usr/lib -Wl,-rpath-link,$(SYSROOT)/usr/lib \
            -Wl,--allow-shlib-undefined
-LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl
+LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl -lpthread
 ifneq ($(filter gkd rotate,$(PLATFORM)),)
 # The volume worker (platform_gkd.c, platform_rotate.c). glibc 2.31 here still has it apart from
 # libc; the device's 2.40 keeps libpthread.so.0 as a stub, so it resolves.

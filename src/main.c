@@ -68,6 +68,7 @@
 #include <math.h>
 #include <signal.h>
 #include <spawn.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -370,6 +371,14 @@ static void display_load(app *a)
 	char key[CFG_STR + 16], name[CFG_STR];
 	int i, k;
 
+#if defined(PLATFORM_H700)
+	/* A 4:3 H700 (RG35XX H, 640x480) has no wide panel for Stretch to fill
+	 * honestly: a 3:2 GBA or a 16:9 core would be pulled out of shape, so a
+	 * system nobody has configured keeps the shape its core asks for. The
+	 * 3:2 RG SP keeps Stretch, which is what its panel is shaped for. */
+	if (plat_screen_w * 3 <= plat_screen_h * 4)
+		for (i = 0; i < a->sys.count; i++) a->view[i].dmode = DMODE_ASPECT;
+#endif
 	for (i = 0; i < a->sys.count; i++) {
 		snprintf(key, sizeof key, "display.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
@@ -2943,22 +2952,49 @@ static void playing_path(char *out, size_t n)
 	snprintf(out, n, "%s/.playing", P_ROOT);
 }
 
-static void playing_set(app *a)
+/* The two bookmarks a launch writes, off the launch path. Each is a write,
+ * an fsync and a whole-card sync on exFAT, and measured on the RG35XX H they
+ * took 255-1819 ms between the press and the game being sent - whatever else
+ * was dirty on the card. The game does not need either to start; they need to
+ * be on the card soon, which a thread behind the launch does. Strings are
+ * copied in: by the time it runs, the shelf may have moved. */
+struct bookmarks { char root[CFG_STR * 2], tag[CFG_STR], file[LIB_PATH], own[CFG_STR]; };
+
+static void *bookmarks_write(void *arg)
 {
-	char p[CFG_STR * 2];
-	sysview *v = &a->view[a->sys_cursor];
-	int o = shelf_owner(a, a->sys_cursor, v->cursor);
+	struct bookmarks *b = arg;
+	char p[CFG_STR * 2 + 16];
 	FILE *f;
 
+	snprintf(p, sizeof p, "%s/.last", b->root);
+	if ((f = atomic_open(p, 0644))) {
+		fprintf(f, "%s\n%s\n", b->tag, b->file);
+		atomic_commit(f, p);
+	}
+	snprintf(p, sizeof p, "%s/.playing", b->root);
+	if ((f = atomic_open(p, 0644))) {
+		fprintf(f, "%s\n%s\n", b->own, b->file);
+		atomic_commit(f, p);
+	}
+	free(b);
+	return NULL;
+}
+
+static void bookmarks_behind(app *a)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	struct bookmarks *b;
+	pthread_t t;
+
 	if (v->list.count == 0) return;
-	playing_path(p, sizeof p);
-	f = atomic_open(p, 0644);
-	if (!f) return;
-	/* The GAME's system, not the shelf's - launching from Favorites otherwise
-	 * records a system that does not own the ROM, exactly as the launch path
-	 * itself had to learn. */
-	fprintf(f, "%s\n%s\n", a->sys.systems[o].tag, v->list.items[v->cursor].file);
-	atomic_commit(f, p);
+	if (!(b = calloc(1, sizeof *b))) return;
+	snprintf(b->root, sizeof b->root, "%s", P_ROOT);
+	snprintf(b->tag, sizeof b->tag, "%s", a->sys.systems[a->sys_cursor].tag);
+	snprintf(b->own, sizeof b->own, "%s",
+	         a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
+	snprintf(b->file, sizeof b->file, "%s", v->list.items[v->cursor].file);
+	if (pthread_create(&t, NULL, bookmarks_write, b) == 0) pthread_detach(t);
+	else free(b);
 }
 
 static void playing_clear(void)
@@ -3237,14 +3273,47 @@ static int g_batt_show = -1;      /* the setting; -1 = read it again */
 
 static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now(); }
 
+/* A filled disc in the renderer's draw color. A white disc with a one-pixel
+ * soft edge, made once at 128 and scaled to the size asked, so the rim is
+ * smooth at any render scale: a stack of scan lines drawn in layout units is
+ * resampled with the rest of the frame and comes out ragged. */
+#define DISC_TEX 128
+static SDL_Texture *disc_tex;
+
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
-	for (int dy = -rad; dy <= rad; dy++) {
-		/* Against rad + 1/2, so the top, bottom and sides are not a lone
-		 * pixel sticking out of the round. */
-		int dx = (int)sqrt((double)(rad * rad + rad - dy * dy));
-		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
+	Uint8 cr, cg, cb, ca;
+
+	if (!disc_tex) {
+		SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, DISC_TEX, DISC_TEX, 32,
+		                                                SDL_PIXELFORMAT_ARGB8888);
+
+		if (s) {
+			for (int y = 0; y < DISC_TEX; y++) {
+				Uint32 *row = (Uint32 *)((Uint8 *)s->pixels + (size_t)y * s->pitch);
+
+				for (int x = 0; x < DISC_TEX; x++) {
+					float dx = x + 0.5f - DISC_TEX / 2.0f, dy = y + 0.5f - DISC_TEX / 2.0f;
+					float a = (DISC_TEX / 2.0f - sqrtf(dx * dx + dy * dy)) / 3.0f + 0.5f;
+
+					a = a < 0 ? 0 : a > 1 ? 1 : a;
+					row[x] = SDL_MapRGBA(s->format, 255, 255, 255, (Uint8)(a * 255.0f));
+				}
+			}
+			disc_tex = SDL_CreateTextureFromSurface(r, s);
+			SDL_FreeSurface(s);
+			if (disc_tex) {
+				SDL_SetTextureBlendMode(disc_tex, SDL_BLENDMODE_BLEND);
+				SDL_SetTextureScaleMode(disc_tex, SDL_ScaleModeLinear);
+			}
+		}
 	}
+	if (!disc_tex) return;
+	SDL_GetRenderDrawColor(r, &cr, &cg, &cb, &ca);
+	SDL_SetTextureColorMod(disc_tex, cr, cg, cb);
+	SDL_SetTextureAlphaMod(disc_tex, ca);
+	SDL_RenderCopyF(r, disc_tex, NULL,
+	                &(SDL_FRect){ cx - rad - 0.5f, cy - rad - 0.5f, 2 * rad + 1.0f, 2 * rad + 1.0f });
 }
 
 static void draw_battery(SDL_Renderer *r)
@@ -12883,6 +12952,8 @@ static void launch_one(app *a)
 	char pico8[CFG_STR * 2];
 	int n = 0;
 
+	unsigned t_in = plat_now_ms(), t_prep, t_ready, t_a, t_b, t_c, t_d;
+
 	if (v->list.count == 0) return;
 
 	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
@@ -12980,11 +13051,13 @@ static void launch_one(app *a)
 	/* The autosave story, by path rather than by convention: the state and the
 	 * preview live beside each other, the launch hands both over, and a game
 	 * always comes up where it was left. */
+	t_a = plat_now_ms();
 	state_path(a, o, &v->list.items[v->cursor], st, sizeof st);
 	/* The scratch, not the Auto card - see pause_preview_path. The card is
 	 * written from this only when the game actually ends, below. */
 	pause_preview_path(pv, sizeof pv);
 	persist_dir_ensure(a, o);
+	t_b = plat_now_ms();
 
 	/* Achievements, if this game has any. Most of a library does not, and that
 	 * is not a failure: chv_load says so by returning false and everything
@@ -13053,10 +13126,11 @@ static void launch_one(app *a)
 		}
 	}
 
-	remember_place(a);
-	/* Before the launch, not after: a device that loses power during the load
-	 * was still playing this game. */
-	playing_set(a);
+	t_c = plat_now_ms();
+	/* Started before the launch, not after: a device that loses power during
+	 * the load was still playing this game. Written behind it. */
+	bookmarks_behind(a);
+	t_d = plat_now_ms();
 
 	/* Read and cleared together. Leaving it set would have the NEXT game
 	 * launched in this session open with its menu up too, which is the sort
@@ -13072,7 +13146,9 @@ static void launch_one(app *a)
 	plat_audio_settle(5000);
 #endif
 
+	t_prep = plat_now_ms();
 	if (!native && plat_resident_ready_wait()) {
+		t_ready = plat_now_ms();
 		/* The emulator is already up, holding its context and every core,
 		 * so this is ~200ms rather than ~1100. Nothing here is torn
 		 * down -- this process keeps its own context through the whole game,
@@ -13101,6 +13177,10 @@ static void launch_one(app *a)
 		};
 		if (plat_resident_send(&g)) {
 			int r;
+
+			fprintf(stderr, "launch: pre %u, paths %u, cheevos %u, place %u, rest %u, ready %u, send %u ms\n",
+			        t_a - t_in, t_b - t_a, t_c - t_b, t_d - t_c, t_prep - t_d,
+			        t_ready - t_prep, plat_now_ms() - t_ready);
 
 			/* The list Diatom was just handed, for an early answer to trim. */
 			if (active[0]) {
