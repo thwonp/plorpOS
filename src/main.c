@@ -12051,7 +12051,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		/* The wait loop carries on until EXIT arrives; quitting is asking,
 		 * not tearing down. */
 		if (!gm_confirm(a, c->bg, "Quit")) break;
-		plat_resident_line("STOP");
+		/* The one stop that may leave the exit state to a thread behind the
+		 * shelf (plorpos-2wl.12). Power and sleep stops stay in line. */
+		plat_resident_line("STOP\tlazy=1");
 		return MENU_DONE;
 	default: break;
 	}
