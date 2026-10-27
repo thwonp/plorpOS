@@ -21,7 +21,7 @@ BRICK ?= 192.168.1.100
 SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
        -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@$(BRICK)
 
-.PHONY: all clean native toolchain vendor boot payload release install-card \
+.PHONY: check-paused all clean native toolchain vendor boot payload release install-card \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
@@ -48,7 +48,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
-         check-gamelist check-logpack check-titles check-clock check-sysorder
+         check-gamelist check-logpack check-titles check-clock check-sysorder check-paused
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -844,3 +844,21 @@ endif
 
 clean:
 	rm -rf build build-native out
+
+# Real paused-preview rendering against an offscreen SDL software renderer.
+# SDL_ttf is only needed for declarations in platform.c's UI header; the GKD
+# sysroot can supply that header when the host only has SDL2 development files.
+check-paused:
+	@if ! command -v sdl2-config >/dev/null; then \
+		echo 'skip: paused renderer check needs SDL2 development files'; \
+	elif [ ! -f sysroot-gkd/usr/include/SDL2/SDL_ttf.h ] && ! pkg-config --exists SDL2_ttf; then \
+		echo 'skip: paused renderer check needs SDL_ttf headers or the GKD sysroot'; \
+	else \
+		mkdir -p build-native && \
+		$(CC) -std=gnu11 -D_GNU_SOURCE -DPLATFORM_GKD -O1 \
+		-ffunction-sections -fdata-sections $$(sdl2-config --cflags) \
+		$$(pkg-config --cflags SDL2_ttf 2>/dev/null) -Isysroot-gkd/usr/include/SDL2 \
+		-o build-native/paused-check tools/paused-check.c -Wl,--gc-sections \
+		$$(sdl2-config --libs) -lm -ldl -lpthread && \
+		SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build-native/paused-check; \
+	fi

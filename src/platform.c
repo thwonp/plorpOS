@@ -890,6 +890,8 @@ static size_t dused;
 static char   d_preview[1024];
 static SDL_Rect d_rect;
 static bool     d_rect_known;
+static SDL_Rect d_top, d_bottom;
+static bool     d_split_known;
 static char     d_mode[24];     /* DISPLAY's mode=, "" until said */
 static int    d_pend_vol = -1, d_pend_vol_n;      /* LEVEL events, held until */
 static int    d_pend_bri = -1, d_pend_bri_n;      /* EXIT hands levels back  */
@@ -1142,6 +1144,7 @@ bool plat_resident_send(const plat_game *g)
 		if (!dconnect()) return false;
 		d_preview[0] = '\0';
 		d_rect_known = false;
+		d_split_known = false;
 		d_mode[0] = '\0';
 		d_pend_vol = d_pend_bri = -1;
 
@@ -1467,13 +1470,24 @@ static void d_note_turbo(const char *l)
 static void d_note_display(const char *l)
 {
 	const char *r = strstr(l, "rect="), *m = strstr(l, "mode=");
+	const char *top = strstr(l, "\ttop="), *bottom = strstr(l, "\tbottom=");
 	int w, h, x, y;
 
+	d_split_known = false;
 	if (m) snprintf(d_mode, sizeof d_mode, "%.*s", (int)strcspn(m + 5, "\t\n"), m + 5);
 	if (!r || sscanf(r + 5, "%dx%d+%d+%d", &w, &h, &x, &y) != 4) return;
 	if (w <= 0 || h <= 0) return;
 	d_rect.w = w; d_rect.h = h; d_rect.x = x; d_rect.y = y;
 	d_rect_known = true;
+	/* Optional DS screen destinations, already calculated by Diatom for
+	 * the active layout and actual panel. Older/single-screen replies keep
+	 * the original one-rectangle path. */
+	if (top && bottom &&
+	    sscanf(top + 5, "%dx%d+%d+%d", &d_top.w, &d_top.h, &d_top.x, &d_top.y) == 4 &&
+	    sscanf(bottom + 8, "%dx%d+%d+%d", &d_bottom.w, &d_bottom.h,
+	           &d_bottom.x, &d_bottom.y) == 4 &&
+	    d_top.w >= 0 && d_top.h >= 0 && d_bottom.w >= 0 && d_bottom.h >= 0)
+		d_split_known = true;
 }
 
 const char *plat_resident_mode(void) { return d_mode[0] ? d_mode : NULL; }
@@ -1518,12 +1532,19 @@ void plat_geometry_init(SDL_Renderer *r)
 void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
 {
 	SDL_Rect d;
+	int w = 0, h = 0;
 
 	if (!plat_resident_rect(&d)) { SDL_RenderCopy(r, bg, NULL, NULL); return; }
-	if (g_scale == 1.0f) { SDL_RenderCopy(r, bg, NULL, &d); return; }
-	SDL_RenderSetScale(r, 1.0f, 1.0f);
-	SDL_RenderCopy(r, bg, NULL, &d);
-	SDL_RenderSetScale(r, g_scale, g_scale);
+	if (g_scale != 1.0f) SDL_RenderSetScale(r, 1.0f, 1.0f);
+	if (d_split_known && SDL_QueryTexture(bg, NULL, NULL, &w, &h) == 0 && w > 0 && h > 1) {
+		SDL_Rect src = { 0, 0, w, h / 2 };
+		if (d_top.w > 0 && d_top.h > 0) SDL_RenderCopy(r, bg, &src, &d_top);
+		src.y = h / 2;
+		if (d_bottom.w > 0 && d_bottom.h > 0) SDL_RenderCopy(r, bg, &src, &d_bottom);
+	} else {
+		SDL_RenderCopy(r, bg, NULL, &d);
+	}
+	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
 }
 
 /* Only safe while Diatom is paused, which is the only place it is called from:
