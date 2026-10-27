@@ -46,7 +46,7 @@ IMAGE=rotate-cores-cross
 # the CPU, so the GKD's build uses it too. Trixie's glibc (2.38 needed) and
 # libstdc++ (3.4.29) are both older than the GKD's ROCKNIX (2.40, 3.4.33).
 if [ "${PLATFORM:-rotate}" = gkd ]; then
-	SHA=
+	SHA=b5d8db9e5746d66d9d4898698affa330c8a89857a9f6a0a32749d34408f3bc5c
 	FLAGS="-mcpu=cortex-a72.cortex-a53"
 	DEST=$ROOT/vendor/cores-gkd
 else
