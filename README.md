@@ -328,7 +328,7 @@ Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** an
 - **GKD:** Menu, Home, Stick Click or Select.
 - **RG SP:** Menu or Select.
 
-With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it.
+With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it. Holding MENU on its own for about 0.7 s opens the game switcher instead, whatever the modifier is set to.
 
 **Triggers:**
 - **L1, R1, L2, R2, A, B, X, Y:** with the modifier held, or alone. A button bound alone does the action instead of its job in that console's games.

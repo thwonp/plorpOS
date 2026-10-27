@@ -117,6 +117,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Achievements, Hotkeys, Reset, Quit |
+| **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
 | **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
