@@ -90,6 +90,12 @@ PortMaster's GUI have been exercised on a plain Brick. The ARM32 userland
 needed by box86 ports such as Shovel Knight is not included. Brick Pro Ports
 are not verified.
 
+## Audio output
+
+On the plain Brick, a plugged-in 3.5 mm cable takes priority even when Audio
+Output is set to Speaker. A speaker override with the jack inserted has not
+worked with the firmware's exposed audio controls.
+
 ## Removing plorpOS
 
 Take the card out. The Brick boots its own system again.

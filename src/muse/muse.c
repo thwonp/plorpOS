@@ -391,32 +391,30 @@ static void *player(void *arg)
 		if (n > 0 && !pcm_write(buf, n)) { n = -1; lost = true; }
 		pthread_mutex_lock(&S.mu);
 
-		/* A headset that went away mid-song: the default, and on from what was
-		 * heard, the way Diatom's port falls back when its sink dies. Reported
+		/* A headset that went away mid-song: the default, paused at what was
+		 * heard. Reported
 		 * as an ERROR this was read as a track that would not open, so every
 		 * write that failed skipped one: a headset switched off ran through the
 		 * album, measured 2026-09-25. SINK says where it went, and the launcher
 		 * sends the headset back when it reconnects. */
 		if (lost && strcmp(g_dev, g_codec) && g_dec) {
-			/* A USB DAC (the launcher names one plughw:CARD=<id>) is pulled
-			 * out by hand, from headphones the player is wearing: arrive on
-			 * the codec PAUSED, as a phone does. Playing on and leaving the
+			/* A USB DAC or Bluetooth headset can disappear while the player
+			 * is wearing it: arrive on the codec PAUSED, as a phone does.
+			 * Playing on and leaving the
 			 * pause to the launcher put half a second of the album out of the
 			 * speaker first - its look comes every 500 ms (Brick Pro,
-			 * 2026-10-07). A headset that drops keeps playing on. */
+			 * 2026-10-07; Sonos Ace on plain Brick, 2026-10-28). */
 			bool dac = !strncmp(g_dev, "plughw:CARD=", 12);
 
-			say("%s; the %s went, falling back to %s%s", pcm_error(),
-			    dac ? "USB DAC" : "headset", g_codec, dac ? ", paused" : "");
+			say("%s; the %s went, falling back to %s, paused", pcm_error(),
+			    dac ? "USB DAC" : "headset", g_codec);
 			snprintf(g_dev, sizeof g_dev, "%s", g_codec);
 			pcm_open(g_dev);
 			snprintf(S.sink, sizeof S.sink, "%s", g_dev);
 			S.ev_sink = 1;
 			reopen(S.heard);
-			if (dac) {
-				S.state = ST_PAUSED;
-				S.ev_state = 1;
-			}
+			S.state = ST_PAUSED;
+			S.ev_state = 1;
 			wake();
 			continue;
 		}
