@@ -115,6 +115,12 @@ elif [ "$PLATFORM" = h700 ]; then
 	cp "$ROOT/docs/install-h700.md" "$OUT/INSTALL.md"
 else
 	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app"
+	[ -f "$B/pmtools.squashfs" ] ||
+		{ echo "run mk/build-pmtools-brick.sh first" >&2; exit 1; }
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "run mk/fetch-vendor.sh first" >&2; exit 1; }
+	mkdir -p "$P/brick/portmaster"
+	cp "$ROOT/sd/brick/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" "$P/brick/portmaster/"
 	cp "$B/setbright" "$P/"               # brightness before the boot animation
 	cp "$B/btplayer" "$P/"                # lets a headset's volume through BlueZ
 	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
@@ -142,6 +148,7 @@ fi
 cp "$ROOT/config/systems.cfg" "$P/"
 # The H700 has the Rotate's Ports shelf (plorpos-2wl.10), and not its DS one.
 [ "$PLATFORM" = h700 ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+[ "$PLATFORM" = brick ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # Everything else in TortOS/ that every device ships, cores included (one
 # list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
 # and Ports shelves too, its own builds of their cores first, and melonDS DS
@@ -178,7 +185,7 @@ case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
-*)    chmod +x "$P/launch.sh" ;;
+*)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
 esac
 if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then
 	du -sh "$OUT"

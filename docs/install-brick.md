@@ -70,6 +70,26 @@ lands in the console's folder, so move the old one over it.
 
 The PIN is new every time you open Over The Hare.
 
+## Ports (next Brick build)
+
+The Ports shelf includes PortMaster. Its support on plorpOS is unofficial;
+report integration problems to plorpOS rather than the PortMaster team.
+Existing ports go in `Roms/Ports/`, with each `.sh` launcher beside its data
+folder. The first launch unpacks PortMaster and can take longer than later
+starts. Wi-Fi is needed to browse or install ports from the app.
+
+Press A at plorpOS's support notice. PortMaster then presents its own terms
+for you to review. Its self-upgrade is not verified on this build; choose
+Cancel if offered an upgrade. MENU opens Continue / Reset / Quit while a
+port runs. Deleting a port removes its data folder, including its saves.
+
+The runtime uses the Brick firmware's SDL and graphics libraries. A port
+working on another handheld does not establish compatibility with the
+Brick's firmware. 2048, Apotris, Balatro (LOVE), Pullywog (GameMaker), and
+PortMaster's GUI have been exercised on a plain Brick. The ARM32 userland
+needed by box86 ports such as Shovel Knight is not included. Brick Pro Ports
+are not verified.
+
 ## Removing plorpOS
 
 Take the card out. The Brick boots its own system again.

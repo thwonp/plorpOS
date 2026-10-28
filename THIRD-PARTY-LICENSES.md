@@ -102,6 +102,16 @@ tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
 script above rebuilds the shipped libraries from it. The LGPL's text ships on
 the card beside them as `TortOS/lib/COPYING.LGPLv2.1`.
 
+### Ports on the Brick (`TortOS/brick/portmaster/`)
+
+PortMaster (MIT), CPython 3.12.16 (PSF License, python-build-standalone), and
+Bash 5.2.015 (GPL 3 or later, robxu9/bash-static) are redistributed unmodified.
+`mk/build-pmtools-brick.sh` pins their downloads; Python includes its licence
+in the tools image. Bash source is the upstream 5.2.015 release and
+the [bash-static build scripts](https://github.com/robxu9/bash-static/tree/5.2.015-1.2.3-2).
+SDL2 and its image, font and mixer libraries come from the user's Brick
+firmware and are not included in this tools image.
+
 ### Ports on the H700 (`TortOS/lib32/`, `TortOS/h700/portmaster/`)
 
 PortMaster (MIT; the release zip, unpacked on first use) runs the ports on the

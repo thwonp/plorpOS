@@ -10,6 +10,10 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WHAT=${1:-all}
 P=/mnt/SDCARD/TortOS
+case $WHAT in elf|all)
+	[ -f "$ROOT/build/pmtools.squashfs" ] || { echo "run mk/build-pmtools-brick.sh first"; exit 1; }
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }
+esac
 
 # Pick the TrimUI out of whatever else is plugged in.
 SER=${ADB_SERIAL:-$(adb devices | awk '/\tdevice$/{print $1}' | while read s; do
@@ -57,6 +61,11 @@ case $WHAT in elf|all)
 	# left to push - and pushing a stale copy would leave a file on the card
 	# that looks like configuration and is read by nothing.
 	$A push "$ROOT/config/systems.cfg"      "$P/" > /dev/null
+	# The same Ports payload as the Brick release zip.
+	$A shell "mkdir -p $P/brick/portmaster /mnt/SDCARD/Roms/Ports" > /dev/null
+	$A push "$ROOT/sd/brick/portmaster/." "$P/brick/portmaster/" > /dev/null
+	$A push "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/pmtools.squashfs" "$P/brick/portmaster/" > /dev/null
+	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" | $A shell "cat >> $P/systems.cfg"
 	$A push "$ROOT/sd/tortos/launch.sh"     "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/bt-alsa.sh"    "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/radio.sh"      "$P/" > /dev/null

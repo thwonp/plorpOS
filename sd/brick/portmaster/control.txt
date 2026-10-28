@@ -1,0 +1,22 @@
+#!/bin/bash
+# plorpOS, plain TrimUI Brick (TG3040). SPDX-License-Identifier: MIT
+CUR_TTY=/dev/null
+export controlfolder="/mnt/SDCARD/.userdata/shared/portmaster/PortMaster"
+export directory="run/plorpos-roms"
+export ESUDO="" ESUDOKILL="-1" ESUDOKILL2="-1"
+SDLDBFILE="$controlfolder/gamecontrollerdb.txt"
+SDLDBUSERFILE="${HOME}/.config/SDL-GameControllerDB/gamecontrollerdb.txt"
+get_controls() {
+    DEVICE="0300a3845e0400008e02000014010000"
+    param_device="trimuibrick"
+    LOWRES="N"
+    ANALOGSTICKS="0"
+    export SDL_GAMECONTROLLERCONFIG_FILE=/tmp/gamecontrollerdb.txt
+    echo "$DEVICE,TRIMUI Player1,a:b1,b:b0,x:b3,y:b2,back:b6,start:b7,guide:b8,leftshoulder:b4,rightshoulder:b5,lefttrigger:a2,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux," > "$SDL_GAMECONTROLLERCONFIG_FILE"
+    sdl_controllerconfig="$(< "$SDL_GAMECONTROLLERCONFIG_FILE")"
+}
+source "$controlfolder/device_info.txt"
+source "$controlfolder/funcs.txt"
+[ -n "${PLORPOS_PM_GUI:-}" ] || export CFW_NAME=ROCKNIX
+export GPTOKEYB="$controlfolder/gptokeyb $ESUDOKILL"
+export GPTOKEYB2="env LD_PRELOAD=$controlfolder/libinterpose.${DEVICE_ARCH}.so $controlfolder/gptokeyb2 $ESUDOKILL2"
