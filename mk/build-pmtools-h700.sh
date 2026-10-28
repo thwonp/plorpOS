@@ -39,6 +39,13 @@ ln -s ../bash "$DL/tree/bin/bash"
 # card's copy: dlopen finds the same file, so the same SDL.
 mkdir -p "$DL/tree/lib"
 ln -s /mnt/SDCARD/TortOS/lib/libSDL2-2.0.so.0 "$DL/tree/lib/libSDL2.so"
+# PortMaster's own GUI (pugwash, pysdl2) needs SDL2_mixer, which BaseOS lacks:
+# mk/build-sdl2mixer-h700.sh. pysdl2 asks for the name "SDL2_mixer".
+[ -f "$OUT/libSDL2_mixer-2.0.so.0" ] || { echo "no $OUT/libSDL2_mixer-2.0.so.0; run: mk/build-sdl2mixer-h700.sh" >&2; exit 1; }
+cp "$OUT/libSDL2_mixer-2.0.so.0" "$DL/tree/lib/"
+ln -s libSDL2_mixer-2.0.so.0 "$DL/tree/lib/libSDL2_mixer.so"
+mkdir -p "$DL/tree/lib/licenses/SDL2_mixer"
+cp "$OUT/SDL2_mixer-LICENSE.txt" "$DL/tree/lib/licenses/SDL2_mixer/copyright"
 # zip too: Mindustry's script repacks its jar with it, and BaseOS has unzip only.
 # Libraries the ports' runtimes link and BaseOS lacks: LOVE (Balatro) wants
 # OpenAL, Vorbis and mpg123. Debian bookworm's arm64 builds, which is BaseOS's

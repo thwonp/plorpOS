@@ -112,6 +112,7 @@ H700 with these, none of them modified:
 | SDL2 for 32-bit ARM (`TortOS/lib32/libSDL2-2.0.so.0`), `mk/build-sdl2-armhf.sh` | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib |
 | `pmtools.squashfs`: CPython (python-build-standalone) | 3.12.16 | PSF License |
 | `pmtools.squashfs`: bash (robxu9/bash-static) | 5.2.015 | GPL 3 or later |
+| `pmtools.squashfs`: SDL2_mixer for PortMaster's own GUI, `mk/build-sdl2mixer-h700.sh` (built-in decoders only: stb_vorbis, dr_flac, dr_mp3) | 2.8.0 | zlib (stb_vorbis, dr_libs: public domain or MIT-0; the licence is in `lib/licenses/SDL2_mixer`) |
 | `pmtools.squashfs`: zip, libopenal, libvorbis, libvorbisfile, libvorbisenc, libogg, libmpg123, libsndio, libbsd, libmd | Debian bookworm arm64 packages | Info-ZIP, LGPL 2 or later, BSD, ISC and others; each package's `copyright` file is in `lib/licenses/` inside the squashfs |
 
 `mk/build-pmtools-h700.sh` builds the squashfs from the pinned downloads, so

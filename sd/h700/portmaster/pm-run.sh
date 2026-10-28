@@ -66,10 +66,15 @@ done
 # PortMaster's GUI is not a port: control.txt names the system to it
 # as it is, not as ROCKNIX.
 [ "$(basename "$1")" = PortMaster.sh ] && export PLORPOS_PM_GUI=1
+# and our hooks give pysdl2 the SDL libraries' path (launch_hooks.txt).
+if [ -n "${PLORPOS_PM_GUI:-}" ]; then
+	mkdir -p "$PM/plorpos"
+	cmp -s "$HERE/launch_hooks.txt" "$PM/plorpos/launch_hooks.txt" || cp "$HERE/launch_hooks.txt" "$PM/plorpos/launch_hooks.txt"
+fi
 
 cd "$(dirname "$1")" || exit 1
 if [ -n "${PLORPOS_PM_GUI:-}" ]; then
-	bash "$@"
+	bash "$@" plorpos
 else
 	# What BaseOS lacks that a port takes for granted (tools/portcompat.c).
 	export LD_PRELOAD=$HERE/portcompat.so${LD_PRELOAD:+:$LD_PRELOAD}
