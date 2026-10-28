@@ -1277,7 +1277,16 @@ bool plat_resident_send(const plat_game *g)
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
 		 * SETHOTKEYS is. Set on the Hotkeys screen. */
-		dsend("SETREWINDSPEED\tevery=%d", db_get_int(db_dev(), "rewindspeed", 0));
+		{
+			int every = db_get_int(db_dev(), "rewindspeed", 0);
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+			/* Off for the DS on the Brick and H700 (plorpos-reo.21): a
+			 * capture is a 6 MB state that takes ~20 ms, which no frame of
+			 * a heavy 3D scene can spare on four Cortex-A53s. */
+			if (tag && !strcmp(tag, "NDS")) every = 0;
+#endif
+			dsend("SETREWINDSPEED\tevery=%d", every);
+		}
 		/* And the fast-forward hotkey's speed (plorpos-pyz.5), the same way:
 		 * Diatom puts it back to 4 at every RUN. Game Settings. */
 		dsend("SETFFSPEED\tspeed=%d", db_get_int(db_dev(), "ffspeed", 4));

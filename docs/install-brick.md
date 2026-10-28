@@ -89,11 +89,18 @@ menu item can be aimed at, and speeds up while the D-pad is held; the face
 buttons and shoulders still reach the game.
 
 This is DSperate built without its profile-guided optimisation for the
-Brick's older system libraries. Boot and title screens of Advance Wars: Dual
-Strike, Pokemon Pearl and Dragon Quest V held 59.83 fps, and Top Focus held
-59.5 fps in Pokemon Pearl. Saving and loading a state and rewind were checked
-in Pokemon Pearl. Sustained play of other games and the microphone are not
-verified.
+Brick's older system libraries. A heavy 3D scene needs about as long as a
+frame, so Diatom now skips drawing a frame when drawing it would put the game
+behind schedule (never more than two in a row): emulation and sound stay at
+full speed and the picture repeats for a frame. In the games tested that was
+about 1% of frames in the busiest scenes and none in Metroid Prime Hunters'
+gameplay. Held at 59.83 fps with no slow-downs: Advance Wars: Dual Strike,
+Pokemon Pearl, Dragon Quest V and GTA: Chinatown Wars (boot and early scenes,
+every layout) and Metroid Prime Hunters (in play, every layout).
+
+Rewind is off for the DS on the Brick: each capture is a 6 MB state that takes
+about 20 ms, more than a busy frame can spare. Saving and loading a state
+works. The microphone is not verified.
 
 ## Ports (next Brick build)
 

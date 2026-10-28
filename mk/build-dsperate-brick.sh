@@ -4,9 +4,12 @@
 # Brick's firmware glibc is 2.33, and the GCC13/Ubuntu 24.04 build that serves
 # the GKD and Rotate needs 2.38. Our own tortos-toolchain (Debian, GCC 10,
 # glibc 2.17 symbols) loads. GCC 10 cannot use DSperate's committed PGO
-# profile (made with GCC 13), so this core is built without it; measured
-# 59.83 fps on Advance Wars, Pokemon Pearl and Dragon Quest V title/boot
-# (brick-parity-2026-10-28/ds-feasibility.md).
+# profile (made with GCC 13), so this core is built without it. DSperate's
+# profile for GCC 10.5.0 does apply to our 10.2.1 (0 functions lost theirs, with
+# its fingerprint re-stamped), and was measured on the Brick against this
+# build in Pokemon Pearl and GTA: Chinatown Wars - identical frame skips, so
+# the plain build ships. What decides the speed is the frame-skip rule in
+# diatom (src/main.c), not the compiler.
 #
 #   mk/build-dsperate-brick.sh     build, install to vendor/cores-brick
 #
@@ -18,6 +21,7 @@ SRC=${SRC:-$HOME/.cache/tortos-dsperate-brick}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
 LR=093d50fcbd10531273e0cc22a23c6644a26b9b71 # the same pin as the GKD's
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
+TUNE=${TUNE--mcpu=cortex-a53}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 [ -d "$SRC/.git" ] || git clone -q "$REPO" "$SRC"
@@ -32,18 +36,19 @@ for p in "$SRC"/patches/*.patch; do
 	git -C "$SRC/DSperate" apply "$p"
 done
 
-docker run --rm -v "$SRC:/w:z" -w /w $IMAGE sh -c '
+docker run --rm -e TUNE="$TUNE" -v "$SRC:/w:z" -w /w $IMAGE sh -c '
 set -e
 O=/w/build
 TC=/w/DSperate/cmake/aarch64-linux-gnu.cmake
-cmake -S /w/DSperate -B $O/dsperate -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=$TC \
-  -DCMAKE_BUILD_TYPE=Release -DCMAKE_PROJECT_INCLUDE=/w/cmake/dsperate-pic.cmake \
-  -DDSPERATE_PGO=off -DDSPERATE_TUNE=-mcpu=cortex-a53 \
+CFG="-G \"Unix Makefiles\" -DCMAKE_TOOLCHAIN_FILE=$TC \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PROJECT_INCLUDE=/w/cmake/dsperate-pic.cmake \
+  -DDSPERATE_TUNE=${TUNE} \
   -DDSPERATE_TESTS=OFF -DDSPERATE_HEADLESS=OFF -DDSPERATE_SDL=OFF \
-  -DDSPERATE_CHEEVOS=OFF -DDSPERATE_NET=OFF >$O.cfg1.log
+  -DDSPERATE_CHEEVOS=OFF -DDSPERATE_NET=OFF"
+eval cmake -S /w/DSperate -B $O/dsperate $CFG -DDSPERATE_PGO=off >$O.cfg1.log
 cmake --build $O/dsperate --target dsperate_core -j"$(nproc)" >$O.build1.log
 cmake -S /w -B $O/lr -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=$TC \
-  -DCMAKE_BUILD_TYPE=Release -DDSPERATE_BUILD=$O/dsperate >$O.cfg2.log
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDSPERATE_BUILD=$O/dsperate >$O.cfg2.log
 cmake --build $O/lr -j"$(nproc)"
 aarch64-linux-gnu-strip --strip-unneeded -o $O/dsperate_libretro.so $O/lr/dsperate_libretro.so
 # Never ship one that cannot load on the Brick: nothing newer than its 2.33,
