@@ -30,6 +30,14 @@ const char *aout_device(const aout_state *s)
 	}
 }
 
+bool aout_pause_on_loss(aout_dest previous, bool heard, const aout_state *now)
+{
+	if (!heard) return false;
+	if (previous == AOUT_BT) return !(now->bt_sink && now->bt_sink[0]);
+	if (previous == AOUT_USB) return !(now->usb_sink && now->usb_sink[0]);
+	return false;
+}
+
 bool aout_named(const aout_state *s)
 {
 	aout_dest d = aout_resolve(s);

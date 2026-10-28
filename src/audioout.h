@@ -56,6 +56,10 @@ typedef struct {
  * into the port the device charges from, so it outranks the jack. */
 aout_dest   aout_resolve(const aout_state *s);
 
+/* Pause audible Muse after its USB/Bluetooth destination disappears.
+ * Changing policy with the device still present is an intentional reroute. */
+bool aout_pause_on_loss(aout_dest previous, bool heard, const aout_state *now);
+
 /* The device string to hand Diatom: the sink's own name, or the codec's -
  * "" unless `codec` names it. Never NULL, so a caller can always print or
  * compare it. */

@@ -2579,28 +2579,31 @@ static void aout_apply(bool force)
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
 #else
 	static char  link_seen[32];
-	static bool  on_usb, muse_on_usb;
+	static bool  on_usb, muse_was_heard;
+	static aout_dest muse_was = AOUT_SPK;
 	aout_state  s    = aout_now();
 	const char *out  = aout_device(&s);
 	const char *link = aout_link(&s);
 	const char *codec = s.codec ? s.codec : "";
 	bool        muse, named;
 
-	/* The DAC was pulled out from under the music: pause it, as a phone does,
+	/* A DAC or headset went away under the music: pause it, as a phone does,
 	 * rather than carry on out of the speaker - the player was listening on
-	 * headphones a moment ago. Only for a DAC that went with Muse on it at the
+	 * headphones a moment ago. Only for a destination Muse used at the
 	 * last look, not for the row moving to Speaker, which is asking for the
 	 * speaker - and not on "is it playing now", which a Muse already falling
 	 * back on its own is not (musec_pause holds it). Games are not paused;
 	 * they follow the sound to wherever it goes next. */
-	if (muse_on_usb && !(s.usb_sink && s.usb_sink[0])) {
-		fprintf(stderr, "audio: USB DAC gone, pausing Muse\n");
+	if (aout_pause_on_loss(muse_was, muse_was_heard, &s)) {
+		fprintf(stderr, "audio: %s gone, pausing Muse\n",
+		        muse_was == AOUT_BT ? "Bluetooth headset" : "USB DAC");
 		musec_pause();
 	}
 	on_usb = aout_resolve(&s) == AOUT_USB;
 	named = aout_named(&s);
 	muse = named && musec_heard();
-	muse_on_usb = on_usb && muse;
+	muse_was = aout_resolve(&s);
+	muse_was_heard = muse;
 	/* A new connection under the same name - the headset dropped and came
 	 * back between two looks at it. Nothing else here can see that, and
 	 * whoever fell back to the speaker while it was gone would stay there:
