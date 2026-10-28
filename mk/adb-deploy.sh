@@ -65,7 +65,12 @@ case $WHAT in elf|all)
 	$A shell "mkdir -p $P/brick/portmaster /mnt/SDCARD/Roms/Ports" > /dev/null
 	$A push "$ROOT/sd/brick/portmaster/." "$P/brick/portmaster/" > /dev/null
 	$A push "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/pmtools.squashfs" "$P/brick/portmaster/" > /dev/null
-	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" | $A shell "cat >> $P/systems.cfg"
+	# Through a file: a pipe into `adb shell cat` can wait for an EOF that never comes.
+	ROWS=$(mktemp)
+	grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" > "$ROWS"
+	$A push "$ROWS" /tmp/rows.cfg > /dev/null
+	$A shell "cat /tmp/rows.cfg >> $P/systems.cfg; rm -f /tmp/rows.cfg"
+	rm -f "$ROWS"
 	$A push "$ROOT/sd/tortos/launch.sh"     "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/bt-alsa.sh"    "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/radio.sh"      "$P/" > /dev/null
@@ -113,6 +118,7 @@ case $WHAT in diatom|all)
 esac
 case $WHAT in vendor)
 	$A push "$ROOT/vendor/cores/."  "$P/cores/" > /dev/null
+	$A push "$ROOT/vendor/cores-brick/." "$P/cores/" > /dev/null   # the DS (plorpos-reo.21)
 	echo "  + cores and runtime"
 esac
 $A shell sync

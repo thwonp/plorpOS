@@ -156,6 +156,18 @@ static const db_default library_defaults[] = {
 	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
 	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
 #endif
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	/* The Brick (plorpos-reo.21): the d-pad is the stylus (Stylus Mode), so
+	 * the core's pointer is "touch" and it draws no cursor over the bottom
+	 * screen - Diatom stamps its own. One stacked layout, no gap, as the GKD;
+	 * Diatom shows one screen at a time. No performance option is set: the
+	 * 59.83 fps measured was on the core's defaults. */
+	{ "coreopt.NDS.melonds_touch_mode",                "touch" },
+	{ "coreopt.NDS.melonds_show_cursor",               "disabled" },
+	{ "coreopt.NDS.melonds_number_of_screen_layouts",  "1" },
+	{ "coreopt.NDS.melonds_screen_layout1",            "top-bottom" },
+	{ "coreopt.NDS.melonds_screen_gap",                "0" },
+#endif
 #if defined(PLATFORM_GKD)
 	/* No panel on the GKD (plorpos-46o.4): "touch" is still the pointer,
 	 * which Diatom moves with the stick and presses with Stylus - R2,

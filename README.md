@@ -39,10 +39,12 @@
   - A cart you play in Splore lands on the shelf with its full artwork.
 - **Sega CD and 32X,** either combined on the Genesis shelf or on their own dedicated shelves.
 - **Achievements for disc games and arcade sets**
-- **Nintendo DS** on the RG Rotate and the GKD: DSperate-lr, or melonDS DS on
-  the shelf's Core row, with achievements. Display Mode lays the two screens
+- **Nintendo DS** on the RG Rotate, the GKD and the Brick: DSperate-lr, or melonDS DS on
+  the shelf's Core row (Rotate and GKD), with achievements. Display Mode lays the two screens
   out (Focus Top, Focus Bottom, Even Split), and a hotkey swaps them. On the
   GKD the stick moves a stylus cursor over the bottom screen and R2 touches.
+  The Brick shows one screen at a time, Top or Bottom; its D-pad becomes the
+  stylus with the **Stylus Mode** and **Stylus Tap** hotkeys, which you bind.
 - **Ports** on the RG Rotate and the GKD: PortMaster is the first entry on the
   Ports shelf, and what it installs appears there. Unofficial: report problems
   to plorpOS, not the PortMaster team.
@@ -166,7 +168,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
-| Nintendo DS (RG Rotate, GKD) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
+| Nintendo DS (RG Rotate, GKD, Brick) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
 | Ports (RG Rotate, GKD) | `Roms/Ports` | installed by PortMaster | - |
 
 Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
@@ -320,7 +322,7 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Display Mode**, the next screen layout, MENU + X by default, and on the GKD **Stylus**, the button that touches where the stick's cursor is, R2 by default. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Display Mode**, the next screen layout, MENU + X by default, on the GKD **Stylus Tap**, the button that touches where the stick's cursor is, R2 by default, and on the Brick **Stylus Mode** (the D-pad moves a cursor over the bottom screen) and **Stylus Tap**, both unbound until you set them. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
 - **Brick:** Menu or Select.

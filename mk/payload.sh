@@ -148,7 +148,12 @@ fi
 cp "$ROOT/config/systems.cfg" "$P/"
 # The H700 has the Rotate's Ports shelf (plorpos-2wl.10), and not its DS one.
 [ "$PLATFORM" = h700 ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
-[ "$PLATFORM" = brick ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The Brick also has the DS (plorpos-reo.21): its own build of DSperate, one
+# screen at a time (mk/build-dsperate-brick.sh).
+if [ "$PLATFORM" = brick ]; then
+	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+fi
 # Everything else in TortOS/ that every device ships, cores included (one
 # list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
 # and Ports shelves too, its own builds of their cores first, and melonDS DS
@@ -156,6 +161,10 @@ cp "$ROOT/config/systems.cfg" "$P/"
 if [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores" melondsds
+elif [ "$PLATFORM" = brick ]; then
+	[ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
+		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
+	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores"
 else
 	plorpos_files "$P" "$ROOT/vendor/cores"
 fi

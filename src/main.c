@@ -164,6 +164,10 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "ds-a",      "Focus Top" },
 	{ "ds-a-swap", "Focus Bottom" },
 	{ "ds-b",      "Even Split" },
+	/* One screen at a time, fullscreen: the DS on the Brick and H700, which
+	 * draw no split (plorpos-reo.21). The slice those two offer. */
+	{ "ds-top",    "Top Screen" },
+	{ "ds-bottom", "Bottom Screen" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -195,6 +199,14 @@ static void font_apply(bool head, int k)
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   3
+#define DMODE_DS_TOP 6
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+#define DS_LO DMODE_DS_A
+#define DS_HI DMODE_DS_TOP
+#else
+#define DS_LO DMODE_DS_TOP
+#define DS_HI DMODE_COUNT
+#endif
 
 /* A system's own slice of DMODES: the DS its two layouts, every other system
  * the rest. Cycling stays inside it, and a mode outside it (never set, or
@@ -203,8 +215,8 @@ static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
 
 static int dmode_step(const char *tag, int cur, int d)
 {
-	int lo = is_nds_tag(tag) ? DMODE_DS_A : 0;
-	int hi = is_nds_tag(tag) ? DMODE_COUNT : DMODE_DS_A, n = hi - lo;
+	int lo = is_nds_tag(tag) ? DS_LO : 0;
+	int hi = is_nds_tag(tag) ? DS_HI : DMODE_DS_A, n = hi - lo;
 
 	if (cur < lo || cur >= hi) return lo;
 	return lo + (cur - lo + d + n) % n;
@@ -11195,16 +11207,19 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	 * held is the default modifier - so it is judged on the release. */
 	bool capturing = false, menu_tap = false;
 	bool changed = false;
-	char spec[128];
+	char spec[192];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Display Mode is the DS's, and Stylus the DS's where there is no panel
-	 * to touch, its last two action rows; elsewhere the screen is that much
-	 * shorter (plorpos-3yv.47, .62, plorpos-46o.4). */
+	/* Display Mode is the DS's, Stylus Tap the DS's where there is no panel
+	 * to touch, and Stylus Mode where there is no stick either: its last
+	 * three action rows; elsewhere the screen is that much shorter
+	 * (plorpos-3yv.47, .62, plorpos-46o.4, plorpos-reo.21). */
 #if defined(PLATFORM_ROTATE)
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 1 : HK_ROW_COUNT - 2;
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 2 : HK_ROW_COUNT - 3;
+#elif defined(PLATFORM_GKD)
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 1 : HK_ROW_COUNT - 3;
 #else
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 2;
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 3;
 #endif
 	const int NROWS = FIRST_ACT + nact;
 
