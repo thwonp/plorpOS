@@ -43,8 +43,9 @@
   the shelf's Core row (Rotate and GKD), with achievements. Display Mode lays the two screens
   out (Focus Top, Focus Bottom, Even Split), and a hotkey swaps them. On the
   GKD the stick moves a stylus cursor over the bottom screen and R2 touches.
-  The Brick shows one screen at a time, Top or Bottom; its D-pad becomes the
-  stylus with the **Stylus Mode** and **Stylus Tap** hotkeys, which you bind.
+  The Brick has Top Only, Bottom Only, Top Focus and Bottom Focus layouts,
+  stepped with the **Layout ->** and **Layout <-** hotkeys; its D-pad becomes
+  the stylus with the **Stylus Mode** and **Stylus Tap** hotkeys, which you bind.
 - **Ports** on the RG Rotate and the GKD: PortMaster is the first entry on the
   Ports shelf, and what it installs appears there. Unofficial: report problems
   to plorpOS, not the PortMaster team.
@@ -322,7 +323,7 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Display Mode**, the next screen layout, MENU + X by default, on the GKD **Stylus Tap**, the button that touches where the stick's cursor is, R2 by default, and on the Brick **Stylus Mode** (the D-pad moves a cursor over the bottom screen) and **Stylus Tap**, both unbound until you set them. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Layout ->** (the Display Mode hotkey), the next screen layout, MENU + X by default on the GKD and Rotate, on the GKD **Stylus Tap**, the button that touches where the stick's cursor is, R2 by default, and on the Brick **Stylus Mode** (the D-pad moves a cursor over the bottom screen), **Stylus Tap** and **Layout <-** (the previous layout), all unbound until you set them. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
 - **Brick:** Menu or Select.

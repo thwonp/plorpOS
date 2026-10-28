@@ -164,10 +164,15 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "ds-a",      "Focus Top" },
 	{ "ds-a-swap", "Focus Bottom" },
 	{ "ds-b",      "Even Split" },
-	/* One screen at a time, fullscreen: the DS on the Brick and H700, which
-	 * draw no split (plorpos-reo.21). The slice those two offer. */
-	{ "ds-top",    "Top Screen" },
-	{ "ds-bottom", "Bottom Screen" },
+	/* One screen fullscreen, or one big and one small: the DS on the Brick
+	 * and H700, which draw no split (plorpos-reo.21). The slice those two
+	 * offer, in the order the layout hotkeys round them. */
+	{ "ds-top",    "Top Only" },
+	{ "ds-bottom", "Bottom Only" },
+	/* Both screens: one big at the left, the other a third its width at its
+	 * right, in the corner of the big one. */
+	{ "ds-topfocus",    "Top Focus" },
+	{ "ds-bottomfocus", "Bottom Focus" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -11210,16 +11215,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[192];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Display Mode is the DS's, Stylus Tap the DS's where there is no panel
-	 * to touch, and Stylus Mode where there is no stick either: its last
-	 * three action rows; elsewhere the screen is that much shorter
+	/* Layout -> (Display Mode) is the DS's, Stylus Tap the DS's where there is
+	 * no panel to touch, and Stylus Mode and Layout <- where there is no stick
+	 * either and so four layouts: its last four action rows; elsewhere the screen is that much shorter
 	 * (plorpos-3yv.47, .62, plorpos-46o.4, plorpos-reo.21). */
 #if defined(PLATFORM_ROTATE)
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 2 : HK_ROW_COUNT - 3;
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 3 : HK_ROW_COUNT - 4;
 #elif defined(PLATFORM_GKD)
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 1 : HK_ROW_COUNT - 3;
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 2 : HK_ROW_COUNT - 4;
 #else
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 3;
+	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 4;
 #endif
 	const int NROWS = FIRST_ACT + nact;
 

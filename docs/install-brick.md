@@ -72,9 +72,13 @@ The PIN is new every time you open Over The Hare.
 
 ## Nintendo DS (next Brick build)
 
-Put `.nds` files in `Roms/Nintendo DS/`. The Brick shows one DS screen at a
-time, fullscreen: **Top Screen** (the default) or **Bottom Screen**, in the
-in-game menu's Display row or with the **Display Mode** hotkey.
+Put `.nds` files in `Roms/Nintendo DS/`. The Brick has four layouts, in the
+in-game menu's Display row: **Top Only** (the default) and **Bottom Only**,
+one screen fullscreen, and **Top Focus** and **Bottom Focus**, one screen at
+three times the size of the other, which sits against its right edge (the
+bottom screen at the bottom-right of Top Focus, the top screen at the top-right
+of Bottom Focus). The **Layout ->** and **Layout <-** hotkeys go round them in
+that order, so two buttons can flip between neighbouring layouts.
 
 The Brick has no touch screen or stick, so the D-pad can be the stylus. In
 Hotkeys, bind **Stylus Mode** (turns the D-pad into a cursor over the bottom
@@ -86,8 +90,10 @@ buttons and shoulders still reach the game.
 
 This is DSperate built without its profile-guided optimisation for the
 Brick's older system libraries. Boot and title screens of Advance Wars: Dual
-Strike, Pokemon Pearl and Dragon Quest V held 59.83 fps; sustained play of
-other games, DS save states, rewind and the microphone are not verified.
+Strike, Pokemon Pearl and Dragon Quest V held 59.83 fps, and Top Focus held
+59.5 fps in Pokemon Pearl. Saving and loading a state and rewind were checked
+in Pokemon Pearl. Sustained play of other games and the microphone are not
+verified.
 
 ## Ports (next Brick build)
 
