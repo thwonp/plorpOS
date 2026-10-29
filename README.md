@@ -39,7 +39,7 @@
   - A cart you play in Splore lands on the shelf with its full artwork.
 - **Sega CD and 32X,** either combined on the Genesis shelf or on their own dedicated shelves.
 - **Achievements for disc games and arcade sets**
-- **Nintendo DS** on the RG Rotate, the GKD and the Brick: DSperate-lr, or melonDS DS on
+- **Nintendo DS** on the RG Rotate, the GKD, the Brick and the H700 handhelds: DSperate-lr, or melonDS DS on
   the shelf's Core row (Rotate and GKD), with achievements. Display Mode lays the two screens
   out (Focus Top, Focus Bottom, Even Split), and a hotkey swaps them. On the
   GKD the stick moves a stylus cursor over the bottom screen and R2 touches.
@@ -169,7 +169,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
-| Nintendo DS (RG Rotate, GKD, Brick) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
+| Nintendo DS (RG Rotate, GKD, Brick, H700) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
 | Ports (RG Rotate, GKD) | `Roms/Ports` | installed by PortMaster | - |
 
 Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
@@ -421,6 +421,10 @@ plorpOS is C and SDL2, built on Eric Reinsmidt's TortOS. Games run in [diatom](h
 - [Configuration](docs/configuration.md): the two settings databases, `systems.cfg` and core options
 - [Building](docs/building.md): the toolchain, the card, the checks, and deploying to a device
 - [Design decisions](docs/decisions/) and [how menus behave](docs/menus.md)
+
+## Credits
+
+- **DS frame skipping.** When a heavy 3D scene would run late, the frontend tells DSperate and the core leaves that frame's rendering out, so the game keeps its speed. The approach, and the idea of driving it from libretro's audio-buffer-status callback, is from nelynes's [slotPlus](https://github.com/nelynes/slotPlus) (`crates/slot-retro`), which does the same for DSperate on the RG SP. Our version is `mk/patches/dsperate-lr-frameskip.patch` and Diatom's frame loop.
 
 ## License
 

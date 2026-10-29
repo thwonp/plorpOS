@@ -108,7 +108,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
 
 typedef enum {
 	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_SHADER, GM_PALETTE, GM_DISC,
-	GM_CHEEVOS, GM_HOTKEYS, GM_RESET, GM_QUIT,
+	GM_CHEEVOS, GM_HOTKEYS, GM_STYLUS, GM_RESET, GM_QUIT,
 	GM_ROWS
 } gm_row;
 
@@ -118,6 +118,7 @@ typedef struct {
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
+	const char *stylus;   /* "Left Stick"|"Right Stick"; NULL: not a DS game on a unit with two sticks (plorpos-reo.21.7) */
 	const char *disc;     /* "Disc N"; NULL: not an .m3u, or nothing to swap (plorpos-gkd.47) */
 	int         earned;
 	int         total;    /* 0: this game has no achievement set */

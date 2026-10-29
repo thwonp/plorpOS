@@ -2,11 +2,12 @@ diff --git a/src/libretro.cpp b/src/libretro.cpp
 index eadda3b..4e4160f 100644
 --- a/src/libretro.cpp
 +++ b/src/libretro.cpp
-@@ -141,7 +141,17 @@ RETRO_API void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { aud
+@@ -141,7 +141,18 @@ RETRO_API void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { aud
  RETRO_API void retro_set_input_poll(retro_input_poll_t cb) { input_poll_cb = cb; }
  RETRO_API void retro_set_input_state(retro_input_state_t cb) { input_state_cb = cb; }
  
 -RETRO_API void retro_init(void) { ds::set_thread_layout(false); }
++// Idea and approach: nelynes's slotPlus (https://github.com/nelynes/slotPlus).
 +// The frontend's "this frame will run late": the GPU then leaves out its 3D
 +// raster and line output for the frame (the game, the CPUs and the sound run
 +// unchanged), the same frame skip RetroArch drives from the audio buffer.

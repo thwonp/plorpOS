@@ -874,11 +874,18 @@ static void ingame_rows(void)
 
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
-	u.disc = "Disc 2";
+	u.disc = "Disc 2"; u.stylus = NULL;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "eleven rows");
+	ck(n == GM_ROWS, "every row is built");
+	ck(GM_STYLUS == GM_HOTKEYS + 1 && GM_RESET == GM_STYLUS + 1 && !rows[GM_STYLUS].live,
+	   "Stylus Stick sits between Hotkeys and Reset, passed over when it does not apply");
+	u.stylus = "Right Stick";
+	gm_rows(&u, rows, &b);
+	ck(rows[GM_STYLUS].live && !strcmp(val(&rows[GM_STYLUS]), "Right Stick"), "and says which stick when it does");
+	u.stylus = NULL;
+	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(GM_SHADER == GM_DISPLAY + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
@@ -900,7 +907,7 @@ static void ingame_rows(void)
 	ck(!strcmp(rows[GM_HOTKEYS].label, "Hotkeys"), "Hotkeys is there");
 	ck(rows[GM_HOTKEYS].live, "and is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS, "every row is a stop");
+	ck(k == GM_ROWS - 1, "every row but Stylus Stick (not a DS game) is a stop");
 
 	u.earned = 0; u.total = 0;
 	n = gm_rows(&u, rows, &b);
@@ -908,7 +915,7 @@ static void ingame_rows(void)
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Achievements says none");
 	ck(!rows[GM_CHEEVOS].live, "and does nothing");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS - 1, "so the cursor steps over it");
+	ck(k == GM_ROWS - 2, "so the cursor steps over it");
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
@@ -940,7 +947,7 @@ static void ingame_rows(void)
 		   "Disc says None and does nothing on a game not launched from an .m3u");
 		m = gm_compact(rows, n, ids);
 		printf("in-game menu as drawn, a Brick's Game Boy-less, one-disc game:\n");
-		ck(m == GM_ROWS - 3, "Shader, Palette and Disc are not drawn at all");
+		ck(m == GM_ROWS - 4, "Shader, Palette, Disc and Stylus Stick are not drawn at all");
 		for (i = 0; i < m; i++) {
 			if (!strcmp(rows[i].label, "Shader")) shader = 1;
 			if (!strcmp(rows[i].label, "Palette")) palette = 1;
@@ -957,14 +964,14 @@ static void ingame_rows(void)
 		u.shaders = true; u.palette = "Auto";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_PALETTE &&
+		ck(m == GM_ROWS - 2 && ids[GM_PALETTE] == GM_PALETTE &&
 		   ids[GM_DISC] == GM_CHEEVOS,
 		   "a Game Boy game on the GKD draws every row but Disc");
 
 		u.palette = NULL; u.disc = "Disc 1";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_DISC &&
+		ck(m == GM_ROWS - 2 && ids[GM_PALETTE] == GM_DISC &&
 		   !strcmp(rows[GM_PALETTE].label, "Disc"),
 		   "an .m3u PlayStation game draws Disc where Palette would be");
 	}

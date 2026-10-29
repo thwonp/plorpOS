@@ -99,7 +99,7 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
 		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Disc",
-		"Achievements", "Hotkeys", "Reset", "Quit"
+		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
 	};
 	int i;
 
@@ -119,6 +119,9 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	 * anything that cannot have a second disc. */
 	out[GM_DISC].value = u->disc ? u->disc : "None";
 	out[GM_DISC].live  = u->disc != NULL;
+	/* Under Hotkeys, where Stylus Mode is bound: which stick is the stylus. */
+	out[GM_STYLUS].value = u->stylus ? u->stylus : "None";
+	out[GM_STYLUS].live  = u->stylus != NULL;
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened
@@ -139,7 +142,7 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	int i, k = 0;
 
 	for (i = 0; i < n; i++) {
-		if ((i == GM_SHADER || i == GM_PALETTE || i == GM_DISC) && !rows[i].live)
+		if ((i == GM_SHADER || i == GM_PALETTE || i == GM_DISC || i == GM_STYLUS) && !rows[i].live)
 			continue;
 		rows[k] = rows[i];
 		ids[k++] = i;

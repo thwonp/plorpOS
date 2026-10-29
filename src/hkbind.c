@@ -50,12 +50,12 @@ const char *const HK_ACTION_LABEL[] = {
 	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Screenshot",
 	"Turbo Assign",  /* plorpos-tkh, Diatom's ADR-0045 */
 	"Layout ->",     /* the DS's Display Mode, last so other shelves drop it (plorpos-3yv.47, .62) */
+	"Layout <-",     /* the same round the other way, where there are four layouts (plorpos-reo.21) */
 	"Stylus Tap",    /* the DS's on a port with no panel (the GKD's cursor, plorpos-46o.4) */
-	"Stylus Mode",   /* the DS's on a port with neither panel nor stick: d-pad as cursor (plorpos-reo.21) */
-	"Layout <-"      /* the same round the other way, where there are four layouts (plorpos-reo.21) */
+	"Stylus Mode"    /* the DS's on a port with neither panel nor stick: d-pad as cursor (plorpos-reo.21) */
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "stylus", "stylusmode", "swapback"
+	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapback", "stylus", "stylusmode"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from

@@ -9385,6 +9385,16 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
 		u.palette = pal < 0 ? NULL : gbpal_label(pal);
 	}
+	u.stylus = NULL;
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	if (plat_two_sticks()) {
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+		if (is_nds_tag(a->sys.systems[o].tag))
+			u.stylus = db_get_int(db_dev(), "stylusstick", 0) ? "Right Stick" : "Left Stick";
+	}
+#endif
 	u.disc   = g_disc.count > 1 ? g_disc.label : NULL;
 	u.earned = chv_earned();
 	u.total  = chv_count();
@@ -11222,17 +11232,26 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[192];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Layout -> (Display Mode) is the DS's, Stylus Tap the DS's where there is
-	 * no panel to touch, and Stylus Mode and Layout <- where there is no stick
-	 * either and so four layouts: its last four action rows; elsewhere the screen is that much shorter
-	 * (plorpos-3yv.47, .62, plorpos-46o.4, plorpos-reo.21). */
+	/* Layout -> (Display Mode) is the DS's, Layout <- where there are four
+	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
+	 * Stylus Mode where there is no stick either: the last four action rows.
+	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
+	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
+	int vis[HK_ROW_COUNT], nact = 0;
+
+	for (i = 0; i < HK_ROW_COUNT; i++) {
+		bool shown = i < HK_ROW_COUNT - 4;
+		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 3 : HK_ROW_COUNT - 4;
+			shown = i == HK_ROW_COUNT - 4;                          /* Layout -> */
 #elif defined(PLATFORM_GKD)
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT - 2 : HK_ROW_COUNT - 4;
+			shown = i == HK_ROW_COUNT - 4 || i == HK_ROW_COUNT - 2; /* Layout ->, Stylus Tap */
 #else
-	const int nact = is_nds_tag(tag) ? HK_ROW_COUNT : HK_ROW_COUNT - 4;
+			shown = true;
 #endif
+		}
+		if (shown) vis[nact++] = i;
+	}
 	const int NROWS = FIRST_ACT + nact;
 
 	{
@@ -11260,7 +11279,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				/* Taken from whichever row held it: one trigger, one action. */
 				for (i = 0; i < HK_ROW_COUNT; i++)
 					if (trig_for_row[i] == t) trig_for_row[i] = 0;
-				trig_for_row[act] = t;
+				trig_for_row[vis[act]] = t;
 				capturing = false;
 				changed = true;
 			} else if (a->in.pressed[IN_MENU]) {
@@ -11288,8 +11307,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
-			} else if (a->in.pressed[IN_X] && trig_for_row[sel - FIRST_ACT]) {
-				trig_for_row[sel - FIRST_ACT] = 0;
+			} else if (a->in.pressed[IN_X] && trig_for_row[vis[sel - FIRST_ACT]]) {
+				trig_for_row[vis[sel - FIRST_ACT]] = 0;
 				changed = true;
 			}
 
@@ -11319,7 +11338,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
 		for (i = 0; i < nact; i++) {
-			int t = trig_for_row[i];
+			int t = trig_for_row[vis[i]];
 
 			if (capturing && i == sel - FIRST_ACT)
 				snprintf(vals[i], sizeof vals[i], "Press...");
@@ -11329,7 +11348,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				         hk_trig_mod(t) ? " + " : "",
 				         hk_trig_stick(t) && plat_two_sticks() ? "L " : "",
 				         HK_TRIG_NAME[t]);
-			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i], true };
 		}
 		rows[NROWS] = MENU_RULE;
 		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
@@ -11352,7 +11371,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
 enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA,
-       GS_RA_SETS, GS_SCRAPE, GS_STYLUS, GS_ROWS };
+       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -11399,13 +11418,7 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
-	/* Which stick is the DS stylus, on a unit with two (plorpos-reo.21.7). */
-	if (plat_two_sticks()) {
-		rows[GS_STYLUS] = (menu_row){ "Stylus Stick",
-		                              db_get_int(db_dev(), "stylusstick", 0) ? "right" : "left", true };
-		return GS_ROWS;
-	}
-	return GS_ROWS - 1;
+	return GS_ROWS;
 }
 
 /* Left, right and A all change the row: the on/off ones flip, and the two
@@ -11441,10 +11454,6 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
 		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
-	} else if (sel == GS_STYLUS) {
-		if (!plat_two_sticks()) return MENU_STAY;
-		db_set_int(db_dev(), "stylusstick", !db_get_int(db_dev(), "stylusstick", 0));
-		/* Takes hold at the next game: Diatom reads it after RUN. */
 	} else if (onoff[sel].key) {
 		db_set_int(db_dev(), onoff[sel].key,
 		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));
@@ -11522,6 +11531,12 @@ static int gm_width(app *a)
 	for (k = 0; k < DMODE_COUNT; k++) {
 		int mw;
 		rows[GM_DISPLAY].value = DMODES[k].label;
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
+	for (k = 0; k < 2 && rows[GM_STYLUS].live; k++) {
+		int mw;
+		rows[GM_STYLUS].value = k ? "Right Stick" : "Left Stick";
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
@@ -12024,6 +12039,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	 * menu redraws into it. */
 	if (sel == GM_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
 		gm_cycle_display(a, key == IN_RIGHT ? 1 : -1);
+		return MENU_STAY;
+	}
+	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
+	 * game under this menu uses it when it resumes. */
+	if (sel == GM_STYLUS && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		int right = !db_get_int(db_dev(), "stylusstick", 0);
+
+		db_set_int(db_dev(), "stylusstick", right);
+		plat_resident_line("SETSTYLUSSTICK\tstick=%s", right ? "right" : "left");
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
