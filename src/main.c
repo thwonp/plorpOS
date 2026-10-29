@@ -550,6 +550,13 @@ static int alt_core(const system_cfg *s)
 {
 	size_t k;
 
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	/* Only the GKD and the Rotate ship melonDS DS: the Brick and the H700 have
+	 * DSperate alone, and a Core row would offer a core that is not there
+	 * (plorpos-reo.21.11). */
+	(void)s;
+	return -1;
+#endif
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
 		if (!strcmp(s->core, ALT_CORES[k].core)) return (int)k;
 	return -1;

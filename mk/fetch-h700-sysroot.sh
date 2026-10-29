@@ -100,7 +100,7 @@ cp -r "$SRC/libasound2-dev/usr/include/alsa" "$OUT/usr/include/"
 cp "$SRC/libasound2/usr/lib/aarch64-linux-gnu/libasound.so.2.0.0" "$OUT/usr/lib/libasound.so.2"
 ln -sf libasound.so.2 "$OUT/usr/lib/libasound.so"
 
-docker run --rm -i -v "$SRC:/src" -v "$OUT:/out" tortos-toolchain sh -s << EOF
+docker run --rm -i -v "$SRC:/src:z" -v "$OUT:/out:z" tortos-toolchain sh -s << EOF
 set -e
 cat > /tmp/tc.cmake << T
 set(CMAKE_SYSTEM_NAME Linux)

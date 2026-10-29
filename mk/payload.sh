@@ -146,8 +146,9 @@ fi
 # Both devices ship every system since plorpos-reo: the Brick dropped fbneo,
 # pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
 cp "$ROOT/config/systems.cfg" "$P/"
-# The H700 has the Rotate's Ports shelf (plorpos-2wl.10), and not its DS one.
-[ "$PLATFORM" = h700 ] && grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The H700 has the Rotate's Ports shelf (plorpos-2wl.10) and its DS one, on the
+# Brick's build of DSperate (plorpos-reo.21.7).
+[ "$PLATFORM" = h700 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # The Brick also has the DS (plorpos-reo.21): its own build of DSperate, one
 # screen at a time (mk/build-dsperate-brick.sh).
 if [ "$PLATFORM" = brick ]; then
@@ -166,7 +167,11 @@ elif [ "$PLATFORM" = brick ]; then
 		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
 	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores"
 else
-	plorpos_files "$P" "$ROOT/vendor/cores"
+	# The H700 loads the Brick's DSperate: GCC 10, glibc 2.17 symbols, BaseOS has 2.35.
+	[ "$PLATFORM" != h700 ] || [ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
+		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
+	if [ "$PLATFORM" = h700 ]; then plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores"
+	else plorpos_files "$P" "$ROOT/vendor/cores"; fi
 fi
 cp "$DIATOM_ELF" "$P/diatom"
 
