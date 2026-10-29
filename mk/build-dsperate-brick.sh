@@ -35,6 +35,9 @@ for p in "$SRC"/patches/*.patch; do
 	[ -e "$p" ] || continue
 	git -C "$SRC/DSperate" apply "$p"
 done
+# The wrapper's frame skip: the core leaves a frame's rendering out when the
+# frontend says it will run late (plorpos-reo.21.7; slotPlus does the same).
+git -C "$SRC" apply "$ROOT/mk/patches/dsperate-lr-frameskip.patch"
 
 docker run --rm -e TUNE="$TUNE" -v "$SRC:/w:z" -w /w $IMAGE sh -c '
 set -e
