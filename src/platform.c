@@ -533,6 +533,10 @@ static void child_audio_release(void)
 	if (!fgets(now, sizeof now, f)) now[0] = '\0';
 	fclose(f);
 	if (!now[0] || now[0] == '-' || now[0] == '\t') return;   /* nothing, or the codec */
+	/* The Bricks name the codec (AOUT_CODEC_PCM): dmix shares it, so there is
+	 * nothing to let go of and no reason to keep the menu waiting for it. */
+	if (AOUT_CODEC_PCM[0] && !strncmp(now, AOUT_CODEC_PCM "\t", sizeof AOUT_CODEC_PCM))
+		return;
 	plat_child_audio(NULL, NULL);
 	while (plat_now_ms() - t0 < 400) {
 		usleep(5000);

@@ -2371,19 +2371,6 @@ static const char *aout_link(const aout_state *s)
 }
 #endif
 
-/* The codec's own name, for aout_state.codec. The Bricks' alsa-lib settles
- * what "default" means once per process, and a process that met a USB DAC
- * there goes on meaning the DAC - Diatom asked for default and held the DAC;
- * a Muse started with one plugged in failed every open after (plorpos-8wc.8).
- * So there the codec is always named: the firmware's own shared path,
- * /etc/asound.conf's Playback (softvol over dmix), which is all default is
- * without a DAC - not sysdefault, the bare card, which would not share. Muse
- * gets the same name in MUSE_CODEC for its own fallback. */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && defined(__aarch64__)
-#define AOUT_CODEC_PCM "Playback"   /* the Bricks; not the desktop build */
-#else
-#define AOUT_CODEC_PCM ""
-#endif
 
 static aout_state aout_now(void)
 {
@@ -12939,7 +12926,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	 * Kept off until the game is over, the native menu's aout_apply included;
 	 * the shelf's puts it back. plorpos-cdd. */
 	g_pico8_runs = true;
-	if (dev[0]) {
+	if (aout_named(&as)) {
 		unsigned t0 = plat_now_ms();
 
 		plat_resident_audio_drain();

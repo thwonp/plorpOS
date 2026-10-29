@@ -69,6 +69,20 @@ extern const char *const plat_pico8_path;
  * ADR-0044). */
 bool plat_two_sticks(void);
 
+/* The codec's own name, for aout_state.codec. The Bricks' alsa-lib settles
+ * what "default" means once per process, and a process that met a USB DAC
+ * there goes on meaning the DAC - Diatom asked for default and held the DAC;
+ * a Muse started with one plugged in failed every open after (plorpos-8wc.8).
+ * So there the codec is always named: the firmware's own shared path,
+ * /etc/asound.conf's Playback (softvol over dmix), which is all default is
+ * without a DAC - not sysdefault, the bare card, which would not share. Muse
+ * gets the same name in MUSE_CODEC for its own fallback. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && defined(__aarch64__)
+#define AOUT_CODEC_PCM "Playback"   /* the Bricks; not the desktop build */
+#else
+#define AOUT_CODEC_PCM ""
+#endif
+
 #define SWITCHER_HOLD_MS 700
 
 typedef enum {
