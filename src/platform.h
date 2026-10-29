@@ -100,6 +100,9 @@ typedef enum {
 	/* The Brick Pro's right stick: its click and its directions, which
 	 * drive nothing else (diatom's ADR-0044). Same order. */
 	IN_R3, IN_RSLEFT, IN_RSRIGHT, IN_RSUP, IN_RSDOWN,
+	/* The Bricks' function keys, Fn1 the left: hotkey triggers since
+	 * brightness moved to MENU + Volume (plorpos-reo.22). */
+	IN_FN1, IN_FN2,
 	/* Not a key: Menu held for SWITCHER_HOLD_MS with nothing else pressed,
 	 * or a swipe up from the bottom of a touch panel - the game switcher
 	 * (plorpos-gl5). One poll down, the next up, as the touch presses are. */

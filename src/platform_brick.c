@@ -76,7 +76,7 @@ const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
 
 /* The brightness keys, as the Controls page names them. */
-const char *plat_bright_keys(void) { return plat_is_brick_pro() ? "FN1/FN2" : "F1/F2"; }
+const char *plat_bright_keys(void) { return "Menu+Vol"; }   /* plorpos-reo.22 */
 
 /* Which of the two, from the line the boot script already trusts: cpuinfo's
  * hwserial names the model and nothing else on the device does. */
@@ -361,18 +361,27 @@ int menu_key(int *code)
  * sunxi-keyboard's (measured 2026-10-05, plorpos-reo.10), so plat_run reads
  * them through levels_key on menu_key's descriptor. */
 int levels_fd(void) { return -1; }
-bool levels_alt(void) { return false; }
+
+/* Brightness is MENU + Volume, as on every other device; the function keys
+ * are Fn1/Fn2 hotkey triggers (plorpos-reo.22). Asked of the kernel, as on
+ * the H700: while plat_run has the pad, only it reads it. */
+bool levels_alt(void)
+{
+#ifdef __linux__
+	unsigned char bits[KEY_MAX / 8 + 1] = { 0 };
+
+	return fd_joy >= 0 && ioctl(fd_joy, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+	       (bits[BTN_MODE / 8] >> (BTN_MODE % 8) & 1);
+#else
+	return false;
+#endif
+}
 
 int levels_key(int code, bool *bright)
 {
-	bool pro = plat_is_brick_pro();
-
-	*bright = false;
+	*bright = levels_alt();
 	if (code == KEY_VOLUMEUP)   return +1;
 	if (code == KEY_VOLUMEDOWN) return -1;
-	*bright = true;
-	if (code == (pro ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT)) return +1;
-	if (code == (pro ? CODE_PRO_FN_LEFT  : CODE_FN_LEFT))  return -1;
 	return 0;
 }
 
@@ -490,14 +499,24 @@ static void poll_raw_fd(int fd, in_state *st)
 		if (dbg_input)
 			fprintf(stderr, "[in] raw fd=%d code=%d val=%d\n", fd, ev.code, ev.value);
 		in_button b = IN_NONE;
+		if (ev.value == 2) continue;
+		/* A volume press is brightness with MENU held (plorpos-reo.22); a
+		 * release lets go of both, so letting go of MENU first strands
+		 * nothing. menu_filter makes that MENU a chord, not a tap. */
+		if (ev.code == KEY_VOLUMEUP || ev.code == KEY_VOLUMEDOWN) {
+			bool up = ev.code == KEY_VOLUMEUP;
+			in_button vol = up ? IN_VOLUP : IN_VOLDN, br = up ? IN_BRIGHTUP : IN_BRIGHTDN;
+
+			if (ev.value == 1) set_btn(st, st->down[IN_MENU] ? br : vol, true);
+			else { set_btn(st, vol, false); set_btn(st, br, false); }
+			continue;
+		}
 		if (ev.code == KEY_POWER) b = IN_POWER;
-		else if (ev.code == KEY_VOLUMEUP) b = IN_VOLUP;
-		else if (ev.code == KEY_VOLUMEDOWN) b = IN_VOLDN;
-		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT))
-			b = IN_BRIGHTUP;
 		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_LEFT : CODE_FN_LEFT))
-			b = IN_BRIGHTDN;
-		if (b != IN_NONE && ev.value != 2)
+			b = IN_FN1;
+		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT))
+			b = IN_FN2;
+		if (b != IN_NONE)
 			set_btn(st, b, ev.value == 1);
 	}
 #else

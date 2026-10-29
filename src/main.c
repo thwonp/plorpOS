@@ -11186,6 +11186,7 @@ static const struct { in_button b; int hk; } HK_CAPTURE[] = {
 	{ IN_SLEFT, HK_IN_SLEFT }, { IN_SRIGHT, HK_IN_SRIGHT },
 	{ IN_UP, HK_IN_UP }, { IN_DOWN, HK_IN_DOWN },
 	{ IN_LEFT, HK_IN_LEFT }, { IN_RIGHT, HK_IN_RIGHT },
+	{ IN_FN1, HK_IN_FN1 }, { IN_FN2, HK_IN_FN2 },
 };
 
 /* The launcher key behind a modifier's wire name (plat_hotkey_modifiers). */

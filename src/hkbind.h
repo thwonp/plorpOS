@@ -20,7 +20,7 @@
 /* Trigger 0 is None. The name is the input alone ("X", "Stick Up"); the
  * screen puts the modifier's own label in front where hk_trig_mod says so. */
 extern const char *const HK_TRIG_NAME[];
-#define HK_TRIG_COUNT 33
+#define HK_TRIG_COUNT 37
 int hk_trig_mod(int t);     /* needs the modifier held */
 int hk_trig_stick(int t);   /* the (left) stick's direction - "L Stick" on the Pro */
 
@@ -33,6 +33,7 @@ enum {
 	HK_IN_UP, HK_IN_DOWN, HK_IN_LEFT, HK_IN_RIGHT,
 	HK_IN_SUP, HK_IN_SDOWN, HK_IN_SLEFT, HK_IN_SRIGHT,
 	HK_IN_RSUP, HK_IN_RSDOWN, HK_IN_RSLEFT, HK_IN_RSRIGHT,
+	HK_IN_FN1, HK_IN_FN2,   /* the Bricks' function keys (plorpos-reo.22) */
 	HK_IN_COUNT
 };
 int hk_trig_from(int input, int mod);

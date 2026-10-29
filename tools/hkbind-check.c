@@ -122,6 +122,15 @@ int main(void)
 	ck(!strcmp(out, "rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate"),
 	   "round-trips byte for byte");
 
+	printf("the Bricks' function keys (plorpos-reo.22):\n");
+	hk_parse("d.fn1:screenshot,fn2:ff", b);
+	ck(!strcmp(HK_TRIG_NAME[b[4]], "Fn1") && !hk_trig_mod(b[4]) && b[4] == hk_trig_from(HK_IN_FN1, 0),
+	   "screenshot row -> Fn1 alone");
+	ck(!strcmp(HK_TRIG_NAME[b[0]], "Fn2") && hk_trig_mod(b[0]) && b[0] == hk_trig_from(HK_IN_FN2, 1),
+	   "ff row -> Fn2 with the modifier");
+	hk_serialize(b, out, sizeof out);
+	ck(!strcmp(out, "fn2:ff,d.fn1:screenshot"), "round trip, in row order");
+
 	printf("empty spec means every row is None:\n");
 	hk_parse("", b);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "None"), "ff row -> None");

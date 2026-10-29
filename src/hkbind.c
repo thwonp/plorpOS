@@ -18,6 +18,7 @@ const char *const HK_TRIG_NAME[] = {
 	"Stick Up", "Stick Down", "Stick Left", "Stick Right",
 	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
 	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
+	"Fn1", "Fn2", "Fn1", "Fn2",   /* the Bricks' function keys (plorpos-reo.22) */
 };
 static const char *const HK_TRIG_WIRE[] = {
 	NULL,
@@ -27,14 +28,17 @@ static const char *const HK_TRIG_WIRE[] = {
 	"sup", "sdown", "sleft", "sright",
 	"rsup", "rsdown", "rsleft", "rsright",
 	"d.rsup", "d.rsdown", "d.rsleft", "d.rsright",
+	"fn1", "fn2", "d.fn1", "d.fn2",
 };
 enum { HK_FIRST_DIRECT = 9, HK_FIRST_DPAD = 17, HK_FIRST_STICK = 21,
-       HK_FIRST_RSTICK = 25, HK_FIRST_RSTICK_DIRECT = 29 };
+       HK_FIRST_RSTICK = 25, HK_FIRST_RSTICK_DIRECT = 29,
+       HK_FIRST_FN = 33, HK_FIRST_FN_DIRECT = 35 };
 
 int hk_trig_mod(int t)
 {
 	return t > 0 && (t < HK_FIRST_DIRECT
-	                 || (t >= HK_FIRST_DPAD && t < HK_FIRST_RSTICK_DIRECT));
+	                 || (t >= HK_FIRST_DPAD && t < HK_FIRST_RSTICK_DIRECT)
+	                 || (t >= HK_FIRST_FN && t < HK_FIRST_FN_DIRECT));
 }
 int hk_trig_stick(int t) { return t >= HK_FIRST_STICK && t < HK_FIRST_RSTICK; }
 
@@ -42,6 +46,8 @@ int hk_trig_from(int input, int mod)
 {
 	if (input < 0 || input >= HK_IN_COUNT) return 0;
 	if (input < HK_IN_UP) return (mod ? 1 : HK_FIRST_DIRECT) + input;
+	if (input >= HK_IN_FN1)
+		return (mod ? HK_FIRST_FN : HK_FIRST_FN_DIRECT) + (input - HK_IN_FN1);
 	if (input >= HK_IN_RSUP)
 		return (mod ? HK_FIRST_RSTICK : HK_FIRST_RSTICK_DIRECT) + (input - HK_IN_RSUP);
 	return mod ? HK_FIRST_DPAD + (input - HK_IN_UP) : 0;
