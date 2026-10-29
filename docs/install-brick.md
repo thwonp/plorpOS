@@ -70,7 +70,7 @@ lands in the console's folder, so move the old one over it.
 
 The PIN is new every time you open Over The Hare.
 
-## Nintendo DS (next Brick build)
+## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`. The Brick has four layouts, in the
 in-game menu's Display row: **Top Only** (the default) and **Bottom Only**,
@@ -80,13 +80,17 @@ bottom screen at the bottom-right of Top Focus, the top screen at the top-right
 of Bottom Focus). The **Layout ->** and **Layout <-** hotkeys go round them in
 that order, so two buttons can flip between neighbouring layouts.
 
-The Brick has no touch screen or stick, so the D-pad can be the stylus. In
+The Brick has no touch screen, so the D-pad can be the stylus. In
 Hotkeys, bind **Stylus Mode** (turns the D-pad into a cursor over the bottom
 screen and back; the cursor shows only while it is on and the bottom screen is
 up, and it starts off in every game) and **Stylus Tap** (hold to touch where
 the cursor is). No keys are bound for you. The cursor starts slowly, so a
 menu item can be aimed at, and speeds up while the D-pad is held; the face
 buttons and shoulders still reach the game.
+
+On the Brick Pro a stick is the stylus instead and the D-pad stays the game's:
+the left stick by default, or the right one, picked with the in-game menu's
+**Stylus Stick** row (shown only while a DS game runs).
 
 This is DSperate built without its profile-guided optimisation for the
 Brick's older system libraries. A heavy 3D scene needs about as long as a

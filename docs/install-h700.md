@@ -44,6 +44,27 @@ Copy everything in the new zip onto the plorpOS card, replacing what's there.
 Your settings, saves, play time and achievements live in `.userdata/` and
 `Saves/` and stay as they are. Restart the device afterwards.
 
+## Nintendo DS
+
+Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
+There are four layouts, in the in-game menu's Display row: **Top Only** (the
+default) and **Bottom Only**, one screen at full height, and **Top Focus** and
+**Bottom Focus**, one screen big and the other small at its right. The
+**Layout ->** and **Layout <-** hotkeys step through them.
+
+In Hotkeys, bind **Stylus Mode** (turns a cursor over the bottom screen on and
+off; it shows only while the bottom screen is up) and **Stylus Tap** (hold to
+touch where the cursor is). No keys are bound for you. On the RG SP the D-pad
+moves the cursor. On a unit with two sticks (RG34xxSP, RG35XX H) a stick moves
+it and the D-pad stays the game's: the left stick by default, or the right
+one, picked with the in-game menu's **Stylus Stick** row.
+
+Most games run at full speed. In the heaviest 3D scenes the frontend asks the
+core to leave a frame's drawing out rather than slow down (an approach from
+[slotPlus](https://github.com/nelynes/slotPlus)); Golden Sun: Dark Dawn still
+runs a few percent slow in its busiest stretches. Rewind is off for the DS
+(each state is about 6 MB); saving and loading a state works.
+
 ## Notes
 
 - **Saved Wi-Fi networks** live on the plorpOS card, in

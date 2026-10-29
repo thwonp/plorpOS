@@ -113,10 +113,10 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **F1/F2** | brightness, everywhere, including in game, held the same way. Home with the volume rocker on the GKD, MENU with it on the RG SP |
 | **Left stick** (Brick Pro, RG35XX H) | the d-pad, in menus and in game; on the Brick Pro FN1/FN2 are its brightness keys |
-| **Right stick, stick clicks** (Brick Pro, RG35XX H) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
+| **Right stick, stick clicks** (Brick Pro, RG34xxSP, RG35XX H) | never seen by games (the bundled cores are all digital), except as the Nintendo DS stylus when **Stylus Stick** picks it, but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Achievements, Hotkeys, Reset, Quit |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Achievements, Hotkeys, Reset, Quit; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Left Stick / Right Stick, which stick moves the stylus cursor) under Hotkeys |
 | **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
