@@ -11352,7 +11352,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
 enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA,
-       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
+       GS_RA_SETS, GS_SCRAPE, GS_STYLUS, GS_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -11399,7 +11399,13 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
-	return GS_ROWS;
+	/* Which stick is the DS stylus, on a unit with two (plorpos-reo.21.7). */
+	if (plat_two_sticks()) {
+		rows[GS_STYLUS] = (menu_row){ "Stylus Stick",
+		                              db_get_int(db_dev(), "stylusstick", 0) ? "right" : "left", true };
+		return GS_ROWS;
+	}
+	return GS_ROWS - 1;
 }
 
 /* Left, right and A all change the row: the on/off ones flip, and the two
@@ -11435,6 +11441,10 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 
 		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
 		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
+	} else if (sel == GS_STYLUS) {
+		if (!plat_two_sticks()) return MENU_STAY;
+		db_set_int(db_dev(), "stylusstick", !db_get_int(db_dev(), "stylusstick", 0));
+		/* Takes hold at the next game: Diatom reads it after RUN. */
 	} else if (onoff[sel].key) {
 		db_set_int(db_dev(), onoff[sel].key,
 		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));

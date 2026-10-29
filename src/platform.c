@@ -1290,6 +1290,13 @@ bool plat_resident_send(const plat_game *g)
 		/* And the fast-forward hotkey's speed (plorpos-pyz.5), the same way:
 		 * Diatom puts it back to 4 at every RUN. Game Settings. */
 		dsend("SETFFSPEED\tspeed=%d", db_get_int(db_dev(), "ffspeed", 4));
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+		/* What moves the DS stylus (plorpos-reo.21.7): a unit with two sticks
+		 * uses one, the left unless Game Settings says the right, and leaves
+		 * the d-pad to the game; any other unit's d-pad is the cursor. */
+		dsend("SETSTYLUSSTICK\tstick=%s", !plat_two_sticks() ? "dpad"
+		      : db_get_int(db_dev(), "stylusstick", 0) ? "right" : "left");
+#endif
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
 		 * it is done drawing the moment the game is up - so the last thing
