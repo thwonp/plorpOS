@@ -48,7 +48,7 @@
   hotkeys; the D-pad (or, on a unit with two sticks, the left or right stick)
   becomes the stylus with the **Stylus Mode** and **Stylus Tap** hotkeys, which
   you bind.
-- **Ports** on the RG Rotate and the GKD: PortMaster is the first entry on the
+- **Ports** on every device: PortMaster is the first entry on the
   Ports shelf, and what it installs appears there. Unofficial: report problems
   to plorpOS, not the PortMaster team.
 
@@ -172,7 +172,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
 | Nintendo DS (RG Rotate, GKD, Brick, H700) | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
-| Ports (RG Rotate, GKD) | `Roms/Ports` | installed by PortMaster | - |
+| Ports | `Roms/Ports` | installed by PortMaster | - |
 
 Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
 cartridges; use their own folders to give them their own cards.
