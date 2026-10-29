@@ -12381,7 +12381,7 @@ static run_choice native_menu(void *ctx)
 	menu_style st = { 0 };
 
 
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	/* run_alone's window, as it was; the child leaves the screen once the
 	 * menu's first frame is drawn (child_hide), and the window goes again
 	 * in child_restore. */
@@ -12420,7 +12420,7 @@ static run_choice native_menu(void *ctx)
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
 
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	plat_input_quit();
 #else
 	free_all_textures(a);
@@ -12466,7 +12466,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	int rc;
 
 	anim_launch(a, 190);
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	/* Under sway the child needs no display of its own, so the launcher's
 	 * window stays - hidden, renderer, fonts and textures intact - and the
 	 * child's menu opens on it without building any of that (.20). */

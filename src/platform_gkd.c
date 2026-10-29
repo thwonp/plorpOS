@@ -207,6 +207,25 @@ void screen_yield(bool to_game)
 	}
 }
 
+/* A native child's run (run_alone) and its menu keep the launcher's window,
+ * as on the Rotate - but moved between workspaces, never unmapped, for the
+ * reason screen_yield gives (f5d). Shown: its next frame is drawn off-screen
+ * and plat_present brings it onto workspace 1, the frozen child having been
+ * moved off already (child_hide). Hidden: off to its own workspace, so the
+ * child has workspace 1 to itself. Saves the menu a renderer (a Mali GL
+ * context, 35-60 ms) and the first frame of a new surface (plorpos-46o.9). */
+void plat_window_show(bool on)
+{
+	if (!win) return;
+	if (on) {
+		SDL_RenderSetVSync(ren, 0);
+		resident_away_pending = true;
+	} else {
+		resident_away_pending = false;
+		launcher_place(false);
+	}
+}
+
 /* ---- input ------------------------------------------------------------
  *
  * Straight from evdev, found by name: the pad (gkd_atom_joypad) and the
@@ -378,9 +397,12 @@ void child_restore(pid_t pid, bool show)
 {
 	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
-	if (!show) return;
-	if (!sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
+	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
 		fprintf(stderr, "run: sway would not show the child\n");
+	/* Then the launcher's window off, also when the child is not coming
+	 * back: a reset's new child maps next, and after a quit run_alone
+	 * shows the window again (plat_window_show). */
+	plat_window_show(false);
 }
 
 /* The child's own PipeWire stream, found by its pid. pactl is a process,
