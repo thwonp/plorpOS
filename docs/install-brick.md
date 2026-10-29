@@ -106,7 +106,7 @@ Rewind is off for the DS on the Brick: each capture is a 6 MB state that takes
 about 20 ms, more than a busy frame can spare. Saving and loading a state
 works. The microphone is not verified.
 
-## Ports (next Brick build)
+## Ports
 
 The Ports shelf includes PortMaster. Its support on plorpOS is unofficial;
 report integration problems to plorpOS rather than the PortMaster team.
