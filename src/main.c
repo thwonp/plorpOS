@@ -169,8 +169,8 @@ static const struct { const char *name, *label; } DMODES[] = {
 	 * offer, in the order the layout hotkeys round them. */
 	{ "ds-top",    "Top Only" },
 	{ "ds-bottom", "Bottom Only" },
-	/* Both screens: one big at the left, the other a third its width at its
-	 * right, in the corner of the big one. */
+	/* Both screens: one big at the left at a whole multiple, the other in
+	 * the width left over at its right (plorpos-6ei.4). */
 	{ "ds-topfocus",    "Top Focus" },
 	{ "ds-bottomfocus", "Bottom Focus" },
 };
