@@ -47,17 +47,21 @@ Your settings, saves, play time and achievements live in `.userdata/` and
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
-There are four layouts, in the in-game menu's Display row: **Top Only** (the
-default) and **Bottom Only**, one screen at full height, and **Top Focus** and
-**Bottom Focus**, one screen big and the other small at its right. The
-**Layout ->** and **Layout <-** hotkeys step through them.
+There are six layouts, in the in-game menu's Display row: **Top Only** (the
+default) and **Bottom Only**, one screen at full height; **Top Focus** and
+**Bottom Focus**, one screen at twice the DS's size and the other in the width
+left over at its right; and **Top Overlay** and **Bottom Overlay**, one screen
+filling the display at 4:3 and the other, 80% opaque, over its bottom-right
+corner. The **Screen Layout ->** and **Screen Layout <-** hotkeys step through
+them.
 
-In Hotkeys, bind **Stylus Mode** (turns a cursor over the bottom screen on and
-off; it shows only while the bottom screen is up) and **Stylus Tap** (hold to
-touch where the cursor is). No keys are bound for you. On the RG SP the D-pad
-moves the cursor. On a unit with two sticks (RG34xxSP, RG35XX H) a stick moves
-it and the D-pad stays the game's: the left stick by default, or the right
-one, picked with the in-game menu's **Stylus Stick** row.
+On the RG SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
+Mode** (turns the cursor on and off; it shows only while the bottom screen is
+up) and **Stylus Tap** (hold to touch where the cursor is). On a unit with two
+sticks (RG34xxSP, RG35XX H) a stick moves it and the D-pad stays the game's:
+the right stick by default, or the left one, picked with the in-game menu's
+**Stylus Stick** row. That cursor is always on, hides after 2 s still, and
+**R Stick Click** touches until you bind another Stylus Tap.
 
 Most games run at full speed. In the heaviest 3D scenes the frontend asks the
 core to leave a frame's drawing out rather than slow down (an approach from

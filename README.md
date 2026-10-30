@@ -41,13 +41,18 @@
 - **Achievements for disc games and arcade sets**
 - **Nintendo DS** on the RG Rotate, the GKD, the Brick and the H700 handhelds: DSperate-lr, or melonDS DS on
   the shelf's Core row (Rotate and GKD), with achievements. Display Mode lays the two screens
-  out (Focus Top, Focus Bottom, Even Split), and a hotkey swaps them. On the
-  GKD the stick moves a stylus cursor over the bottom screen and R2 touches.
-  The Brick, Brick Pro and H700 handhelds have Top Only, Bottom Only, Top Focus
-  and Bottom Focus layouts, stepped with the **Layout ->** and **Layout <-**
-  hotkeys; the D-pad (or, on a unit with two sticks, the left or right stick)
-  becomes the stylus with the **Stylus Mode** and **Stylus Tap** hotkeys, which
-  you bind.
+  out (Focus Top, Focus Bottom, Even Split, Top Overlay, Bottom Overlay), and
+  a hotkey steps through them. On the GKD the stick moves a stylus cursor over
+  the bottom screen and R2 touches. The Brick, Brick Pro and H700 handhelds
+  have Top Only, Bottom Only, Top Focus, Bottom Focus, Top Overlay and Bottom
+  Overlay, stepped with the **Screen Layout ->** and **Screen Layout <-**
+  hotkeys. The Focus layouts draw the big screen at a whole-number scale; the
+  Overlays fill the screen with one DS screen and lay the other, 80% opaque,
+  over the bottom-right corner. On a unit with two sticks the right stick is
+  the stylus, always on (its cursor hides after 2 s still), and R Stick Click
+  touches; elsewhere the D-pad becomes the stylus with the **Stylus Mode** and
+  **Stylus Tap** hotkeys, which you bind. **Blow Into Mic**, held, blows into
+  the DS's microphone on every device.
 - **Ports** on every device: PortMaster is the first entry on the
   Ports shelf, and what it installs appears there. Unofficial: report problems
   to plorpOS, not the PortMaster team.
@@ -56,7 +61,7 @@
 
 - **Rewind:** about thirty seconds of it, on every console, at the speed you pick, from 1x to 10x. A PlayStation game on the Brick holds less, 6 to 15 seconds.
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load
-  screenshots, and **Turbo Mode**. Hotkeys can be set with or without a modifier button and persist per console. See [How do hotkeys work?](#faq)
+  screenshots, and **Turbo Mode**. Hotkeys can be set with or without a modifier button, each with its own, and persist per console. See [How do hotkeys work?](#faq)
 - **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
   Transparency, on the in-game menu's Shader row, on every device. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
@@ -325,23 +330,22 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Layout ->** (the next screen layout; MENU + X by default on the GKD and Rotate). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds, in this order under **Layout ->**: **Layout <-** (the previous layout), **Stylus Tap** and **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad, or on a unit with two sticks by the stick the in-game menu's **Stylus Stick** row picks, left by default), all unbound until you set them. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Screen Layout ->** (the next screen layout; MENU + X by default on the GKD and Rotate) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Screen Layout <-** (the previous layout), **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
-**The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
-- **Brick:** Menu or Select.
-- **Brick Pro:** Menu, Select, L Stick Click or R Stick Click.
+**Modifiers** are buttons you hold for a chord, like MENU + X. Each hotkey has its own: hold the modifier when you press the trigger and the screen shows it, so Fast-Forward on L Stick Click + A and Rewind on MENU + A work side by side. The modifiers each device offers:
+- **Brick, RG SP:** Menu or Select.
+- **Brick Pro, RG34xxSP, RG35XX H:** Menu, Select or L Stick Click.
 - **GKD:** Menu, Home, Stick Click or Select.
-- **RG SP:** Menu or Select.
-- **RG35XX H:** Menu, Select, L Stick Click or R Stick Click.
 
-With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it. Holding MENU on its own for about 0.7 s opens the game switcher instead, whatever the modifier is set to.
+A tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it. Holding MENU on its own for about 0.7 s opens the game switcher.
 
 **Triggers:**
-- **L1, R1, L2, R2, A, B, X, Y:** with the modifier held, or alone. A button bound alone does the action instead of its job in that console's games.
-- **D-pad and stick directions:** with the modifier held only, so moving always works.
-- **The Brick Pro's right stick:** its four directions, with the modifier held or alone. Games never see it, so binding it alone costs nothing.
+- **L1, R1, L2, R2, A, B, X, Y:** with a modifier held, or alone. A button bound alone does the action instead of its job in that console's games.
+- **D-pad and left stick directions:** with a modifier held only, so moving always works.
+- **The right stick** (Brick Pro, RG34xxSP, RG35XX H): its four directions and its click, with a modifier held or alone. Games never see it, so binding it alone costs nothing.
+- **Nintendo DS:** no stick direction is a trigger, since the stylus uses the stick.
 
-One button can hold two actions, one alone and one with the modifier. On the Brick Pro the left stick's triggers read "L Stick".
+One button can hold several actions: one alone and one under each modifier. On a unit with two sticks the left stick's triggers read "L Stick". Bindings saved before each hotkey had its own modifier keep the one that was set then.
 
 </details>
 
