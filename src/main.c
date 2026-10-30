@@ -9220,6 +9220,11 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	ui_hit_take();          /* a tap from before the switcher is not ours */
+	/* Sticky (see menu_leaving): a MENU that closed the last switcher over a
+	 * game left it up - only the shelf's loop and the in-game menu put it
+	 * down - and every switcher after that closed on its first frame
+	 * (plorpos-6ei.20). */
+	g_menu_closing = false;
 
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
