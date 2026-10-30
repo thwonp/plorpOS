@@ -173,6 +173,10 @@ static const struct { const char *name, *label; } DMODES[] = {
 	 * the width left over at its right (plorpos-6ei.4). */
 	{ "ds-topfocus",    "Top Focus" },
 	{ "ds-bottomfocus", "Bottom Focus" },
+	/* One screen filling the panel, the other over its bottom-right corner,
+	 * 80% opaque: every device (plorpos-6ei.5). */
+	{ "ds-topoverlay",    "Top Overlay" },
+	{ "ds-bottomoverlay", "Bottom Overlay" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -204,27 +208,34 @@ static void font_apply(bool head, int k)
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   3
-#define DMODE_DS_TOP 6
+/* The DS's layouts, in DMODES order of their own: the split ones where the
+ * port draws a split, the cropped/composed ones on the Brick and H700, the
+ * two Overlays last on both (plorpos-6ei.5). Diatom's layout_step rings
+ * match. */
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
-#define DS_LO DMODE_DS_A
-#define DS_HI DMODE_DS_TOP
+static const int DS_RING[] = { 3, 4, 5, 10, 11 };
 #else
-#define DS_LO DMODE_DS_TOP
-#define DS_HI DMODE_COUNT
+static const int DS_RING[] = { 6, 7, 8, 9, 10, 11 };
 #endif
+#define DS_RING_N ((int)(sizeof DS_RING / sizeof DS_RING[0]))
+_Static_assert(DMODE_COUNT == 12, "DS_RING indexes DMODES");
 
-/* A system's own slice of DMODES: the DS its two layouts, every other system
- * the rest. Cycling stays inside it, and a mode outside it (never set, or
- * set before the layouts existed) is the slice's first. */
+/* A system's own set of DMODES: the DS its layouts, every other system the
+ * first three. Cycling stays inside it, and a mode outside it (never set,
+ * or set before the layouts existed) is the set's first. */
 static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
 
 static int dmode_step(const char *tag, int cur, int d)
 {
-	int lo = is_nds_tag(tag) ? DS_LO : 0;
-	int hi = is_nds_tag(tag) ? DS_HI : DMODE_DS_A, n = hi - lo;
+	int i;
 
-	if (cur < lo || cur >= hi) return lo;
-	return lo + (cur - lo + d + n) % n;
+	if (!is_nds_tag(tag)) {
+		if (cur < 0 || cur >= DMODE_DS_A) return 0;
+		return (cur + d + DMODE_DS_A) % DMODE_DS_A;
+	}
+	for (i = 0; i < DS_RING_N; i++)
+		if (DS_RING[i] == cur) return DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+	return DS_RING[0];
 }
 
 typedef struct {
