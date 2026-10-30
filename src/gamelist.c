@@ -201,6 +201,8 @@ int gl_parse(const char *xml, size_t len, gl_game_fn fn, void *ctx)
 		memset(&m, 0, sizeof m);
 		field(b, e, "name", m.title, sizeof m.title);
 		clean(m.title);
+		field(b, e, "image", m.image, sizeof m.image);
+		clean(m.image);
 		/* First four digits of an ES releasedate (YYYYMMDDT000000); any other
 		 * shape is a game with no known year. */
 		field(b, e, "releasedate", raw, sizeof raw);

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define GLOW_SIZE 192      /* the glow is drawn stretched; small is enough */
 #define TEXT_CACHE 12
@@ -34,6 +35,22 @@
  * out at exactly the point size 115% gave and nothing moves by a rounding
  * accident. */
 #define FONT_BASE (32.0f * 1.15f)
+/* Two faces (plorpos-8m1.2): the heading face - head.ttf beside menu.ttf,
+ * Fredoka - for the titles, the menu headings and the cards, and menu.ttf
+ * for everything else. No head.ttf, one face for all. Each is scaled so a
+ * line of it runs as wide as Josefin Sans' did, which every fixed panel was
+ * measured against; both files carry Josefin's line metrics (ascent 0.75,
+ * descent 0.25 of the em), so rows keep their height. */
+#define HEAD_SCALE 1.00f
+#define BODY_SCALE 0.98f
+static bool is_head(int role)
+{
+	return role == UI_F_TITLE || role == UI_F_LABEL || role == UI_F_CARD;
+}
+/* UI Settings > Header Font and Body Font (plorpos-8m1.3, plorpos-3yv.60):
+ * set by ui_set_face, used by ui_init. Empty = the shipped face. */
+static char  head_path[512], body_path[512];
+static float head_scale = HEAD_SCALE, body_scale = BODY_SCALE;
 static const float font_mul[UI_F_COUNT] = {
 	[UI_F_TITLE] = 1.62f,   /* 52 */
 	[UI_F_MENU]  = 1.34f,   /* 43 */
@@ -52,6 +69,11 @@ static TTF_Font *f_mark;
  * every path below is the integer one it always was - the Brick draws exactly
  * what it drew before there was a scale. */
 static float ts = 1.0f;
+/* Type scale for the one panel narrower than the layout was tuned on: the
+ * RG35XX H is 640x480, 11% less width than the RG SP's 720 at the same
+ * height, so the SP's type crowds it - Muse's title scrolled and the hint
+ * line ran to the edge. Everything sized from a font follows. */
+static float font_k = 1.0f;
 
 static int px(int v) { return ts == 1.0f ? v : (int)(v * ts + 0.5f); }
 static int units(int v) { return ts == 1.0f ? v : (int)lroundf(v / ts); }
@@ -112,11 +134,28 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
 	ts = plat_scale();
-	for (i = 0; i < UI_F_COUNT; i++) {
-		int pt = (int)(FONT_BASE * font_mul[i] * ts + 0.5f);
-		fonts[i] = TTF_OpenFont(font_path, pt);
-		if (!fonts[i])
-			fprintf(stderr, "font %s @%d: %s\n", font_path, pt, TTF_GetError());
+#if defined(PLATFORM_H700)
+	if (plat_screen_w * 3 <= plat_screen_h * 4) font_k = 0.88f;
+#endif
+	/* Brick Pro: the Brick's scale reads too large on its panel (pky.21; the user chose 0.82) */
+	if (plat_is_brick_pro()) font_k = 0.82f;
+	{
+		char head[512];
+		const char *slash = strrchr(font_path, '/');
+
+		snprintf(head, sizeof head, "%.*shead.ttf",
+		         slash ? (int)(slash - font_path + 1) : 0, font_path);
+		if (access(head, R_OK) != 0) snprintf(head, sizeof head, "%s", font_path);
+		if (head_path[0]) snprintf(head, sizeof head, "%s", head_path);
+		for (i = 0; i < UI_F_COUNT; i++) {
+			const char *path = is_head(i) ? head : body_path[0] ? body_path : font_path;
+			float k = is_head(i) ? head_scale : body_scale;
+			int pt = (int)(FONT_BASE * font_mul[i] * k * font_k * ts + 0.5f);
+
+			fonts[i] = TTF_OpenFont(path, pt);
+			if (!fonts[i])
+				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
+		}
 	}
 	glow_tex = make_glow(r);
 	return fonts[UI_F_TITLE] != NULL;
@@ -136,6 +175,36 @@ void ui_quit(void)
 		if (fonts[i]) { TTF_CloseFont(fonts[i]); fonts[i] = NULL; }
 	if (f_mark) { TTF_CloseFont(f_mark); f_mark = NULL; }
 	TTF_Quit();
+}
+
+void ui_set_face(bool head, const char *path, float scale)
+{
+	char *kept = head ? head_path : body_path;
+	float *k = head ? &head_scale : &body_scale;
+	int i;
+
+	snprintf(kept, sizeof body_path, "%s", path ? path : "");
+	*k = scale > 0 ? scale : head ? HEAD_SCALE : BODY_SCALE;
+	if (!fonts[UI_F_MENU]) return;            /* not open yet: ui_init will */
+	if (!kept[0]) return;
+	for (i = 0; i < UI_F_COUNT; i++) {
+		int pt;
+		TTF_Font *f;
+
+		if (is_head(i) != head) continue;
+		pt = (int)(FONT_BASE * font_mul[i] * *k * font_k * ts + 0.5f);
+		if (!(f = TTF_OpenFont(kept, pt))) {
+			fprintf(stderr, "font %s @%d: %s\n", kept, pt, TTF_GetError());
+			continue;                         /* keep the face it had */
+		}
+		TTF_CloseFont(fonts[i]);
+		fonts[i] = f;
+	}
+	/* Everything drawn from the old face: the text cache and the digits. */
+	digits_free();
+	for (i = 0; i < TEXT_CACHE; i++)
+		if (cache[i].tex) { SDL_DestroyTexture(cache[i].tex); cache[i].tex = NULL; }
+	memset(cache, 0, sizeof cache);
 }
 
 TTF_Font *ui_font(ui_font_role role)
@@ -550,6 +619,43 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 		int lf = off < MQ_FADE_PX ? off : MQ_FADE_PX;
 		int rf = (over - off) < MQ_FADE_PX ? (over - off) : MQ_FADE_PX;
 
+		if (ts != 1.0f) {
+			/* Slices cut from the text texture by SOURCE rect, in whole
+			 * texture pixels, and placed at tx + c / ts. The text sits on a
+			 * panel-pixel boundary (snap), so every slice lands 1:1 and
+			 * neighbours share an edge exactly. The clip-rect slices below
+			 * round x and w separately under a render scale, and left a
+			 * dark column at some seams; SDL_RenderGeometry here drew only
+			 * some bands on this driver. */
+			float tx = snap((float)(x - off)), ty = snap((float)y);
+			int c0 = (int)lroundf((x - tx) * ts), c1 = c0 + (int)lroundf(w * ts);
+			int lp = (int)lroundf(lf * ts), rp = (int)lroundf(rf * ts), c;
+
+			if (c0 < 0) c0 = 0;
+			if (c1 > e->w) c1 = e->w;
+			if (lp + rp > c1 - c0) lp = rp = 0;
+			for (c = 0; c < 3; c++) {
+				/* 0 = left fade, 1 = the body, 2 = right fade */
+				int ca = c == 0 ? c0 : c == 1 ? c0 + lp : c1 - rp;
+				int cb = c == 0 ? c0 + lp : c == 1 ? c1 - rp : c1;
+				int cut = c == 1 ? cb - ca : 2, n;
+
+				if (cb <= ca) continue;
+				for (n = ca; n < cb; n += cut) {
+					int e1 = n + cut < cb ? n + cut : cb;
+					int d = c == 0 ? n - c0 : c1 - e1;   /* depth into the fade */
+					int span = c == 0 ? lp : rp;
+
+					SDL_SetTextureAlphaMod(e->tex,
+					        c == 1 ? col.a : (Uint8)(col.a * d / span));
+					SDL_RenderCopyF(r, e->tex, &(SDL_Rect){ n, 0, e1 - n, e->h },
+					                &(SDL_FRect){ tx + n / ts, ty, (e1 - n) / ts, e->h / ts });
+				}
+			}
+			SDL_SetTextureAlphaMod(e->tex, 255);
+			SDL_RenderSetClipRect(r, had ? &was : NULL);
+			return;
+		}
 		clip.x = x + lf;
 		clip.w = w - lf - rf;
 		if (clip.w > 0) {
@@ -1324,3 +1430,84 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 	SDL_RenderCopyF(r, t, NULL, &(SDL_FRect){ snap(cx - unit / 2.0f),
 		snap(cy - unit / 2.0f), size / ts, size / ts });
 }
+
+/* ---- touch targets (plorpos-3yv.23) -------------------------------------- */
+
+#ifdef PLATFORM_ROTATE
+#define HIT_MAX 64
+
+typedef struct { SDL_Rect r; int button, n; bool id, act; } ui_target;  /* id: n is an id */
+typedef struct {
+	ui_target t[HIT_MAX];
+	int       n;
+	bool      modal;
+	SDL_Rect  panel;
+} ui_targets;
+/* The frame being drawn, and the one on the screen. */
+static ui_targets hit_draw, hit_shown;
+
+void ui_hit(const SDL_Rect *r, int button, int n)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false, false };
+}
+
+void ui_hit_act(const SDL_Rect *r, int button, int n)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, button, n, false, true };
+}
+
+void ui_hit_id(const SDL_Rect *r, int id)
+{
+	if (hit_draw.n < HIT_MAX) hit_draw.t[hit_draw.n++] = (ui_target){ *r, 0, id, true, false };
+}
+
+void ui_hit_clear(void)
+{
+	hit_draw.n = 0;
+	hit_draw.modal = false;
+}
+
+static int hit_given = -1;
+
+void ui_hit_give(int id) { hit_given = id; }
+
+int ui_hit_take(void)
+{
+	int id = hit_given;
+
+	hit_given = -1;
+	return id;
+}
+
+void ui_hit_modal(const SDL_Rect *panel)
+{
+	hit_draw.n = 0;
+	hit_draw.modal = true;
+	hit_draw.panel = *panel;
+}
+
+void ui_hit_frame(void)
+{
+	hit_shown = hit_draw;
+	hit_draw.n = 0;
+	hit_draw.modal = false;
+}
+
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act)
+{
+	SDL_Point p = { x, y };
+	int i;
+
+	/* Last recorded is drawn on top. */
+	for (i = hit_shown.n - 1; i >= 0; i--)
+		if (SDL_PointInRect(&p, &hit_shown.t[i].r)) {
+			*button = hit_shown.t[i].button;
+			*n = hit_shown.t[i].n;
+			*act = hit_shown.t[i].act;
+			return hit_shown.t[i].id ? UI_HIT_ID : UI_HIT_ITEM;
+		}
+	if (hit_shown.modal)
+		return SDL_PointInRect(&p, &hit_shown.panel) ? UI_HIT_NONE : UI_HIT_OUTSIDE;
+	return hit_shown.n > 0 ? UI_HIT_NONE : UI_HIT_UNMAPPED;
+}
+#endif

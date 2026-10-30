@@ -1,33 +1,30 @@
-# Installing on an Anbernic H700 (RG SP)
+# Installing on an Anbernic H700 (RG SP, RG34xxSP, RG35XX H)
 
 plorpOS runs on top of **BaseOS**, a small system for Anbernic's H700
 handhelds by Prashant Vaibhav (<https://github.com/pvaibhav/BaseOS>). BaseOS
 goes on one microSD card and starts whatever frontend it finds on the other;
 plorpOS is that frontend. plorpOS does not include or change BaseOS.
 
-Tested with **BaseOS 1.3.0** on the **RG SP**. Other H700 models
-come later.
-
-You need the RG SP, two microSD cards and a computer.
+One zip runs on the **RG SP**, **RG34xxSP** and **RG35XX H**. You need the
+device, two microSD cards and a computer.
 
 ## 1. BaseOS on the first card (TF1)
 
-From [BaseOS's releases](https://github.com/pvaibhav/BaseOS/releases), download
-the image for your model - for the RG SP, `baseos-rgsp-<version>.img.zip` -
-and write it to a card as BaseOS's own instructions say. Put it in the slot
+Use the latest [BaseOS release](https://github.com/pvaibhav/BaseOS/releases)
+for your H700 device, and write it to a card as BaseOS's own instructions say. Put it in the slot
 marked **TF1** and turn the device on once: it grows its storage, then says
 there is no frontend on the card. Turn it off.
 
 ## 2. plorpOS on the second card (TF2)
 
-Download **`plorpOS-h700-v<version>.zip`** from
-[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. Copy
+Download the H700 zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it. Copy
 everything in it to the root of a FAT32 or exFAT card:
 
 ```
 System/       the frontend hook BaseOS looks for (launch_frontend.sh)
 TortOS/       plorpOS itself
-Roms/ Bios/ Saves/ Music/ Audiobooks/   empty, for your games and files
+Roms/ Bios/ Saves/ Music/ Audiobooks/   for your games and files; Saves/ has a folder per console
 ```
 
 Put your games in `Roms/` (one folder per system, as `TortOS/systems.cfg`
@@ -36,14 +33,49 @@ names them) and BIOS files in `Bios/`.
 ## 3. Turn it on
 
 Put the card in the slot marked **TF2** and turn the device on. BaseOS starts
-plorpOS in a few seconds. Join Wi-Fi from **Menu > Wi-Fi Services**.
+plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
+
+## Updating from an earlier version
+
+Copy everything in the new zip onto the plorpOS card, replacing what's there.
+Your settings, saves, play time and achievements live in `.userdata/` and
+`Saves/` and stay as they are. Restart the device afterwards.
+
+## Nintendo DS
+
+Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
+There are six layouts, in the in-game menu's Layout row: **Top Only** (the
+default) and **Bottom Only**, one screen at full height; **Top Focus** and
+**Bottom Focus**, one screen at twice the DS's size and the other in the width
+left over at its right; and **Top Overlay** and **Bottom Overlay**, one screen
+filling the display at 4:3 and the other, 80% opaque, over its bottom-right
+corner. The **Screen Layout ->** and **Screen Layout <-** hotkeys step through
+them. The **Display** row under Layout picks how Top Only, Bottom Only and the
+Overlays' big screen fill the display: **Aspect** (4:3, the default),
+**Stretch** (the whole panel, on the 720x480 RG SP and RG34xxSP) or
+**Integer** (2x, 512x384). The RG35XX H's panel is 4:3, so it offers Aspect
+and Integer only.
+
+On the RG SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
+Mode** (turns the cursor on and off; it shows only while the bottom screen is
+up) and **Stylus Tap** (hold to touch where the cursor is). On a unit with two
+sticks (RG34xxSP, RG35XX H) a stick moves it and the D-pad stays the game's:
+the right stick by default, or the left one, picked with the in-game menu's
+**Stylus Stick** row. That cursor is always on, hides after 2 s still, and
+**R Stick Click** touches until you bind another Stylus Tap.
+
+Most games run at full speed. In the heaviest 3D scenes the frontend asks the
+core to leave a frame's drawing out rather than slow down (an approach from
+[slotPlus](https://github.com/nelynes/slotPlus)); Golden Sun: Dark Dawn still
+runs a few percent slow in its busiest stretches. Rewind is off for the DS
+(each state is about 6 MB); saving and loading a state works.
 
 ## Notes
 
 - **Saved Wi-Fi networks** live on the plorpOS card, in
   `.userdata/rgsp/wpa_supplicant.conf`, with their passwords.
 - **Brightness:** hold Menu and press Volume +/-.
-- **The lid:** closing it sleeps, like a tap of POWER, and opening it wakes
+- **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
   the device from that sleep. Once it has gone on into a deep sleep, only
   POWER wakes it.
 - **Logs** are in `.userdata/rgsp/logs/` on the plorpOS card.
@@ -53,10 +85,44 @@ plorpOS in a few seconds. Join Wi-Fi from **Menu > Wi-Fi Services**.
   `Audiobooks/`.
 - **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
   BaseOS installs them on the next start. plorpOS leaves unknown files there
-  alone. A BaseOS version other than the tested one may work, but is untested.
+  alone.
 - **Over USB** (for developers): BaseOS offers `adb`, but only with a
   USB-A to USB-C cable attached before the device is turned on. A USB-C to
   USB-C cable from a USB-C-only computer powers nothing and connects nothing.
+
+## Ports (PortMaster)
+
+The **Ports** shelf is last. Its first entry is **PortMaster**; open it with
+the device on Wi-Fi to install ports, which land in `Roms/Ports/` and appear
+on the shelf. A port is a script (`Name.sh`) beside a folder of the same name,
+so ports can also be copied onto the card. PortMaster itself lives in
+`.userdata/shared/portmaster/`. This is unofficial support: report problems
+to plorpOS, not the PortMaster team.
+
+What to expect:
+
+- Ports run fullscreen at the panel's size and play through the speaker or
+  Bluetooth like a game. **Menu** opens the plorpOS menu over a port (Continue,
+  Reset, Quit); Quit ends the port and returns to the shelf.
+- PortMaster needs python and bash, which BaseOS lacks, so they ship as one
+  read-only image, `TortOS/h700/portmaster/pmtools.squashfs`, mounted only
+  while a port runs. The zip grows by about 48 MB (29 to 77) for it and PortMaster.
+- Ports that need a game's own files (Downwell, for one, wants your GOG
+  installer or Steam `data.win`) have to be given them: put them where the
+  port's page says. A port may also download a runtime the first time (Java
+  for Mindustry, about 47 MB; LOVE ships with PortMaster), so do that on Wi-Fi.
+- 32-bit ports (Shovel Knight) run through box86 and use plorpOS's own 32-bit
+  SDL2, in `TortOS/lib32/`.
+- First launches can be slow: Balatro patches the game for about 30 seconds,
+  Mindustry takes about 20.
+- Some ports are built for a 720 px wide panel and crop the edges on a 640 px
+  one (the RG35XX H). Apotris does: switch its screen shape from 3:2 to 4:3 in
+  its settings.
+- The RG35XX H's two sticks and their clicks (L3/R3) reach ports as an
+  ordinary gamepad's. The RG SP has no sticks, so a port that needs one
+  (Mindustry steers its cursor with the left stick) cannot be played there.
+- A port that is killed mid-run (power button hold) leaves a mount or two
+  behind; the next port clears them.
 
 ## Removing plorpOS
 

@@ -21,7 +21,7 @@ BRICK ?= 192.168.1.100
 SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
        -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@$(BRICK)
 
-.PHONY: all clean native toolchain vendor boot checkmark payload release install-card \
+.PHONY: check-paused all clean native toolchain vendor boot payload release install-card \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
@@ -29,11 +29,13 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
-all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
-all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
+else ifeq ($(PLATFORM),rotate)
+all: build/rotate/tortos.elf build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 else
 all: build/tortos.elf
 endif
@@ -46,7 +48,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
-         check-gamelist check-logpack check-titles check-clock check-sysorder
+         check-gamelist check-logpack check-titles check-clock check-sysorder check-paused
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -71,7 +73,7 @@ VERSION ?= 1.5.3
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd h700,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd h700 rotate,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -95,9 +97,10 @@ build/ss_creds.h: FORCE
 
 # Each device's sources: everything but the other device's file, so that editing
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
-SRC_BRICK := $(filter-out src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
-SRC_GKD   := $(filter-out src/platform_brick.c src/platform_h700.c,$(wildcard src/*.c))
-SRC_H700  := $(filter-out src/platform_brick.c src/platform_gkd.c,$(wildcard src/*.c))
+SRC_BRICK  := $(filter-out src/platform_gkd.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_GKD    := $(filter-out src/platform_brick.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_H700   := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_rotate.c,$(wildcard src/*.c))
+SRC_ROTATE := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
 # And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
 THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
@@ -164,6 +167,12 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 build/gkd/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
 
+build/gkd/portfullscreen.so: tools/portfullscreen.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
+		-I/work/sysroot-gkd/usr/include/SDL2 -o $@ $< -ldl
+
 # Grouped (&:), so that any one of the three missing runs the build.
 build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
                       $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/gkd/ss_creds.h \
@@ -216,13 +225,43 @@ build/h700/tortos.elf: $(SRC_H700) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY
 	done
 
 # btplayer with them: same container, and it needs nothing from the sysroot.
-build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &: $(wildcard src/muse/*.c) \
-                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c mk/cross.mk
+build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so &: $(wildcard src/muse/*.c) \
+                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c tools/portcompat.c mk/cross.mk
 	@[ -f sysroot-h700/usr/include/libavcodec/avcodec.h ] || { \
 		echo "no FFmpeg in the H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
-		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
+
+# The RG Rotate on Armbian (plorpos-3yv): Debian trixie's own SDL2 and FFmpeg,
+# unpacked by mk/fetch-rotate-sysroot.sh - no device needed.
+build/rotate/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/rotate creds
+
+build/rotate/tortos.elf: $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rotate/ss_creds.h
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-rotate/usr/include/SDL2 ] || { \
+		echo "no Rotate sysroot; run: mk/fetch-rotate-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=rotate BUILD=build/rotate SYSROOT=/work/sysroot-rotate \
+		VERSION=$(VERSION) creds build/rotate/tortos.elf
+	@for src in $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk build/rotate/ss_creds.h; do \
+		if [ "$$src" -nt build/rotate/tortos.elf ]; then \
+			echo "STALE: build/rotate/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/rotate/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+
+# btplayer with them: same container, and it needs nothing from the sysroot.
+build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so &: $(wildcard src/muse/*.c) \
+                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c mk/cross.mk
+	@[ -f sysroot-rotate/usr/include/libavcodec/avcodec.h ] || { \
+		echo "no FFmpeg in the Rotate sysroot; run: mk/fetch-rotate-sysroot.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		make -f mk/cross.mk PLATFORM=rotate BUILD=build/rotate SYSROOT=/work/sysroot-rotate \
+		build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
@@ -698,14 +737,7 @@ build-native/museart-check: tools/museart-check.c src/museart.c src/museart.h \
 check-backlog:
 	@python3 tools/backlog-check.py
 
-# src/main.c hand-keeps a copy of the mark that C cannot import from
-# tools/markdef.py. payload depends on this for the same reason payload.sh
-# refuses a card whose systems.cfg names cores vendor/ does not have: the
-# failure is silent otherwise, and it ships.
-checkmark:
-	python3 tools/checkmark.py
-
-payload: all checkmark
+payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
 # payload.sh names the zip: out/plorpOS-brick-v$(VERSION).zip for the Brick,
@@ -799,7 +831,7 @@ deploy: all
 	@# transcript. The same reason mk/cross.mk writes the ScreenScraper key
 	@# into a header rather than onto a compile line.
 	@tar -cf - -C build tortos.elf setbright muse musectl btplayer -C ../config systems.cfg \
-	    -C ../sd/tortos launch.sh bt-alsa.sh radio.sh -C ../../res/fonts menu.ttf | \
+	    -C ../sd/tortos launch.sh bt-alsa.sh radio.sh -C ../../res/fonts menu.ttf head.ttf josefin.ttf lato.ttf | \
 	    $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
 	@tar -cf - -C res cards | $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
 
@@ -812,3 +844,21 @@ endif
 
 clean:
 	rm -rf build build-native out
+
+# Real paused-preview rendering against an offscreen SDL software renderer.
+# SDL_ttf is only needed for declarations in platform.c's UI header; the GKD
+# sysroot can supply that header when the host only has SDL2 development files.
+check-paused:
+	@if ! command -v sdl2-config >/dev/null; then \
+		echo 'skip: paused renderer check needs SDL2 development files'; \
+	elif [ ! -f sysroot-gkd/usr/include/SDL2/SDL_ttf.h ] && ! pkg-config --exists SDL2_ttf; then \
+		echo 'skip: paused renderer check needs SDL_ttf headers or the GKD sysroot'; \
+	else \
+		mkdir -p build-native && \
+		$(CC) -std=gnu11 -D_GNU_SOURCE -DPLATFORM_GKD -O1 \
+		-ffunction-sections -fdata-sections $$(sdl2-config --cflags) \
+		$$(pkg-config --cflags SDL2_ttf 2>/dev/null) -Isysroot-gkd/usr/include/SDL2 \
+		-o build-native/paused-check tools/paused-check.c -Wl,--gc-sections \
+		$$(sdl2-config --libs) -lm -ldl -lpthread && \
+		SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build-native/paused-check; \
+	fi

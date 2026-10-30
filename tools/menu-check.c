@@ -55,21 +55,18 @@ static void off_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("radio off:\n");
-	ck(heading && !strcmp(heading, "Wi-Fi Services"), "the screen names itself");
-	ck(n == WIFI_TOP_ROWS + 2, "switch, Cheevos, OTH, rule, note");
+	ck(heading && !strcmp(heading, "Network Services"), "the screen names itself");
+	ck(n == WIFI_TOP_ROWS + 2, "switch, OTH, rule, note");
 	ck(rows[WIFI_ROW_SWITCH].live, "the switch is live");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].label, "Wi-Fi"), "row 0 is the switch");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].value, "off"), "the switch reads off");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].label, "Cheevos"), "Cheevos is under it");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "sign in"), "and invites a sign in");
-	ck(rows[WIFI_ROW_CHEEVOS].live, "and is reachable signed out, radio off");
 	ck(!strcmp(rows[WIFI_ROW_XFER].label, "Over The Hare"), "OTH is under it too");
 	ck(!strcmp(rows[WIFI_ROW_XFER].value, "needs Wi-Fi"), "OTH says why it is dead");
 	ck(!rows[WIFI_ROW_XFER].live, "OTH is not selectable offline");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS, "the rule separates the footer");
 	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 1]), "the footer is a note");
 	ck(!rows[WIFI_TOP_ROWS + 1].live, "the footer is not selectable");
-	ck(live_count(rows, n) == 2, "only the switch and Cheevos can be chosen");
+	ck(live_count(rows, n) == 1, "only the switch can be chosen (Cheevos went to Game Settings)");
 }
 
 /* The state the async scan produces on entry: saved networks up immediately,
@@ -96,7 +93,7 @@ static void scanning_state(void)
 
 	printf("scanning, two saved networks:\n");
 	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, two networks, rule, note");
-	ck(live_count(rows, n) == 4, "switch, Cheevos and both networks are choosable");
+	ck(live_count(rows, n) == 3, "switch and both networks are choosable");
 	ck(!strcmp(rows[WIFI_TOP_ROWS].label, "ReinFi"), "the first saved network is listed");
 	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "saved"), "no signal word before the scan lands");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 2, "rule after the networks");
@@ -136,7 +133,7 @@ static void scanned_state(void)
 	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "strong - saved"), "a saved network in range shows both");
 }
 
-/* Connected and signed in: Over The Hare opens, Cheevos names the account,
+/* Connected: Over The Hare opens
  * and the footer says where the device is - the network, then the address
  * another machine types in (plorpos-z0d.1). wifi_label asks the radio, which
  * a build machine does not have, so the connection is stated after it. */
@@ -157,12 +154,10 @@ static void connected_state(void)
 	wifi_label(&w);
 	w.connected = true;
 	snprintf(w.conn, sizeof w.conn, "kitchen · 192.168.0.55");
-	w.ra_name = "eric";
 	n = wifi_build(&w, rows, 64, &heading);
 
-	printf("connected, signed in:\n");
+	printf("connected:\n");
 	ck(rows[WIFI_ROW_XFER].live && !rows[WIFI_ROW_XFER].value, "OTH is live and unqualified");
-	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "eric"), "Cheevos shows the account");
 	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, network, rule, where, legend");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 1, "rule after the network");
 	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "kitchen · 192.168.0.55"),
@@ -227,21 +222,20 @@ static void tortos_menu_offline(void)
 	u.cards_dir = "Horizontal";
 	u.sys_order = "Year";
 	u.auto_off = 120;
-	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("plorpOS menu, radio off:\n");
 	ck(n == PM_ROWS, "every row is filled");
 	ck(!strcmp(heading, "plorpOS"), "heading");
-	ck(!strcmp(rows[PM_WIFI].label, "Wi-Fi Services"), "the Wi-Fi row is Wi-Fi Services");
+	ck(!strcmp(rows[PM_WIFI].label, "Network Services"), "the Wi-Fi row is Network Services");
 	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "and reads the radio: off");
 	ck(!strcmp(rows[PM_SYSTEM].label, "System Settings") && rows[PM_SYSTEM].live
 	   && !rows[PM_SYSTEM].value, "System Settings opens, with no value");
 	ck(!strcmp(rows[PM_UI].label, "UI Settings") && rows[PM_UI].live
 	   && !rows[PM_UI].value, "UI Settings opens, with no value");
+	ck(!strcmp(rows[PM_GAME].label, "Game Settings") && rows[PM_GAME].live
+	   && !rows[PM_GAME].value, "Game Settings opens, with no value");
 	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
-	ck(rows[PM_SCRAPING].live && !rows[PM_SCRAPING].value,
-	   "Scraping opens offline: gamelist import needs no network");
 	n = sys_menu_scraping_build(&u, rows, &heading);
 	ck(n == SC_ROWS && !strcmp(heading, "Scraping"), "Scraping submenu");
 	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
@@ -252,8 +246,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
 	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off follows it");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(val(&rows[ST_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
-	ck(rows[ST_SUSPEND].live, "Suspend Timeout is reachable offline");
+	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
+	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
 	   "Battery Percentage defaults to off");
@@ -336,7 +330,7 @@ static void tortos_menu_online(void)
 
 	ck(n == PM_ROWS, "row count does not depend on the network");
 	printf("plorpOS menu, connected:\n");
-	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi Services shows the network name");
+	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Network Services shows the network name");
 	sys_menu_scraping_build(&u, rows, &heading);
 	ck(rows[SC_BOXART].live, "Box Art is live");
 	sys_menu_system_build(&u, rows, &b, &heading);
@@ -428,24 +422,55 @@ static void system_menu(void)
 	u.sys_core = "gambatte";
 	u.game_count = 412;
 	u.dmode = "Sharp";
+	u.shader = "Scanlines"; u.shader_live = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("system menu:\n");
-	ck(n == SM_ROWS, "every row is filled");
+	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
 	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
 	ck(!strcmp(val(&rows[SM_GAMES]), "412"), "the count is the real one");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
-	ck(rows[SM_DISPLAY].live && rows[SM_RESCAN].live, "the two live rows are live");
+	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Shader"),
+	   "Shader sits under Display Mode");
+	ck(!strcmp(rows[SM_DISPLAY].label, "Display Mode"), "Display Mode keeps its name off the DS");
+	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
+	   "and carries the system's shader");
+	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
 	ck(!rows[SM_GAMES].live && !rows[SM_CORE].live, "reported facts are not rows to press");
-	ck(rows[SM_BOXART].live, "Box Art is live on a network");
+	ck(rows[sm_index(false, SM_BOXART)].live, "Box Art is live on a network");
 
 	/* The same menu with the radio down. Only Box Art changes. */
 	u.wifi = WIFI_OFF;
 	sys_menu_build(&u, rows, &b, &heading);
-	ck(!rows[SM_BOXART].live, "Box Art dies with the radio");
-	ck(!strcmp(val(&rows[SM_BOXART]), "needs Wi-Fi"), "and says why");
-	ck(rows[SM_RESCAN].live, "Rescan does not need a network");
+	ck(!rows[sm_index(false, SM_BOXART)].live, "Box Art dies with the radio");
+	ck(!strcmp(val(&rows[sm_index(false, SM_BOXART)]), "needs Wi-Fi"), "and says why");
+	ck(rows[sm_index(false, SM_RESCAN)].live, "Rescan does not need a network");
+
+	/* No list, or PICO-8 running native: nothing a shader would reach. */
+	u.shader = NULL; u.shader_live = false;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "None") && !rows[sm_index(false, SM_SHADER)].live,
+	   "Shader reads None and is not a stop when it cannot apply");
+
+	/* The DS (plorpos-6ei.13): its layouts are Layout, and Display - Aspect
+	 * or Stretch - sits under it where the panel is not 4:3. */
+	u.wifi = WIFI_CONNECTED;
+	u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
+	n = sys_menu_build(&u, rows, &b, &heading);
+	ck(n == SM_ROWS, "DS: every row, Display included");
+	ck(!strcmp(rows[SM_DISPLAY].label, "Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
+	   "DS: the layout row is Layout");
+	ck(!strcmp(rows[SM_FILL].label, "Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
+	   "DS: Display under it, with its value");
+	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
+	   "DS: Shader under Display");
+	u.fill = NULL;
+	n = sys_menu_build(&u, rows, &b, &heading);
+	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Layout")
+	   && !strcmp(rows[SM_FILL].label, "Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
+	   "DS on a 4:3 panel: Layout, no Display row, the rows below one higher");
+	u.nds = false; u.dmode = "Sharp";
 
 	/* Favorites, which is not a system: no core and no folder, so four of the
 	 * six rows have nothing to describe and one of them - Display Mode -
@@ -612,17 +637,19 @@ static void cursor_reaches(void)
 	u.wifi = WIFI_CONNECTED;
 	u.sys_name = "NES"; u.sys_core = "nestopia";
 	u.game_count = 3; u.dmode = "Native";
+	u.shader = "None"; u.shader_live = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
 	printf("system menu, what the cursor can reach:\n");
-	ck(k == 4, "four rows, not seven");
+	ck(k == 5, "five rows, not seven");
 	ck(holds(got, k, SM_DISPLAY), "Display Mode");
+	ck(holds(got, k, sm_index(false, SM_SHADER)), "Shader");
 	/* Live since sorting stopped being alphabetical-only. It was a
 	 * placeholder for long enough that this check counted three. */
 	ck(holds(got, k, SM_SORT), "Sort By");
-	ck(holds(got, k, SM_BOXART), "Box Art");
-	ck(holds(got, k, SM_RESCAN), "Rescan Folder");
+	ck(holds(got, k, sm_index(false, SM_BOXART)), "Box Art");
+	ck(holds(got, k, sm_index(false, SM_RESCAN)), "Rescan Folder");
 	ck(!holds(got, k, SM_GAMES) && !holds(got, k, SM_CORE),
 	   "the reported facts are not stops");
 
@@ -637,8 +664,7 @@ static void cursor_reaches(void)
 	ck(holds(got, k, PM_BT), "Bluetooth is reachable with no network");
 	ck(k == PM_ROWS, "every row is a stop: nothing here needs the network now");
 	ck(holds(got, k, PM_SYSTEM) && holds(got, k, PM_UI), "both settings submenus");
-	ck(holds(got, k, PM_SCRAPING), "Scraping is reachable with no network");
-	ck(holds(got, k, PM_WIFI), "Wi-Fi Services is reachable, which is how you fix that");
+	ck(holds(got, k, PM_WIFI), "Network Services is reachable, which is how you fix that");
 	ck(holds(got, k, PM_ABOUT), "About is reachable");
 	/* Play Time reads what is already stored and asks nothing of the network,
 	 * so it stays reachable when everything else is grayed out. */
@@ -757,8 +783,8 @@ static void info_rows(void)
 
 	n = gi_rows(rows, &gi, true);
 	printf("game info, nothing scraped, art present and a network:\n");
-	ck(n == 2, "Cheevos and the art action, and nothing else to say");
-	ck(!strcmp(rows[0].label, "Cheevos"), "Cheevos leads when nothing describes the game");
+	ck(n == 2, "Achievements and the art action, and nothing else to say");
+	ck(!strcmp(rows[0].label, "Achievements"), "Achievements leads when nothing describes the game");
 	ck(!strcmp(val(&rows[0]), "12 of 78"), "and carries the count");
 	ck(rows[0].live, "and opens the set, the way the in-game row does");
 	ck(!strcmp(rows[1].label, "Replace Box Art"), "art present offers a replace");
@@ -802,7 +828,7 @@ static void info_rows(void)
 	   "then when it came out");
 	ck(!strcmp(rows[2].label, "Genre") && !strcmp(val(&rows[2]), "Platform,Shoot'em Up"),
 	   "then what kind, as the scrape joined it");
-	ck(!strcmp(rows[3].label, "Cheevos"),
+	ck(!strcmp(rows[3].label, "Achievements"),
 	   "then what there is to shoot for, which is worth seeing before starting");
 	ck(!strcmp(rows[4].label, "Replace Box Art"), "and the action last");
 	k = reachable(rows, n, got, GI_MAX);
@@ -826,7 +852,7 @@ static void info_rows(void)
 	n = gi_rows(rows, &gi, true);
 	printf("game info, scraped with neither year nor genre:\n");
 	ck(n == 3, "both are simply absent");
-	ck(!strcmp(rows[1].label, "Cheevos"), "leaving the prose and the two actions");
+	ck(!strcmp(rows[1].label, "Achievements"), "leaving the prose and the two actions");
 
 	/* A game on the card (everything but Splore): Delete Game, last, and
 	 * live without a network. plorpos-gkd.69. */
@@ -867,16 +893,39 @@ static void ingame_rows(void)
 	int got[GM_ROWS], n, k;
 
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
+	u.nds = false; u.fill = NULL;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
-	u.disc = "Disc 2";
+	u.disc = "Disc 2"; u.stylus = NULL;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "eleven rows");
+	ck(n == GM_ROWS, "every row is built");
+	ck(GM_STYLUS == GM_HOTKEYS + 1 && GM_RESET == GM_STYLUS + 1 && !rows[GM_STYLUS].live,
+	   "Stylus Stick sits between Hotkeys and Reset, passed over when it does not apply");
+	u.stylus = "Right Stick";
+	gm_rows(&u, rows, &b);
+	ck(rows[GM_STYLUS].live && !strcmp(val(&rows[GM_STYLUS]), "Right Stick"), "and says which stick when it does");
+	u.stylus = NULL;
+	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
-	ck(GM_SHADER == GM_DISPLAY + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
-	   "Shader is under Display (plorpos-gkd.72.4)");
+	ck(GM_FILL == GM_DISPLAY + 1 && GM_SHADER == GM_FILL + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
+	   "Shader is under Display (plorpos-gkd.72.4), the DS's Display between them");
+	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display"),
+	   "not a DS: Display is the mode, no second Display row");
+	u.nds = true; u.fill = "Aspect";
+	gm_rows(&u, rows, &b);
+	ck(!strcmp(rows[GM_DISPLAY].label, "Layout") && rows[GM_FILL].live
+	   && !strcmp(rows[GM_FILL].label, "Display") && !strcmp(val(&rows[GM_FILL]), "Aspect"),
+	   "a DS: Layout, then Display with its value (plorpos-6ei.13)");
+	u.fill = NULL;
+	{
+		int ids[GM_ROWS], m = gm_compact(rows, gm_rows(&u, rows, &b), ids), hit = 0;
+		for (int i = 0; i < m; i++) hit |= ids[i] == GM_FILL;
+		ck(!hit && !strcmp(rows[GM_DISPLAY].label, "Layout"), "a DS on a 4:3 panel: no Display row");
+	}
+	u.nds = false;
+	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(val(&rows[GM_SHADER]), "Real LCD"), "and carries the shader's name");
 	ck(rows[GM_SHADER].live, "and is reachable with a list");
 	ck(GM_PALETTE == GM_SHADER + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),
@@ -887,22 +936,22 @@ static void ingame_rows(void)
 	   "Disc is under Palette (plorpos-gkd.47)");
 	ck(!strcmp(val(&rows[GM_DISC]), "Disc 2"), "and carries the disc in the drive");
 	ck(rows[GM_DISC].live, "and is reachable on an .m3u game");
-	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
+	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Achievements counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
 	ck(!strcmp(rows[GM_CHEEVOS + 1].label, "Hotkeys"),
 	   "no Sleep: Hotkeys follows Cheevos (a POWER tap sleeps)");
 	ck(!strcmp(rows[GM_HOTKEYS].label, "Hotkeys"), "Hotkeys is there");
 	ck(rows[GM_HOTKEYS].live, "and is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS, "every row is a stop");
+	ck(k == GM_ROWS - 2, "every row but Stylus Stick and the DS's Display (not a DS game) is a stop");
 
 	u.earned = 0; u.total = 0;
 	n = gm_rows(&u, rows, &b);
 	printf("in-game menu, a game with no set:\n");
-	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Cheevos says none");
+	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Achievements says none");
 	ck(!rows[GM_CHEEVOS].live, "and does nothing");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS - 1, "so the cursor steps over it");
+	ck(k == GM_ROWS - 3, "so the cursor steps over it");
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
@@ -934,32 +983,32 @@ static void ingame_rows(void)
 		   "Disc says None and does nothing on a game not launched from an .m3u");
 		m = gm_compact(rows, n, ids);
 		printf("in-game menu as drawn, a Brick's Game Boy-less, one-disc game:\n");
-		ck(m == GM_ROWS - 3, "Shader, Palette and Disc are not drawn at all");
+		ck(m == GM_ROWS - 5, "Display (the DS's), Shader, Palette, Disc and Stylus Stick are not drawn at all");
 		for (i = 0; i < m; i++) {
 			if (!strcmp(rows[i].label, "Shader")) shader = 1;
 			if (!strcmp(rows[i].label, "Palette")) palette = 1;
 			if (!strcmp(rows[i].label, "Disc")) disc = 1;
 		}
 		ck(!shader && !palette && !disc, "no such label is anywhere");
-		ck(ids[GM_SHADER] == GM_CHEEVOS && !strcmp(rows[GM_SHADER].label, "Cheevos"),
-		   "the row under Display reads back as Cheevos");
+		ck(ids[GM_DISPLAY + 1] == GM_CHEEVOS && !strcmp(rows[GM_DISPLAY + 1].label, "Achievements"),
+		   "the row under Display reads back as Achievements");
 		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Quit"),
 		   "and the last as Quit");
-		ck(!rows[GM_SHADER].live,
+		ck(!rows[GM_DISPLAY + 1].live,
 		   "a dead Cheevos stays drawn (its none is an answer)");
 
 		u.shaders = true; u.palette = "Auto";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_PALETTE &&
-		   ids[GM_DISC] == GM_CHEEVOS,
+		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_PALETTE &&
+		   ids[GM_DISC - 1] == GM_CHEEVOS,
 		   "a Game Boy game on the GKD draws every row but Disc");
 
 		u.palette = NULL; u.disc = "Disc 1";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_DISC &&
-		   !strcmp(rows[GM_PALETTE].label, "Disc"),
+		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_DISC &&
+		   !strcmp(rows[GM_PALETTE - 1].label, "Disc"),
 		   "an .m3u PlayStation game draws Disc where Palette would be");
 	}
 }

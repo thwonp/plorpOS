@@ -198,7 +198,7 @@ bool chv_write_active(const char *path)
 	/* Nothing left to watch. Discard rather than commit, so the previous
 	 * game's active set is not left standing under this game's name. */
 	if (kept == 0) { atomic_abort(out, path); remove(path); return false; }
-	return atomic_commit(out, path);
+	return atomic_commit_lazy(out, path);
 }
 
 bool chv_note_earned(int game, int id, bool synced)

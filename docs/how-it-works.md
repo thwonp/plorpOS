@@ -62,7 +62,7 @@ The in-game menu is the launcher's own: MENU makes diatom hand the display
 over with a preview of the paused frame, and Continue, Save, Load, Reset and
 Quit act through one protocol line each. **Display** cycles the running game's
 mode as you press it, which is the one to use when you want to see the
-difference rather than guess at it, and **Cheevos** shows how much of this
+difference rather than guess at it, and **Achievements** shows how much of this
 game's set you have earned, or reads `none` and stays unselectable when there
 is no set. Volume and brightness set in a game
 come back to the launcher's settings when the game ends, because the two
@@ -157,7 +157,8 @@ not a second and a half of re-initializing a display.
   twice.
 - **Auto-resume.** Every launch hands over the game's autosave,
   `<ROM file>.auto.state`. If one is there the game comes up exactly where it
-  was left; if not it starts fresh.
+  was left; if not it starts fresh. Games Auto-Resume off (Game Settings)
+  hands none over, and the autosave is still written on the way out.
 - **Manual save and load**, six slots, from the in-game menu (`MENU`).
   Silent - the device shows no in-game chrome.
 
@@ -191,11 +192,27 @@ The launcher declares which console the game is and hands over the set, and
 diatom watches every frame
 (its ADR-0025 and ADR-0026).
 
-**The device does the normal thing.** Sign in once under `MENU` -> Wi-Fi Services -> Cheevos,
+**The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> Achievements Sign-In,
 and the first time you launch a game TortOS hashes the ROM, asks
 RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
 that the launch is instant and works with Wi-Fi off.
+
+**Game Settings -> Download Achievement Sets** does that first-play fetch for
+the whole library at once (plorpos-3yv.107.3), so a game never started online
+still has its set offline. One game at a time, one request started or polled
+per frame; the ROM is hashed on a thread, since a whole GBA cartridge is 32 MB
+and would otherwise hold the frame. A cached set costs one `access()`, so a
+second run only asks about what is missing. Hacks and translations come back
+as no game, or as RetroAchievements' "Unsupported Game Version" placeholder,
+and many arcade sets as a game with nothing to earn; all three are counted as
+"No achievements", apart from real failures; five failures in a row stop the run
+as offline. Unlocks earned offline are kept on the card and sent the next time
+a game ends with the device online.
+
+A DS game is hashed the way RetroAchievements does it - header, ARM9, ARM7 and
+icon, read where the header points - through rcheevos' own `hash_rom.c`, not
+as the whole 128 MB cartridge.
 
 That needs HTTPS, which the Brick turns out to have: `curl 7.54.1` against
 `OpenSSL/1.1.0i`. What it does not have is anything to trust, so

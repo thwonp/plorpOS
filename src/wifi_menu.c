@@ -83,7 +83,7 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	int nrows = 0, i;
 	bool any_saved = false;
 
-	*heading = "Wi-Fi Services";
+	*heading = "Network Services";
 
 	/* The scan is driven from here because this is the function that already
 	 * runs every frame. wifi_scan_poll() does nothing until its next second is
@@ -105,14 +105,13 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	 * and the first thing reachable. */
 	ADD((menu_row){ "Wi-Fi", w->on ? "on" : "off", true });
 	/* Under the switch and above the list, so they stay put while a scan
-	 * changes the list's length (WIFI_TOP_ROWS). An account, reading "sign
-	 * in" until there is one, and the file server, dead until there is a
-	 * network to serve it on - the same words the plorpOS menu used for both
-	 * before they moved here (plorpos-z0d.1). */
-	ADD((menu_row){ "Cheevos", w->ra_name ? w->ra_name : "sign in", true });
+	 * changes the list's length (WIFI_TOP_ROWS). The file server is dead
+	 * until there is a network to serve it on. The RetroAchievements account
+	 * that sat here went to Game Settings (plorpos-pyz.7). */
 	/* Not tied to the radio: they serve whatever network the device is on. */
-	if (WIFI_SVC_ROWS) {
+	if (WIFI_SVC_ROWS)
 		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
+	if (WIFI_SVC_ROWS > WIFI_SAMBA) {
 		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
 		/* On, it reads as where to manage it: the web UI, signed into as
 		 * root with ROCKNIX's root password. */

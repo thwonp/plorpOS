@@ -51,7 +51,30 @@ def ra_body(tag, d):
         return d[512:] if len(d) % 131072 == 512 else d
     if tag in ("MD", "SMS", "GG"):
         return d[512:] if len(d) % 16384 == 512 else d
+    if tag == "NDS":
+        return nds_body(d)
     return d
+
+
+def nds_body(d):
+    """rcheevos' rc_hash_nintendo_ds: the header's first 0x160 bytes, the ARM9
+    and ARM7 code and the 0xA00-byte icon block, each where the header points;
+    never the whole cartridge (plorpos-3yv.107.1). A SuperCard header is
+    skipped."""
+    base = 0
+    if d[0:4] == b"\x2e\x00\x00\xea" and d[0xB0:0xB4] == b"\x44\x46\x96\x00":
+        base = 512
+    h = d[base:base + 512]
+    u32 = lambda o: int.from_bytes(h[o:o + 4], "little")
+    arm9_addr, arm9_size = u32(0x20), u32(0x2C)
+    arm7_addr, arm7_size = u32(0x30), u32(0x3C)
+    icon = u32(0x68)
+    if arm9_size + arm7_size > 16 * 1024 * 1024:
+        return d                  # not a DS ROM; rcheevos refuses it
+    at = lambda a, n: d[base + a:base + a + n]
+    icon_block = at(icon, 0xA00)
+    return (h[:0x160] + at(arm9_addr, arm9_size) + at(arm7_addr, arm7_size)
+            + icon_block + b"\x00" * (0xA00 - len(icon_block)))
 
 
 def systems_from_cfg(path):
@@ -61,6 +84,16 @@ def systems_from_cfg(path):
         if len(f) > 7 and f[0] == "sys":
             exts = {e.strip().lower() for e in f[7].split(",") if e.strip()}
             out.append((f[2], f[4], exts))
+    return out
+
+
+def all_systems(root):
+    """Every shelf: systems.cfg, then the Rotate's own (its DS shelf)."""
+    out = []
+    for name in ("systems.cfg", "systems-rotate.cfg"):
+        path = os.path.join(root, "config", name)
+        if os.path.exists(path):
+            out += systems_from_cfg(path)
     return out
 
 
@@ -103,7 +136,7 @@ def main():
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
 
-    systems = systems_from_cfg(os.path.join(ROOT, "config", "systems.cfg"))
+    systems = all_systems(ROOT)
     if a.system:
         systems = [s for s in systems if s[0] == a.system]
         if not systems:

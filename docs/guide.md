@@ -1,102 +1,19 @@
-# TortOS guide
+# plorpOS guide
 
 The [README](../README.md) keeps each topic short. This is the long version:
 every control, menu row and setting, and the reasons behind them.
 
 ## Installing
 
-**Format the card exFAT**, with a Master Boot Record partition scheme.
+Each handheld has its own guide: [TrimUI Brick](install-brick.md),
+[GKD 350H Ultra](install-gkd.md), [RG Rotate](install-rotate.md) and
+[H700](install-h700.md) (RG SP, RG34xxSP, RG35XX H). The BIOS files each
+console needs are in the README's
+[Supported systems](../README.md#supported-systems). Building it yourself is in
+[building.md](building.md).
 
-| | |
-|---|---|
-| **macOS** | Disk Utility, `View -> Show All Devices` so you get the whole card rather than just its volume, then `Erase`: format **ExFAT**, scheme **Master Boot Record**. |
-| **Linux** | `mkfs.exfat` on an MBR-partitioned card. |
-| **Windows** | Right-click the card, `Format`, **exFAT**. |
-
-FAT32 works too if that is what the card already is - the kernel has both - but
-exFAT is what every formatter offers at the size of card anyone actually uses,
-so it is the one worth naming.
-
-Copying from macOS leaves `._name` metadata files beside everything. They are
-harmless - the launcher skips every name beginning with a dot, so they never
-show up as games - and `dot_clean /Volumes/YOURCARD` removes them if they
-bother you.
-
-The first boot is the one that installs: the stock firmware runs the card's
-installer, which sets `/usr/trimui/bin/runtrimui.sh` aside as
-`runtrimui-original.sh`, puts its own there, replaces the two splash images
-and then comes up in TortOS like every boot after it.
-
-That hook is what starts TortOS, and all it does is look for the card - no
-card, or a card without TortOS on it, and it hands straight back to the
-original. **Taking the card out is enough to get the stock system back**;
-[Undoing it](#undoing-it) has the rest.
-
-> **`.tmp_update` starts with a dot**, so Finder and most file managers hide
-> it and a drag of "everything" leaves it behind. A card missing it gets
-> through the installer and then powers straight off looking for the half that
-> is not there, and boots stock from then on. In Finder, `Cmd-Shift-.` shows
-> hidden files; from a terminal, `cp -R` the unzipped contents and it comes
-> along on its own.
-
-Building it yourself instead is in [building.md](building.md).
-
-BIOS files go **loose in `Bios/`**, not in a folder per system - that directory
-is handed to the core as its system directory, and a core asks for a filename
-inside it:
-
-```
-Bios/syscard3.pce             TurboGrafx-16 CD games (.chd, .cue, .m3u ...)
-```
-
-That one is required: a PC Engine CD will not start without it, and TortOS says
-so by name rather than letting the core refuse the disc. HuCards on the same
-shelf need nothing and are unaffected.
-
-Nothing else on the shelf needs a BIOS. mGBA has a built-in one, so Game Boy
-Advance runs without the real thing; if you want the original it is
-`Bios/gba_bios.bin`, and the difference is the boot animation.
-
-The consoles on the shelf come from `systems.cfg`, so the list in the README is
-the shipped one rather than a fixed one: a line removed from the config takes
-its shelf with it, and a system whose folder is empty is hidden until there is
-something in it.
-
-### Undoing it
-
-TortOS replaces the boot splash and the loading splash on first boot, and backs
-both up beside itself (`bootlogo.stock.bmp`, `splash.stock.png`) along with the
-stock init script (`/etc/init.d/runtrimui.tortos-bak`). Removing the card is
-enough to boot stock again; `/usr/trimui/bin/runtrimui-original.sh` is the
-original hook.
-
-What removing the card does **not** undo is anything written to the device
-itself. The stock root filesystem is read-only and everything writable is an
-overlay on the internal eMMC, so what TortOS puts there stays there:
-
-```
-/usr/trimui/bin/runtrimui.sh            the hook
-/usr/trimui/bin/runtrimui-original.sh   the stock hook, moved aside
-/usr/trimui/bin/setbright               brightness before the animation,
-/usr/trimui/bin/tortos-bootbright.sh    re-copied by launch.sh every boot
-/etc/init.d/runtrimui                   patched to call the line above
-/etc/init.d/runtrimui.tortos-bak        the version before that patch
-/etc/splash.png                         the pic2fb loading splash
-/mnt/boot/bootlogo.bmp                  the u-boot splash, on mmcblk0p1
-```
-
-Eight files, none of them a driver and none of them replacing anything the
-system needs to run. TortOS boots on top of the stock system rather than
-replacing it - which is also why **the Wi-Fi networks and their passwords
-survive** a reformatted card. They live in `/etc/wifi/wpa_supplicant.conf`,
-written by the stock `wpa_supplicant` that TortOS drives rather than replaces,
-on the eMMC and never on the card. Forget them from the Wi-Fi screen before the
-device goes to anyone else.
-
-The two splashes are the awkward pair: they are replaced on the device, and the
-originals are saved **to the card** as `bootlogo.stock.bmp` and
-`splash.stock.png`. Keep a copy of those somewhere else if the stock boot logo
-matters to you - a card is the one part of this that gets reformatted.
+Copying from macOS leaves `._name` files beside everything. plorpOS skips
+them, and `dot_clean /Volumes/YOURCARD` removes them.
 
 ## Controls and menus
 
@@ -109,25 +26,27 @@ matters to you - a card is the one part of this that gets reformatted.
 | **A** | open a system, or start a game |
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
-| **Y** | favorite it - Favorites is a shelf of its own. Nothing on Muse's shelf |
+| **Y** | favorite it - Favorites is a shelf of its own. On Muse's shelf, Y favorites the album, and held half a second shows only favorite albums (again to show them all) |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
-| **F1/F2** | brightness, everywhere, including in game, held the same way. Home with the volume rocker on the GKD, MENU with it on the RG SP |
-| **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
-| **Right stick, stick clicks** (Brick Pro) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
+| **MENU + volume** | brightness, everywhere, including in game, held the same way (Home with the volume rocker on the GKD) |
+| **Fn1 / Fn2** (Brick, Brick Pro) | the two function keys, Fn1 the left: nothing until bound as hotkeys, alone or with a modifier |
+| **Left stick** (Brick Pro, RG34xxSP, RG35XX H) | the d-pad, in menus and in game |
+| **Right stick, stick clicks** (Brick Pro, RG34xxSP, RG35XX H) | never seen by games (the bundled cores are all digital), except as the Nintendo DS stylus when **Stylus Stick** picks it, but hotkeys: the left click can be a modifier, and the right stick's directions and click are triggers with a modifier or alone (no stick direction on the Nintendo DS, where R Stick Click is Stylus Tap by default). The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Hotkeys, Reset, Quit |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) under Hotkeys |
+| **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
-| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends after the **Suspend Timeout**; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
+| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
 
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
 console inside it, the running game in a game. Inside any of them MENU closes
-the whole menu at once - from Play Time or Wi-Fi Services straight back to where you
+the whole menu at once - from Play Time or Network Services straight back to where you
 were, or back into the game - and B goes back one screen at a time.
 
-**The Brick carries this table itself**, under **MENU > Controls**: five pages
+**plorpOS carries this table itself**, under **MENU > Controls**: five pages
 that left and right step through - moving, the shelf, a game, Muse, and the
 buttons that work anywhere. It is the copy that is always to hand, and the one
 that follows your UI Direction, so the page shows the axes as they are on your
@@ -140,29 +59,30 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Wi-Fi Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, and on the RG Rotate **SSH**; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
-| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
-| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below |
-| **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
+| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
+| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else |
+| **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Off` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what the Fast-Forward hotkey runs at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Download Achievement Sets**: every game's set onto the card at once, for playing offline; games already cached are skipped, and the panel counts the games with no achievements to earn. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
+| **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
 | **About** | version, address, battery, uptime |
 
 Charging, or plugged into a computer, the device never sleeps, suspends or
-turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
+turns itself off: Auto Off, Auto Sleep and suspend all wait until it is
 unplugged. As in NextUI - suspending on external power hangs the Brick.
 
 Date & Time has a row for each part of the clock and one for the time zone,
 each changed with left and right and set the moment it changes, so the time
 holds through a power-off. The zones are one or two cities per hour of offset,
-west to east. On the Brick the zone is New York until you choose one; on the
-GKD and the RG SP it reads `System`, the device's own, until you do.
+west to east. On the Brick the zone is New York until you choose one; elsewhere it
+reads `System`, the device's own, until you do.
 
 Over The Hare and Box Art need a network, and go quiet without one rather than
-disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable
-either way, because signing in is the thing you go there to do, and Bluetooth
-and Play Time need no network at all.
+disappearing - a row that vanishes teaches nobody why. Achievements Sign-In,
+in Game Settings, stays reachable either way, because signing in is the thing
+you go there to do, and Bluetooth and Play Time need no network at all.
 
 **Import gamelist.xml metadata** reads the `gamelist.xml` (or
 `miyoogamelist.xml`) an EmulationStation-style scraper left in each
@@ -190,7 +110,9 @@ The system menu opens on a shelf of games and applies to that system alone:
 | **Games** | how many the shelf found |
 | **Core** | which libretro core runs them |
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
-| **Display Mode** | left/right cycles it; saved the moment it changes |
+| **Display Mode** | left/right cycles it; saved the moment it changes. On the DS shelf it is **Layout** |
+| **Display** | DS shelf only: **Aspect**, **Stretch** or **Integer** for Top Only, Bottom Only and the Overlays' big screen; only the choices that change the picture on that panel, none on the Brick |
+| **Shader** | the console's shader, the one the in-game Shader row picks: left/right steps through the list, A opens it; greyed on PICO-8 running native |
 | **Box Art** | fetch what this system is missing, and nothing else |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |
 
@@ -222,8 +144,11 @@ screen; this is the same thing by hand, for a card written some other way.
 game, press it and then a button, and that button presses itself about ten
 times a second for as long as you hold it; the same again turns it back. Hold
 Turbo Assign two seconds to clear every turbo button. It lasts until the game
-quits. How it works, and why X and Y are no longer turbo by default, is in
-[turbo.md](turbo.md).
+quits, unless **Persistent Turbo Assignments** is on in Game Settings: then each game keeps
+its own turbo buttons for next time. How it works is in [turbo.md](turbo.md).
+
+The other hotkeys are in the README's [FAQ](../README.md#faq). Nintendo DS
+layouts, the stylus and Ports differ by device; each install guide has them.
 
 Volume and brightness draw the same thin line across the top of the screen in
 the launcher, in a game, and in the in-game menu. One firmware, one piece of
@@ -232,7 +157,7 @@ volume, so the line says what it is without a glyph or a number on it.
 
 ## Audio
 
-Sound can come out of four places, and TortOS picks in a fixed order:
+Sound can come out of four places, and plorpOS picks in a fixed order:
 
 **a USB DAC, then wired headphones, then Bluetooth, then the speaker.**
 
@@ -264,7 +189,7 @@ carry on out loud.
 
 **On the Brick and Brick Pro, use the USB-C port on top.** The bottom port
 is for charging and a computer, and a DAC plugged in there gets no power.
-The GKD and the RG SP have one port, and it works for either.
+Elsewhere, use the device's USB-C port.
 
 A DAC with no volume control of its own plays at full volume; the device's
 buttons can't turn it down.
@@ -272,7 +197,7 @@ buttons can't turn it down.
 **On the Brick and Brick Pro, Wi-Fi can cause brief dropouts on a DAC** -
 a few milliseconds of silence, more often the weaker the signal. It is the
 radio itself, not the music player, and nothing in software has cured it.
-If you hear them, turn Wi-Fi off under **MENU > Wi-Fi Services** while you
+If you hear them, turn Wi-Fi off under **MENU > Network Services** while you
 listen.
 
 ### Bluetooth
@@ -305,8 +230,8 @@ included.
 
 **The volume keys set the headset's own volume**, through its absolute volume
 control, so there is still one volume and not two in series. The headset's
-volume buttons move the Brick's level the other way. On a few headsets, the
-Brick's buttons set only the starting volume; after that, change it on the
+volume buttons move the device's level the other way. On a few headsets, the
+device's buttons set only the starting volume; after that, change it on the
 headset itself. In a game, a press on the headset changes the level without
 showing the bar.
 
@@ -334,7 +259,7 @@ in all three layouts, with the other axis jumping from one initial to the
 next. A on an
 album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
 Sort By, Album Art (below), and Rescan Folder for music copied on while the
-Brick was running.
+device was running.
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -371,7 +296,7 @@ with a folder per book, or a book's folder on its own. A book is one M4B or a
 folder of files, which play in name order. A on a book goes straight to Now
 Playing and carries on where you left it: its place is kept every thirty
 seconds while it plays, whenever it pauses or moves to the next file, and when
-the Brick turns off. B from there is the book's files, and A on one starts it
+the device turns off. B from there is the book's files, and A on one starts it
 from its beginning. A book played to its end says Finished under its cover,
 and A on it starts it over. Books always play in order, so Y does nothing on
 their Now Playing, and on books Sort By is by author or by title and there is
@@ -421,10 +346,9 @@ button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
 (MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
-the same buttons keep working for the **Suspend Timeout**, so a pause in the
-dark can be undone in the dark. Then the device suspends, or with Auto Off it
-powers down: the Suspend Timeout is also Auto Off's grace once the music
-stops. NextUI pauses the music to sleep; this is TortOS's own.
+the same buttons keep working for 30 seconds, so a pause in the dark can be
+undone in the dark. Then the device suspends, or with Auto Off it powers
+down. NextUI pauses the music to sleep; this is plorpOS's own.
 
 For a pocket, set **Mute Switch** (System Settings) to `muse button lock`. The switch
 then no longer mutes; it works like an iPod's hold switch. While it is down

@@ -44,7 +44,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 	 * comes from. Reading "4/54" and having nowhere to go with it is the
 	 * question half-answered: which four, and what are the other fifty. A game
 	 * with no set has nothing to open and says so. */
-	out[n++] = (menu_row){ "Cheevos", gi->cheevos, gi->has_cheevos };
+	out[n++] = (menu_row){ "Achievements", gi->cheevos, gi->has_cheevos };
 	/* WHAT THIS SCREEN NO LONGER SAYS, and why, because each was removed on a
 	 * reason rather than to make the list shorter:
 	 *
@@ -98,13 +98,19 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Disc",
-		"Cheevos", "Hotkeys", "Reset", "Quit"
+		"Continue", "Save", "Load", "Display", "Display", "Shader", "Palette", "Disc",
+		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
 	};
 	int i;
 
 	for (i = 0; i < GM_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
 	out[GM_DISPLAY].value = u->dmode;
+	/* A DS's layouts are Layout, and its Display is how the one big screen
+	 * fills the panel - the row beneath, only where that changes anything
+	 * (plorpos-6ei.13). */
+	if (u->nds) out[GM_DISPLAY].label = "Layout";
+	out[GM_FILL].value = u->fill;
+	out[GM_FILL].live  = u->fill != NULL;
 	/* Under Display, because it is more of the same question - how the game
 	 * looks. Where there is nothing to pick from it says None and is passed
 	 * over, as Cheevos is with no set. */
@@ -119,6 +125,9 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	 * anything that cannot have a second disc. */
 	out[GM_DISC].value = u->disc ? u->disc : "None";
 	out[GM_DISC].live  = u->disc != NULL;
+	/* Under Hotkeys, where Stylus Mode is bound: which stick is the stylus. */
+	out[GM_STYLUS].value = u->stylus ? u->stylus : "None";
+	out[GM_STYLUS].live  = u->stylus != NULL;
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened
@@ -139,7 +148,7 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	int i, k = 0;
 
 	for (i = 0; i < n; i++) {
-		if ((i == GM_SHADER || i == GM_PALETTE || i == GM_DISC) && !rows[i].live)
+		if ((i == GM_FILL || i == GM_SHADER || i == GM_PALETTE || i == GM_DISC || i == GM_STYLUS) && !rows[i].live)
 			continue;
 		rows[k] = rows[i];
 		ids[k++] = i;

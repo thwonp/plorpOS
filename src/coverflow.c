@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "coverflow.h"
+#include "platform.h"
+#include "ui.h"
 
 #include <math.h>
 #include <string.h>
@@ -716,11 +718,21 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 		int tw = 0, th = 0;
 		float cb = 1.0f;
 		SDL_Texture *tex = get_tex(ctx, slots[a].item, &tw, &th, &cb);
+		float x = lay->vertical ? cx : cx + d * step;
+		float y = lay->vertical ? cy + d * step : cy;
+		float hw = cw * 0.5f * scale, hh = ch * 0.5f * scale;
 		if (!tex) continue;
-		draw_card(r, tex, tw, th, cb,
-		          lay->vertical ? cx : cx + d * step,
-		          lay->vertical ? cy + d * step : cy,
-		          cw * 0.5f * scale, ch * 0.5f * scale, ang, alpha, lay);
+		draw_card(r, tex, tw, th, cb, x, y, hw, hh, ang, alpha, lay);
+		/* A touch target (ui_hit): the presses from the cursor to this card,
+		 * along the row - recorded far to near, so the nearer card of two
+		 * that overlap is the one a tap gets. */
+		{
+			int n = (int)lroundf(d + cf->pos - cf->target);
+			SDL_Rect hr = { (int)(x - hw), (int)(y - hh), (int)(hw * 2), (int)(hh * 2) };
+
+			ui_hit(&hr, lay->vertical ? (n < 0 ? IN_UP : IN_DOWN)
+			                          : (n < 0 ? IN_LEFT : IN_RIGHT), n < 0 ? -n : n);
+		}
 	}
 	return cf->active;
 }

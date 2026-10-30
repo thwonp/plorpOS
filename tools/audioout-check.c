@@ -340,6 +340,23 @@ static void ladder(void)
 	   "a zero-length ladder does not divide");
 }
 
+static void disconnect_pause(void)
+{
+	aout_state s = su(AOUT_AUTO, false, NULL, NULL);
+	printf("Muse destination loss:\n");
+	ck(aout_pause_on_loss(AOUT_BT, true, &s), "headset loss pauses audible music");
+	ck(aout_pause_on_loss(AOUT_USB, true, &s), "DAC loss still pauses audible music");
+	ck(!aout_pause_on_loss(AOUT_BT, false, &s), "paused music stays paused");
+	ck(!aout_pause_on_loss(AOUT_WIRED, true, &s), "wired unplug keeps music playing");
+	ck(!aout_pause_on_loss(AOUT_SPK, true, &s), "speaker playback is unaffected");
+	s = su(AOUT_SPEAKER, true, BT, USB);
+	ck(!aout_pause_on_loss(AOUT_BT, true, &s), "choosing Speaker is an intentional reroute");
+	ck(!aout_pause_on_loss(AOUT_USB, true, &s), "Speaker does not pause an attached DAC");
+	s = su(AOUT_AUTO, true, "", USB);
+	ck(aout_pause_on_loss(AOUT_BT, true, &s), "headset loss is handled even with a new cable");
+	ck(!aout_pause_on_loss(AOUT_USB, true, &s), "unrelated headset loss leaves USB music alone");
+}
+
 int main(void)
 {
 	priority();
@@ -354,6 +371,7 @@ int main(void)
 	reapply_rule();
 	the_measured_case();
 	ladder();
+	disconnect_pause();
 	if (fails) { printf("\n%d audio output check(s) failed\n", fails); return 1; }
 	printf("\nok: sound goes where it should\n");
 	return 0;

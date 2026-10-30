@@ -51,6 +51,8 @@ carries its own; see Runtime libraries.
 | `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
+| `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without the committed PGO profile, which needs a newer compiler; the frame-skip hook in `mk/patches/dsperate-lr-frameskip.patch` follows the approach of nelynes's slotPlus, https://github.com/nelynes/slotPlus) |
+| `melondsds_libretro.so` (RG Rotate only, `vendor/cores-rotate/`) | Nintendo DS | GPL-3.0 (melonDS DS, https://github.com/JesseTG/melonds-ds v1.4.0, on melonDS, https://github.com/JesseTG/melonDS at the commit it pins; built with two patches of ours, `mk/patches/melondsds-plorpos.patch` and `mk/patches/melonds-plorpos.patch`, which are GPL-3.0 like the code they change - `mk/build-melondsds.sh`) |
 
 The GKD card ships all nine. The Brick card ships the first six only - no
 pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
@@ -100,6 +102,35 @@ tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
 `938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`), and the
 script above rebuilds the shipped libraries from it. The LGPL's text ships on
 the card beside them as `TortOS/lib/COPYING.LGPLv2.1`.
+
+### Ports on the Brick (`TortOS/brick/portmaster/`)
+
+PortMaster (MIT), CPython 3.12.16 (PSF License, python-build-standalone), and
+Bash 5.2.015 (GPL 3 or later, robxu9/bash-static) are redistributed unmodified.
+`mk/build-pmtools-brick.sh` pins their downloads; Python includes its licence
+in the tools image. Bash source is the upstream 5.2.015 release and
+the [bash-static build scripts](https://github.com/robxu9/bash-static/tree/5.2.015-1.2.3-2).
+SDL2 and its image, font and mixer libraries come from the user's Brick
+firmware and are not included in this tools image.
+
+### Ports on the H700 (`TortOS/lib32/`, `TortOS/h700/portmaster/`)
+
+PortMaster (MIT; the release zip, unpacked on first use) runs the ports on the
+H700 with these, none of them modified:
+
+| What | Version | License |
+|---|---|---|
+| SDL2 for 32-bit ARM (`TortOS/lib32/libSDL2-2.0.so.0`), `mk/build-sdl2-armhf.sh` | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib |
+| `pmtools.squashfs`: CPython (python-build-standalone) | 3.12.16 | PSF License |
+| `pmtools.squashfs`: bash (robxu9/bash-static) | 5.2.015 | GPL 3 or later |
+| `pmtools.squashfs`: SDL2_mixer for PortMaster's own GUI, `mk/build-sdl2mixer-h700.sh` (built-in decoders only: stb_vorbis, dr_flac, dr_mp3) | 2.8.0 | zlib (stb_vorbis, dr_libs: public domain or MIT-0; the licence is in `lib/licenses/SDL2_mixer`) |
+| `pmtools.squashfs`: zip, libopenal, libvorbis, libvorbisfile, libvorbisenc, libogg, libmpg123, libsndio, libbsd, libmd | Debian bookworm arm64 packages | Info-ZIP, LGPL 2 or later, BSD, ISC and others; each package's `copyright` file is in `lib/licenses/` inside the squashfs |
+
+`mk/build-pmtools-h700.sh` builds the squashfs from the pinned downloads, so
+the corresponding source of the GPL and LGPL parts is the upstream releases and
+Debian source packages named in it and in `lib/VERSIONS`. The squashfs is
+loop-mounted read-only while a port runs, so any of the files can be replaced
+by rebuilding it.
 
 ---
 

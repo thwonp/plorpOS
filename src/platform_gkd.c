@@ -127,7 +127,24 @@ bool plat_video_init(void)
 /* sway takes the frozen child off the screen (child_hide), so the menu over
  * it is an ordinary window. */
 bool plat_video_init_over_child(void) { return plat_video_init(); }
-void plat_present(SDL_Renderer *r) { SDL_RenderPresent(r); }
+
+static bool resident_away_pending;
+static void resident_place(bool on_screen);
+static bool helper(char *const argv[]);
+static void launcher_place(bool on_screen);
+
+void plat_present(SDL_Renderer *r)
+{
+	SDL_RenderPresent(r);
+	/* The menu's first frame is up: only now does the paused game go
+	 * (screen_yield). */
+	if (resident_away_pending) {
+		resident_away_pending = false;
+		launcher_place(true);
+		resident_place(false);
+		SDL_RenderSetVSync(r, 1);
+	}
+}
 
 void plat_video_quit(void)
 {
@@ -136,16 +153,77 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-/* Two fullscreen windows under sway, and sway does not reliably show the one
- * that drew last: a game started under the shelf played unseen (2026-09-29).
- * So only one is ever mapped - Diatom hides its own at every handover, and
- * this hides the shelf's while a game runs. Pumping flushes the unmap to sway
- * before Diatom's first frame, as Diatom does. */
+/* Each side stays mapped on a separate workspace until it has a fresh frame.
+ * Remapping the launcher exposed a black EGL buffer even with the Rotate's
+ * draw-then-hide handover (plorpos-f5d). A paused Diatom keeps its last frame:
+ *
+ *   pause:  the launcher draws its first frame off-screen, is moved onto
+ *           workspace 1, THEN the game goes to the hidden workspace
+ *           (plat_present) - the menu is there complete the instant it is.
+ *   resume: the game comes back on top, still showing its paused frame,
+ *           THEN the launcher moves to its own hidden workspace.
+ *
+ * Diatom hiding its own window first left sway's black background up until
+ * the launcher's first buffer. At a game's start and
+ * end there is no resident window to move; the move fails quietly. */
+static void resident_place(bool on_screen)
+{
+	char crit[96];
+	char *cmd[] = { "swaymsg", crit, NULL };
+	pid_t pid = diatom_pid();
+
+	if (pid <= 0) return;
+	snprintf(crit, sizeof crit, on_screen
+	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d] move container to workspace plorpos-hidden", (int)pid);
+	helper(cmd);
+}
+
+static void launcher_place(bool on_screen)
+{
+	char cmd[128];
+	char *argv[] = { "swaymsg", cmd, NULL };
+
+	snprintf(cmd, sizeof cmd, on_screen
+	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d] move container to workspace plorpos-launcher", (int)getpid());
+	helper(argv);
+}
+
 void screen_yield(bool to_game)
 {
 	if (!win) return;
-	if (to_game) { SDL_HideWindow(win); SDL_PumpEvents(); }
-	else SDL_ShowWindow(win);
+	if (to_game) {
+		resident_away_pending = false;
+		resident_place(true);
+		launcher_place(false);
+	} else {
+		/* Keep the launcher mapped off-screen. Remapping with ShowWindow
+		 * exposes its stale/black EGL buffer before the menu is drawn (f5d).
+		 * Hidden surfaces get no frame callbacks: submit this first fresh
+		 * frame without waiting for vsync, then bring it on-screen. */
+		SDL_RenderSetVSync(ren, 0);
+		resident_away_pending = true;
+	}
+}
+
+/* A native child's run (run_alone) and its menu keep the launcher's window,
+ * as on the Rotate - but moved between workspaces, never unmapped, for the
+ * reason screen_yield gives (f5d). Shown: its next frame is drawn off-screen
+ * and plat_present brings it onto workspace 1, the frozen child having been
+ * moved off already (child_hide). Hidden: off to its own workspace, so the
+ * child has workspace 1 to itself. Saves the menu a renderer (a Mali GL
+ * context, 35-60 ms) and the first frame of a new surface (plorpos-46o.9). */
+void plat_window_show(bool on)
+{
+	if (!win) return;
+	if (on) {
+		SDL_RenderSetVSync(ren, 0);
+		resident_away_pending = true;
+	} else {
+		resident_away_pending = false;
+		launcher_place(false);
+	}
 }
 
 /* ---- input ------------------------------------------------------------
@@ -226,6 +304,12 @@ void plat_input_flush(void)
 	memset(pad_dir, 0, sizeof pad_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
 	home_down = false;
+	{
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		menu_filter_reset(fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		                  (bits[BTN_MODE / (8 * sizeof bits[0])] >> (BTN_MODE % (8 * sizeof bits[0])) & 1));
+	}
 }
 
 /* The nodes stay open, as on the Brick: they are display-independent, and
@@ -284,14 +368,23 @@ static bool helper(char *const argv[])
  * hold every press made in the menu and act on them when it thaws. */
 #define HIDE_WS "plorpos-hidden"
 
+/* By workspace, not by pid: a PortMaster port's window is its game's, the
+ * script's grandchild, and sway knows only the game (plorpos-46o.5). Here
+ * that is exact - the launcher has no window while a child runs (it tears
+ * its own down for it, and its menu's goes again before the child thaws), so
+ * whatever is on workspace 1 is the child's, and whatever is on HIDE_WS. One
+ * swaymsg each way: the menu's own time to come up is the budget. */
+static bool sway_cmd(const char *cmd)
+{
+	char *argv[] = { "swaymsg", (char *)cmd, NULL };
+
+	return helper(argv);
+}
+
 bool child_hide(pid_t pid)
 {
-	char crit[80];
-	char *move[] = { "swaymsg", crit, NULL };
-
-	snprintf(crit, sizeof crit, "[pid=%d] move container to workspace " HIDE_WS,
-	         (int)pid);
-	if (!helper(move)) {
+	(void)pid;
+	if (!sway_cmd("[workspace=1] move container to workspace " HIDE_WS)) {
 		fprintf(stderr, "run: sway would not hide the child\n");
 		return false;
 	}
@@ -302,15 +395,14 @@ bool child_hide(pid_t pid)
 
 void child_restore(pid_t pid, bool show)
 {
-	char crit[80];
-	char *cmd[] = { "swaymsg", crit, NULL };
-
+	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
-	if (!show) return;
-	snprintf(crit, sizeof crit,
-	         "[pid=%d] move container to workspace 1, focus, fullscreen enable",
-	         (int)pid);
-	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
+	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
+		fprintf(stderr, "run: sway would not show the child\n");
+	/* Then the launcher's window off, also when the child is not coming
+	 * back: a reset's new child maps next, and after a quit run_alone
+	 * shows the window again (plat_window_show). */
+	plat_window_show(false);
 }
 
 /* The child's own PipeWire stream, found by its pid. pactl is a process,
@@ -319,15 +411,19 @@ void child_restore(pid_t pid, bool show)
  * is sent only when it changes. */
 static int quiet_stream(pid_t pid)
 {
-	char line[256], want[48];
+	char line[256];
 	int cur = -1, idx = -1;
 	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
 
 	if (!f) return -1;
-	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
+	/* The child's, or a process in its group's: a port's game is its
+	 * script's grandchild (plorpos-46o.5, as platform_rotate.c). */
 	while (fgets(line, sizeof line, f)) {
+		const char *k = strstr(line, "application.process.id = \"");
+		pid_t p = k ? (pid_t)atoi(k + 26) : 0;
+
 		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
-		else if (idx < 0 && strstr(line, want)) idx = cur;
+		else if (idx < 0 && p > 0 && (p == pid || getpgid(p) == pid)) idx = cur;
 	}
 	pclose(f);
 	return idx;
@@ -376,10 +472,13 @@ static void pad_read(in_state *st)
 		if (ev.type != EV_KEY || ev.value == 2) continue;
 		bool down = ev.value == 1;
 		switch (ev.code) {
-		case BTN_DPAD_LEFT:  pad_dir[0] = down; continue;
-		case BTN_DPAD_RIGHT: pad_dir[1] = down; continue;
-		case BTN_DPAD_UP:    pad_dir[2] = down; continue;
-		case BTN_DPAD_DOWN:  pad_dir[3] = down; continue;
+		/* A press counts when it comes, not only if it is still held after
+		 * the read: a quick tap's release can arrive in the same read, and
+		 * the tap was lost (plorpos-3yv.97). */
+		case BTN_DPAD_LEFT:  pad_dir[0] = down; if (down) set_btn(st, IN_LEFT, true);  continue;
+		case BTN_DPAD_RIGHT: pad_dir[1] = down; if (down) set_btn(st, IN_RIGHT, true); continue;
+		case BTN_DPAD_UP:    pad_dir[2] = down; if (down) set_btn(st, IN_UP, true);    continue;
+		case BTN_DPAD_DOWN:  pad_dir[3] = down; if (down) set_btn(st, IN_DOWN, true);  continue;
 		case BTN_TRIGGER_HAPPY1: home_down = down; set_btn(st, IN_HOME, down); continue;
 		}
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
@@ -427,6 +526,7 @@ void plat_input_poll(in_state *st)
 	pad_read(st);
 	keys_read(st);
 	power_read(st);
+	menu_filter(st);
 	plat_sink_follow(false);
 }
 
@@ -941,6 +1041,9 @@ void plat_settings_init(void)
 void plat_audio_jack_poll(void) { }
 bool plat_headphones_present(void) { return __atomic_load_n(&jack_in, __ATOMIC_RELAXED); }
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
+/* The Rotate's speaker check (plorpos-3yv.63); whether the GKD needs it is
+ * plorpos-3yv.67. */
+void plat_audio_settle(unsigned ms) { (void)ms; }
 bool plat_muted(void) { return false; }
 /* No switch: Muse Settings' Sleep Button Lock stands in for the Brick's
  * switch held down in button lock (gkd.34), under the same db key. */

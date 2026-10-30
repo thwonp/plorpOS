@@ -14,8 +14,13 @@ A, B, X, Y, L1, R1, L2 and R2 can be turbo. Directions, START and SELECT
 cannot. A notice says what happened each time.
 
 **It lasts for the game.** The in-game menu and Muse leave it alone; quitting
-ends it, and the next game starts with none. Nothing is written to the
-settings database.
+ends it, and the next game starts with none.
+
+**Persistent Turbo Assignments** (Game Settings, off by default) keeps it instead: every
+change is saved for that game, as `turbo.<TAG>/<ROM file>` in the library
+database beside its hotkeys, and the next launch of the same game starts with
+it. Off, nothing is read or written, and rows already saved stay for when it
+is turned back on.
 
 ## Why X and Y are not turbo any more
 

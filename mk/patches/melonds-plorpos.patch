@@ -1,0 +1,123 @@
+From da721b52f145bc07ab1560f1a3c0576187c378dd Mon Sep 17 00:00:00 2001
+From: plorpOS <noreply@plorpos>
+Date: Sun, 18 Oct 2026 15:16:44 -0400
+Subject: [PATCH] plorpOS: hardware CRC32, DS-mode states hold 4 MiB of main
+ RAM, JIT slices release their pages, CPSR restore warning at Debug
+
+---
+ src/ARM.cpp           |  2 +-
+ src/ARMJIT_Global.cpp |  6 ++++++
+ src/CRC32.cpp         | 24 ++++++++++++++++++++++++
+ src/NDS.cpp           |  9 ++++++++-
+ src/Savestate.h       |  3 ++-
+ 5 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/src/ARM.cpp b/src/ARM.cpp
+index 3937a994..9edc2c6d 100644
+--- a/src/ARM.cpp
++++ b/src/ARM.cpp
+@@ -436,7 +436,7 @@ void ARM::RestoreCPSR()
+         break;
+ 
+     default:
+-        Log(LogLevel::Warn, "!! attempt to restore CPSR under bad mode %02X, %08X\n", CPSR&0x1F, R[15]);
++        Log(LogLevel::Debug, "!! attempt to restore CPSR under bad mode %02X, %08X\n", CPSR&0x1F, R[15]);
+         break;
+     }
+ 
+diff --git a/src/ARMJIT_Global.cpp b/src/ARMJIT_Global.cpp
+index e4aa42f9..1c016a3f 100644
+--- a/src/ARMJIT_Global.cpp
++++ b/src/ARMJIT_Global.cpp
+@@ -80,6 +80,12 @@ void FreeCodeMem(void* codeMem)
+         {
+             //printf("freeing slice\n");
+             AvailableCodeMemSlices |= 1 << i;
++#ifndef _WIN32
++            // plorpOS: the slice is static, so its touched pages would stay
++            // resident in a frontend that keeps the core loaded; drop them.
++            // The next owner writes its code before running it.
++            madvise(codeMem, CodeMemorySliceSize, MADV_DONTNEED);
++#endif
+             return;
+         }
+     }
+diff --git a/src/CRC32.cpp b/src/CRC32.cpp
+index 178a40f2..455744de 100644
+--- a/src/CRC32.cpp
++++ b/src/CRC32.cpp
+@@ -18,6 +18,11 @@
+ 
+ #include "CRC32.h"
+ 
++#if defined(__ARM_FEATURE_CRC32)
++#include <arm_acle.h>
++#include <cstring>
++#endif
++
+ // http://www.codeproject.com/KB/recipes/crc32_large.aspx
+ 
+ namespace melonDS
+@@ -59,6 +64,25 @@ u32 CRC32(const u8 *data, int len, u32 start)
+ 
+ 	u32 crc = start ^ 0xFFFFFFFF;
+ 
++#if defined(__ARM_FEATURE_CRC32)
++    // plorpOS: the ARMv8 CRC32 instructions compute this same CRC (polynomial
++    // 0x04C11DB7, reflected), 8 bytes at a time. Every savestate CRCs the
++    // cart's ARM9/ARM7 binaries (NDSCartSlot::DoSavestate); byte by byte that
++    // was a quarter of a rewind capture.
++    if (data)
++    {
++        for (; len >= 8; len -= 8, data += 8)
++        {
++            u64 v;
++            memcpy(&v, data, 8);
++            crc = __crc32d(crc, v);
++        }
++        for (; len > 0; len--)
++            crc = __crc32b(crc, *data++);
++        return (crc ^ 0xFFFFFFFF);
++    }
++#endif
++
+     if (data)
+     {
+         while (len--)
+diff --git a/src/NDS.cpp b/src/NDS.cpp
+index c6dc85fa..31a6b6ed 100644
+--- a/src/NDS.cpp
++++ b/src/NDS.cpp
+@@ -648,7 +648,14 @@ bool NDS::DoSavestate(Savestate* file)
+         }
+     }
+ 
+-    file->VarArray(MainRAM, MainRAMMaxSize);
++    // plorpOS: a DS has 4 MiB of main RAM (MainRAMMask 0x3FFFFF); the other 12
++    // of MainRAMMaxSize are never addressed, yet every state copied them -
++    // two thirds of a rewind capture. States from minor 1 on hold only what
++    // the console has; older ones still load with all 16.
++    u32 mainRAMSize = MainRAMMaxSize;
++    if (ConsoleType == 0 && file->IsAtLeastVersion(14, 1))
++        mainRAMSize = 0x400000;
++    file->VarArray(MainRAM, mainRAMSize);
+     file->VarArray(SharedWRAM, SharedWRAMSize);
+     file->VarArray(ARM7WRAM, ARM7WRAMSize);
+ 
+diff --git a/src/Savestate.h b/src/Savestate.h
+index 776785f3..c5b9d041 100644
+--- a/src/Savestate.h
++++ b/src/Savestate.h
+@@ -25,7 +25,8 @@
+ #include "types.h"
+ 
+ #define SAVESTATE_MAJOR 14
+-#define SAVESTATE_MINOR 0
++// plorpOS: minor 1 = a DS-mode state holds 4 MiB of main RAM, not all 16 (NDS::DoSavestate)
++#define SAVESTATE_MINOR 1
+ 
+ // bitmask for the savestate config word
+ enum
+-- 
+2.55.0
+

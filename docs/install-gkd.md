@@ -9,8 +9,8 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.5.2.zip`** from
-[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
+Download the GKD zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
 ```
@@ -68,23 +68,38 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
    books to `Audiobooks/`. BIOS files go loose in `Bios/`; which ones each
    console needs is in
-   [Supported systems](https://github.com/thwonp/TortOS/blob/main/README.md#supported-systems).
+   [Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems).
 
 ```
 TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
              menu.ttf  cacert.pem  LICENSE  NOTICE  ...
              cards/  cores/  res/  shaders/  LICENSES/
-Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console
+Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console,
+             Nintendo DS/ and Ports/ among them
 Music/
 Audiobooks/
 Bios/
-Saves/       made per console on first play
+Saves/       one folder per console, ready for saves from another device
 ```
 
 `Roms/Pico-8/` also holds a hidden file, `.disable_splore`. Keep it: without it
 ROCKNIX puts an empty `Splore.png` there at every boot, for its own
 EmulationStation, and it would show up as a broken cart. It doesn't turn off
 Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
+
+**Nintendo DS:** put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core
+row picks DSperate-lr (the default) or melonDS DS. The in-game Layout row has
+**Focus Top**, **Focus Bottom**, **Even Split**, **Top Overlay** and **Bottom
+Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
+through them. The Display row under it sets the Overlays' big screen to
+**Aspect**, **Stretch** or **Integer**. The stick moves a stylus cursor over
+the bottom screen and R2 touches; the cursor hides after 2 s still.
+
+**Ports:** open PortMaster, the first entry on the Ports shelf, with the GKD on
+Wi-Fi; the ports it installs land in `Roms/Ports/` and on the shelf. PortMaster
+itself is kept in `.userdata/shared/portmaster/`. It's unofficial support: report
+problems to plorpOS, not the PortMaster team.
+Ports open fullscreen; fixed-resolution SDL games are scaled to fit.
 
 Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
 **`games-external`** samba share, or connecting to it using "Over the Hare".
@@ -97,6 +112,13 @@ does from now on.
 
 The services from step 2 take effect at the next boot, so a card put into the
 running GKD is one ROCKNIX fills with empty system folders. If this happened to you, you can leave the folders, or delete them if they bother you.
+
+## Updating from an earlier version
+
+Copy everything inside the new `copy_to_sd/` onto the card, replacing what's
+there. Your settings, saves, play time and achievements live in `.userdata/`
+and `Saves/` and stay as they are. The `system.d/` files are the same as
+before; leave them.
 
 ## If it starts EmulationStation instead
 

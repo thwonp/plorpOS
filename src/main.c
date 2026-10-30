@@ -30,6 +30,7 @@
 #include "artshrink.h"
 #include "artscrape.h"
 #include "favorites.h"
+#include "recent.h"
 #include "hare.h"
 #include "idle.h"
 #include "notice.h"
@@ -66,12 +67,15 @@
 #include <dirent.h>
 #include <math.h>
 #include <signal.h>
+#include <spawn.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -104,6 +108,9 @@ typedef struct {
 	 * than fake08. Zero is fake08, so a card nobody has touched - a new
 	 * install included - plays in diatom. */
 	bool native;
+	/* A shelf with a second core (ALT_CORES) runs that one instead. Zero is
+	 * the shelf's own core from systems.cfg. */
+	bool alt;
 	/* Index into SORTS. Zero is by name, which is what every shelf was
 	 * before this existed and what an untouched one still is. On Muse's
 	 * shelf an ml_order instead, whose zero is by artist. */
@@ -148,9 +155,141 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "stretch", "Stretch" },
 	{ "aspect",  "Aspect"  },
 	{ "integer", "Integer" },
+	/* The Nintendo DS's two-screen layouts (plorpos-3yv.47), and the only
+	 * modes its shelf offers - none of the three above mean anything for a
+	 * frame that is two screens. See dmode_step. */
+	/* Display Mode (plorpos-3yv.62): the top screen big, the bottom one
+	 * big, or the two the same size. Ids are Diatom's and are what is
+	 * saved, so a card set to the old Layout A/B keeps its choice. */
+	{ "ds-a",      "Focus Top" },
+	{ "ds-a-swap", "Focus Bottom" },
+	{ "ds-b",      "Even Split" },
+	/* One screen fullscreen, or one big and one small: the DS on the Brick
+	 * and H700, which draw no split (plorpos-reo.21). The slice those two
+	 * offer, in the order the layout hotkeys round them. */
+	{ "ds-top",    "Top Only" },
+	{ "ds-bottom", "Bottom Only" },
+	/* Both screens: one big at the left at a whole multiple, the other in
+	 * the width left over at its right (plorpos-6ei.4). */
+	{ "ds-topfocus",    "Top Focus" },
+	{ "ds-bottomfocus", "Bottom Focus" },
+	/* One screen filling the panel, the other over its bottom-right corner,
+	 * 80% opaque: every device (plorpos-6ei.5). */
+	{ "ds-topoverlay",    "Top Overlay" },
+	{ "ds-bottomoverlay", "Bottom Overlay" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
+
+/* UI Settings > Header Font and Body Font (plorpos-8m1.3, plorpos-3yv.60):
+ * the same four faces for the headings - titles, menu headings, cards - and
+ * for the body - menu items, game titles, notes. Defaults Fredoka over
+ * Quicksand, the look before there was a choice. Files beside menu.ttf
+ * (P_FONT); each with the width correction that makes a line of it as wide
+ * as Josefin Sans' (ui.c). */
+static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
+	{ "fredoka",   "Fredoka",      "head.ttf",    1.00f },
+	{ "josefin",   "Josefin Sans", "josefin.ttf", 1.00f },
+	{ "quicksand", "Quicksand",    "menu.ttf",    0.98f },
+	{ "lato",      "Lato",         "lato.ttf",    1.03f },
+};
+#define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
+static int g_head = 0, g_font = 2;
+
+static void font_apply(bool head, int k)
+{
+	char path[512];
+	const char *slash = strrchr(P_FONT, '/');
+
+	snprintf(path, sizeof path, "%.*s%s", slash ? (int)(slash - P_FONT + 1) : 0,
+	         P_FONT, FONTS[k].file);
+	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
+	*(head ? &g_head : &g_font) = k;
+	ui_set_face(head, path, FONTS[k].scale);
+}
 #define DMODE_ASPECT 1
+#define DMODE_DS_A   3
+/* The DS's layouts, in DMODES order of their own: the split ones where the
+ * port draws a split, the cropped/composed ones on the Brick and H700, the
+ * two Overlays last on both (plorpos-6ei.5). Diatom's layout_step rings
+ * match. */
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+static const int DS_RING[] = { 3, 4, 5, 10, 11 };
+#else
+static const int DS_RING[] = { 6, 7, 8, 9, 10, 11 };
+#endif
+#define DS_RING_N ((int)(sizeof DS_RING / sizeof DS_RING[0]))
+_Static_assert(DMODE_COUNT == 12, "DS_RING indexes DMODES");
+
+/* A system's own set of DMODES: the DS its layouts, every other system the
+ * first three. Cycling stays inside it, and a mode outside it (never set,
+ * or set before the layouts existed) is the set's first. */
+static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
+
+/* The DS's Display (plorpos-6ei.13, .17): Top/Bottom Only and the Overlays'
+ * big screen at 4:3, filling the panel, or at the largest whole multiple of
+ * 256x192. One setting, since the DS is the only system with it. Offered
+ * only as far as it changes the picture on this panel: Stretch where the
+ * panel is not 4:3, Integer where the multiple is not the 4:3 fit - so the
+ * Brick's 1024x768 has no row at all (4x is the whole panel), the RG35XX H's
+ * Aspect and Integer. Index = the dsfill value = Diatom's fill= order. */
+static const char *const FILL_NAME[]  = { "aspect", "stretch", "integer" };
+static const char *const FILL_LABEL[] = { "Aspect", "Stretch", "Integer" };
+
+static int ds_fill_opts(int out[3])
+{
+	int pw = plat_panel_w, ph = plat_panel_h, aw = pw, n = 0,
+	    k = pw / 256 < ph / 192 ? pw / 256 : ph / 192;
+
+	if (aw * 3 / 4 > ph) aw = ph * 4 / 3;
+	out[n++] = 0;
+	if (pw * 3 != ph * 4) out[n++] = 1;
+	if (k >= 1 && k * 256 != aw) out[n++] = 2;
+	return n;
+}
+
+static bool ds_fill_shown(const char *tag)
+{
+	int o[3];
+
+	return is_nds_tag(tag) && ds_fill_opts(o) > 1;
+}
+
+/* The saved fill, or Aspect when this panel does not offer it. */
+static int ds_fill_now(void)
+{
+	int o[3], n = ds_fill_opts(o), v = db_get_int(db_dev(), "dsfill", 0), i;
+
+	for (i = 0; i < n; i++) if (o[i] == v) return v;
+	return 0;
+}
+
+static const char *ds_fill_label(void) { return FILL_LABEL[ds_fill_now()]; }
+
+/* Stepped from a menu: saved, and sent to a game that is running. */
+static void ds_fill_step(int d, bool live)
+{
+	int o[3], n = ds_fill_opts(o), cur = ds_fill_now(), i = 0;
+
+	while (i < n && o[i] != cur) i++;
+	db_set_int(db_dev(), "dsfill", o[((i + d) % n + n) % n]);
+	if (live) {
+		plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[ds_fill_now()]);
+		plat_resident_sync_rect(150);
+	}
+}
+
+static int dmode_step(const char *tag, int cur, int d)
+{
+	int i;
+
+	if (!is_nds_tag(tag)) {
+		if (cur < 0 || cur >= DMODE_DS_A) return 0;
+		return (cur + d + DMODE_DS_A) % DMODE_DS_A;
+	}
+	for (i = 0; i < DS_RING_N; i++)
+		if (DS_RING[i] == cur) return DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+	return DS_RING[0];
+}
 
 typedef struct {
 	systems_cfg sys;
@@ -182,6 +321,7 @@ typedef struct {
 	                             * loop, the game menu and its screens */
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
+	bool in_port;               /* a PortMaster port runs: no Splore row */
 	SDL_Renderer *r;
 } app;
 
@@ -206,13 +346,26 @@ static int  shelf_letter_jump(sysview *v, int dir);
  * And sorting puts Muse's shelf in order by its own. */
 static bool is_muse(const system_cfg *s);
 static void muse_order_view(sysview *v);
+static void muse_album_dir(int al, char *out, size_t n);
 /* Muse's menu opens it, and the menu is up here. */
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
-/* Wi-Fi Services opens both, and they are written after it. */
+static bool is_portmaster(const system_cfg *s, const char *file);
+static bool is_ports(const system_cfg *s);
+static void pm_here(char *out, size_t n, const char *leaf);
+/* Game Settings (plorpos-pyz): read where they act, so a change holds from
+ * the next launch on without anything to reload. */
+static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
+/* Achievements Enabled (plorpos-pyz.7): Off, a launch hands no set over and
+ * fetches none, so the game plays as one RetroAchievements has never seen.
+ * Unlocks already owed to the account still go. */
+static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", 1) != 0; }
+static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
+/* Game Settings opens the first and Network Services the second; both are
+ * written after this. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
 /* And again: Play Time can send you to a game's shelf, which is the input
@@ -299,6 +452,14 @@ static void display_load(app *a)
 	char key[CFG_STR + 16], name[CFG_STR];
 	int i, k;
 
+#if defined(PLATFORM_H700)
+	/* A 4:3 H700 (RG35XX H, 640x480) has no wide panel for Stretch to fill
+	 * honestly: a 3:2 GBA or a 16:9 core would be pulled out of shape, so a
+	 * system nobody has configured keeps the shape its core asks for. The
+	 * 3:2 RG SP keeps Stretch, which is what its panel is shaped for. */
+	if (plat_screen_w * 3 <= plat_screen_h * 4)
+		for (i = 0; i < a->sys.count; i++) a->view[i].dmode = DMODE_ASPECT;
+#endif
 	for (i = 0; i < a->sys.count; i++) {
 		snprintf(key, sizeof key, "display.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
@@ -309,6 +470,9 @@ static void display_load(app *a)
 		for (k = 0; k < DMODE_COUNT; k++)
 			if (!strcmp(DMODES[k].name, name)) { a->view[i].dmode = k; break; }
 	}
+	/* Each system inside its own slice (Focus Top for a DS never set). */
+	for (i = 0; i < a->sys.count; i++)
+		a->view[i].dmode = dmode_step(a->sys.systems[i].tag, a->view[i].dmode, 0);
 }
 
 /* One row per visible system, and nothing else touched.
@@ -436,30 +600,83 @@ static void disc_save(app *a, int sys, const game_entry *g, int i)
 /* What diatom said when the in-game menu opened: count 0 = no Disc row. */
 static struct { int index, count; char label[24]; } g_disc;
 
-/* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
- * fake08: only a shelf someone has turned to native has one. */
+/* Shelves with a second libretro core the owner can pick in the system
+ * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
+ * that ship are listed: the Rotate's DS pair. `bare` is the core whose states
+ * live in the shelf's own .tortos folder - the one that was there first -
+ * whichever is the default now (plorpos-3yv.105). */
+static const struct { const char *core, *label, *alt, *alt_label, *bare; } ALT_CORES[] = {
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds" },
+};
+
+/* Index into ALT_CORES, or -1 for a shelf with one core. */
+static int alt_core(const system_cfg *s)
+{
+	size_t k;
+
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	/* Only the GKD and the Rotate ship melonDS DS: the Brick and the H700 have
+	 * DSperate alone, and a Core row would offer a core that is not there
+	 * (plorpos-reo.21.11). */
+	(void)s;
+	return -1;
+#endif
+	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
+		if (!strcmp(s->core, ALT_CORES[k].core)) return (int)k;
+	return -1;
+}
+
+/* The core a shelf's games launch with: its own, or the alternative it was
+ * turned to. */
+static const char *shelf_core(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	int k = alt_core(s);
+
+	return k >= 0 && a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+}
+
+/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
+ * with two. No row means the default (fake08, the shelf's own core): only a
+ * shelf someone has turned has one. */
 static void engine_load(app *a)
 {
 	char key[CFG_STR + 16], name[CFG_STR];
-	int i;
+	int i, k;
 
 	for (i = 0; i < a->sys.count; i++) {
-		if (!is_pico8(&a->sys.systems[i])) continue;
+		k = alt_core(&a->sys.systems[i]);
+		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
-		if (db_get_str(db_dev(), key, name, sizeof name, NULL))
-			a->view[i].native = !strcmp(name, "native");
+		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
+		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
+		else a->view[i].native = !strcmp(name, "native");
 	}
 }
 
 static void engine_save(app *a, int sys)
 {
 	char key[CFG_STR + 16];
+	int k = alt_core(&a->sys.systems[sys]);
 
 	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, a->view[sys].native ? "native" : "fake08");
+	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys)
+	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
+
+/* The Core row's value: PICO-8's engine, the core of a shelf with two, or
+ * NULL for a shelf whose row only reports. */
+static const char *engine_label(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	int k = alt_core(s);
+
+	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
+	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
+	return NULL;
+}
 
 /* ---------- per-system sort order ----------------------------------------- */
 
@@ -527,8 +744,10 @@ static void sort_shelf(app *a, int sys)
 		sort_apply_owned(v->list.items, v->owner, v->list.count, v->sort, tags);
 		return;
 	}
-	/* Splore stays first in every order: the carts sort behind it. */
-	if (v->list.count && is_splore(&a->sys.systems[sys], v->list.items[0].file))
+	/* Splore stays first in every order: the carts sort behind it. So does
+	 * PortMaster on the Ports shelf (plorpos-3yv.86.3). */
+	if (v->list.count && (is_splore(&a->sys.systems[sys], v->list.items[0].file) ||
+	                      is_portmaster(&a->sys.systems[sys], v->list.items[0].file)))
 		sort_apply(v->list.items + 1, v->list.count - 1, v->sort,
 		           a->sys.systems[sys].tag);
 	else
@@ -665,6 +884,32 @@ static void  year_fill(void);
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
 
+/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, Y held
+ * MUSE_FAV_HOLD_MS shows only the marked ones. A mark is the card's
+ * "mfav.<album folder>" row - not favorites.c's set, which is games and
+ * makes the Favorites shelf. The view is this session's; it ends by itself
+ * when its last album is unmarked, or when the kind shown has none. */
+static bool g_muse_favs;
+static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
+#define MUSE_FAV_HOLD_MS 500u
+
+static bool muse_fav_is(const char *dir)
+{
+	char key[LIB_PATH + 8];
+
+	snprintf(key, sizeof key, "mfav.%s", dir);
+	return db_get_int(db_lib(), key, 0) == 1;
+}
+
+static void muse_fav_flip(const char *dir)
+{
+	char key[LIB_PATH + 8];
+
+	snprintf(key, sizeof key, "mfav.%s", dir);
+	if (muse_fav_is(dir)) db_del(db_lib(), key);
+	else db_set_str(db_lib(), key, "1");
+}
+
 /* Whether each album is a book listened to the end: one per album in g_muse,
  * rebuilt with it, like g_cov. A finished book is marked and not forgotten,
  * and A on it starts it over. Eric's, 2026-09-27. */
@@ -772,11 +1017,14 @@ static void book_keep(bool now)
  * "" in a shot, which starts no Muse. */
 static char g_queue_file[CFG_STR * 2];
 
+static void muse_adopt_orphan(void);
+
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
  * Everything that polls Muse comes through here. */
 static void muse_poll(void)
 {
 	musec_poll();
+	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
@@ -790,6 +1038,40 @@ static void book_speed_key(int al, char *out, size_t n)
 	const char *slash = strrchr(p, '/');
 
 	snprintf(out, n, "bookspeed.%.*s", slash ? (int)(slash - p) : 0, p);
+}
+
+static double book_speed(int al);
+
+/* A book Muse played on through a launcher restart (plorpos-3yv.71): its
+ * files were never in the kept queue, so musec let the queue go. Once the
+ * library is in, the book's files are the queue again, at the one playing -
+ * no PLAY, so it goes on where it is; without them Select opened the shelf
+ * and A on the book played it again from its saved place. Anything else
+ * playing out there (music restarted inside the 5 s before a save) stays as
+ * it was. */
+static void muse_adopt_orphan(void)
+{
+	const char *t = musec_orphan();
+	const mu_now *mn = musec_now();
+	const char **paths;
+	int al, i, start = 0;
+
+	if (!t[0] || g_walk_thread || g_muse.ntracks == 0) return;
+	al = ml_album_of(&g_muse, t);
+	if (al < 0 || !g_muse.albums[al].book ||
+	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
+	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
+		musec_adopt(NULL, 0, 0, false, 1.0, "", "");   /* nothing to give it: let it go */
+		return;
+	}
+	for (i = 0; i < g_muse.albums[al].n; i++) {
+		paths[i] = g_muse.tracks[g_muse.albums[al].first + i].path;
+		if (!strcmp(paths[i], t)) start = i;
+	}
+	fprintf(stderr, "muse: %s adopted at file %d\n", g_muse.albums[al].name, start + 1);
+	musec_adopt(paths, g_muse.albums[al].n, start, true, book_speed(al),
+	            g_muse.artists[muse_artist_of(al)].name, g_muse.albums[al].name);
+	free(paths);
 }
 
 static double book_speed(int al)
@@ -966,12 +1248,31 @@ static const char *slot_name(int slot)
 	return buf;
 }
 
+/* A system's folder under .tortos/: its states and previews. On a shelf with
+ * two cores, the one that is not ALT_CORES' `bare` keeps its own beside them,
+ * in a folder named after it - a state is one emulator's, and melonDS DS
+ * handed a DSperate state (or the other way round) can only refuse it, then
+ * write over it. Tied to the core, not to which one is the default, so
+ * changing the default moves nobody's states. Battery saves are a raw chip
+ * image either core reads, and stay shared in Saves/. */
+static const char *persist_folder(app *a, int s)
+{
+	static char buf[CFG_STR * 2 + 2];
+	const system_cfg *sc = &a->sys.systems[s];
+	const char *core = shelf_core(a, s);
+	int k = alt_core(sc);
+
+	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
+	snprintf(buf, sizeof buf, "%s/%s", sc->folder, core);
+	return buf;
+}
+
 static void preview_path(app *a, int s, const game_entry *g, char *out, size_t n)
 {
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(SLOT_AUTO));
+	         P_SHARED, persist_folder(a, s), base, slot_name(SLOT_AUTO));
 }
 
 /* Where Diatom writes the frame it hands over, which is NOT the Auto card's
@@ -1008,7 +1309,7 @@ static void slot_state_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.state",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
 }
 
 static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
@@ -1017,7 +1318,7 @@ static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, a->sys.systems[s].folder, base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
 }
 
 static void state_path(app *a, int s, const game_entry *g, char *out, size_t n)
@@ -1056,6 +1357,8 @@ static void persist_dir_ensure(app *a, int s)
 	snprintf(d, sizeof d, "%s/.tortos", P_SHARED);
 	mkdir(d, 0755);
 	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, a->sys.systems[s].folder);
+	mkdir(d, 0755);
+	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s));
 	mkdir(d, 0755);
 }
 
@@ -1132,6 +1435,7 @@ static bool card_art_path(const system_cfg *s, const game_entry *g, char *out, s
 		snprintf(out, n, "%s/cards/splore.png", P_ROOT);
 		return true;
 	}
+	if (!box && port_art(s, g, out, n)) return true;
 
 	if (!box && fl > 7 && !strcasecmp(g->file + fl - 7, ".p8.png")) {
 		snprintf(out, n, "%s/%s/%s", P_ROMS, folder, g->file);
@@ -1139,6 +1443,35 @@ static bool card_art_path(const system_cfg *s, const game_entry *g, char *out, s
 	}
 	box_art_path(folder, g->name, out, n);
 	return box;
+}
+
+/* The frame trace (plorpos-3yv.97), TORTOS_FRAME_TRACE=1 or a
+ * .userdata/<device>/frame-trace file only: a line for
+ * every shelf frame over FT_SLOW_US, with what the frame spent on the art
+ * paths it looked up for cards still loading and on the covers it put on the
+ * GPU. An instrument: off, it costs a branch. */
+#define FT_SLOW_US 25000u
+static bool g_ft;
+static unsigned g_ft_path_us, g_ft_paths, g_ft_up_us, g_ft_ups;
+
+static unsigned ft_us(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (unsigned)(t.tv_sec * 1000000u + t.tv_nsec / 1000);
+}
+
+static void ft_frame(const char *where, unsigned t0, unsigned t1, unsigned t2,
+                     int cursor, int count)
+{
+	if (g_ft && t2 - t0 > FT_SLOW_US)
+		fprintf(stderr, "frame: %s %u ms (update %u, draw %u), paths %u in %u ms, "
+		        "uploads %u in %u ms, card %d/%d, at %u\n", where,
+		        (t2 - t0) / 1000, (t1 - t0) / 1000, (t2 - t1) / 1000,
+		        g_ft_paths, g_ft_path_us / 1000, g_ft_ups, g_ft_up_us / 1000,
+		        cursor + 1, count, t2 / 1000);
+	g_ft_path_us = g_ft_paths = g_ft_up_us = g_ft_ups = 0;
 }
 
 /* Muse's half of the card machinery, defined with the rest of Muse. */
@@ -1159,10 +1492,12 @@ static SDL_Texture *game_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 		muse_card_want(a, s, i);
 	} else if (!v->tex[i]) {
 		char art[LIB_PATH * 3], prev[LIB_PATH * 3];
+		unsigned ft0 = g_ft ? ft_us() : 0;
 
 		card_art_path(&a->sys.systems[o], &v->list.items[i],
 		              art, sizeof art);
 		preview_path(a, o, &v->list.items[i], prev, sizeof prev);
+		if (g_ft) { g_ft_path_us += ft_us() - ft0; g_ft_paths++; }
 		/* Hand it to the worker and draw nothing this frame. Asking is cheap
 		 * and ignores a card already in hand, so callers ask every frame. */
 		if (!texload_want(s, i, art, prev)) {
@@ -1198,8 +1533,12 @@ static void texload_drain(app *a)
 	SDL_Surface *surf;
 	int s, i;
 
+	unsigned ft0 = g_ft ? ft_us() : 0, ft_n = 0;
+
 	while (texload_take(&s, &i, &surf)) {
 		sysview *v;
+
+		ft_n++;
 
 		if (s == SYS_CARDS_SHELF) {
 			if (i >= 0 && i < a->sys.count && !a->sys_tex[i]) {
@@ -1247,6 +1586,7 @@ static void texload_drain(app *a)
 			v->cb[i] = 1.0f;
 		}
 	}
+	if (g_ft && ft_n) { g_ft_up_us += ft_us() - ft0; g_ft_ups += ft_n; }
 }
 
 static void evict_far(sysview *v, int keep)
@@ -1506,27 +1846,25 @@ static void auto_off_save(int seconds)
  * shape rather than sharing it - mutually exclusive with Auto Sleep above,
  * matching NextUI, so the two get independent ladders and db keys even
  * though today they hold the same values. */
+#if !defined(PLATFORM_ROTATE)
 static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
 #define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+#endif
 
 static int auto_poweroff_load(void)
 {
+#if defined(PLATFORM_ROTATE)
+	return 0;     /* no Auto Off on the Rotate, whatever an old card saved (plorpos-3yv.100) */
+#else
 	int v = db_get_int(db_dev(), "autopoweroff", -1);
 	return v >= 0 ? v : 0;                    /* the default: never */
+#endif
 }
 
 static void auto_poweroff_save(int seconds)
 {
 	db_set_int(db_dev(), "autopoweroff", seconds);
 }
-
-/* Suspend Timeout: how long light sleep waits for the power button before
- * escalating into real suspend. NextUI's "Suspend timeout" exactly - its
- * sleep_timeout_secs ladder and CFG_DEFAULT_SUSPENDTIMEOUTSECS. No 0 on
- * purpose, as in NextUI: once the screen is off some escalation always
- * applies. Independent of both rows above. platform.c reads the same key. */
-static const int SUSPEND_TIMEOUT[] = { 30, 60, 120, 300, 600 };
-#define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
 
 
 /* Defined with the Wi-Fi screen it began in, and used here because signing in
@@ -1972,7 +2310,7 @@ static char g_game_set[LIB_PATH * 2];
 static aout_policy g_aout_policy;
 static char g_aout_sent[128];      /* the device Diatom was last told to use */
 static bool g_aout_ever;
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static unsigned g_aout_gen;        /* which connection it was told on */
 #endif
 static unsigned g_aout_retry_at;   /* earliest next in-game retry of a fallback */
@@ -1997,7 +2335,7 @@ static void aout_save(aout_policy p)
  * A file rather than asking Bluetooth ourselves: asking means forking
  * bluetoothctl out of a 119 MB process, which is what menu_wifi exists to
  * prevent. The shell loop already knows, so it writes and this reads. */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static char g_bt_link[32];    /* the published link's ACL handle, see bt_reconnect */
 /* Native PICO-8 is running and may hold the headset: Diatom stays off it, as
  * for Muse (aout_apply). Set on the Brick only, see run_pico8. plorpos-cdd. */
@@ -2007,7 +2345,7 @@ static bool g_pico8_runs;
 static const char *aout_bt_sink(void)
 {
 	static char   sink[128];
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* A label only: PipeWire holds the sink, see plat_bt_audio. */
 	snprintf(sink, sizeof sink, "%s", plat_bt_audio() ? "bluetooth" : "");
 	return sink;
@@ -2041,14 +2379,14 @@ static const char *aout_bt_sink(void)
  * read of kernel memory, not a fork, and plugging a DAC in should feel as
  * immediate as plugging a cable in. On the GKD PipeWire sees the card first
  * and platform_gkd.c routes it; this is only the label for the menu. */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 static char g_usb_link[32];   /* bus/device of the DAC; a replug is a new one */
 #endif
 
 static const char *aout_usb_sink(void)
 {
 	static char sink[64];
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	snprintf(sink, sizeof sink, "%s", plat_usb_audio() ? "usb" : "");
 	return sink;
 #else
@@ -2083,7 +2421,7 @@ static const char *aout_usb_sink(void)
 #endif
 }
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* The connection behind whatever the sound goes to: a headset's link, a DAC's
  * bus address, or nothing for the codec. A change under the same device
  * string is a reconnect the holder has to be told about. */
@@ -2097,19 +2435,6 @@ static const char *aout_link(const aout_state *s)
 }
 #endif
 
-/* The codec's own name, for aout_state.codec. The Bricks' alsa-lib settles
- * what "default" means once per process, and a process that met a USB DAC
- * there goes on meaning the DAC - Diatom asked for default and held the DAC;
- * a Muse started with one plugged in failed every open after (plorpos-8wc.8).
- * So there the codec is always named: the firmware's own shared path,
- * /etc/asound.conf's Playback (softvol over dmix), which is all default is
- * without a DAC - not sysdefault, the bare card, which would not share. Muse
- * gets the same name in MUSE_CODEC for its own fallback. */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && defined(__aarch64__)
-#define AOUT_CODEC_PCM "Playback"   /* the Bricks; not the desktop build */
-#else
-#define AOUT_CODEC_PCM ""
-#endif
 
 static aout_state aout_now(void)
 {
@@ -2117,7 +2442,7 @@ static aout_state aout_now(void)
 
 	s.policy  = g_aout_policy;
 	s.wired   = plat_headphones_present();
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* Speaker overrides a cable on the GKD, whose amps it can set. */
 	if (g_aout_policy == AOUT_SPEAKER) s.wired = false;
 #endif
@@ -2136,7 +2461,7 @@ static aout_state aout_now(void)
  * on the desktop build it never will. */
 static aout_dest aout_actual(const aout_state *s)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* PipeWire moves every stream with the default, so asked is actual. */
 	return aout_resolve(s);
 #else
@@ -2164,7 +2489,7 @@ static bool aout_send(const char *dev)
 	return true;
 }
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Send only on a change. SETAUDIO reopens an audio device, which is cheap but
  * not free, and doing it every tick would be a reopen per tick. */
 static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
@@ -2228,7 +2553,7 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
-#if !defined(PLATFORM_GKD)   /* PipeWire: no hand-over, no headset volume */
+#if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
 static void bt_volume_follow(const char *out, bool fresh)
 {
 	static int      sent = -1;
@@ -2323,34 +2648,37 @@ static void bt_volume_follow(const char *out, bool fresh)
  * answered, because Diatom does not retry. */
 static void aout_apply(bool force)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
 	(void)force;
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
 #else
 	static char  link_seen[32];
-	static bool  on_usb, muse_on_usb;
+	static bool  on_usb, muse_was_heard;
+	static aout_dest muse_was = AOUT_SPK;
 	aout_state  s    = aout_now();
 	const char *out  = aout_device(&s);
 	const char *link = aout_link(&s);
 	const char *codec = s.codec ? s.codec : "";
 	bool        muse, named;
 
-	/* The DAC was pulled out from under the music: pause it, as a phone does,
+	/* A DAC or headset went away under the music: pause it, as a phone does,
 	 * rather than carry on out of the speaker - the player was listening on
-	 * headphones a moment ago. Only for a DAC that went with Muse on it at the
+	 * headphones a moment ago. Only for a destination Muse used at the
 	 * last look, not for the row moving to Speaker, which is asking for the
 	 * speaker - and not on "is it playing now", which a Muse already falling
 	 * back on its own is not (musec_pause holds it). Games are not paused;
 	 * they follow the sound to wherever it goes next. */
-	if (muse_on_usb && !(s.usb_sink && s.usb_sink[0])) {
-		fprintf(stderr, "audio: USB DAC gone, pausing Muse\n");
+	if (aout_pause_on_loss(muse_was, muse_was_heard, &s)) {
+		fprintf(stderr, "audio: %s gone, pausing Muse\n",
+		        muse_was == AOUT_BT ? "Bluetooth headset" : "USB DAC");
 		musec_pause();
 	}
 	on_usb = aout_resolve(&s) == AOUT_USB;
 	named = aout_named(&s);
 	muse = named && musec_heard();
-	muse_on_usb = on_usb && muse;
+	muse_was = aout_resolve(&s);
+	muse_was_heard = muse;
 	/* A new connection under the same name - the headset dropped and came
 	 * back between two looks at it. Nothing else here can see that, and
 	 * whoever fell back to the speaker while it was gone would stay there:
@@ -2494,6 +2822,9 @@ static void on_game_tick(void)
 	 * never an fsync: measured on the card, an fsync is 1.56 ms median but
 	 * 16.4 ms at the tail, which is a dropped frame. */
 	stats_tick(plat_now_ms());
+	/* The switcher's list: one unsynced row, once, after a launch moved a
+	 * game to its front (plorpos-gl5.1). */
+	recent_flush();
 
 	/* A cable plugged in mid-game, or a headset that connected or walked out
 	 * of range, moves the sound without leaving the game. That is the whole
@@ -2501,7 +2832,7 @@ static void on_game_tick(void)
 	g_game_ticking = true;             /* see bt_volume_follow */
 	aout_apply(false);
 	g_game_ticking = false;
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 	plat_sink_follow(true);
 #endif
 	aout_retry_in_game();
@@ -2699,22 +3030,80 @@ static void playing_path(char *out, size_t n)
 	snprintf(out, n, "%s/.playing", P_ROOT);
 }
 
-static void playing_set(app *a)
-{
-	char p[CFG_STR * 2];
-	sysview *v = &a->view[a->sys_cursor];
-	int o = shelf_owner(a, a->sys_cursor, v->cursor);
-	FILE *f;
+/* The two bookmarks a launch writes, off the launch path. Each is a write,
+ * an fsync and a whole-card sync on exFAT, and measured on the RG35XX H they
+ * took 255-1819 ms between the press and the game being sent - whatever else
+ * was dirty on the card. The game does not need either to start; they need to
+ * be on the card soon, which a thread behind the launch does.
+ *
+ * And not before the game has been read: the card serves one queue, and those
+ * small synced writes sat ahead of the ROM read, tripling it (median 555 ms
+ * without them, 1557 ms with, cold GBA games, plorpos-2wl.12). So a resident
+ * launch waits here for Diatom's RUNNING, which comes once the ROM is loaded.
+ * The cost is a power cut inside that load leaves no `.playing`, so the next
+ * boot opens the shelf on the game instead of resuming it. Strings are copied
+ * in: by the time it runs, the shelf may have moved. */
+struct bookmarks { char root[CFG_STR * 2], tag[CFG_STR], file[LIB_PATH], own[CFG_STR]; bool wait; };
 
+static pthread_t g_bm_thr;
+static bool g_bm_live;
+static volatile int g_bm_stop;
+
+static void *bookmarks_write(void *arg)
+{
+	struct bookmarks *b = arg;
+	char p[CFG_STR * 2 + 16];
+	FILE *f;
+	int i;
+
+	/* 15 s is longer than any load; past it, write anyway. Stopped early when
+	 * the launch ended without ever running (core refused, Diatom died): a
+	 * `.playing` written after that would outlive the game. */
+	for (i = 0; b->wait && i < 750 && !g_bm_stop && !plat_resident_running(); i++)
+		usleep(20000);
+	if (g_bm_stop) { free(b); return NULL; }
+
+	snprintf(p, sizeof p, "%s/.last", b->root);
+	if ((f = atomic_open(p, 0644))) {
+		fprintf(f, "%s\n%s\n", b->tag, b->file);
+		atomic_commit(f, p);
+	}
+	snprintf(p, sizeof p, "%s/.playing", b->root);
+	if ((f = atomic_open(p, 0644))) {
+		fprintf(f, "%s\n%s\n", b->own, b->file);
+		atomic_commit(f, p);
+	}
+	free(b);
+	return NULL;
+}
+
+/* Before the marker is cleared and before the next launch: no write may land
+ * after the game it describes is over. */
+static void bookmarks_finish(void)
+{
+	if (!g_bm_live) return;
+	g_bm_stop = 1;
+	pthread_join(g_bm_thr, NULL);
+	g_bm_stop = 0;
+	g_bm_live = false;
+}
+
+static void bookmarks_behind(app *a, bool wait)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	struct bookmarks *b;
+
+	bookmarks_finish();
 	if (v->list.count == 0) return;
-	playing_path(p, sizeof p);
-	f = atomic_open(p, 0644);
-	if (!f) return;
-	/* The GAME's system, not the shelf's - launching from Favorites otherwise
-	 * records a system that does not own the ROM, exactly as the launch path
-	 * itself had to learn. */
-	fprintf(f, "%s\n%s\n", a->sys.systems[o].tag, v->list.items[v->cursor].file);
-	atomic_commit(f, p);
+	if (!(b = calloc(1, sizeof *b))) return;
+	snprintf(b->root, sizeof b->root, "%s", P_ROOT);
+	snprintf(b->tag, sizeof b->tag, "%s", a->sys.systems[a->sys_cursor].tag);
+	snprintf(b->own, sizeof b->own, "%s",
+	         a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
+	snprintf(b->file, sizeof b->file, "%s", v->list.items[v->cursor].file);
+	b->wait = wait;
+	if (pthread_create(&g_bm_thr, NULL, bookmarks_write, b) == 0) g_bm_live = true;
+	else free(b);
 }
 
 static void playing_clear(void)
@@ -2742,6 +3131,9 @@ static bool playing_restore(app *a)
 	if (fgets(file, sizeof file, f)) file[strcspn(file, "\r\n")] = 0;
 	fclose(f);
 	if (!tag[0] || !file[0]) { playing_clear(); return false; }
+	/* Games Auto-Resume Off: every game starts fresh, the one that was up at
+	 * power-off too - so the shelf, not a game from its title (plorpos-pyz.1). */
+	if (!gs_auto_resume()) { playing_clear(); return false; }
 
 	for (i = 0; i < a->sys.count; i++) {
 		if (strcmp(a->sys.systems[i].tag, tag) != 0) continue;
@@ -2789,42 +3181,6 @@ static void restore_place(app *a)
 
 /* ---------- drawing ------------------------------------------------------- */
 
-/* One cell of the shell: a filled hexagon as a six-triangle fan, because
- * SDL_RenderGeometry is the only primitive here that antialiases nothing and
- * therefore looks identical to the boot animation's rasterizer. */
-static void draw_hex(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color col)
-{
-	SDL_Vertex v[7];
-	int idx[18], i;
-	v[0].position.x = cx; v[0].position.y = cy;
-	for (i = 0; i < 6; i++) {
-		float a = (float)(M_PI / 6.0 + i * M_PI / 3.0);
-		v[i + 1].position.x = cx + rad * cosf(a);
-		v[i + 1].position.y = cy + rad * sinf(a);
-	}
-	for (i = 0; i < 7; i++) {
-		v[i].color = col;
-		v[i].tex_coord.x = v[i].tex_coord.y = 0;
-	}
-	for (i = 0; i < 6; i++) {
-		idx[i * 3 + 0] = 0;
-		idx[i * 3 + 1] = 1 + i;
-		idx[i * 3 + 2] = 1 + (i + 1) % 6;
-	}
-	SDL_RenderGeometry(r, NULL, v, 7, idx, 18);
-}
-
-/* The mark, drawn about its own center.
- *
- * `head` slides the dark cell back along the lattice: 1.0 is where it sits at
- * rest, 0.0 is home on the center. `dim` then fades that same dark over the
- * blue center cell, 0 to 1.
- *
- * The two are separate because at head = 0 the dark cell lands exactly on the
- * center and is drawn UNDER the blue, so on its own the head just disappears.
- * `dim` is what makes its arrival visible: the blue is the one lit thing in
- * either mark - the same color as the boot line and the menu chrome - so
- * covering it is the light going out, and the shell closes dark. */
 /* A heart, as a fan over the classic parametric curve:
  *
  *     x = 16 sin^3 t
@@ -2832,13 +3188,13 @@ static void draw_hex(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color c
  *
  * Mirrors markdef.heart(), which is the definition - tools/genfavcard.py draws
  * the same shape into res/cards/FAVORITES.png, and the two are meant to match.
- * Change one, change both. Same standing arrangement as draw_shell and CELLS.
+ * Change one, change both.
  *
  * Fanned from a point BELOW the center rather than from the center itself. The
  * notch between the lobes is the one concave part of the shape, and a fan
  * apex level with it produces slivers that cross the notch and fill it in.
  * Dropping the apex puts every boundary point in view of it. Same primitive as
- * draw_hex for the same reason: SDL has no polygon fill.
+ * draw_orb for the same reason: SDL has no polygon fill.
  */
 #define HEART_N 48
 
@@ -2873,38 +3229,32 @@ static void draw_heart(SDL_Renderer *r, float cx, float cy, float rad,
 	SDL_RenderGeometry(r, NULL, v, HEART_N + 1, idx, HEART_N * 3);
 }
 
-static void draw_shell(SDL_Renderer *r, float cx, float cy, float rad,
-                       float head, float dim, Uint8 alpha)
-{
-	/* Mirrors tools/markdef.py, which is the definition. C cannot import it,
-	 * so this is the one hand-kept copy: change one, change both. The ring
-	 * alternates light, mid, light, mid, light, mid for three-fold symmetry. */
-	static const struct { float i, j; Uint8 c[3]; } cells[] = {
-		{ -0.5f, -1.0f, { 128, 176, 118 } }, {  0.5f, -1.0f, { 104, 138,  96 } },
-		{  1.0f,  0.0f, { 128, 176, 118 } }, {  0.5f,  1.0f, { 104, 138,  96 } },
-		{ -0.5f,  1.0f, { 128, 176, 118 } }, { -1.0f,  0.0f, { 104, 138,  96 } },
-	};
-	float dx = 1.7320508f * rad, dy = 1.5f * rad;
-	SDL_Color col;
-	int k;
+/* A filled circle, as a fan from its center like draw_heart. */
+#define ORB_N 40
 
-	/* Head first, so the shell cells draw over it as it withdraws. */
-	col.r = 61; col.g = 89; col.b = 67; col.a = alpha;
-	draw_hex(r, cx + 2.0f * dx * head, cy, rad * 0.95f, col);
-	for (k = 0; k < 6; k++) {
-		col.r = cells[k].c[0]; col.g = cells[k].c[1]; col.b = cells[k].c[2];
-		col.a = alpha;
-		draw_hex(r, cx + cells[k].i * dx, cy + cells[k].j * dy, rad * 0.95f, col);
+static void draw_orb(SDL_Renderer *r, float cx, float cy, float rad,
+                     SDL_Color col)
+{
+	SDL_Vertex v[ORB_N + 1];
+	int idx[ORB_N * 3], i;
+
+	v[0].position.x = cx;
+	v[0].position.y = cy;
+	for (i = 0; i < ORB_N; i++) {
+		float t = (float)(2.0 * M_PI * i / ORB_N);
+		v[i + 1].position.x = cx + rad * cosf(t);
+		v[i + 1].position.y = cy + rad * sinf(t);
 	}
-	/* markdef.CYAN, and the same value as MENU_ACCENT below. */
-	col.r = 61; col.g = 214; col.b = 255; col.a = alpha;
-	draw_hex(r, cx, cy, rad * 0.95f, col);
-	if (dim > 0.0f) {
-		SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-		col.r = 61; col.g = 89; col.b = 67;
-		col.a = (Uint8)(alpha * (dim > 1.0f ? 1.0f : dim));
-		draw_hex(r, cx, cy, rad * 0.95f, col);
+	for (i = 0; i <= ORB_N; i++) {
+		v[i].color = col;
+		v[i].tex_coord.x = v[i].tex_coord.y = 0;
 	}
+	for (i = 0; i < ORB_N; i++) {
+		idx[i * 3 + 0] = 0;
+		idx[i * 3 + 1] = 1 + i;
+		idx[i * 3 + 2] = 1 + (i + 1) % ORB_N;
+	}
+	SDL_RenderGeometry(r, NULL, v, ORB_N + 1, idx, ORB_N * 3);
 }
 
 /* The gauge, read at most every 5 s: each read is two sysfs files opened,
@@ -3032,14 +3382,47 @@ static int g_batt_show = -1;      /* the setting; -1 = read it again */
 
 static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now(); }
 
+/* A filled disc in the renderer's draw color. A white disc with a one-pixel
+ * soft edge, made once at 128 and scaled to the size asked, so the rim is
+ * smooth at any render scale: a stack of scan lines drawn in layout units is
+ * resampled with the rest of the frame and comes out ragged. */
+#define DISC_TEX 128
+static SDL_Texture *disc_tex;
+
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
-	for (int dy = -rad; dy <= rad; dy++) {
-		/* Against rad + 1/2, so the top, bottom and sides are not a lone
-		 * pixel sticking out of the round. */
-		int dx = (int)sqrt((double)(rad * rad + rad - dy * dy));
-		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
+	Uint8 cr, cg, cb, ca;
+
+	if (!disc_tex) {
+		SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, DISC_TEX, DISC_TEX, 32,
+		                                                SDL_PIXELFORMAT_ARGB8888);
+
+		if (s) {
+			for (int y = 0; y < DISC_TEX; y++) {
+				Uint32 *row = (Uint32 *)((Uint8 *)s->pixels + (size_t)y * s->pitch);
+
+				for (int x = 0; x < DISC_TEX; x++) {
+					float dx = x + 0.5f - DISC_TEX / 2.0f, dy = y + 0.5f - DISC_TEX / 2.0f;
+					float a = (DISC_TEX / 2.0f - sqrtf(dx * dx + dy * dy)) / 3.0f + 0.5f;
+
+					a = a < 0 ? 0 : a > 1 ? 1 : a;
+					row[x] = SDL_MapRGBA(s->format, 255, 255, 255, (Uint8)(a * 255.0f));
+				}
+			}
+			disc_tex = SDL_CreateTextureFromSurface(r, s);
+			SDL_FreeSurface(s);
+			if (disc_tex) {
+				SDL_SetTextureBlendMode(disc_tex, SDL_BLENDMODE_BLEND);
+				SDL_SetTextureScaleMode(disc_tex, SDL_ScaleModeLinear);
+			}
+		}
 	}
+	if (!disc_tex) return;
+	SDL_GetRenderDrawColor(r, &cr, &cg, &cb, &ca);
+	SDL_SetTextureColorMod(disc_tex, cr, cg, cb);
+	SDL_SetTextureAlphaMod(disc_tex, ca);
+	SDL_RenderCopyF(r, disc_tex, NULL,
+	                &(SDL_FRect){ cx - rad - 0.5f, cy - rad - 0.5f, 2 * rad + 1.0f, 2 * rad + 1.0f });
 }
 
 static void draw_battery(SDL_Renderer *r)
@@ -3427,7 +3810,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * scan-the-shelf signal it looked like, and it said one bit with no
 		 * legend about the one game you could already ask about directly. X
 		 * says "resume + 3" now, which is the same fact with a number on it. */
-		if (fav_is(gs->tag, g->file)) {
+		if (fav_is(gs->tag, g->file) || (is_muse(gs) && muse_fav_is(g->file))) {
 			/* Centered on the title's INK, not its em box. The box reserves a
 			 * descender's depth most titles never use, so a mark placed at
 			 * the box's middle sits visibly below the letters. Descent is
@@ -3490,7 +3873,13 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * the shelf slides along y a card height and a half per step and a
 		 * centered counter had every move drag a card and its reflection
 		 * straight across it. */
-		snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
+		if (is_muse(s) && SDL_GetTicks() < g_muse_note_until) {
+			snprintf(count, sizeof count, "No favorite albums");
+			ui_redraw_at(g_muse_note_until);
+		} else if (is_muse(s) && g_muse_favs)
+			snprintf(count, sizeof count, "Favorites  \xC2\xB7  %d / %d", idx + 1, v->list.count);
+		else
+			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
 		if (CARD_DIRS[g_dir].vertical)
 			ui_text(a->r, ui_font(UI_F_META), count, 24, STAGE_Y + 700,
 			        -1, UI_TEXT_DIM);
@@ -3775,52 +4164,44 @@ static void anim_launch(app *a, unsigned ms)
 	plat_present(a->r);
 }
 
-/* The send-off, and the inverse of the boot animation's gesture: there he
- * launches head-first out of frame, here he arrives and pulls the head in.
+/* The send-off: three purple orbs pass right to left, the middle one larger,
+ * slowest as they cross the center (plorpos-3yv.91, the user's design).
  *
  * Timed against the shutdown rather than chosen. Measured 2026-08-28: 1.42 s
- * from the Power off press to adbd dying, of which the old 620 ms animation
- * was the first slice - the rest was a black screen while sync and the kernel
- * finished. So the animation runs to about 900 ms and then DOES NOT clear: the
- * closed shell is its last frame. power_off turns the backlight off right
- * after, rather than leaving the shell lit until the kernel cuts the panel
- * (which is how it was until 2026-10-02). */
+ * from the Power off press to adbd dying, and the animation is only the first
+ * slice of it. It ends with the orbs gone and the screen black; power_off
+ * then turns the backlight off for the rest of the shutdown. */
 static void anim_poweroff(app *a)
 {
-	const unsigned T_IN = 430, T_HEAD = 260, T_DIM = 210;
-	const unsigned ms = T_IN + T_HEAD + T_DIM;
+	const unsigned MS = 700, LAG = 45;
 	const float cx = TORTOS_SCREEN_W / 2.0f, cy = TORTOS_SCREEN_H / 2.0f;
-	const float rad = 46.0f;
+	const float rad = 22.0f, gap = 72.0f;
+	const SDL_Color col = { UI_CYAN_R, UI_CYAN_G, UI_CYAN_B, 255 };
 	unsigned t0 = plat_now_ms(), now;
 
-	while ((now = plat_now_ms()) - t0 < ms) {
+	while ((now = plat_now_ms()) - t0 < MS) {
 		unsigned t = now - t0;
-		float x = cx, head = 1.0f, dim = 0.0f;
-		if (t < T_IN) {
-			/* In from the left, decelerating onto the center. */
-			float k = (float)t / (float)T_IN;
-			float e = 1.0f - (1.0f - k) * (1.0f - k) * (1.0f - k);
-			x = -TORTOS_SCREEN_W * 0.35f + (cx + TORTOS_SCREEN_W * 0.35f) * e;
-		} else if (t < T_IN + T_HEAD) {
-			float k = (float)(t - T_IN) / (float)T_HEAD;
-			head = 1.0f - k * k;          /* accelerating in, like a flinch */
-		} else {
-			float k = (float)(t - T_IN - T_HEAD) / (float)T_DIM;
-			head = 0.0f;
-			dim = 1.0f - (1.0f - k) * (1.0f - k) * (1.0f - k);
-		}
-		SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
+		int i;
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 		SDL_RenderClear(a->r);
-		draw_shell(a->r, x, cy, rad, head, dim, 255);
+		for (i = 0; i < 3; i++) {
+			/* The left orb leads; each of the others is LAG behind it, so the
+			 * three bunch up crossing the center and spread out leaving. */
+			unsigned d = (unsigned)i * LAG;
+			float k = t < d ? 0.0f : (float)(t - d) / (float)(MS - 2 * LAG);
+			float s;
+			if (k > 1.0f) k = 1.0f;
+			s = 2.0f * k - 1.0f;
+			s = s * s * s;
+			draw_orb(a->r,
+			         cx + (i - 1) * gap - s * (TORTOS_SCREEN_W * 0.5f + 2.0f * gap),
+			         cy, i == 1 ? rad * 1.4f : rad, col);
+		}
 		plat_present(a->r);
 		SDL_Delay(6);
 	}
-	/* Land on the closed state exactly, in case the loop exited a frame early,
-	 * and then deliberately no clear: the dark shell is the last thing on
-	 * screen and stays there while the device powers down. */
-	SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 	SDL_RenderClear(a->r);
-	draw_shell(a->r, cx, cy, rad, 0.0f, 1.0f, 255);
 	plat_present(a->r);
 }
 
@@ -3856,7 +4237,7 @@ static void power_off(app *a)
 #define MENU_RADIUS 20
 /* The system's one accent: this menu, the volume OSD, and the mark's center
  * cell in both animations. Hand-kept equal to markdef.CYAN and UI_CYAN_*. */
-#define MENU_ACCENT 0x3DD6FFu
+#define MENU_ACCENT 0x8A5CD6u   /* plorpOS purple (plorpos-8m1.2) */
 
 /* The unit every menu measurement is in. Row height, padding and the gap
  * between the two columns are all cut from it, so the whole panel scales with
@@ -3949,6 +4330,16 @@ static int menu_notes_fit(void)
  * The caller passes it rather than this inferring it, because only the caller
  * knows the content is a repeat - and getting it wrong does not look like a
  * bug, it looks like a scroll that jumps. */
+/* A row as a touch target (ui_hit): the presses that walk the cursor to it,
+ * by menu_step_sel's rule, so the rows it skips a tap skips too. */
+static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect *r)
+{
+	int dir = i > sel ? 1 : -1, k = sel, c = 0;
+
+	while (k != i && c < n) { k = menu_step_sel(rows, n, k, dir); c++; }
+	if (k == i) ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, c);
+}
+
 static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
                          int n, int sel, int fixed_w, unsigned accent,
                          const unsigned *vcolors, bool visits_all, int loop_at)
@@ -4201,6 +4592,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * eleven system accents; the mark's old blue sat close to Genesis. */
 	ui_glow(a->r, &panel, accent, 60, 1.5f);
 	ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	ui_hit_modal(&panel);   /* the panel is what a tap can reach now */
 
 	if (heading) {
 		/* Centered in the band by its ink, on the same reasoning as the rows:
@@ -4480,6 +4872,11 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		}
 		/* Centered in ITS OWN row, not in row_h: a note is shorter. */
 		ty = y + (ROW_H(rows[i]) - text_h) / 2 + ink_off;
+		/* What a tap can select: a live row in the window, or the pinned
+		 * footer - not the spare row drawn half-clipped past either end. */
+		if (sel >= 0 && rows[i].label && rows[i].live &&
+		    ((i >= first && i < first + vis) || (pinned && i >= scroll_split)))
+			menu_hit(rows, n, sel, i, &(SDL_Rect){ panel.x, y, panel.w, ROW_H(rows[i]) });
 
 		/* The same bar as the heading's, at the same alpha and width. If one
 		 * is ever retuned the other follows, which is the point. */
@@ -4819,7 +5216,11 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
-		u.engine     = is_pico8(sc) ? ENGINE_LABEL(a->view[sys].native) : NULL;
+		u.nds        = is_nds_tag(sc->tag);
+		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
+		u.engine     = engine_label(a, sys);
+		u.shader     = a->shaders.e[a->view[sys].shader].name;
+		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
@@ -4832,10 +5233,11 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
+		u.font      = FONTS[g_font].name;
+		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
-		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
 		{
 			static char clk[32];
@@ -5350,14 +5752,7 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 
 	/* The switch. Saved on every change rather than on the way out: the way out
 	 * of a handheld is often the power button. */
-	/* The two that moved here from the plorpOS menu (plorpos-z0d.1). The
-	 * account is read again on the way back, since signing in or out is what
-	 * the screen behind it is for. */
-	if (sel == WIFI_ROW_CHEEVOS) {
-		ra_signin_screen(a);
-		w->ra_name = ra_signed_in() ? ra_user() : NULL;
-		return MENU_STAY;
-	}
+	/* Over The Hare, which moved here from the plorpOS menu (plorpos-z0d.1). */
 	if (sel == WIFI_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
 
 	if (sel == WIFI_ROW_SWITCH) {
@@ -5434,7 +5829,6 @@ static void wifi_screen(app *a)
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and
 	 * the act of opening it turned wifi on. */
 	w.on = wifi_status(NULL, 0, NULL, 0) != WIFI_OFF;
-	w.ra_name = ra_signed_in() ? ra_user() : NULL;
 	if (w.on) wifi_begin_scan(&w);
 
 	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
@@ -5946,7 +6340,7 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 	struct stat st;
 
 	memset(gi, 0, sizeof *gi);
-	gi->deletable = !is_splore(s, g->file);
+	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -6232,6 +6626,194 @@ static void art_screen(app *a, const char *only, const char *one,
 	memset(&a->in, 0, sizeof a->in);
 }
 
+/* Game Settings > Download Achievement Sets (plorpos-3yv.107.3): every shelf's
+ * sets onto the card, so a game never launched online still has its
+ * achievements offline. A set is otherwise fetched on a game's first online
+ * play; this is that, for the whole library, at once. A game whose set is
+ * already cached costs one access() and no request, so running it again is
+ * cheap and a stopped run is free to restart.
+ *
+ * One game at a time through the same requests a first play makes
+ * (ra_fetch_*), one step per frame. Hashing reads the ROM - a whole GBA
+ * cartridge is 32 MB - so it runs on a thread, or a big one would hold the
+ * frame, and with it B and the power button, for a second. */
+static struct {
+	SDL_Thread  *th;
+	SDL_atomic_t done;
+	bool         ok;
+	char         rom[LIB_PATH * 2], tag[CFG_STR], hash[33];
+} g_rs;
+
+static int rs_hash_main(void *unused)
+{
+	(void)unused;
+	g_rs.ok = ra_hash_rom(g_rs.rom, g_rs.tag, g_rs.hash);
+	SDL_AtomicSet(&g_rs.done, 1);
+	return 0;
+}
+
+static void rs_hash_join(void)
+{
+	if (!g_rs.th) return;
+	SDL_WaitThread(g_rs.th, NULL);
+	g_rs.th = NULL;
+}
+
+/* Shelves RetroAchievements has no console for. */
+static bool rs_skip_shelf(const system_cfg *s)
+{
+	/* Favorites too: its games are other shelves', hashed there, and it has
+	 * no folder of its own - each one failed as Roms//<file>. */
+	return is_pico8(s) || is_ports(s) || is_muse(s) || !strcmp(s->tag, "FAV");
+}
+
+static void ra_sets_screen(app *a)
+{
+	enum { RS_NEXT, RS_HASH, RS_FETCH, RS_DONE } st = RS_NEXT;
+	const char *problem = NULL;
+	char set[LIB_PATH * 2], head[192], fit[128] = "", where[64], counts[96];
+	char nunk[16], nfail[16];
+	menu_row rows[5];
+	int nrows;
+	int sys = 0, k = 0, systems = 0, sys_done = 0, i;
+	int found = 0, unknown = 0, failed = 0, cached = 0, fails_in_row = 0;
+
+	for (i = 0; i < a->sys.count; i++)
+		if (!rs_skip_shelf(&a->sys.systems[i]) && a->view[i].list.count > 0) systems++;
+
+	if (!ra_signed_in())  { problem = "Sign in first"; st = RS_DONE; }
+	else if (!net_online()) { problem = "No network"; st = RS_DONE; }
+
+	/* The one async slot: an account answer or an unlock flush from the last
+	 * game may still hold it. */
+	sync_abandon();
+	ra_flush_stop();
+
+	while (a->running) {
+		/* ---- work: at most one request started or polled per frame ---- */
+		if (st == RS_NEXT) {
+			/* Cached games are only an access() each; take many a frame, or a
+			 * second run over a full card would crawl through them. */
+			for (i = 0; i < 64 && st == RS_NEXT; i++) {
+				const system_cfg *s;
+				const game_entry *g;
+
+				if (sys >= a->sys.count) { st = RS_DONE; break; }
+				s = &a->sys.systems[sys];
+				if (rs_skip_shelf(s) || k >= a->view[sys].list.count) {
+					if (!rs_skip_shelf(s) && a->view[sys].list.count > 0) sys_done++;
+					sys++;
+					k = 0;
+					continue;
+				}
+				g = &a->view[sys].list.items[k++];
+				chv_path(P_ROMS, s->folder, g->name, set, sizeof set);
+				if (access(set, R_OK) == 0) { cached++; continue; }
+
+				snprintf(g_rs.rom, sizeof g_rs.rom, "%s/%s/%s", P_ROMS, s->folder, g->file);
+				snprintf(g_rs.tag, sizeof g_rs.tag, "%s", s->tag);
+				ui_fit_text(ui_font(UI_F_LABEL), g->name, fit, sizeof fit,
+				            TORTOS_SCREEN_W * 3 / 4);
+				SDL_AtomicSet(&g_rs.done, 0);
+				g_rs.th = SDL_CreateThread(rs_hash_main, "rahash", NULL);
+				if (!g_rs.th) {
+					fprintf(stderr, "cheevos: no thread to hash %s\n", g_rs.rom);
+					failed++;
+					continue;
+				}
+				st = RS_HASH;
+			}
+		} else if (st == RS_HASH && SDL_AtomicGet(&g_rs.done)) {
+			rs_hash_join();
+			if (!g_rs.ok) {
+				fprintf(stderr, "cheevos: could not hash %s\n", g_rs.rom);
+				failed++;                  /* unreadable, or a kind rahash refuses */
+				st = RS_NEXT;
+			} else {
+				ra_fetch_begin(g_rs.hash, set);
+				st = RS_FETCH;
+			}
+		} else if (st == RS_FETCH) {
+			int rc = ra_fetch_step();
+
+			if (rc == 1) { found++; fails_in_row = 0; st = RS_NEXT; }
+			else if (rc < 0) {
+				if (ra_fetch_unknown()) { unknown++; fails_in_row = 0; }
+				else { failed++; fails_in_row++; }
+				st = RS_NEXT;
+				/* Wi-Fi gone, or RetroAchievements down: every game after
+				 * would fail the same way. Stop and say so. */
+				if (fails_in_row >= 5) {
+					problem = net_online() ? "RetroAchievements is not answering"
+					                       : "No network";
+					st = RS_DONE;
+				}
+			}
+		}
+
+		/* ---- the panel ---- */
+		snprintf(where, sizeof where, "%d of %d", sys_done, systems);
+		snprintf(counts, sizeof counts, "%d new, %d already", found, cached);
+		snprintf(nunk, sizeof nunk, "%d", unknown);
+		snprintf(nfail, sizeof nfail, "%d", failed);
+		nrows = 0;
+		rows[nrows++] = (menu_row){ "Systems", where, false };
+		rows[nrows++] = (menu_row){ "Sets", counts, false };
+		/* Not failures: a dump RetroAchievements never listed (a hack, a
+		 * translation), or a game it lists with nothing to earn - most of an
+		 * arcade shelf. The log names each by hash or game id. */
+		if (unknown) rows[nrows++] = (menu_row){ "No achievements", nunk, false };
+		if (failed)  rows[nrows++] = (menu_row){ "Failed", nfail, false };
+		if (st == RS_DONE) {
+			snprintf(head, sizeof head, "Achievement Sets\n%s",
+			         problem ? problem : "Done");
+			rows[nrows++] = (menu_row){ "B to close", NULL, false };
+		} else {
+			snprintf(head, sizeof head, "Achievement Sets\n%s",
+			         st == RS_NEXT ? "starting" : fit);
+			rows[nrows++] = (menu_row){ "B to stop", NULL, false };
+		}
+
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) a->running = false;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				rs_hash_join();
+				net_async_abort();
+				power_off(a);
+				return;
+			}
+		}
+		if (!a->running || menu_leaving(a)) break;
+
+		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
+		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
+		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		tick_tint(a);
+		draw_shelf(a);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
+		SDL_RenderFillRect(a->r, NULL);
+		menu_draw(a, head, rows, nrows, -1, menu_std_width(a), MENU_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+		SDL_Delay(8);
+	}
+
+	/* Stopped mid-game: the hash finishes on its own (it is the one ROM), and
+	 * a request in flight is dropped - the next ra_fetch_begin starts clean. */
+	rs_hash_join();
+	if (st == RS_FETCH) net_async_abort();
+	fprintf(stderr, "cheevos: set download %s: %d new, %d already, %d with no "
+	        "achievements, %d failed\n", st == RS_DONE ? "done" : "stopped",
+	        found, cached, unknown, failed);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
 /* One game, and the two things you can do to it from here.
  *
  * X on the shelf, because Y is already favorite and the pair reads as a
@@ -6280,6 +6862,9 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+static void game_settings_screen(app *a);
+static void shelf_shader_screen(app *a, int sys);
+static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
  * disc game's whole folder - the folder is the game - and its favorite.
@@ -6290,6 +6875,32 @@ static int rm_one(const char *p, const struct stat *st, int flag, struct FTW *f)
 {
 	(void)st; (void)flag; (void)f;
 	return remove(p);
+}
+
+/* A port goes whole (plorpos-3yv.86.12): PortMaster's own uninstall takes
+ * what its port.json lists - the script and its folder, the saves in it
+ * included (user, seq 143) - and keeps what another port also lists. The
+ * script names its zip under the shebang ("# PORTMASTER: 2048.zip, 2048.sh").
+ * Without that line, or if the script is still there after, it goes as any
+ * file game does. */
+static void port_uninstall(const char *script)
+{
+	extern char **environ;
+	char line[256], zip[128] = "", run[LIB_PATH];
+	char *argv[] = { (char *)"/bin/sh", run, (char *)"--uninstall", zip, NULL };
+	FILE *f = fopen(script, "r");
+	pid_t pid;
+	int st = -1;
+
+	while (f && fgets(line, sizeof line, f) && line[0] == '#')
+		if (sscanf(line, "# PORTMASTER: %127[^,\n]", zip) == 1) break;
+	if (f) fclose(f);
+	if (!zip[0]) return;
+	pm_here(run, sizeof run, "pm-run.sh");
+	if (posix_spawn(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+		waitpid(pid, &st, 0);
+	fprintf(stderr, "delete: PortMaster uninstall %s: exit %d\n", zip,
+	        WIFEXITED(st) ? WEXITSTATUS(st) : -1);
 }
 
 static void game_delete(app *a, int owner, const game_entry *g)
@@ -6307,8 +6918,9 @@ static void game_delete(app *a, int owner, const game_entry *g)
 	else
 		snprintf(path, sizeof path, "%s/%s/%s", P_ROMS, s->folder, g->file);
 	wait_panel(a, "Delete Game", "Deleting...");
+	if (!slash && is_ports(s)) port_uninstall(path);
 	ok = slash ? nftw(path, rm_one, 8, FTW_DEPTH | FTW_PHYS) == 0
-	           : remove(path) == 0;
+	           : access(path, F_OK) != 0 || remove(path) == 0;
 	fprintf(stderr, "delete: %s: %s\n", path, ok ? "gone" : strerror(errno));
 	/* Before the rescan: g points into the list it frees. */
 	if (ok && fav_is(s->tag, g->file)) {
@@ -6400,7 +7012,8 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 
 	if (!strcmp(rows[sel].label, "Delete Game")) {
 		/* Closes the screen when it went: there is no game left to show. */
-		if (confirm_panel(a, "Delete Game", c->g->title, "Delete")) {
+		if (confirm_panel(a, "Delete Game", c->g->title,
+		                  is_ports(&a->sys.systems[c->owner]) ? "Delete with saves" : "Delete")) {
 			game_delete(a, c->owner, c->g);
 			return MENU_DONE;
 		}
@@ -6409,7 +7022,7 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	if (!strcmp(rows[sel].label, "Cheevos")) {
+	if (!strcmp(rows[sel].label, "Achievements")) {
 		/* The set the gatherer loaded to count this row is still the loaded
 		 * one, so the list has what it needs without reloading it. Over the
 		 * shelf rather than a paused frame: no game is running here. */
@@ -6515,7 +7128,7 @@ static void bt_await_route(const char *mac)
 	while ((int)(until - plat_now_ms()) > 0) {
 		muse_poll();
 		aout_apply(false);
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 		if (plat_bt_audio()) return;        /* PipeWire already moved it */
 #else
 		if (!strcasecmp(aout_bt_sink(), want) &&
@@ -6685,12 +7298,20 @@ static void bt_screen(app *a)
 
 		if (a->in.pressed[IN_X] && u.cursor >= 0 && u.cursor < u.n &&
 		    u.dev[u.cursor].bonded) {
-			wait_panel(a, "Bluetooth", "Forgetting...");
-			if (bt_forget(u.dev[u.cursor].mac)) {
-				bt_asoundrc(P_ROOT, P_USERDATA);
-				snprintf(u.note, sizeof u.note, "Forgotten"); note_until = now + 4000;
-			} else {
-				snprintf(u.note, sizeof u.note, "It would not unpair"); note_until = now + 4000;
+			/* Asks first, like Wi-Fi's forget: on the Rotate X is a
+			 * two-finger tap, easy to land by accident (plorpos-3yv.26). */
+			const bt_device *d = &u.dev[u.cursor];
+			char msg[BT_NAME_MAX + 16];
+
+			snprintf(msg, sizeof msg, "Forget %s?", d->name[0] ? d->name : d->mac);
+			if (confirm_panel(a, "Bluetooth", msg, "Forget")) {
+				wait_panel(a, "Bluetooth", "Forgetting...");
+				if (bt_forget(d->mac)) {
+					bt_asoundrc(P_ROOT, P_USERDATA);
+					snprintf(u.note, sizeof u.note, "Forgotten"); note_until = now + 4000;
+				} else {
+					snprintf(u.note, sizeof u.note, "It would not unpair"); note_until = now + 4000;
+				}
 			}
 			next_refresh = 0;
 		}
@@ -6933,10 +7554,12 @@ static bool stats_screen(app *a)
 			 * is not row 3 of anything else. */
 			bool changed = false;
 
-			if (in_repeat(&a->in, IN_RIGHT)) {
+			/* The footer says L/R, and the shoulders are what a player
+			 * reaches for; the d-pad's left/right stay (plorpos-3yv.64). */
+			if (in_repeat(&a->in, IN_RIGHT) || in_repeat(&a->in, IN_R1)) {
 				win = (win + 1) % STATS_WINDOWS; changed = true;
 			}
-			if (in_repeat(&a->in, IN_LEFT)) {
+			if (in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_L1)) {
 				win = (win + STATS_WINDOWS - 1) % STATS_WINDOWS;
 				changed = true;
 			}
@@ -7221,11 +7844,27 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
+		/* And every shader name, as the in-game menu measures them. */
+		for (k = 0; !own && k < a->shaders.count; k++) {
+			int mw;
+			rows[sm_index(ds_fill_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
+			mw = menu_measure(rows, n, heading);
+			if (mw > w) w = mw;
+		}
 		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
 			int mw;
 			rows[SM_CORE].value = ENGINE_LABEL(k);
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
+		}
+		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
+			int c = alt_core(&a->sys.systems[i]), mw;
+
+			for (k = 0; k < 2; k++) {
+				rows[SM_CORE].value = k ? ALT_CORES[c].alt_label : ALT_CORES[c].label;
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
+			}
 		}
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
 			int mw;
@@ -7613,6 +8252,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
 	 * it - see that block's comment. */
+#if !defined(PLATFORM_ROTATE)
 	if (d && sel == ST_AUTO_OFF) {
 		int k, at = 0;
 
@@ -7630,22 +8270,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		a->idle.since_ms = plat_now_ms();
 		return MENU_STAY;
 	}
-	/* Suspend Timeout, same idiom, and independent of both rows above: it
-	 * governs light sleep however it began. Clamped at both ends - there is
-	 * no "never", as in NextUI. */
-	if (d && sel == ST_SUSPEND) {
-		int k, at = SUSPEND_TIMEOUT_COUNT - 1;
-
-		/* The first rung at or above, as Auto Sleep: an older ladder's 5 or
-		 * 45 steps from 30 or 60. */
-		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
-			if (SUSPEND_TIMEOUT[k] >= plat_suspend_timeout_secs()) { at = k; break; }
-		at += d;
-		if (at < 0) at = 0;
-		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
-		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
-		return MENU_STAY;
-	}
+#endif
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
@@ -7722,6 +8347,19 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
 		g_dir = cards_dir_step(g_dir, d ? d : 1);
 		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		return MENU_STAY;
+	}
+
+	/* A face, applied at once: the fonts are reopened under the open menu,
+	 * and the shelf's cards - some carry text - drawn again. */
+	if ((sel == US_FONT || sel == US_HEADFONT) && (d || key == IN_ACCEPT)) {
+		bool head = sel == US_HEADFONT;
+		int *k = head ? &g_head : &g_font;
+
+		font_apply(head, (*k + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
+		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
+		free_all_textures(a);
+		prime_sys_window(a);
 		return MENU_STAY;
 	}
 
@@ -7833,16 +8471,30 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * knew that from the day the menu was cut to two rows, and left and
 		 * right on Favorites' Sort By did nothing at all. */
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
-		/* PICO-8's engine, fake08 or the owner's pico8_64. Two values, so
-		 * left, right and A all turn it over, saved at once like Display
-		 * Mode. No check for the binary here: a missing one says so at
-		 * launch, the same as Splore. */
+		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
+			sel = sm_row_at(ds_fill_shown(a->sys.systems[a->sys_cursor].tag), sel);
+		/* The DS's Display: left and right step it, A steps forward, saved
+		 * at once. */
+		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
+			ds_fill_step(d ? d : 1, false);
+			return MENU_STAY;
+		}
+		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
+		 * shelf with two (ALT_CORES). Two values, so left, right and A all
+		 * turn it over, saved at once like Display Mode. No check for the
+		 * binary here: a missing one says so at launch, the same as Splore. */
 		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
-		    is_pico8(&a->sys.systems[a->sys_cursor])) {
+		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
+		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->native = !v->native;
+			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
+			else v->alt = !v->alt;
 			engine_save(a, a->sys_cursor);
+			/* Each core keeps its own states, and a card with no art shows
+			 * its game's Auto preview: the other core's, until the cards are
+			 * read again (seq 139). */
+			free_view_textures(v);
 			return MENU_STAY;
 		}
 		/* Display mode, saved the moment it changes because there is no
@@ -7850,8 +8502,22 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (d && sel == SM_DISPLAY) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->dmode = (v->dmode + d + DMODE_COUNT) % DMODE_COUNT;
+			v->dmode = dmode_step(a->sys.systems[a->sys_cursor].tag, v->dmode, d);
 			display_save(a);
+			return MENU_STAY;
+		}
+		/* Shader (plorpos-8xu): left and right step through the list, as
+		 * Display Mode does; A opens it, as the in-game row does. Saved for
+		 * the system, which is what a launch and the in-game row both read. */
+		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
+			sysview *v = &a->view[a->sys_cursor];
+
+			if (d) {
+				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
+				shader_save(a, a->sys_cursor);
+			} else {
+				shelf_shader_screen(a, a->sys_cursor);
+			}
 			return MENU_STAY;
 		}
 		/* Sort order, on the same left/right idiom.
@@ -7909,7 +8575,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_WIFI:         wifi_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
-	case PM_SCRAPING:     scraping_screen(a); break;
+	case PM_GAME:         game_settings_screen(a); break;
 	case PM_BT:           bt_screen(a); break;
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
@@ -8134,6 +8800,20 @@ static void slot_draw(app *a, const slot_view *sv, int sel)
 				: (SDL_Color){ 90, 94, 110, can ? 255 : 90 };
 			ui_round_rect(a->r, &d, r2 / 2, c);
 		}
+		/* Touch targets (ui_hit): the strip is modal, the picture is the
+		 * selected slot, and a dot you can land on is the Left/Right presses
+		 * that get there - counting only landable slots, as slot_strip's
+		 * stepping does. A dot's whole column, a finger is wider than it. */
+		ui_hit_modal(&(SDL_Rect){ area.x, frame.y, area.w, y + dw - frame.y });
+		ui_hit(&frame, IN_RIGHT, 0);
+		for (i = 0; i < dots; i++) {
+			int j, c = 0, lo = i < sel ? i : sel + 1, hi = i < sel ? sel : i + 1;
+
+			if (i == sel || !(sv->saving ? i >= 1 : sv->have[i])) continue;
+			for (j = lo; j < hi; j++) c += sv->saving ? j >= 1 : sv->have[j];
+			ui_hit(&(SDL_Rect){ x0 + i * dw - dw / 2, y - dw * 2 / 3, dw, dw * 4 / 3 },
+			       i < sel ? IN_LEFT : IN_RIGHT, c);
+		}
 	}
 }
 
@@ -8214,8 +8894,12 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
-		if (in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_RIGHT)) {
-			int dir = in_repeat(&a->in, IN_RIGHT) ? 1 : -1, next = sel;
+		/* Each asked once a frame: in_repeat spends the repeat it reports,
+		 * so asking Right again said no, and a held Right went left. */
+		int step = in_repeat(&a->in, IN_RIGHT) ? 1 : in_repeat(&a->in, IN_LEFT) ? -1 : 0;
+
+		if (step) {
+			int dir = step, next = sel;
 			do {
 				next = (next + dir + GM_SLOTS + 1) % (GM_SLOTS + 1);
 			} while ((saving ? next == 0 : !sv.have[next]) && next != sel);
@@ -8262,8 +8946,477 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	return done == 1 ? chosen : 0;
 }
 
+/* ---- the game switcher (plorpos-gl5) -------------------------------------
+ *
+ * The recent games (recent.h), one at a time and large like the slot strip:
+ * each game's Auto picture - the moment resuming it gives back - or its box
+ * art when it has never been left. Its neighbors sit dimmed at the sides, so
+ * left and right read as a row. A (or a pull down on the card) resumes, B
+ * closes, X (or a swipe up on the card, which arrives as Down) takes it off
+ * the list, Y favorites it.
+ *
+ * A game the library no longer has (its file is gone, its system removed)
+ * is left out rather than shown as a card that cannot launch. */
+typedef struct {
+	int sys, item;                 /* the real shelf it is on, and where */
+	SDL_Texture *tex;              /* loaded when first near the cursor */
+	bool tried, shot;              /* shot: an Auto picture, not box art */
+} sw_entry;
+
+/* Where a recent game is on its own shelf, or false. */
+static bool sw_find(app *a, const char *tag, const char *file, int *sys, int *item)
+{
+	int si, gi;
+
+	for (si = 0; si < a->sys.count; si++) {
+		const system_cfg *s = &a->sys.systems[si];
+
+		if (a->view[si].owner || is_muse(s) || strcmp(s->tag, tag) != 0) continue;
+		for (gi = 0; gi < a->view[si].list.count; gi++)
+			if (!strcmp(a->view[si].list.items[gi].file, file)) {
+				*sys = si;
+				*item = gi;
+				return true;
+			}
+	}
+	return false;
+}
+
+static int sw_build(app *a, sw_entry *e)
+{
+	int i, n = 0;
+
+	for (i = 0; i < recent_count() && n < RECENT_MAX; i++) {
+		const char *tag, *file;
+
+		recent_at(i, &tag, &file);
+		memset(&e[n], 0, sizeof e[n]);
+		if (sw_find(a, tag, file, &e[n].sys, &e[n].item)) n++;
+	}
+	return n;
+}
+
+static void sw_load(app *a, sw_entry *e)
+{
+	const system_cfg *s = &a->sys.systems[e->sys];
+	const game_entry *g = &a->view[e->sys].list.items[e->item];
+	char p[LIB_PATH * 3];
+	SDL_Surface *sf;
+
+	if (e->tried) return;
+	e->tried = true;
+	preview_path(a, e->sys, g, p, sizeof p);
+	sf = IMG_Load(p);
+	e->shot = sf != NULL;
+	if (!sf && card_art_path(s, g, p, sizeof p)) sf = IMG_Load(p);
+	if (!sf) return;
+	e->tex = SDL_CreateTextureFromSurface(a->r, sf);
+	SDL_FreeSurface(sf);
+}
+
+/* The picture fitted into `area`, centered, keeping its shape. */
+static SDL_Rect sw_fit(SDL_Texture *t, SDL_Rect area)
+{
+	int tw = 4, th = 3;
+	SDL_Rect r = area;
+
+	if (t) SDL_QueryTexture(t, NULL, NULL, &tw, &th);
+	if (tw <= 0 || th <= 0) { tw = 4; th = 3; }
+	if ((float)area.w / tw * th <= area.h) { r.h = area.w * th / tw; }
+	else                                   { r.w = area.h * tw / th; }
+	r.x = area.x + (area.w - r.w) / 2;
+	r.y = area.y + (area.h - r.h) / 2;
+	return r;
+}
+
+/* Where a card at position p sits: 0 is the middle, +-1 the dimmed
+ * neighbors at the sides, and anything between is on its way - a drag moves
+ * every card by the same fraction, so the row follows the finger
+ * (plorpos-gl5.5). The neighbors are 3/5 the size, their centers SW_STEP
+ * apart, and cut by the screen's edge. */
+#define SW_AREA_W 640
+#define SW_AREA_H 440
+#define SW_STEP   560.0f
+static SDL_Rect sw_box(float p)
+{
+	float t = p < 0 ? -p : p, sc;
+	SDL_Rect r;
+
+	if (t > 1) t = 1;
+	sc = 1.0f - t * 0.4f;
+	r.w = (int)(SW_AREA_W * sc);
+	r.h = (int)(SW_AREA_H * sc);
+	r.x = (int)(TORTOS_SCREEN_W / 2 + p * SW_STEP) - r.w / 2;
+	r.y = STAGE_Y + 120 + (SW_AREA_H - r.h) / 2;
+	return r;
+}
+
+/* off: how far the row has been dragged (layout units, + to the right);
+ * lift: how far the middle card has been pushed up, on its way off - or,
+ * negative, pulled down, on its way to being played (plorpos-3yv.57). */
+static void sw_draw(app *a, sw_entry *e, int n, int sel, float off, float lift)
+{
+	const int bw = 12;
+	int line_menu = ui_font_line(UI_F_MENU), line_meta = ui_font_line(UI_F_META);
+	char meta[CFG_STR * 2 + 32], count[24];
+	int k, mid = sel;
+	float best = 99;
+
+	ui_text(a->r, ui_font(UI_F_LABEL), "Recent", TORTOS_SCREEN_W / 2, 39, 0, UI_TEXT_DIM);
+	ui_hit_modal(&(SDL_Rect){ 0, 0, TORTOS_SCREEN_W, TORTOS_SCREEN_H });
+	if (n == 0) {
+		ui_text(a->r, ui_font(UI_F_MENU), "Nothing played yet", TORTOS_SCREEN_W / 2,
+		        STAGE_Y + 120 + (SW_AREA_H - line_menu) / 2, 0, UI_TEXT_DIM);
+		return;
+	}
+	/* The card nearest the middle is the one the caption and frame are for. */
+	for (k = sel - 2; k <= sel + 2; k++) {
+		float p = (k - sel) + off / SW_STEP, t = p < 0 ? -p : p;
+		if (k >= 0 && k < n && t < best) { best = t; mid = k; }
+	}
+	/* Farthest first, so the middle one is drawn over its neighbors. */
+	for (int ring = 2; ring >= 0; ring--)
+		for (int side = -1; side <= 1; side += 2) {
+			int kk = sel + side * ring;
+			float p, t;
+			SDL_Rect box, r;
+			Uint8 lum;
+			int alpha = 255;
+
+			if (ring == 0 && side > 0) continue;
+			k = kk;
+			if (k < 0 || k >= n) continue;
+			p = (k - sel) + off / SW_STEP;
+			t = p < 0 ? -p : p;
+			if (t > 2.2f) continue;
+			sw_load(a, &e[k]);
+			box = sw_box(p);
+			r = sw_fit(e[k].tex, box);
+			if (k == sel && lift != 0) {
+				r.y -= (int)lift;
+				alpha = 255 - (int)(fabsf(lift) * 255 / 450);
+				if (alpha < 0) alpha = 0;
+			}
+			lum = (Uint8)(255 - (t > 1 ? 1 : t) * 165);
+			if (k == mid && t < 0.5f) {
+				Uint32 tint = a->sys.systems[e[k].sys].accent;
+				SDL_Rect frame = { r.x - bw, r.y - bw, r.w + bw * 2, r.h + bw * 2 };
+
+				if (alpha == 255) ui_glow(a->r, &r, tint, 85, 1.35f);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+				ui_round_rect(a->r, &frame, bw, (SDL_Color){
+					(Uint8)(tint >> 16), (Uint8)(tint >> 8), (Uint8)tint, (Uint8)alpha });
+				ui_hit(&frame, IN_RIGHT, 0);
+			} else if (t >= 0.5f) {
+				ui_hit(&r, p < 0 ? IN_LEFT : IN_RIGHT, 1);
+			}
+			if (e[k].tex) {
+				SDL_SetTextureColorMod(e[k].tex, lum, lum, lum);
+				SDL_SetTextureAlphaMod(e[k].tex, (Uint8)alpha);
+				SDL_RenderCopy(a->r, e[k].tex, NULL, &r);
+				SDL_SetTextureColorMod(e[k].tex, 255, 255, 255);
+				SDL_SetTextureAlphaMod(e[k].tex, 255);
+			} else {
+				SDL_SetRenderDrawColor(a->r, (Uint8)(lum / 12), (Uint8)(lum / 12),
+				                       (Uint8)(lum / 9), (Uint8)alpha);
+				SDL_RenderFillRect(a->r, &r);
+			}
+		}
+
+	{
+		const system_cfg *s = &a->sys.systems[e[mid].sys];
+		const game_entry *g = &a->view[e[mid].sys].list.items[e[mid].item];
+		SDL_Rect img = sw_fit(e[mid].tex, sw_box(0));
+		int y = img.y + img.h + 36;
+
+		/* A title wider than the screen slides, as on the shelf, and starts
+		 * over whenever the card under the middle changes. */
+		{
+			static int last = -1;
+			static unsigned since;
+			int tw = 0, maxw = TORTOS_SCREEN_W - 80;
+
+			if (mid != last) { last = mid; since = plat_now_ms(); }
+			tw = ui_text_width(ui_font(UI_F_MENU), g->title);
+			if (tw <= maxw)
+				ui_text(a->r, ui_font(UI_F_MENU), g->title, TORTOS_SCREEN_W / 2, y, 0, UI_TEXT);
+			else
+				ui_text_marquee(a->r, ui_font(UI_F_MENU), g->title, 40, y, maxw,
+				                plat_now_ms() - since, UI_TEXT);
+		}
+		snprintf(meta, sizeof meta, "%s%s", s->name,
+		         fav_is(s->tag, g->file) ? "  \xC2\xB7  Favorite" : "");
+		ui_text(a->r, ui_font(UI_F_META), meta, TORTOS_SCREEN_W / 2,
+		        y + 6 + line_menu, 0, UI_TEXT_DIM);
+		/* On a short panel (the RG SP's 480 px) the counter would land on
+		 * the hints below it; those win. */
+		if (y + 18 + line_menu + 2 * line_meta <= TORTOS_SCREEN_H - 40 - line_meta) {
+			snprintf(count, sizeof count, "%d / %d", mid + 1, n);
+			ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
+			        y + 18 + line_menu + line_meta, 0, UI_TEXT_DIM);
+		}
+	}
+	ui_text(a->r, ui_font(UI_F_META),
+	        "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite",
+	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 40 - line_meta, 0, UI_TEXT_DIM);
+	/* Each hint is its button to a tap (plorpos-3yv.58): its own words plus
+	 * half the gap to the next, and a finger's height. */
+	{
+		static const struct { const char *s; in_button b; } hint[] = {
+			{ "A Play", IN_ACCEPT }, { "X Remove", IN_X }, { "Y Favorite", IN_Y },
+		};
+		TTF_Font *f = ui_font(UI_F_META);
+		int gap = ui_text_width(f, "   \xC2\xB7   "), x;
+		int y = TORTOS_SCREEN_H - 40 - line_meta;
+
+		x = TORTOS_SCREEN_W / 2 - ui_text_width(f,
+		    "A Play   \xC2\xB7   X Remove   \xC2\xB7   Y Favorite") / 2;
+		for (k = 0; k < 3; k++) {
+			int w = ui_text_width(f, hint[k].s);
+
+			ui_hit_id(&(SDL_Rect){ x - gap / 2, y - 30, w + gap, line_meta + 60 }, hint[k].b);
+			x += w + gap;
+		}
+	}
+}
+
+/* What the switcher ended with. */
+typedef struct { int sys, item; } sw_pick;
+
+/* From a game: the game picked to go to once the running one has ended, by
+ * key - the shelves are rescanned in between, so positions would not hold -
+ * and whether a favorite changed meanwhile (plorpos-gl5.3). The running
+ * game, for telling "this one again" from a switch. */
+static char g_switch_tag[RECENT_TAG_MAX], g_switch_file[RECENT_FILE_MAX];
+static bool g_switch_fav;
+static char g_cur_tag[RECENT_TAG_MAX], g_cur_file[RECENT_FILE_MAX];
+
+/* The switcher over a running game. True when another game was picked (now
+ * in g_switch_*); the caller ends this one. *powered: the power button ended
+ * it, and the game is to stop. */
+static bool switcher_in_game(app *a, SDL_Texture *bg, bool *powered);
+static void gm_resume(app *a, SDL_Texture *bg);
+
+/* Runs the switcher over `bg` (a paused game's frame) or black, on the
+ * newest game - from a game, the running one, which its launch put first.
+ * Returns true with *pick set when a game was chosen; false when closed or
+ * when the power button ended it (then *powered says which, in a game: the
+ * caller stops the game). */
+static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
+                         bool *powered)
+{
+	static sw_entry e[RECENT_MAX];
+	int n = sw_build(a, e), sel = 0, i, done = 0;
+	ui_pace pace = { 0 };
+	/* The row's drag and the middle card's lift (plorpos-gl5.5): both in
+	 * layout units, both easing back to 0 when nothing holds them. axis:
+	 * 0 undecided, 1 across, 2 up (remove), 3 down (play). */
+	float off = 0, lift = 0;
+	int axis = 0;
+	bool removing = false, launching = false;
+
+	*powered = false;
+	plat_touch_free(true);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	ui_hit_take();          /* a tap from before the switcher is not ours */
+	/* Sticky (see menu_leaving): a MENU that closed the last switcher over a
+	 * game left it up - only the shelf's loop and the in-game menu put it
+	 * down - and every switcher after that closed on its first frame
+	 * (plorpos-6ei.20). */
+	g_menu_closing = false;
+
+	while (!done && !want_quit && a->running) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) break;
+		{
+			int hint = ui_hit_take();   /* a footer hint tapped: its button */
+			if (hint >= 0) a->in.pressed[hint] = true;
+		}
+		if (n > 0) {
+			/* A step slides too: the row starts where it was and eases in. */
+			if (in_repeat(&a->in, IN_LEFT)  && sel > 0)     { sel--; off -= SW_STEP; }
+			if (in_repeat(&a->in, IN_RIGHT) && sel < n - 1) { sel++; off += SW_STEP; }
+		}
+		{
+			touch_drag_state d;
+			float sc = plat_scale() > 0 ? plat_scale() : 1;
+
+			plat_touch_drag_get(&d);
+			if (n > 0 && d.active && !removing && !launching) {
+				float dx = d.dx / sc, dy = d.dy / sc;
+
+				if (!axis) axis = fabsf(dx) >= fabsf(dy) ? 1 : dy < 0 ? 2 : 3;
+				if (axis == 1) {
+					off = dx;
+					/* Past either end it gives, but only a little. */
+					if ((sel == 0 && off > 0) || (sel == n - 1 && off < 0)) off *= 0.35f;
+				} else if (axis == 2) {
+					lift = dy < 0 ? -dy : 0;
+				} else {
+					lift = dy > 0 ? -dy : 0;     /* down: to be played */
+				}
+				ui_redraw_now();
+			} else if (d.released) {
+				float vx = d.vx / sc, vy = d.vy / sc;
+
+				if (axis == 1) {
+					if ((off > SW_STEP * 0.3f || vx > 0.6f) && sel > 0)            { sel--; off -= SW_STEP; }
+					else if ((off < -SW_STEP * 0.3f || vx < -0.6f) && sel < n - 1) { sel++; off += SW_STEP; }
+				} else if (axis == 2 && (lift > 220 || vy < -0.8f)) {
+					removing = true;   /* on its way off the top */
+				} else if (axis == 3 && (lift < -220 || vy > 0.8f)) {
+					launching = true;  /* and off the bottom, into the game */
+				}
+				axis = 0;
+				ui_redraw_now();
+			} else if (!d.active) {
+				if (removing) {
+					lift += 70;
+					if (lift > 700) { removing = false; lift = 0; a->in.pressed[IN_X] = true; }
+				} else if (launching) {
+					lift -= 70;
+					if (lift < -700) { launching = false; lift = 0; a->in.pressed[IN_ACCEPT] = true; }
+				} else if (lift != 0) {
+					lift *= 0.6f;
+					if (fabsf(lift) < 2) lift = 0;
+				}
+				if (off != 0) {
+					off *= 0.6f;
+					if (fabsf(off) < 1) off = 0;
+				}
+				if (off != 0 || lift != 0) ui_redraw_now();
+			}
+		}
+		if (menu_leaving(a) || a->in.pressed[IN_SWITCHER]) done = -1;
+		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (n > 0 && a->in.pressed[IN_ACCEPT]) {
+			pick->sys = e[sel].sys;
+			pick->item = e[sel].item;
+			done = 1;
+		}
+		if (n > 0 && (a->in.pressed[IN_X] || a->in.pressed[IN_DOWN])) {
+			const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+
+			recent_remove(a->sys.systems[e[sel].sys].tag, g->file);
+			if (e[sel].tex) SDL_DestroyTexture(e[sel].tex);
+			memmove(&e[sel], &e[sel + 1], (size_t)(n - sel - 1) * sizeof e[0]);
+			n--;
+			if (sel >= n && sel > 0) sel--;
+			ui_redraw_now();
+		}
+		if (n > 0 && a->in.pressed[IN_Y]) {
+			const game_entry *g = &a->view[e[sel].sys].list.items[e[sel].item];
+
+			char tag[RECENT_TAG_MAX], file[RECENT_FILE_MAX];
+
+			snprintf(tag, sizeof tag, "%s", a->sys.systems[e[sel].sys].tag);
+			snprintf(file, sizeof file, "%s", g->file);
+			fav_toggle(tag, file);
+			fav_save();
+			/* The Favorites shelf comes and goes with its first and last
+			 * game, which moves every system after it: positions taken
+			 * before are stale, so the row is found again. Not under a
+			 * paused game, whose launch holds those positions: it is
+			 * rebuilt when the game ends (g_switch_fav). */
+			if (in_game) g_switch_fav = true;
+			else refresh_favorites_shelf(a);
+			for (i = 0; i < n; i++)
+				if (e[i].tex) SDL_DestroyTexture(e[i].tex);
+			n = sw_build(a, e);
+			for (i = 0, sel = 0; i < n; i++)
+				if (!strcmp(a->sys.systems[e[i].sys].tag, tag) &&
+				    !strcmp(a->view[e[i].sys].list.items[e[i].item].file, file))
+					sel = i;
+			ui_redraw_now();
+		}
+		{
+			pwr_action pa = power_check(a);
+
+			if (pa == PWR_POWEROFF) {
+				if (in_game) { plat_note_power_pressed(); *powered = true; }
+				else power_off(a);
+				done = -1;
+			}
+		}
+
+		if (done || !screen_draw_due(a, &pace, 0)) {
+			if (!done) SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+		SDL_RenderClear(a->r);
+		if (bg) {
+			draw_paused_frame(a, bg);
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 200);
+			SDL_RenderFillRect(a->r, NULL);
+		}
+		sw_draw(a, e, n, sel, off, lift);
+		draw_battery(a->r);
+		plat_present(a->r);
+	}
+	plat_touch_free(false);
+	for (i = 0; i < n; i++)
+		if (e[i].tex) { SDL_DestroyTexture(e[i].tex); e[i].tex = NULL; }
+	return done == 1;
+}
+
+static bool switcher_in_game(app *a, SDL_Texture *bg, bool *powered)
+{
+	sw_pick pk;
+	const char *tag, *file;
+
+	if (!switcher_run(a, bg, true, &pk, powered)) return false;
+	tag  = a->sys.systems[pk.sys].tag;
+	file = a->view[pk.sys].list.items[pk.item].file;
+	if (!strcmp(tag, g_cur_tag) && !strcmp(file, g_cur_file)) return false;
+	snprintf(g_switch_tag, sizeof g_switch_tag, "%s", tag);
+	snprintf(g_switch_file, sizeof g_switch_file, "%s", file);
+	return true;
+}
+
+/* A swipe or a Menu hold over a Diatom game: the switcher over its paused
+ * frame. Another game ends this one (STOP: Diatom writes its Auto state on
+ * the way out, as Quit does) and launch() starts the pick; the same game, B,
+ * or nothing chosen resumes. */
+static void game_switch(app *a)
+{
+	const char *pv = plat_resident_last_preview();
+	SDL_Texture *bg = NULL;
+	bool powered;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	if (pv && *pv) {
+		SDL_Surface *sf = IMG_Load(pv);
+
+		if (sf) {
+			bg = SDL_CreateTextureFromSurface(a->r, sf);
+			SDL_FreeSurface(sf);
+		}
+	}
+	if (switcher_in_game(a, bg, &powered) || powered || want_quit)
+		plat_resident_line("STOP");
+	else
+		gm_resume(a, bg);
+	if (bg) SDL_DestroyTexture(bg);
+}
+
 /* Change the mode, keep it, tell the running game, and take back the rect so
  * the backdrop behind the menu redraws where the game is about to be. */
+/* The mode the paused game is drawn in: Diatom's word for it when it has
+ * said, since the DS's Display Mode hotkey changes it for that run only
+ * (plorpos-3yv.62); else the saved one. */
+static int gm_dmode_now(const sysview *v)
+{
+	const char *m = plat_resident_mode();
+
+	for (int k = 0; m && k < DMODE_COUNT; k++)
+		if (!strcmp(DMODES[k].name, m)) return k;
+	return v->dmode;
+}
+
 static void gm_cycle_display(app *a, int d)
 {
 	/* The OWNER's, so a mode chosen while playing a favorite is set for the
@@ -8272,7 +9425,9 @@ static void gm_cycle_display(app *a, int d)
 	 * by every game launched from there, whatever machine it came from. */
 	sysview *v = owner_view(a);
 
-	v->dmode = (v->dmode + d + DMODE_COUNT) % DMODE_COUNT;
+	/* From what is on screen, which a DS's Display Mode hotkey may have
+	 * moved on from the saved one (plorpos-3yv.62). */
+	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, gm_dmode_now(v), d);
 	display_save(a);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[v->dmode].name);
 	plat_resident_sync_rect(150);
@@ -8287,7 +9442,9 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	/* The owner's, the mode gm_cycle_display changes: on Favorites the
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
-	u.dmode  = DMODES[owner_view(a)->dmode].label;
+	u.dmode  = DMODES[gm_dmode_now(owner_view(a))].label;
+	u.nds    = is_nds_tag(a->sys.systems[owner_view(a) - a->view].tag);
+	u.fill   = ds_fill_shown(a->sys.systems[owner_view(a) - a->view].tag) ? ds_fill_label() : NULL;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
 	u.shaders = a->shaders.count > 1;
 	{
@@ -8296,6 +9453,16 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
 		u.palette = pal < 0 ? NULL : gbpal_label(pal);
 	}
+	u.stylus = NULL;
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	if (plat_two_sticks()) {
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+		if (is_nds_tag(a->sys.systems[o].tag))
+			u.stylus = db_get_int(db_dev(), "stylusstick", 1) ? "Right Stick" : "Left Stick";
+	}
+#endif
 	u.disc   = g_disc.count > 1 ? g_disc.label : NULL;
 	u.earned = chv_earned();
 	u.total  = chv_count();
@@ -9510,6 +10677,53 @@ static int muse_card_of(const sysview *v, int album)
 	return -1;
 }
 
+/* The shelf rebuilt after a favorite or the Favorites view changed which
+ * albums it shows, on `album` if it is still there, else the card that took
+ * its place. Textures go first: a card may now be another album. */
+static void muse_refilter(sysview *v, int album)
+{
+	int k;
+
+	free_view_textures(v);
+	muse_order_view(v);
+	k = album >= 0 ? muse_card_of(v, album) : -1;
+	if (k < 0) k = v->cursor < v->list.count ? v->cursor : v->list.count - 1;
+	v->cursor = k > 0 ? k : 0;
+	cf_reset(&v->cf, v->cursor);
+	ui_redraw_now();
+}
+
+/* Y on the shelf (plorpos-3yv.98): a tap marks or unmarks the album under the
+ * cursor; held, the Favorites view on or off. */
+static void muse_fav_tap(sysview *v)
+{
+	if (v->list.count <= 0) return;
+	muse_fav_flip(v->list.items[v->cursor].file);
+	/* Unmarked in the view, it leaves it - and the last one ends it. */
+	if (g_muse_favs) muse_refilter(v, v->album[v->cursor]);
+	else ui_redraw_now();
+}
+
+static void muse_fav_hold(sysview *v)
+{
+	int al = v->list.count > 0 ? v->album[v->cursor] : -1, k;
+	char dir[LIB_PATH];
+
+	if (!g_muse_favs) {
+		for (k = 0; k < v->list.count; k++) {
+			muse_album_dir(v->album[k], dir, sizeof dir);
+			if (muse_fav_is(dir)) break;
+		}
+		if (k == v->list.count) {
+			g_muse_note_until = SDL_GetTicks() + 2000;
+			ui_redraw_now();
+			return;
+		}
+	}
+	g_muse_favs = !g_muse_favs;
+	muse_refilter(v, al);
+}
+
 /* MUSE'S SHELF, OPENED ON TOP OF WHATEVER WAS ON SCREEN. Eric's, 2026-09-20.
  *
  * SELECT used to open a list of artists, because this shelf belongs to the
@@ -9535,7 +10749,7 @@ static void muse_shelf_screen(app *a, bool now)
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	sysview *v;
 	int muse = -1, i, playing;
-	bool done = false;
+	bool done = false, y_down = false, y_spent = false;
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
@@ -9572,9 +10786,12 @@ static void muse_shelf_screen(app *a, bool now)
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
 
+		unsigned ft0, ft1;
+
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
+		ft0 = g_ft ? ft_us() : 0;
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
 			pwr_action pa = power_check(a);
@@ -9598,6 +10815,21 @@ static void muse_shelf_screen(app *a, bool now)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		/* Y acts on release, so a hold can mean something else: held
+		 * MUSE_FAV_HOLD_MS it is the Favorites view, at once, and that
+		 * release does nothing. A tap whose press and release came in one
+		 * poll shows only as pressed. */
+		if (a->in.down[IN_Y] && !y_spent &&
+		    SDL_GetTicks() - a->in.down_since[IN_Y] >= MUSE_FAV_HOLD_MS) {
+			y_spent = true;
+			muse_fav_hold(v);
+		}
+		if ((y_down || a->in.pressed[IN_Y]) && !a->in.down[IN_Y]) {
+			if (!y_spent) muse_fav_tap(v);
+			y_spent = false;
+		}
+		y_down = a->in.down[IN_Y];
+
 		if (a->in.pressed[IN_ACCEPT]) {
 			/* SELECT from the tracks or Now Playing closes all of Muse, and
 			 * a rescan from their MENU leaves this shelf to be found again. */
@@ -9620,9 +10852,11 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
+		ft1 = g_ft ? ft_us() : 0;
 		if (screen_draw_due(a, &pace, 0)) {
 			tick_tint(a);
 			render(a);
+			ft_frame("Muse", ft0, ft1, ft_us(), v->cursor, v->list.count);
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}
@@ -9998,12 +11232,12 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * mode to the shelf and in-game menus and nearest as the only filter; a saved
  * binding naming either is dropped by hk_parse and skipped by Diatom.
  *
- * A Hotkey Modifier row (global - which key is held for all of them, diatom's
- * ADR-0038) above four fixed action rows, cycled left and right the way
- * Display Mode already is -
- * not a "press any button to capture it" flow, which this codebase has
- * never built anywhere and would have been the highest-risk new interaction
- * to write with no way to run it. A button already bound to one row is
+ * The action rows, each bound by pressing its trigger: a button alone, or
+ * held under one of the device's modifiers - the first one held names the
+ * binding's own (plorpos-6ei.6, "l3+a:ff"), so FF on L3 + A and rewind on
+ * Menu + A live side by side. There is no Hotkey Modifier row any more; a
+ * spec saved before names none and keeps the device's old one (hkmod). A
+ * trigger already bound to one row is
  * cleared from whichever OTHER row held it rather than refusing the change:
  * the wire format itself refuses a spec with a button claimed twice
  * (diatom's hotkeys_set), so allowing that here would mean silently failing
@@ -10018,7 +11252,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * off. The ring's memory is fixed, so a slower speed holds less history;
  * the player chose that trade. 5 matches both builds' default. */
 static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
-static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled" };
+static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Off" };
 #define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
 #define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
 
@@ -10033,6 +11267,8 @@ static const struct { in_button b; int hk; } HK_CAPTURE[] = {
 	{ IN_SLEFT, HK_IN_SLEFT }, { IN_SRIGHT, HK_IN_SRIGHT },
 	{ IN_UP, HK_IN_UP }, { IN_DOWN, HK_IN_DOWN },
 	{ IN_LEFT, HK_IN_LEFT }, { IN_RIGHT, HK_IN_RIGHT },
+	{ IN_FN1, HK_IN_FN1 }, { IN_FN2, HK_IN_FN2 },
+	{ IN_R3, HK_IN_R3 },
 };
 
 /* The launcher key behind a modifier's wire name (plat_hotkey_modifiers). */
@@ -10040,39 +11276,58 @@ static in_button hk_modifier_button(const char *wire)
 {
 	if (!strcmp(wire, "select")) return IN_SELECT;
 	if (!strcmp(wire, "l3"))     return IN_L3;
-	if (!strcmp(wire, "r3"))     return IN_R3;
 	if (!strcmp(wire, "home"))   return IN_HOME;
 	return IN_MENU;
 }
 
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
-	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
-	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. The
-	 * rule and legend are drawn after them and are never selected. */
-	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
-	int trig_for_row[HK_ROW_COUNT];
+	/* The action rows, action vis[i] at row i. Rewind Speed moved to Game
+	 * Settings (plorpos-pyz.3). The rule and legend are drawn after them
+	 * and are never selected. */
+	enum { FIRST_ACT = 0, ROWS = HK_SCREEN_ROWS };
+	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 2];
-	char vals[HK_ROW_COUNT][32];
+	char vals[HK_ROW_COUNT][40];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
-	int mod = 0, sel = 0, done = 0, i;
+	/* The modifier a spec that names none holds (hkmod), as an HK_MOD_WIRE
+	 * index - what a row with mod -1 means. */
+	const char *legacy_wire = plat_hotkey_modifier();
+	const int legacy = hk_mod_from_wire(legacy_wire);
+	int sel = 0, done = 0, i;
 	/* Press-to-bind (plorpos-gkd.43.3): A on an action row waits for the
 	 * next trigger. Only a lone MENU tap cancels - B is bindable, and MENU
-	 * held is the default modifier - so it is judged on the release. */
+	 * held is a modifier - so it is judged on the release. */
 	bool capturing = false, menu_tap = false;
 	bool changed = false;
-	char spec[128];
+	char spec[320];
 
-	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	const int RW_ROW = FIRST_ACT + HK_ROW_COUNT;
-	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
+	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
+	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
+	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
+	 * Stylus Mode where there is no stick either (two sticks: always on), and
+	 * Blow Into Mic on every device (plorpos-6ei.3): the last five action rows.
+	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
+	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
+	int vis[HK_ROW_COUNT], nact = 0;
 
-	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
-	{
-		const char *cur = plat_hotkey_modifier();
-		while (mod < nmods - 1 && strcmp(mod_wire[mod], cur)) mod++;
+	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
+	for (i = 0; i < HK_ROW_COUNT; i++) {
+		bool shown = i < R_SWAP;
+		if (is_nds_tag(tag) && !shown) {
+#if defined(PLATFORM_ROTATE)
+			shown = i == R_SWAP || i == R_BLOW;
+#elif defined(PLATFORM_GKD)
+			shown = i == R_SWAP || i == R_STYLUS || i == R_BLOW;
+#else
+			/* a stick's cursor is always on: no Stylus Mode (plorpos-6ei.1) */
+			shown = !(plat_two_sticks() && i == R_STYLUSMODE);
+#endif
+		}
+		if (shown) vis[nact++] = i;
 	}
+	const int NROWS = FIRST_ACT + nact;
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -10083,18 +11338,28 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		plat_input_poll(&a->in);
 
 		if (capturing) {
-			int act = sel - FIRST_ACT, t = 0;
-			bool held = a->in.down[hk_modifier_button(mod_wire[mod])];
+			int act = sel - FIRST_ACT, t = 0, held = -1, m;
 			size_t k;
 
+			/* The first of the device's modifiers held names the binding's. */
+			for (m = 0; m < nmods && held < 0; m++)
+				if (a->in.down[hk_modifier_button(mod_wire[m])])
+					held = hk_mod_from_wire(mod_wire[m]);
 			for (k = 0; k < sizeof HK_CAPTURE / sizeof HK_CAPTURE[0] && !t; k++)
 				if (a->in.pressed[HK_CAPTURE[k].b])
-					t = hk_trig_from(HK_CAPTURE[k].hk, held);
+					t = hk_trig_from(HK_CAPTURE[k].hk, held >= 0);
+			/* No stick direction is a DS hotkey: the stylus has one stick
+			 * and the d-pad folds the other (plorpos-6ei.6). Wait on. */
+			if (t && is_nds_tag(tag) && hk_trig_stickdir(t)) t = 0;
 			if (t) {
 				/* Taken from whichever row held it: one trigger, one action. */
-				for (i = 0; i < HK_ROW_COUNT; i++)
-					if (trig_for_row[i] == t) trig_for_row[i] = 0;
-				trig_for_row[act] = t;
+				for (i = 0; i < HK_ROW_COUNT; i++) {
+					int mi = mod_for_row[i] < 0 ? legacy : mod_for_row[i];
+					if (trig_for_row[i] == t && (!hk_trig_mod(t) || mi == held))
+						trig_for_row[i] = 0;
+				}
+				trig_for_row[vis[act]] = t;
+				mod_for_row[vis[act]] = hk_trig_mod(t) ? held : -1;
 				capturing = false;
 				changed = true;
 			} else if (a->in.pressed[IN_MENU]) {
@@ -10106,34 +11371,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + ROWS - 1) % ROWS;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % ROWS;
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
 
-			if (sel == MOD_ROW) {
-				int d = 0;
-
-				if (in_repeat(&a->in, IN_LEFT))  d = -1;
-				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
-				if (d) {
-					mod = (mod + d + nmods) % nmods;
-					plat_hotkey_modifier_set(mod_wire[mod]);
-					changed = true;
-				}
-			} else if (sel == RW_ROW) {
-				int d = 0;
-
-				if (in_repeat(&a->in, IN_LEFT))  d = -1;
-				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
-				if (d) {
-					rw = (rw + d + RW_COUNT) % RW_COUNT;
-					db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
-					plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
-				}
-			} else if (a->in.pressed[IN_ACCEPT]) {
+			if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
-			} else if (a->in.pressed[IN_X] && trig_for_row[sel - FIRST_ACT]) {
-				trig_for_row[sel - FIRST_ACT] = 0;
+			} else if (a->in.pressed[IN_X] && trig_for_row[vis[sel - FIRST_ACT]]) {
+				trig_for_row[vis[sel - FIRST_ACT]] = 0;
 				changed = true;
 			}
 
@@ -10141,14 +11386,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 
 		if (changed) {
-			hk_serialize(trig_for_row, spec, sizeof spec);
+			hk_serialize(trig_for_row, mod_for_row, spec, sizeof spec);
 			plat_hotkey_set(tag, spec);
 			/* Live, not only persisted: this screen is only ever open
 			 * mid-session (reached from the in-game menu), so the change
 			 * should take hold without the player having to quit and
 			 * relaunch to see it. */
 			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-			                   spec, mod_wire[mod]);
+			                   spec, legacy_wire);
 			changed = false;
 		}
 
@@ -10161,37 +11406,179 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			}
 		}
 
-		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
-		for (i = 0; i < HK_ROW_COUNT; i++) {
-			int t = trig_for_row[i];
+		for (i = 0; i < nact; i++) {
+			int t = trig_for_row[vis[i]], m, mi = mod_for_row[vis[i]] < 0 ? legacy : mod_for_row[vis[i]];
+			const char *ml = "";
 
+			for (m = 0; m < nmods; m++)        /* the device's own name for it */
+				if (hk_mod_from_wire(mod_wire[m]) == mi) ml = mod_label[m];
 			if (capturing && i == sel - FIRST_ACT)
 				snprintf(vals[i], sizeof vals[i], "Press...");
 			else
 				snprintf(vals[i], sizeof vals[i], "%s%s%s%s",
-				         hk_trig_mod(t) ? mod_label[mod] : "",
+				         hk_trig_mod(t) ? ml : "",
 				         hk_trig_mod(t) ? " + " : "",
 				         hk_trig_stick(t) && plat_two_sticks() ? "L " : "",
 				         HK_TRIG_NAME[t]);
-			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i], true };
 		}
-		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
-		rows[ROWS] = MENU_RULE;
-		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
+		rows[NROWS] = MENU_RULE;
+		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press button(s)    Menu: cancel"
 		                                     : "A: set    X: clear");
 
-		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, ROWS + 2, sel))) {
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, NROWS + 2, sel))) {
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
 		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+}
+
+/* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
+ * for every system. Defaults are what plorpOS always did, Confirm off. */
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_CHEEVOS, GS_RA,
+       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
+
+/* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
+ * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
+static const int FF_SPEEDS[] = { 2, 4, 8 };
+static const char *const FF_NAME[] = { "2x", "4x", "8x" };
+#define FF_COUNT ((int)(sizeof FF_SPEEDS / sizeof FF_SPEEDS[0]))
+
+static int gs_ff(void)
+{
+	int i = 0, x = db_get_int(db_dev(), "ffspeed", 4);
+
+	while (i < FF_COUNT - 1 && FF_SPEEDS[i] != x) i++;
+	return i;
+}
+
+static int gs_rewind(void)
+{
+	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 0);
+
+	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
+	return rw;
+}
+
+static int game_settings_build(void *ctx, menu_row *rows, int max,
+                               const char **heading)
+{
+	(void)ctx; (void)max;
+	*heading = "Game Settings";
+	rows[GS_RESUME]   = (menu_row){ "Games Auto-Resume", gs_auto_resume() ? "on" : "off", true };
+	rows[GS_REWIND]   = (menu_row){ "Rewind Speed", RW_NAME[gs_rewind()], true };
+	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
+	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
+	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
+	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
+	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo Assignments",
+	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
+	/* The account moved here from Network Services (plorpos-pyz.7), beside
+	 * the switch it is for. */
+	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
+	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
+	                                ra_signed_in() ? ra_user() : "sign in", true };
+	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
+	rows[GS_RA_SETS]  = (menu_row){ "Download Achievement Sets", NULL, true };
+	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
+	 * import needs no network - see sys_menu_scraping_build. */
+	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
+	return GS_ROWS;
+}
+
+/* Left, right and A all change the row: the on/off ones flip, and the two
+ * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
+ * Download Achievement Sets and Scraping are doors, so only A opens them. */
+static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
+		[GS_RESUME]  = { "autoresume", 1 },
+		[GS_CONFIRM] = { "confirmquit", 0 },
+		[GS_TURBO]   = { "persistturbo", 0 },
+		[GS_CHEEVOS] = { "cheevos", 1 },
+	};
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+
+	(void)ctx;
+	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
+	if (sel == GS_RA || sel == GS_RA_SETS || sel == GS_SCRAPE) {
+		if (key == IN_ACCEPT) {
+			if (sel == GS_RA) ra_signin_screen(a);
+			else if (sel == GS_RA_SETS) ra_sets_screen(a);
+			else scraping_screen(a);
+		}
+		return MENU_STAY;
+	}
+	if (sel == GS_REWIND) {
+		int rw = (gs_rewind() + d + RW_COUNT) % RW_COUNT;
+
+		db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
+		plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
+	} else if (sel == GS_FF) {
+		int ff = (gs_ff() + d + FF_COUNT) % FF_COUNT;
+
+		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
+		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
+	} else if (onoff[sel].key) {
+		db_set_int(db_dev(), onoff[sel].key,
+		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));
+	}
+	return MENU_STAY;
+}
+
+static void game_settings_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         game_settings_build, game_settings_key, NULL);
+}
+
+/* Reset and Quit ask first when Game Settings says so (plorpos-pyz.4):
+ * Cancel first, over the paused frame as the rest of the in-game menu. A
+ * power press here ends the game as from the Hotkeys screen. */
+static bool gm_confirm(app *a, SDL_Texture *bg, const char *what)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	menu_row rows[3];
+	int sel = 2;
+	ui_pace pace = {0};
+
+	if (!db_get_int(db_dev(), "confirmquit", 0)) return true;
+	rows[0] = (menu_row){ sv->list.count ? sv->list.items[sv->cursor].title : "", NULL, false };
+	rows[1] = (menu_row){ what, NULL, true };
+	rows[2] = (menu_row){ "Cancel", NULL, true };
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	for (;;) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested || want_quit) return false;
+		if (power_check(a) == PWR_POWEROFF) {
+			plat_note_power_pressed();
+			plat_resident_line("STOP");
+			return false;
+		}
+		if (menu_leaving(a)) return false;
+		if (in_repeat(&a->in, IN_UP) || in_repeat(&a->in, IN_DOWN)) sel = 3 - sel;
+		if (a->in.pressed[IN_ACCEPT]) {
+			plat_input_flush();
+			memset(&a->in, 0, sizeof a->in);
+			return sel == 1;
+		}
+		if (!screen_draw_due(a, &pace, menu_fingerprint(what, rows, 3, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		chv_backdrop(a, bg, false);
+		menu_draw(a, what, rows, 3, sel, 0, MENU_ACCENT);
+		draw_battery(a->r);
+		plat_present(a->r);
+	}
 }
 
 /* Measured across every mode label, so cycling the row does not resize the
@@ -10216,6 +11603,18 @@ static int gm_width(app *a)
 	for (k = 0; k < DMODE_COUNT; k++) {
 		int mw;
 		rows[GM_DISPLAY].value = DMODES[k].label;
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
+	for (k = 0; k < 3 && rows[GM_FILL].live; k++) {
+		int mw;
+		rows[GM_FILL].value = FILL_LABEL[k];
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
+	for (k = 0; k < 2 && rows[GM_STYLUS].live; k++) {
+		int mw;
+		rows[GM_STYLUS].value = k ? "Right Stick" : "Left Stick";
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
@@ -10337,15 +11736,15 @@ static void checkpoint_game(app *a)
  * other button is ignored, and only POWER wakes.
  *
  * Once the music stops - paused here, by a headset, or the album's end - it
- * stays dark with the same buttons live for the Suspend Timeout, so a pause
- * in the dark can be undone in the dark (TortOS-28l); music again cancels
- * the countdown. Only when it runs out does whatever asked for sleep carry
- * on: suspend, at once - *waited is the time already spent, which light
- * sleep counts toward the same timeout - or Auto Off's power-off. So the
- * Suspend Timeout is ALSO Auto Off's grace after the music stops: one
- * setting rather than a new one, the user's call 2026-09-28, and in the
- * README. Never suspend while playing: suspend is where the sound would
- * stop. */
+ * stays dark with the same buttons live for MUSIC_GRACE_MS, so a pause in
+ * the dark can be undone in the dark (TortOS-28l); music again cancels the
+ * countdown. Only when it runs out does whatever asked for sleep carry on:
+ * suspend, at once - *waited is the time already spent, already past light
+ * sleep's PLAT_SUSPEND_AFTER_S - or Auto Off's power-off. Fixed, no setting
+ * (plorpos-3yv.95, the user's call 2026-10-25). On a charger light sleep
+ * then waits on, as always. Never suspend while playing: suspend is where
+ * the sound would stop. */
+#define MUSIC_GRACE_MS 30000u
 typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
 
 static dark_end music_dark(app *a, unsigned *waited)
@@ -10353,7 +11752,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 	static const char *const said[] = { "woke", "music stopped", "power off" };
 	dark_end end = DARK_STOPPED;
 	unsigned t0 = plat_now_ms();
-	unsigned grace = (unsigned)plat_suspend_timeout_secs() * 1000u;
+	unsigned grace = MUSIC_GRACE_MS;
 	unsigned stopped = 0;                 /* when it stopped; 0 while playing */
 	bool wake = db_get_int(db_dev(), "muse.wake", 1);
 	int b;
@@ -10430,6 +11829,11 @@ static bool sleep_cycle(app *a)
 	unsigned t0, waited = 0;
 	bool awake;
 
+	/* Dark before the checkpoint, not after: it is a synced state write, 1-4 s
+	 * on the RG35XX H's card, and the screen sat on for all of it after the
+	 * power tap. The save is still made before anything sleeps
+	 * (plorpos-2wl.12). */
+	if (a->game_on) plat_screen_off();
 	checkpoint_game(a);
 	if (musec_playing()) {
 		dark_end end = music_dark(a, &waited);
@@ -10464,7 +11868,7 @@ static pwr_action power_check(app *a)
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
-		 * music has been stopped for the Suspend Timeout (music_dark). A
+		 * music has been stopped for MUSIC_GRACE_MS (music_dark). A
 		 * hold is not idle, and still does what it says at once. */
 		if (pa == PWR_POWEROFF && musec_playing() &&
 		    music_dark(a, NULL) == DARK_WOKE)
@@ -10477,14 +11881,15 @@ static pwr_action power_check(app *a)
 /* The in-game Shader list (plorpos-gkd.72.4), over the same paused frame and
  * under the same power rule as the menu it opens from. */
 typedef struct {
-	gm_ctx *gm;
+	app    *a;
+	gm_ctx *gm;        /* NULL from the shelf menu: no game to show it on */
 	int     sys;       /* the owner's: a per-system choice, as Display is */
 } sh_ctx;
 
 static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	sh_ctx *c = ctx;
-	app *a = c->gm->a;
+	app *a = c->a;
 	int i, n = a->shaders.count < max ? a->shaders.count : max;
 
 	for (i = 0; i < n; i++)
@@ -10524,7 +11929,7 @@ static menu_result sh_power(app *a, void *ctx) { return gm_power(a, ((sh_ctx *)c
 
 static void shader_screen(app *a, gm_ctx *gm)
 {
-	sh_ctx c = { gm, (int)(owner_view(a) - a->view) };
+	sh_ctx c = { a, gm, (int)(owner_view(a) - a->view) };
 	menu_style st = gm->st;
 
 	st.fixed_w  = 0;
@@ -10532,6 +11937,27 @@ static void shader_screen(app *a, gm_ctx *gm)
 	st.on_power = sh_power;
 	st.start    = a->view[c.sys].shader;
 	menu_run(a, &st, sh_build, sh_key, &c);
+}
+
+/* The same list from a shelf's system menu (plorpos-8xu). No game is running,
+ * so A only keeps the choice; the next launch draws with it. */
+static menu_result shs_key(app *a, void *ctx, in_button key, int sel)
+{
+	sh_ctx *c = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	a->view[c->sys].shader = sel;
+	shader_save(a, c->sys);
+	return MENU_DONE;
+}
+
+static void shelf_shader_screen(app *a, int sys)
+{
+	sh_ctx c = { a, NULL, sys };
+	menu_style st = { .accent = MENU_ACCENT, .follow_tint = true,
+	                  .start = a->view[sys].shader };
+
+	menu_run(a, &st, sh_build, shs_key, &c);
 }
 
 /* The in-game Palette list (plorpos-gkd.76), a Game Boy game's own. Same
@@ -10693,6 +12119,21 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		gm_cycle_display(a, key == IN_RIGHT ? 1 : -1);
 		return MENU_STAY;
 	}
+	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
+	 * Layout is, so it is judged against the game it is for. */
+	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		ds_fill_step(key == IN_LEFT ? -1 : 1, true);
+		return MENU_STAY;
+	}
+	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
+	 * game under this menu uses it when it resumes. */
+	if (sel == GM_STYLUS && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		int right = !db_get_int(db_dev(), "stylusstick", 1);
+
+		db_set_int(db_dev(), "stylusstick", right);
+		plat_resident_line("SETSTYLUSSTICK\tstick=%s", right ? "right" : "left");
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 
 	switch ((gm_row)sel) {
@@ -10755,13 +12196,17 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	}
 	case GM_RESET:
+		if (!gm_confirm(a, c->bg, "Reset")) break;
 		plat_resident_line("RESET");
 		c->resume = true;
 		return MENU_DONE;
 	case GM_QUIT:
 		/* The wait loop carries on until EXIT arrives; quitting is asking,
 		 * not tearing down. */
-		plat_resident_line("STOP");
+		if (!gm_confirm(a, c->bg, "Quit")) break;
+		/* The one stop that may leave the exit state to a thread behind the
+		 * shelf (plorpos-2wl.12). Power and sleep stops stay in line. */
+		plat_resident_line("STOP\tlazy=1");
 		return MENU_DONE;
 	default: break;
 	}
@@ -10775,7 +12220,69 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-static void game_menu(app *a)
+/* Hand a paused game back - the end of game_menu, shared with the game
+ * switcher (plorpos-gl5.3). */
+static void gm_resume(app *a, SDL_Texture *bg)
+{
+	/* Hand the pages back the way Diatom expects to find them.
+	 *
+	 * Diatom does not repaint the area outside its picture every frame -
+	 * its pages start opaque black and it writes only the rect - which is
+	 * sound while it owns the framebuffer and false the moment this
+	 * process has drawn a full-screen menu into the same pages. At any
+	 * display mode that does not fill the panel, resuming showed the game
+	 * correctly sized with this menu still surrounding it, and flickering:
+	 * Diatom cycles three pages and only the two this process presents
+	 * into had been dirtied, so the border alternated menu, menu, black at
+	 * the refresh rate.
+	 *
+	 * Twice because this process alternates two pages and one present only
+	 * clears the one it lands on. Before RESUME and never after:
+	 * afterwards Diatom is drawing, and this would be a second presenter. */
+#if defined(PLATFORM_H700)
+	/* On the H700 the paused frame, undimmed, not black, and landed
+	 * before RESUME (2026-10-06):
+	 *  - the page flips are the Mali driver's and land after the swap
+	 *    returns: with Diatom back in 33 ms, a late one put the menu (or
+	 *    black) on glass for a frame about every other Continue. So the
+	 *    GPU finishes and its last flip lands first (two refreshes, as
+	 *    Diatom's gl_quiesce);
+	 *  - both buffers must still get a frame unlike the menu: Mali's
+	 *    transaction elimination skips tiles it would write unchanged,
+	 *    so the next pause's identical menu left Diatom's game showing;
+	 *  - the paused frame is what Diatom shows next, so closing the menu
+	 *    reads as the game appearing, with no black between. Diatom
+	 *    wipes the pages it reuses, as the black frames did. */
+	{
+		void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
+		int i;
+
+		for (i = 0; i < 2; i++) {
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
+			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+			SDL_RenderClear(a->r);
+			draw_paused_frame(a, bg);
+			plat_present(a->r);
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		}
+		if (finish) finish();
+		usleep(34000);
+	}
+#else
+	present_black(a);
+	present_black(a);
+#endif
+	/* SELECT in this menu opens Muse, so the music may have started or
+	 * stopped while the game was paused. Said before the game moves, not
+	 * a tick after it. */
+	plat_resident_quiet(musec_playing());
+	plat_resident_line("RESUME");
+}
+
+/* muse_only: an edge swipe over the game (plorpos-3yv.46) - Muse straight
+ * over the paused frame, and closing it (B, Select, the swipe again) is
+ * back to the game, not to this menu. */
+static void game_menu(app *a, bool muse_only)
 {
 	gm_ctx c = { 0 };
 	const char *pv = plat_resident_last_preview();
@@ -10811,7 +12318,9 @@ static void game_menu(app *a)
 	 * screen this menu opened - the save slots, Achievements - comes back as
 	 * MENU_LEFT_BACK too, so it is Continue from there as well. */
 	g_menu_closing = false;
-	if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
+	if (muse_only)
+		c.resume = !muse_open(a, &c.st, &c);
+	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
 
@@ -10828,61 +12337,7 @@ static void game_menu(app *a)
 	 * ends writes its state on the way out. */
 	if (want_quit && !c.resume) plat_resident_line("STOP");
 
-	if (c.resume) {
-		/* Hand the pages back the way Diatom expects to find them.
-		 *
-		 * Diatom does not repaint the area outside its picture every frame -
-		 * its pages start opaque black and it writes only the rect - which is
-		 * sound while it owns the framebuffer and false the moment this
-		 * process has drawn a full-screen menu into the same pages. At any
-		 * display mode that does not fill the panel, resuming showed the game
-		 * correctly sized with this menu still surrounding it, and flickering:
-		 * Diatom cycles three pages and only the two this process presents
-		 * into had been dirtied, so the border alternated menu, menu, black at
-		 * the refresh rate.
-		 *
-		 * Twice because this process alternates two pages and one present only
-		 * clears the one it lands on. Before RESUME and never after:
-		 * afterwards Diatom is drawing, and this would be a second presenter. */
-#if defined(PLATFORM_H700)
-		/* On the H700 the paused frame, undimmed, not black, and landed
-		 * before RESUME (2026-10-06):
-		 *  - the page flips are the Mali driver's and land after the swap
-		 *    returns: with Diatom back in 33 ms, a late one put the menu (or
-		 *    black) on glass for a frame about every other Continue. So the
-		 *    GPU finishes and its last flip lands first (two refreshes, as
-		 *    Diatom's gl_quiesce);
-		 *  - both buffers must still get a frame unlike the menu: Mali's
-		 *    transaction elimination skips tiles it would write unchanged,
-		 *    so the next pause's identical menu left Diatom's game showing;
-		 *  - the paused frame is what Diatom shows next, so closing the menu
-		 *    reads as the game appearing, with no black between. Diatom
-		 *    wipes the pages it reuses, as the black frames did. */
-		{
-			void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
-			int i;
-
-			for (i = 0; i < 2; i++) {
-				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
-				SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
-				SDL_RenderClear(a->r);
-				draw_paused_frame(a, c.bg);
-				plat_present(a->r);
-				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			}
-			if (finish) finish();
-			usleep(34000);
-		}
-#else
-		present_black(a);
-		present_black(a);
-#endif
-		/* SELECT in this menu opens Muse, so the music may have started or
-		 * stopped while the game was paused. Said before the game moves, not
-		 * a tick after it. */
-		plat_resident_quiet(musec_playing());
-		plat_resident_line("RESUME");
-	}
+	if (c.resume) gm_resume(a, c.bg);
 #if defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);   /* drawn above, before RESUME */
 #endif
@@ -10898,6 +12353,21 @@ static void game_menu(app *a)
  * starts one too, once the fallback game has given the display back. Never
  * while a game is running: two GL contexts and a launcher is one more than
  * this device should be asked for. */
+/* The switcher from the shelf: a chosen game is put under the cursor on its
+ * own shelf and launched from there, as if picked by hand. */
+static void launch(app *a);
+static void switcher_shelf(app *a)
+{
+	sw_pick pk;
+	bool powered;
+
+	if (!switcher_run(a, NULL, false, &pk, &powered)) return;
+	a->sys_cursor = pk.sys;
+	a->view[pk.sys].cursor = pk.item;
+	a->screen = SCREEN_GAMES;
+	launch(a);
+}
+
 static void respawn_resident(app *a)
 {
 	char elf[CFG_STR * 2], save[CFG_STR * 2], bios[CFG_STR * 2];
@@ -10943,6 +12413,7 @@ typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
+	bool       port;       /* a PortMaster port: no Splore row at all */
 } nm_ctx;
 
 /* Also where the press-to-menu time is said: the second build comes right
@@ -10957,6 +12428,11 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
+	if (c->port) {
+		gm_native_rows(true, rows);
+		rows[GMN_SPLORE] = rows[GMN_QUIT];
+		return GMN_ROWS - 1;
+	}
 	return gm_native_rows(c->in_splore, rows);
 }
 
@@ -10986,6 +12462,7 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 	nm_ctx *c = ctx;
 
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
 	a->to_splore = sel == GMN_SPLORE;
@@ -10997,12 +12474,21 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 	menu_style st = { 0 };
 
+
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
+	/* run_alone's window, as it was; the child leaves the screen once the
+	 * menu's first frame is drawn (child_hide), and the window goes again
+	 * in child_restore. */
+	plat_window_show(true);
+	if (!plat_input_init()) return RUN_QUIT;
+#else
 	if (!plat_video_init_over_child() || !plat_input_init()) return RUN_QUIT;
 	a->r = plat_renderer();
 	ui_init(a->r, P_FONT);
+#endif
 	a->menu_w = 0;
 	/* The Menu press that opened this is not for it - see game_menu. */
 	plat_input_flush();
@@ -11014,15 +12500,31 @@ static run_choice native_menu(void *ctx)
 	 * the runner opens itself. Asked to quit with the menu up, the game
 	 * goes too. */
 	g_menu_closing = false;   /* sticky: see game_menu */
-	if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
+	/* A swipe from the top is Muse over the frozen game, and closing it is
+	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
+	 * held is the switcher: another game ends this one, and launch() starts
+	 * it (plorpos-gl5.3). */
+	if (plat_run_menu_why() == GESTURE_SWITCHER) {
+		bool powered;
+
+		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
+			c.choice = RUN_QUIT;
+	} else if (plat_run_menu_why() == GESTURE_MUSE) {
+		if (muse_open(a, &st, &c) && (want_quit || !a->running))
+			c.choice = RUN_QUIT;
+	} else if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
 
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
+	plat_input_quit();
+#else
 	free_all_textures(a);
 	ui_quit();
 	plat_input_quit();
 	plat_video_quit();
+#endif
 	return c.choice;
 }
 
@@ -11036,7 +12538,8 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
-#if !defined(PLATFORM_GKD)
+	recent_flush();                  /* as on_game_tick */
+#if !defined(PLAT_PIPEWIRE)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
 	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35,
 	 * plorpos-cdd. */
@@ -11060,6 +12563,18 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	int rc;
 
 	anim_launch(a, 190);
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
+	/* Under sway the child needs no display of its own, so the launcher's
+	 * window stays - hidden, renderer, fonts and textures intact - and the
+	 * child's menu opens on it without building any of that (.20). */
+	plat_input_quit();
+	plat_window_show(false);
+
+	rc = plat_run(argv, child_env, P_ROOT, on_menu, on_tick, a);
+
+	plat_window_show(true);
+	if (!plat_input_init()) { a->running = false; return rc; }
+#else
 	free_all_textures(a);
 	ui_quit();
 	plat_input_quit();
@@ -11071,6 +12586,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	a->r = plat_renderer();
 	ui_init(a->r, P_FONT);
 	a->menu_w = 0;   /* fonts reopened: remeasure the panel */
+#endif
 	prime_sys_window(a);
 	prime_window(a, a->sys_cursor);
 	/* The display is ours again and no game is running: the safe moment
@@ -11212,6 +12728,212 @@ static void splore_add(const system_cfg *s, game_list *l)
 	l->count++;
 }
 
+/* ---- PortMaster ----------------------------------------------------------
+ *
+ * The Ports shelf (plorpos-3yv.86, RG Rotate only: config/systems-rotate.cfg)
+ * lists the scripts PortMaster installs in Roms/Ports, and PortMaster itself
+ * first, as Splore is on PICO-8's. Everything runs through
+ * rotate/portmaster/pm-run.sh, which puts plorpOS's control.txt back first, as
+ * a native game under run_alone: Continue, Reset and Quit, power sleeps, Muse
+ * quiets it. A port is a script whose game is its grandchild, so plat_run
+ * signals the whole process group (platform.c group_term). */
+#define PORTMASTER "PortMaster"
+
+static bool is_ports(const system_cfg *s) { return !strcmp(s->core, "portmaster"); }
+
+static bool is_portmaster(const system_cfg *s, const char *file)
+{
+	return is_ports(s) && !strcmp(file, PORTMASTER);
+}
+
+static void pm_data(char *out, size_t n, const char *rel)
+{
+	snprintf(out, n, "%s/.userdata/shared/portmaster/%s", P_CARD, rel);
+}
+
+/* The device's runner and the PortMaster zip beside it, in the plorpOS
+ * folder: sd/<device>/portmaster on the card (plorpos-46o.5). */
+static void pm_here(char *out, size_t n, const char *leaf)
+{
+#if defined(PLATFORM_GKD)
+	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_H700)
+	snprintf(out, n, "%s/h700/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_ROTATE)
+	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
+#else
+	snprintf(out, n, "%s/brick/portmaster/%s", P_ROOT, leaf);
+#endif
+}
+
+/* Each port's own picture, from its gameinfo.xml, by script name: rebuilt on
+ * every scan of the shelf. */
+typedef struct { char file[LIB_NAME]; char image[LIB_PATH]; } port_pic;
+static port_pic *g_port_pics;
+static int       g_port_npics;
+
+typedef struct { game_list *l; const char *dir; } port_scan;
+
+static void port_meta(void *ctx, const char *file, const game_meta *m)
+{
+	port_scan *ps = ctx;
+	port_pic *p;
+	int i;
+
+	for (i = 0; i < ps->l->count && strcmp(ps->l->items[i].file, file); i++)
+		;
+	if (i == ps->l->count) return;
+	if (m->title[0])
+		snprintf(ps->l->items[i].title, sizeof ps->l->items[i].title, "%s", m->title);
+	if (!m->image[0] || !(p = realloc(g_port_pics, (size_t)(g_port_npics + 1) * sizeof *p)))
+		return;
+	g_port_pics = p;
+	p += g_port_npics++;
+	snprintf(p->file, sizeof p->file, "%s", file);
+	/* Written relative to Roms/Ports, as <path> is: "./2048/screenshot.jpg". */
+	snprintf(p->image, sizeof p->image, "%s/%s",
+	         ps->dir, m->image + (strncmp(m->image, "./", 2) ? 0 : 2));
+}
+
+/* Titles and pictures from every Roms/Ports/<folder>/gameinfo.xml, the file
+ * each port ships for frontends. A title the owner set wins after this
+ * (titles_apply), as on every shelf. */
+static void ports_titles(const system_cfg *s, game_list *l)
+{
+	char dir[LIB_PATH], path[LIB_PATH * 2];
+	struct dirent *e;
+	DIR *d;
+
+	if (!is_ports(s)) return;
+	/* A port is its script. lib_scan's folder pass would make a port's own
+	 * folder a game when it holds a .bin (to_the_moon's falcon_mkxp.bin), and
+	 * Delete on that card would take the folder (plorpos-3yv.86.15). */
+	for (int i = 0, n = l->count; i < n; i++)
+		if (strchr(l->items[i].file, '/')) {
+			memmove(&l->items[i], &l->items[i + 1], (size_t)(n - i - 1) * sizeof *l->items);
+			n--, i--, l->count--;
+		}
+	free(g_port_pics);
+	g_port_pics = NULL;
+	g_port_npics = 0;
+	snprintf(dir, sizeof dir, "%s/%s", P_ROMS, s->folder);
+	if (!(d = opendir(dir))) return;
+	while ((e = readdir(d))) {
+		port_scan ps = { l, dir };
+		FILE *f;
+		char *xml;
+		long len;
+
+		if (e->d_name[0] == '.') continue;
+		snprintf(path, sizeof path, "%s/%s/gameinfo.xml", dir, e->d_name);
+		if (!(f = fopen(path, "rb"))) continue;
+		if (fseek(f, 0, SEEK_END) == 0 && (len = ftell(f)) > 0 && len < 65536 &&
+		    fseek(f, 0, SEEK_SET) == 0 && (xml = malloc((size_t)len))) {
+			if (fread(xml, 1, (size_t)len, f) == (size_t)len)
+				gl_parse(xml, (size_t)len, port_meta, &ps);
+			free(xml);
+		}
+		fclose(f);
+	}
+	closedir(d);
+}
+
+static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n)
+{
+	int i;
+
+	if (!is_ports(s)) return false;
+	if (!strcmp(g->file, PORTMASTER)) {
+		snprintf(out, n, "%s/cards/portmaster.png", P_ROOT);
+		return true;
+	}
+	for (i = 0; i < g_port_npics; i++)
+		if (!strcmp(g_port_pics[i].file, g->file)) {
+			snprintf(out, n, "%s", g_port_pics[i].image);
+			return access(out, R_OK) == 0;
+		}
+	return false;
+}
+
+/* First on the shelf, whenever PortMaster is on the card to run - or in the
+ * payload, which pm-run.sh unpacks the first time it is opened
+ * (plorpos-3yv.86.4). */
+static void portmaster_add(const system_cfg *s, game_list *l)
+{
+	char sh[LIB_PATH], zip[LIB_PATH];
+	game_entry *items;
+
+	if (!is_ports(s)) return;
+	pm_data(sh, sizeof sh, "PortMaster/PortMaster.sh");
+	pm_here(zip, sizeof zip, "PortMaster.zip");
+	if (access(sh, R_OK) != 0 && access(zip, R_OK) != 0) return;
+	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
+	if (!items) return;
+	memmove(items + 1, items, (size_t)l->count * sizeof *items);
+	memset(items, 0, sizeof *items);
+	snprintf(items[0].name, sizeof items[0].name, "%s", PORTMASTER);
+	snprintf(items[0].title, sizeof items[0].title, "%s", PORTMASTER);
+	snprintf(items[0].file, sizeof items[0].file, "%s", PORTMASTER);
+	l->items = items;
+	l->count++;
+}
+
+/* Said once, the first time PortMaster is opened (user, seq 142): a marker
+ * beside PortMaster, outside its folder, which its updates replace. */
+static void portmaster_notice(app *a)
+{
+	static const char *const TEXT =
+		"PortMaster is not officially supported on this build (yet). "
+		"Please report any bugs to plorpOS, NOT the PortMaster team.";
+	char lines[CHV_WRAP_LINES][CHV_WRAP_COLS], mark[LIB_PATH];
+	menu_row rows[CHV_WRAP_LINES + 2];
+	int n, i;
+	FILE *f;
+
+	pm_data(mark, sizeof mark, ".plorpos-notice");
+	if (access(mark, F_OK) == 0) return;
+	n = wrap_text(ui_font(UI_F_MENU), TEXT, menu_std_width(a), lines, CHV_WRAP_LINES);
+	for (i = 0; i < n; i++) rows[i] = (menu_row){ lines[i], MENU_BODY_MARK, true };
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE("A to continue");
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	note_panel(a, PORTMASTER, rows, n);
+	if (!a->running) return;
+	if ((f = fopen(mark, "w"))) fclose(f);
+}
+
+static int run_port(app *a, const system_cfg *s, const char *file)
+{
+	char run[LIB_PATH], script[LIB_PATH * 2];
+	char *argv[] = { (char *)"/bin/sh", run, script, NULL };
+	int r;
+
+	pm_here(run, sizeof run, "pm-run.sh");
+	if (!strcmp(file, PORTMASTER)) {
+		portmaster_notice(a);
+		if (!a->running) return -1;
+		pm_data(script, sizeof script, "PortMaster/PortMaster.sh");
+	} else {
+		snprintf(script, sizeof script, "%s/%s/%s", P_ROMS, s->folder, file);
+	}
+	a->in_port = true;
+	a->pico8_splore = false;
+	r = run_alone(a, argv, native_menu, native_tick);
+	a->in_port = false;
+	/* PortMaster may have installed or removed ports: the shelf again, on
+	 * PortMaster's own entry, where it came back to. */
+	if (!strcmp(file, PORTMASTER)) {
+		sysview *v;
+
+		rescan_all(a);
+		v = &a->view[a->sys_cursor];
+		v->cursor = 0;
+		cf_reset(&v->cf, 0);
+	}
+	return r;
+}
+
 /* -home is where PICO-8 keeps everything it writes - config, log, cart data,
  * Splore's downloads - and -desktop its screenshots, which by default would
  * land beside the carts and show on the shelf as .png carts. Both under
@@ -11239,7 +12961,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #else
 	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
 #endif
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	char audiodev[160];
 	aout_state as = aout_now();
 	const char *dev = aout_device(&as);
@@ -11260,7 +12982,11 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	/* Through env(1) when the device needs a library preloaded into PICO-8
 	 * alone, or a PATH of its own; env execs it, so the pid plat_run signals
 	 * is pico8_64's. */
-	if (plat_pico8_preload || plat_pico8_path)
+	bool via_env = plat_pico8_preload || plat_pico8_path;
+#if defined(PLATFORM_H700)
+	via_env = true;   /* for plat_pico8_pad, which the Rotate needs with neither */
+#endif
+	if (via_env)
 		argv[n++] = (char *)"/usr/bin/env";
 	if (plat_pico8_preload) {
 		snprintf(preload, sizeof preload, "LD_PRELOAD=%s", plat_pico8_preload);
@@ -11275,10 +13001,9 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #if defined(PLATFORM_H700)
 	/* The pad as PICO-8 should see it - SDL's own guess crosses Start and R2
 	 * (plorpos-7ny.41). */
-	if (plat_pico8_preload || plat_pico8_path)
-		argv[n++] = (char *)plat_pico8_pad;
+	argv[n++] = (char *)plat_pico8_pad;
 #endif
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	/* To the headset when that is where the sound goes, by its PCM name in
 	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
 	 * Only the device it starts on: pico8_64 opens one at start and keeps it,
@@ -11298,7 +13023,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	 * Kept off until the game is over, the native menu's aout_apply included;
 	 * the shelf's puts it back. plorpos-cdd. */
 	g_pico8_runs = true;
-	if (dev[0]) {
+	if (aout_named(&as)) {
 		unsigned t0 = plat_now_ms();
 
 		plat_resident_audio_drain();
@@ -11325,7 +13050,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
 	a->to_splore = false;
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	plat_child_audio_reset();
 #endif
 	if (splore) argv[n++] = (char *)"-splore";
@@ -11366,7 +13091,30 @@ static void disc_bios_for(const system_cfg *s, const char *rom, char *out, size_
 	         head[0x20B] == 0x64 ? 'E' : head[0x20B] == 0xA1 ? 'J' : 'U');
 }
 
+static void launch_one(app *a);
+
+/* A game, and then each game the switcher picked from inside it, in turn
+ * (plorpos-gl5.3): the pick is looked up again after the shelves' rescan. */
 static void launch(app *a)
+{
+	int sys, item;
+
+	launch_one(a);
+	for (;;) {
+		if (g_switch_fav) { g_switch_fav = false; refresh_favorites_shelf(a); }
+		if (!g_switch_tag[0] || !a->running || want_quit) break;
+		bool found = sw_find(a, g_switch_tag, g_switch_file, &sys, &item);
+
+		g_switch_tag[0] = '\0';
+		if (!found) break;
+		a->sys_cursor = sys;
+		a->view[sys].cursor = item;
+		a->screen = SCREEN_GAMES;
+		launch_one(a);
+	}
+}
+
+static void launch_one(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
 	/* The game's system, not the shelf's. Launching a favorite off the
@@ -11394,9 +13142,11 @@ static void launch(app *a)
 	char pico8[CFG_STR * 2];
 	int n = 0;
 
+	unsigned t_in = plat_now_ms(), t_prep, t_ready, t_a, t_b, t_c, t_d;
+
 	if (v->list.count == 0) return;
 
-	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, s->core);
+	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
 	/* Captured once, beside the path it goes into: play time is keyed on the
 	 * launch path the same way favorites are, and reading the cursor again
@@ -11417,7 +13167,7 @@ static void launch(app *a)
 	 * too since plorpos-reo.3). PICO-8's is Saves/pico-8 on exFAT, which
 	 * ignores case: fake08 and native PICO-8 share cdata/, in one format. */
 	snprintf(save, sizeof save, "%s/Saves/%s", P_CARD, s->folder);
-	mkdir(save, 0755);
+	if (!is_ports(s)) mkdir(save, 0755);   /* ports keep their own */
 	snprintf(bios, sizeof bios, "%s/Bios", P_CARD);
 
 	/* A disc that needs firmware, before anything tries to run it.
@@ -11477,15 +13227,27 @@ static void launch(app *a)
 		memset(&a->in, 0, sizeof a->in);
 		return;
 	}
+	native |= is_ports(s);   /* run by the launcher too, never the resident */
+
+	/* Front of the switcher's list, in memory only - the tick writes it.
+	 * Splore is a place, not a game (plorpos-gl5.1). */
+	if (!is_splore(s, romfile) && !is_portmaster(s, romfile)) recent_note(s->tag, romfile);
+	snprintf(g_cur_tag, sizeof g_cur_tag, "%s", s->tag);
+	/* A DS's bottom screen takes touches: the edge band narrows and a
+	 * swipe must be quick (plorpos-3yv.47, platform.h). */
+	gesture_tight(is_nds_tag(s->tag));
+	snprintf(g_cur_file, sizeof g_cur_file, "%s", romfile);
 
 	/* The autosave story, by path rather than by convention: the state and the
 	 * preview live beside each other, the launch hands both over, and a game
 	 * always comes up where it was left. */
+	t_a = plat_now_ms();
 	state_path(a, o, &v->list.items[v->cursor], st, sizeof st);
 	/* The scratch, not the Auto card - see pause_preview_path. The card is
 	 * written from this only when the game actually ends, below. */
 	pause_preview_path(pv, sizeof pv);
 	persist_dir_ensure(a, o);
+	t_b = plat_now_ms();
 
 	/* Achievements, if this game has any. Most of a library does not, and that
 	 * is not a failure: chv_load says so by returning false and everything
@@ -11513,9 +13275,18 @@ static void launch(app *a)
 		/* Never played here, so there is no set to hand over. The game starts
 		 * anyway and the set is found behind it - see ra_fetch_begin. Nothing
 		 * in front of the launch. */
-		first_play = ra_signed_in() && access(set, R_OK) != 0 && net_online();
+		first_play = gs_cheevos() && ra_signed_in() && access(set, R_OK) != 0
+		             && net_online();
+		/* Said, not silent (plorpos-3yv.107.4): from the shelf this is
+		 * indistinguishable from a game with no achievements. */
+		if (gs_cheevos() && !first_play && access(set, R_OK) != 0)
+			fprintf(stderr, "cheevos: no set cached for %s and %s; none this play\n",
+			        romfile, !ra_signed_in() ? "not signed in" : "offline");
 
-		if (chv_load(set)) {
+		/* Cleared rather than left alone when Off: what is loaded is what
+		 * the in-game menu's Achievements shows, and it is the last game's. */
+		if (!gs_cheevos()) chv_clear();
+		else if (chv_load(set)) {
 			/* Reconcile with the account BEFORE deciding what to watch.
 			 * Without this the launcher filters against what this device
 			 * happens to have seen, which is not the same question and does
@@ -11545,10 +13316,11 @@ static void launch(app *a)
 		}
 	}
 
-	remember_place(a);
-	/* Before the launch, not after: a device that loses power during the load
-	 * was still playing this game. */
-	playing_set(a);
+	t_c = plat_now_ms();
+	/* Started before the launch, not after: a device that loses power during
+	 * the load was still playing this game. Written behind it. */
+	bookmarks_behind(a, !native);
+	t_d = plat_now_ms();
 
 	/* Read and cleared together. Leaving it set would have the NEXT game
 	 * launched in this session open with its menu up too, which is the sort
@@ -11559,8 +13331,14 @@ static void launch(app *a)
 	/* Whether this game should be heard - quiet while Muse plays, Diatom's
 	 * ADR-0032. Stated before the RUN goes out, which sends it. */
 	plat_resident_quiet(musec_playing());
+#if defined(PLAT_PIPEWIRE)
+	/* No game's sound before the speaker is at the level (plorpos-3yv.63). */
+	plat_audio_settle(5000);
+#endif
 
+	t_prep = plat_now_ms();
 	if (!native && plat_resident_ready_wait()) {
+		t_ready = plat_now_ms();
 		/* The emulator is already up, holding its context and every core,
 		 * so this is ~200ms rather than ~1100. Nothing here is torn
 		 * down -- this process keeps its own context through the whole game,
@@ -11574,14 +13352,26 @@ static void launch(app *a)
 		char shf[1024];
 		plat_game g = {
 			.tag = s->tag, .core = core, .rom = rom,
-			.resume = st, .exit_state = st, .preview = pv, .save = save,
+			/* Games Auto-Resume Off (plorpos-pyz.1): the Auto state is not
+			 * loaded, but still written on the way out, as always. */
+			.resume = gs_auto_resume() ? st : NULL, .exit_state = st,
+			.preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
 			.shader = shader_fields(a, o, shf, sizeof shf),
+			/* The mode is Diatom's own global and survives from the last
+			 * game, so a system never set would otherwise inherit whatever
+			 * the previous one chose; on RUN so the first frame has it. */
+			.mode   = DMODES[a->view[o].dmode].name,
+			.fill   = is_nds_tag(a->sys.systems[o].tag) ? FILL_NAME[ds_fill_now()] : NULL,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
+
+			fprintf(stderr, "launch: pre %u, paths %u, cheevos %u, place %u, rest %u, ready %u, send %u ms\n",
+			        t_a - t_in, t_b - t_a, t_c - t_b, t_d - t_c, t_prep - t_d,
+			        t_ready - t_prep, plat_now_ms() - t_ready);
 
 			/* The list Diatom was just handed, for an early answer to trim. */
 			if (active[0]) {
@@ -11594,14 +13384,6 @@ static void launch(app *a)
 			 * purpose, because a millisecond bought here is the first of
 			 * several. See stats.h. */
 			stats_begin(s->tag, romfile, plat_now_ms());
-
-			/* Straight after RUN and the levels, and for the same reason: the
-			 * mode is Diatom's own global and survives from the last game, so
-			 * a system that has never been set would otherwise inherit
-			 * whatever the previous one chose. Ordered on the same socket, so
-			 * it lands before the first frame. */
-			plat_resident_line("SETDISPLAY\tmode=%s",
-			                   DMODES[a->view[o].dmode].name);
 
 			/* No idle anything during play: NextUI disables autosleep for
 			 * the whole of a running game (minarch.c's PWR_disableAutosleep)
@@ -11656,7 +13438,13 @@ static void launch(app *a)
 					}
 					continue;
 				}
-				if (r == RES_PAUSED) { game_menu(a); continue; }
+				if (r == RES_PAUSED) {
+					gesture g = plat_resident_gesture_asked();
+
+					if (g == GESTURE_SWITCHER) { game_switch(a); continue; }
+					game_menu(a, g == GESTURE_MUSE);
+					continue;
+				}
 				break;
 			}
 			a->game_on = false;
@@ -11719,7 +13507,16 @@ static void launch(app *a)
 		}
 	}
 
-	if (native) {
+	if (is_ports(s)) {
+		char from[LIB_PATH];
+
+		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
+		stats_begin(s->tag, from, plat_now_ms());
+		fprintf(stderr, "port exited %d\n", run_port(a, s, from));
+		stats_asleep(plat_run_asleep_ms());
+		stats_end(NULL, plat_now_ms());
+		if (!a->running) return;
+	} else if (native) {
 		/* Played time counts here too, begun and ended around plat_run,
 		 * less any sleep. No stats_tick checkpoints while it runs, so a
 		 * power cut mid-session loses that session's time. */
@@ -11770,7 +13567,7 @@ static void launch(app *a)
 		argv[n++] = (char *)"--system";          argv[n++] = bios;
 		argv[n++] = (char *)"--display";
 		argv[n++] = (char *)DMODES[a->view[o].dmode].name;
-		argv[n++] = (char *)"--load-state";      argv[n++] = st;
+		if (gs_auto_resume()) { argv[n++] = (char *)"--load-state"; argv[n++] = st; }
 		argv[n++] = (char *)"--state-on-exit";   argv[n++] = st;
 		if (disc >= 0) {
 			snprintf(discs, sizeof discs, "%d", disc);
@@ -11822,7 +13619,8 @@ static void launch(app *a)
 
 		char art[LIB_PATH * 3];
 
-		if (v->tex[v->cursor] &&
+		/* (A rescan behind PortMaster can leave the shelf empty.) */
+		if (v->list.count && v->tex[v->cursor] &&
 		    !card_art_path(&a->sys.systems[o], g, art, sizeof art)) {
 			SDL_DestroyTexture(v->tex[v->cursor]);
 			v->tex[v->cursor] = NULL;
@@ -11848,6 +13646,7 @@ static void launch(app *a)
 	/* Past both power checks, so this is a real return to the shelf rather
 	 * than a shutdown. Everything above leaves the marker standing, which is
 	 * what makes the next boot able to tell them apart. */
+	bookmarks_finish();
 	playing_clear();
 
 	/* Straight to the shelf, no fade. The card decode inside this render is
@@ -12426,6 +14225,19 @@ static void muse_order_view(sysview *v)
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
 	                               g_year, v->album);
+	if (g_muse_favs) {
+		int kept = 0;
+		char dir[LIB_PATH];
+
+		for (k = 0; k < v->list.count; k++) {
+			muse_album_dir(v->album[k], dir, sizeof dir);
+			if (muse_fav_is(dir)) v->album[kept++] = v->album[k];
+		}
+		/* None of this kind marked: every album, and the view is over. The
+		 * arrays are then as they were, so textures in hand still match. */
+		if (kept) v->list.count = kept;
+		else g_muse_favs = false;
+	}
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
 		int al = v->album[k];
@@ -12846,10 +14658,12 @@ static void scan_all(app *a, bool bg)
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
 		lib_scan(P_ROMS, a->sys.systems[i].folder, a->sys.systems[i].exts, &v->list);
+		ports_titles(&a->sys.systems[i], &v->list);
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
 		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
 		splore_add(&a->sys.systems[i], &v->list);
+		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
@@ -13773,6 +15587,7 @@ int main(int argc, char *argv[])
 	/* Before the scan, because the scan builds the Favorites shelf out of
 	 * them and a shelf cannot be built from a list that has not been read. */
 	fav_load();
+	recent_load();
 
 	/* Close any session the device never saw end - a power cut, a flat
 	 * battery - at its last checkpoint, before anything reads a total. See
@@ -13924,6 +15739,17 @@ int main(int argc, char *argv[])
 	 * saved brightness does. Read before ui_init, which is when the scale is
 	 * applied. */
 	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	{
+		char id[32];
+		int k;
+
+		db_get_str(db_dev(), "font", id, sizeof id, "quicksand");
+		for (k = 0; k < FONT_COUNT; k++)
+			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(false, k);
+		db_get_str(db_dev(), "headfont", id, sizeof id, "fredoka");
+		for (k = 0; k < FONT_COUNT; k++)
+			if (!strcmp(FONTS[k].id, id) && k != g_head) font_apply(true, k);
+	}
 	t_mark("font+settings");
 
 	/* The system cards asked for before the display came up, installed so the
@@ -14044,8 +15870,18 @@ int main(int argc, char *argv[])
 	ui_pace pace = {0};
 	bool first_frame = false;   /* for the startup log's mark */
 
+	{
+		char ftm[LIB_PATH];
+
+		snprintf(ftm, sizeof ftm, "%s/frame-trace", P_USERDATA);
+		g_ft = getenv("TORTOS_FRAME_TRACE") != NULL || access(ftm, F_OK) == 0;
+		if (g_ft) fprintf(stderr, "frame: trace on, frames over %u ms\n", FT_SLOW_US / 1000);
+	}
 	while (a.running) {
+		unsigned ft0, ft1;
+
 		plat_input_poll(&a.in);
+		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
 
 		/* Followed here as well as during a game. Diatom is resident and takes
@@ -14119,23 +15955,39 @@ int main(int argc, char *argv[])
 		 * it, so every layout gets it from this one line. */
 		if (a.in.pressed[IN_SELECT]) { muse_open(&a, NULL, NULL); continue; }
 
+		/* Menu held a second (or a swipe up from the bottom of the Rotate's
+		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */
+		if (a.in.pressed[IN_SWITCHER]) { switcher_shelf(&a); continue; }
+
 		/* MENU on the shelf is TortOS's own menu, the counterpart to the one
 		 * MENU opens in a game. It draws over the shelf and returns here. */
 		if (a.in.pressed[IN_MENU]) { tortos_menu(&a); continue; }
 		if (a.screen == SCREEN_SYSTEMS) update_systems(&a);
 		else update_games(&a);
 		if (!a.running) break;
+		ft1 = g_ft ? ft_us() : 0;
 
 		if (screen_draw_due(&a, &pace, 0)) {
 			tick_tint(&a);
 			render(&a);
 			if (!first_frame) { t_mark("first frame"); first_frame = true; }
+			if (g_ft) {
+				bool sys = a.screen == SCREEN_SYSTEMS;
+				ft_frame(sys ? "systems" : a.sys.systems[a.sys_cursor].name, ft0, ft1, ft_us(),
+				         sys ? a.sys_cursor : a.view[a.sys_cursor].cursor,
+				         sys ? a.sys.count : a.view[a.sys_cursor].list.count);
+			}
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}
 	}
 
 done:
+	/* A book's place and the music queue, as power_off writes them: a
+	 * SIGTERM - a reboot, a session restart - comes this way, and each keeps
+	 * them only every 30 and 5 seconds otherwise (plorpos-3yv.70). */
+	book_keep(true);
+	if (g_queue_file[0]) musec_queue_save(g_queue_file);
 	free_all_textures(&a);
 	/* First, and before IMG_Quit: the worker is inside IMG_Load, and the
 	 * views it decodes into are freed just below. The resizer too, for the

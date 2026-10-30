@@ -3,6 +3,7 @@
  * that most need this are cheevos.c, which is kept SDL-free so its checks can
  * link without a window, and rafetch.c, which is checked the same way. */
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -62,6 +63,39 @@ bool atomic_commit(FILE *f, const char *path)
 	 * suspected cause of cross-linked files (TortOS-pq0). About 25 ms on the
 	 * card. */
 	sync();
+	return true;
+}
+
+/* The commit above is two to three hundred milliseconds on this card when
+ * nothing else is dirty and over a second when something is - fsync, then a
+ * whole-card sync() - and a launch made three of them before the game was
+ * sent. Measured on the RG35XX H, 2026-10-27: 255-1819 ms in the two
+ * bookmarks alone. So this one renames at once, which is all a reader needs,
+ * and has the sync done behind it: the same durability a moment later, with
+ * nobody waiting. For files a lost write costs a stale bookmark, never
+ * settings or saves. */
+static void *sync_behind(void *arg)
+{
+	(void)arg;
+	sync();
+	return NULL;
+}
+
+bool atomic_commit_lazy(FILE *f, const char *path)
+{
+	char tmp[1024];
+	pthread_t t;
+	bool ok;
+
+	if (!f) return false;
+	tmp_path(path, tmp, sizeof tmp);
+	ok = fflush(f) == 0;
+	if (fclose(f) != 0) ok = false;
+	if (!ok || rename(tmp, path) != 0) {
+		unlink(tmp);
+		return false;
+	}
+	if (pthread_create(&t, NULL, sync_behind, NULL) == 0) pthread_detach(t);
 	return true;
 }
 

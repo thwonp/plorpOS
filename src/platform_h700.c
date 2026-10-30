@@ -59,7 +59,10 @@ const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
 
 bool plat_is_brick_pro(void) { return false; }
-bool plat_two_sticks(void) { return false; }
+/* The RG35XX H has two sticks and the RG SP none, from the same build: the
+ * pad node says which, by whether it reports the axes (probe_sticks). */
+static bool has_sticks;
+bool plat_two_sticks(void) { return has_sticks; }
 /* No brightness keys: Menu held turns the volume keys into them. */
 const char *plat_bright_keys(void) { return "Menu+Vol"; }
 
@@ -73,6 +76,8 @@ static const struct { int code; in_button b; } padmap[] = {
 	{ 304, IN_ACCEPT }, { 305, IN_BACK }, { 306, IN_Y }, { 307, IN_X },
 	{ 308, IN_L1 }, { 309, IN_R1 }, { 314, IN_L2 }, { 315, IN_R2 },
 	{ 310, IN_SELECT }, { 311, IN_START },
+	/* The stick clicks: only the RG35XX H reports them. */
+	{ 313, IN_L3 }, { 316, IN_R3 },
 };
 /* The same buttons for native PICO-8's SDL. With no mapping SDL guesses one
  * from the evdev names, and these cross them: Start (BTN_TR) went to the
@@ -92,12 +97,21 @@ static SDL_Renderer *ren;
 static int fd_pad = -1;
 
 /* Order: left, right, up, down. */
-static bool hat_dir[4];
+static bool hat_dir[4], stick_dir[4], rstick_dir[4];
+/* The RG35XX H's sticks, measured 2026-10-27: ABS_Z/ABS_RX are the left
+ * stick's X and Y, ABS_RY/ABS_RZ the right's, each -4096..4096 with up and
+ * left negative. Half travel presses and a third lets go, as on the Brick Pro,
+ * so a stick resting near the line cannot chatter. */
+static int stick_press = 2048, stick_release = 1365;
 /* Menu is a modifier as well as a button: held with another button it goes
  * down with it (the hotkey combos), with a volume key it is spent on
  * brightness, and alone it is a press on release. menu_pulse lets that
  * release-press go up on the next poll. */
 static bool menu_down, menu_sent, menu_spent, menu_pulse;
+/* Held alone for SWITCHER_HOLD_MS it is the game switcher instead, and its
+ * release is then nothing (plorpos-gl5.2). */
+static unsigned menu_t0;
+static bool switcher_pulse;
 
 SDL_Renderer *plat_renderer(void) { return ren; }
 
@@ -105,6 +119,11 @@ SDL_Renderer *plat_renderer(void) { return ren; }
 
 bool plat_video_init(void)
 {
+	/* The window is the panel's size, read off fb0: 720x480 on the RG SP,
+	 * 640x480 on the RG35XX H. Asked for 720 on a 640 panel, the launcher
+	 * laid out for 720 and the right 80 px were cropped. */
+	int panel_w = 720, panel_h = 480;
+
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
@@ -124,13 +143,17 @@ bool plat_video_init(void)
 		int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
 		struct fb_var_screeninfo v, two;
 
+		if (fd >= 0 && ioctl(fd, FBIOGET_VSCREENINFO, &v) == 0 && v.xres > 0 && v.yres > 0) {
+			panel_w = (int)v.xres;
+			panel_h = (int)v.yres;
+		}
 		if (fd >= 0 && ioctl(fd, FBIOGET_VSCREENINFO, &v) == 0 && v.yres_virtual > 2 * v.yres) {
 			two = v;
 			two.yres_virtual = 2 * v.yres;
 			two.yoffset = 0;
 			if (ioctl(fd, FBIOPUT_VSCREENINFO, &two) == 0) {
 				/* The mali driver makes every window the whole panel. */
-				win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480,
+				win = SDL_CreateWindow("plorpOS", 0, 0, panel_w, panel_h,
 				                       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 				v.yoffset = 0;
 				ioctl(fd, FBIOPUT_VSCREENINFO, &v);
@@ -139,7 +162,7 @@ bool plat_video_init(void)
 		if (fd >= 0) close(fd);
 	}
 	if (!win)
-		win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+		win = SDL_CreateWindow("plorpOS", 0, 0, panel_w, panel_h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());
 		return false;
@@ -225,7 +248,7 @@ static int te_mark;   /* frames still to mark */
 
 static void te_mark_draw(SDL_Renderer *r)
 {
-	static SDL_Point pt[(720 / 16) * (480 / 16)];
+	static SDL_Point pt[(720 / 16) * (480 / 16)];   /* largest H700 panel */
 	SDL_BlendMode bm;
 	Uint8 cr, cg, cb, ca;
 	float sx, sy;
@@ -291,11 +314,27 @@ void screen_yield(bool to_game) { if (!to_game) te_mark = 3; }
 
 /* ---- input: raw evdev, no SDL joystick --------------------------------- */
 
+static void probe_sticks(int fd)
+{
+	unsigned char bits[(ABS_MAX + 8) / 8] = { 0 };
+	struct input_absinfo ai;
+
+	if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof bits), bits) < 0) return;
+	has_sticks = true;
+	for (int c = ABS_Z; c <= ABS_RZ; c++)
+		if (!(bits[c / 8] >> (c % 8) & 1)) has_sticks = false;
+	if (has_sticks && ioctl(fd, EVIOCGABS(ABS_Z), &ai) == 0 && ai.maximum > 0) {
+		stick_press = ai.maximum / 2;
+		stick_release = ai.maximum / 3;
+	}
+}
+
 bool plat_input_init(void)
 {
 	if (fd_power < 0) fd_power = open(POWER_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fd_pad = open(PAD_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fprintf(stderr, "input: %s: %s\n", PAD_NODE, strerror(errno));
+	else probe_sticks(fd_pad);
 	return fd_pad >= 0;
 }
 
@@ -309,7 +348,18 @@ void plat_input_flush(void)
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	memset(hat_dir, 0, sizeof hat_dir);
-	menu_down = menu_sent = menu_spent = menu_pulse = false;
+	memset(stick_dir, 0, sizeof stick_dir);
+	memset(rstick_dir, 0, sizeof rstick_dir);
+	menu_sent = menu_pulse = switcher_pulse = false;
+	/* Menu still held - the hold that opened the switcher - is spent: its
+	 * release must not arrive as a fresh Menu and close what it opened. */
+	{
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		menu_down = fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		            (bits[CODE_MENU / (8 * sizeof bits[0])] >> (CODE_MENU % (8 * sizeof bits[0])) & 1);
+		menu_spent = menu_down;
+	}
 }
 
 /* The descriptors are display-independent and stay open. */
@@ -391,11 +441,26 @@ static void pad_read(in_state *st)
 	struct input_event ev;
 
 	if (menu_pulse) { set_btn(st, IN_MENU, false); menu_pulse = false; }
+	if (switcher_pulse) { set_btn(st, IN_SWITCHER, false); switcher_pulse = false; }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS && (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y)) {
-			bool *d = &hat_dir[ev.code == ABS_HAT0X ? 0 : 2];
+			int base = ev.code == ABS_HAT0X ? 0 : 2;
+			bool *d = &hat_dir[base];
 			d[0] = ev.value < 0;
 			d[1] = ev.value > 0;
+			/* A press counts when it comes, not only if it is still held
+			 * after the read: a quick tap's release can arrive in the
+			 * same read, and the tap was lost (plorpos-3yv.97). */
+			for (int j = 0; j < 2; j++)
+				if (d[j]) set_btn(st, (in_button)(IN_LEFT + base + j), true);
+			continue;
+		}
+		if (ev.type == EV_ABS && has_sticks && ev.code >= ABS_Z && ev.code <= ABS_RZ) {
+			bool *d = ev.code <= ABS_RX ? stick_dir : rstick_dir;
+			bool *neg_pos = &d[ev.code == ABS_Z || ev.code == ABS_RY ? 0 : 2];
+
+			neg_pos[0] = ev.value < -(neg_pos[0] ? stick_release : stick_press);
+			neg_pos[1] = ev.value >  (neg_pos[1] ? stick_release : stick_press);
 			continue;
 		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
@@ -404,7 +469,7 @@ static void pad_read(in_state *st)
 
 		if (ev.code == CODE_MENU) {
 			menu_down = down;
-			if (down) { menu_sent = menu_spent = false; continue; }
+			if (down) { menu_sent = menu_spent = false; menu_t0 = plat_now_ms(); continue; }
 			if (menu_sent) set_btn(st, IN_MENU, false);
 			else if (!menu_spent) { set_btn(st, IN_MENU, true); menu_pulse = true; }
 			menu_sent = false;
@@ -427,8 +492,19 @@ static void pad_read(in_state *st)
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
 	}
-	for (int i = 0; i < 4; i++)
-		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i]);
+	/* The left stick is a second d-pad; the right one drives only the hotkey
+	 * triggers (diatom's ADR-0044). */
+	for (int i = 0; i < 4; i++) {
+		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i] || stick_dir[i]);
+		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
+		set_btn(st, (in_button)(IN_RSLEFT + i), rstick_dir[i]);
+	}
+	if (menu_down && !menu_sent && !menu_spent &&
+	    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
+		menu_spent = true;
+		set_btn(st, IN_SWITCHER, true);
+		switcher_pulse = true;
+	}
 }
 
 /* POWER, and the lid closing as a tap of it: down now, up on the next poll. */
@@ -649,7 +725,7 @@ void plat_settings_init(void)
  * host side and leaves POWER as the wake key - opening the lid alone does not
  * wake it. ALSA's mixer is BaseOS's to save and restore.
  *
- * Reached only from platform.c's light sleep, after the Suspend Timeout,
+ * Reached only from platform.c's light sleep, after PLAT_SUSPEND_AFTER_S,
  * which treats false as "no suspend here" and powers off - so false is kept
  * for a kernel that truly cannot, not for a write that was merely refused. */
 #define POWER_STATE "/sys/power/state"

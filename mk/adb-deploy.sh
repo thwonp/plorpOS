@@ -10,6 +10,10 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WHAT=${1:-all}
 P=/mnt/SDCARD/TortOS
+case $WHAT in elf|all)
+	[ -f "$ROOT/build/pmtools.squashfs" ] || { echo "run mk/build-pmtools-brick.sh first"; exit 1; }
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }
+esac
 
 # Pick the TrimUI out of whatever else is plugged in.
 SER=${ADB_SERIAL:-$(adb devices | awk '/\tdevice$/{print $1}' | while read s; do
@@ -57,6 +61,16 @@ case $WHAT in elf|all)
 	# left to push - and pushing a stale copy would leave a file on the card
 	# that looks like configuration and is read by nothing.
 	$A push "$ROOT/config/systems.cfg"      "$P/" > /dev/null
+	# The same Ports payload as the Brick release zip.
+	$A shell "mkdir -p $P/brick/portmaster /mnt/SDCARD/Roms/Ports" > /dev/null
+	$A push "$ROOT/sd/brick/portmaster/." "$P/brick/portmaster/" > /dev/null
+	$A push "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/pmtools.squashfs" "$P/brick/portmaster/" > /dev/null
+	# Through a file: a pipe into `adb shell cat` can wait for an EOF that never comes.
+	ROWS=$(mktemp)
+	grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" > "$ROWS"
+	$A push "$ROWS" /tmp/rows.cfg > /dev/null
+	$A shell "cat /tmp/rows.cfg >> $P/systems.cfg; rm -f /tmp/rows.cfg"
+	rm -f "$ROWS"
 	$A push "$ROOT/sd/tortos/launch.sh"     "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/bt-alsa.sh"    "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/radio.sh"      "$P/" > /dev/null
@@ -71,6 +85,9 @@ esac
 case $WHAT in res|all)
 	$A push "$ROOT/res/cards/."             "$P/cards/" > /dev/null
 	$A push "$ROOT/res/fonts/menu.ttf"      "$P/" > /dev/null
+	$A push "$ROOT/res/fonts/head.ttf"      "$P/" > /dev/null   # the heading face (ui.c)
+	$A push "$ROOT/res/fonts/josefin.ttf"   "$P/" > /dev/null   # UI Settings > Font
+	$A push "$ROOT/res/fonts/lato.ttf"      "$P/" > /dev/null
 	$A push "$ROOT/res/singles.png"         "$P/" > /dev/null
 	# Over The Hare's page, served off the card so it can be restyled without
 	# a rebuild. The font goes in twice rather than being kept in the repo
@@ -101,6 +118,7 @@ case $WHAT in diatom|all)
 esac
 case $WHAT in vendor)
 	$A push "$ROOT/vendor/cores/."  "$P/cores/" > /dev/null
+	$A push "$ROOT/vendor/cores-brick/." "$P/cores/" > /dev/null   # the DS (plorpos-reo.21)
 	echo "  + cores and runtime"
 esac
 $A shell sync

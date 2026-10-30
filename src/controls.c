@@ -10,6 +10,9 @@ static const char *const NAMES[CTL_PAGES] = {
 	[CTL_GAME]     = "In a game",
 	[CTL_MUSE]     = "In Muse",
 	[CTL_ANYWHERE] = "Anywhere",
+#ifdef PLATFORM_ROTATE
+	[CTL_TOUCH]    = "Touch",
+#endif
 };
 
 const char *ctl_page_name(ctl_page p)
@@ -82,15 +85,14 @@ static int muse(menu_row *out)
 	/* Ten seconds a tap and further held - see seek_step in main.c. Said as
 	 * what it does, since the numbers do not fit in a value. */
 	out[n++] = (menu_row){ "Left/Right", "Seek, faster held", false };
-	/* "Mode" rather than "Mode, on Now Playing": you press it on Now Playing,
-	 * where the mark beside the track count changes in front of you. Eric's,
-	 * 2026-09-20 - the rest of that sentence was saying what the screen was
-	 * about to show anyway. "Or speed" since 2026-09-30: on a book, which
-	 * plays in order, Y is its speed instead. */
-	out[n++] = (menu_row){ "Y",          "Mode or speed", false };
+	/* Y does two things in Muse, so it says where (plorpos-3yv.98, the
+	 * user's wording 2026-10-25): on the album shelf it marks a favorite and,
+	 * held, shows only those; on Now Playing it is the play mode, or a book's
+	 * speed (2026-09-30). */
+	out[n++] = (menu_row){ "Y (coverflow)",   "Favorite (hold: view)", false };
+	out[n++] = (menu_row){ "Y (Now Playing)", "Mode/speed", false };
 	/* B is not here. It goes back in Muse exactly as it does everywhere else,
-	 * and the shelf's page already says so - and with the rule above the
-	 * footer this page has room for five, not six. */
+	 * and the shelf's page already says so. */
 	out[n++] = (menu_row){ "SELECT",     "Close Muse",    false };
 	return n;
 }
@@ -113,6 +115,25 @@ static int anywhere(menu_row *out)
 	return n;
 }
 
+#ifdef PLATFORM_ROTATE
+/* What touch_at, touch_drag and touch_poll make of a finger, and the edges
+ * gesture_read turns into buttons (plorpos-3yv.59). Taps, drags, the
+ * switcher's cards and the DS's lower screen do what they look like they do,
+ * so the page leaves them out and fits on one. */
+static int touch(menu_row *out)
+{
+	int n = 0;
+
+	out[n++] = (menu_row){ "Hold",           "Favorite, as Y", false };
+	out[n++] = (menu_row){ "Two fingers",    "Game details",   false };
+	out[n++] = (menu_row){ "Three fingers",  "Menu",           false };
+	out[n++] = (menu_row){ "Side edge in",   "Back",           false };
+	out[n++] = (menu_row){ "Top edge down",  "Muse",           false };
+	out[n++] = (menu_row){ "Bottom edge up", "Recent",         false };
+	return n;
+}
+#endif
+
 int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 {
 	int n;
@@ -122,6 +143,9 @@ int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 	case CTL_GAME:     n = game(out);        break;
 	case CTL_MUSE:     n = muse(out);        break;
 	case CTL_ANYWHERE: n = anywhere(out);    break;
+#ifdef PLATFORM_ROTATE
+	case CTL_TOUCH:    n = touch(out);       break;
+#endif
 	default:           n = moving(dir, out); break;
 	}
 	/* The page is one of several and says so, the way Play Time's footer names

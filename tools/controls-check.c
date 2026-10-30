@@ -54,17 +54,23 @@ static const char *const BUTTONS[] = {
  * Eight drew the footer half off the panel; seven with a rule left the last
  * row faded at the window's edge, which is a page that scrolls itself while
  * somebody is reading a button off it. */
-#define PAGE_MAX 6
+#define PAGE_MAX 7      /* 6 until Muse's page took a second Y row (plorpos-3yv.98) */
 
 /* A note runs the panel's width and is cut at about here: "On Genesis and
  * SNES, X and Y are the pad's own buttons" showed thirty characters of
  * fifty-four in a shot on 2026-09-19. */
 #define NOTE_MAX 30
 
+/* A button, or a button and where it means that: "Y (Now Playing)". */
 static int is_button(const char *s)
 {
+	const char *ctx = strstr(s, " (");
+	size_t n = ctx ? (size_t)(ctx - s) : strlen(s);
 	int i;
-	for (i = 0; i < NBUTTONS; i++) if (!strcmp(BUTTONS[i], s)) return 1;
+
+	if (ctx && s[strlen(s) - 1] != ')') return 0;
+	for (i = 0; i < NBUTTONS; i++)
+		if (strlen(BUTTONS[i]) == n && !strncmp(BUTTONS[i], s, n)) return 1;
 	return 0;
 }
 

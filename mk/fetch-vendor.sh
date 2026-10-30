@@ -84,3 +84,23 @@ fetch_core mednafen_ngp      a2015668f9a9403b8bf6941b550fae2c618f37b79173e8ba27c
 
 echo "vendor/cores ready:"
 ls "$VENDOR/cores"
+
+# PortMaster, for the RG Rotate's Ports shelf (plorpos-3yv.86.4): the
+# PortMaster-GUI release zip as published (MIT; its licenses/ folder inside),
+# pinned by sha256. Shipped in the Rotate's payload and unpacked the first
+# time PortMaster is opened (sd/rotate/portmaster/pm-run.sh); from then on it
+# updates itself, so a newer pin only matters for fresh cards. Upstream's own
+# release, no mirror: a tagged asset is not republished.
+PM_TAG=2026.10.23-1651
+PM_SHA=84e14ebf5cb797d034f4c1042384f8632d91fcc41f1a4384596686d7d544843b
+mkdir -p "$VENDOR/portmaster"
+if [ "$(shasum -a 256 "$VENDOR/portmaster/PortMaster.zip" 2>/dev/null | cut -d' ' -f1)" = "$PM_SHA" ]; then
+	echo "  ok      PortMaster $PM_TAG"
+else
+	curl -sSfL -o "$DL/PortMaster.zip" \
+		"https://github.com/PortsMaster/PortMaster-GUI/releases/download/$PM_TAG/PortMaster.zip"
+	GOT=$(shasum -a 256 "$DL/PortMaster.zip" | cut -d' ' -f1)
+	[ "$GOT" = "$PM_SHA" ] || { echo "  MISMATCH PortMaster: want $PM_SHA got $GOT" >&2; exit 1; }
+	cp "$DL/PortMaster.zip" "$VENDOR/portmaster/"
+	echo "  fetched PortMaster $PM_TAG"
+fi

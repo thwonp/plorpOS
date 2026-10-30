@@ -17,7 +17,7 @@
 }
 
 :root {
-	--accent: #3dd6ff;
+	--accent: #8a5cd6;   /* plorpOS purple (plorpos-8m1.2) */
 	--text: #ededf2;
 	--soft: #c6c9d6;
 	--dim: #9499ac;
@@ -99,7 +99,7 @@ html { background: var(--ground); }
 	border-radius: var(--radius);
 	padding: 32px 28px;
 	text-align: center;
-	box-shadow: 0 0 60px rgba(61, 214, 255, .12);
+	box-shadow: 0 0 60px rgba(138, 92, 214, .12);
 }
 
 /* The mark: a tortoise that has already gone past a hare, both on the same

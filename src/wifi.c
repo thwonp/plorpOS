@@ -134,9 +134,20 @@ static bool kv(const char *text, const char *key, char *out, int cap)
 	return false;
 }
 
-#if defined(PLATFORM_H700)
-static bool g_dhcp_asked;   /* defined with dhcp_start, below */
+#if defined(PLATFORM_ROTATE)
+/* The Rotate is the H700's model on Debian: no udhcpc, and none needed -
+ * systemd-networkd asks for the address whenever the link comes up and drops
+ * it when the link goes (/etc/systemd/network/20-wlan0.network,
+ * plorpos-3yv.17). So every lease step here is the network's, not ours. */
+#define LEASES_OURS 0
+#else
+#define LEASES_OURS 1
+#endif
 
+static bool g_dhcp_asked;   /* one lease request per association */
+static void dhcp_start(void);
+
+#if defined(PLATFORM_H700)
 /* The lease, once the link is up - as launch_frontend.sh does at boot. Not
  * left to wifi_status: that asks only when something polls it, and the Wi-Fi
  * screen reads it once, after its scan, which finishes before the association
@@ -144,8 +155,10 @@ static bool g_dhcp_asked;   /* defined with dhcp_start, below */
  * Detached, like dhcp_start, so nothing waits on the radio. */
 static void dhcp_after_join(void)
 {
-	pid_t pid = fork();
+	pid_t pid;
 
+	if (!LEASES_OURS) return;
+	pid = fork();
 	if (pid < 0) return;
 	if (pid == 0) {
 		if (fork() == 0) {
@@ -215,6 +228,11 @@ bool wifi_up(void)
 		    strstr(out, "PONG")) {
 #if defined(PLATFORM_H700)
 			dhcp_after_join();
+#else
+			/* The scan can finish before auto-association. Start the vendor
+			 * DHCP client now; its retries wait for the link without a UI poll. */
+			g_dhcp_asked = true;
+			dhcp_start();
 #endif
 			return true;
 		}
@@ -222,22 +240,24 @@ bool wifi_up(void)
 	return false;
 }
 
-#if defined(PLATFORM_H700)
 /* An address left on a dead link would read as connected to everything that
  * checks one - wifi_status included, the moment any network associates. */
 static void lease_drop(void)
 {
-	char *kill_dhcp[] = { (char *)"/bin/killall", (char *)"udhcpc", NULL };
+	/* BusyBox is shared; the applet link is /usr/bin on Brick, /bin on H700. */
+	char *kill_dhcp[] = { (char *)"/bin/busybox", (char *)"killall",
+	                      (char *)"udhcpc", NULL };
 	char *flush[] = { (char *)"/sbin/ip", (char *)"addr", (char *)"flush",
 	                  (char *)"dev", (char *)WLAN, NULL };
 
+	if (!LEASES_OURS) return;
 	run(kill_dhcp, NULL, 0);
 	run(flush, NULL, 0);
 }
-#endif
 
 void wifi_down(void)
 {
+	g_dhcp_asked = false;
 #if defined(PLATFORM_H700)
 	/* The daemon goes, and the lease with it (lease_drop). And the lease is
 	 * forgotten as asked for: wifi_status re-arms only on a state it can
@@ -245,12 +265,24 @@ void wifi_down(void)
 	 * an off/on never asked for an address (measured 2026-10-06). */
 	char out[64];
 
-	g_dhcp_asked = false;
 	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
 	lease_drop();
+#if defined(PLATFORM_ROTATE)
+	/* And the radio with it: wlan0 down is what stops the firmware - 188 mA
+	 * connected and idle, 121 mA down, and unloading the driver as well only
+	 * 119 (2026-10-18). wpa_supplicant leaves the link up as it found it. */
+	{
+		char *down[] = { (char *)"/sbin/ip", (char *)"link", (char *)"set",
+		                 (char *)"dev", (char *)WLAN, (char *)"down", NULL };
+		run(down, NULL, 0);
+	}
+#endif
 #else
 	char *argv[] = { (char *)"/etc/init.d/wpa_supplicant",
 	                 (char *)"stop", NULL };
+	/* The stock stop takes wlan0 down, but leaves our udhcpc retrying on
+	 * that dead interface. Stop it and clear the lease before the radio. */
+	lease_drop();
 	run(argv, NULL, 0);
 #endif
 }
@@ -447,12 +479,12 @@ int wifi_scan(wifi_net *out, int max)
  * minute on a network that is simply slow to answer. Double-forked so the
  * child is reparented to init and there is no zombie to reap, because nothing
  * here is going to come back and wait for it. */
-static bool g_dhcp_asked;   /* a lease has been requested for this join */
-
 static void dhcp_start(void)
 {
-	pid_t pid = fork();
+	pid_t pid;
 
+	if (!LEASES_OURS) return;
+	pid = fork();
 	if (pid < 0) return;
 	if (pid == 0) {
 		if (fork() == 0) {
@@ -509,7 +541,11 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 		if (!g_dhcp_asked) { g_dhcp_asked = true; dhcp_start(); }
 		return WIFI_CONNECTING;
 	}
+#if defined(PLATFORM_H700)
 	g_dhcp_asked = false;              /* not associated: arm for the next one */
+#endif
+	/* Brick's client is already retrying while association completes. Keep
+	 * its flag through scans/handshakes; off or a successful lease re-arms it. */
 	if (!strcmp(state, "SCANNING") || !strcmp(state, "DISCONNECTED") ||
 	    !strcmp(state, "INACTIVE"))   return WIFI_IDLE;
 	return WIFI_CONNECTING;
@@ -658,6 +694,27 @@ bool wifi_forget(const char *ssid)
 	}
 	return hit;
 }
+
+#if defined(PLATFORM_ROTATE)
+/* SSH is Debian's ssh.service, off on a fresh card (plorpos-3yv.13.4), and
+ * the switch enables it, so it is still on after a reboot. Turning it off
+ * keeps the sessions already open. In the background: enable/disable reload
+ * systemd, ~4 s here, and the menu would stand still that long (measured). */
+bool wifi_svc_on(wifi_svc s)
+{
+	char *argv[] = { (char *)"/usr/bin/systemctl", (char *)"is-enabled", (char *)"--quiet",
+	                 (char *)"ssh", NULL };
+	return s == WIFI_SSH && run(argv, NULL, 0) == 0;
+}
+
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"/usr/bin/systemctl enable --now ssh > /dev/null 2>&1 &"
+		: (char *)"/usr/bin/systemctl disable --now ssh > /dev/null 2>&1 &", NULL };
+	return s == WIFI_SSH && run(argv, NULL, 0) == 0;
+}
+#endif
 
 #else  /* PLATFORM_GKD: ROCKNIX's ConnMan, driven the way ROCKNIX drives it */
 
@@ -1080,7 +1137,8 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD)   /* no services to switch: WIFI_SVC_ROWS is 0 */
+#if !defined(PLATFORM_GKD) && !(defined(PLATFORM_ROTATE) && defined(__linux__))
+/* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }
 #endif

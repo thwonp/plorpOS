@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+# plorpOS launcher hooks for PortMaster's GUI, sourced by utils/pm_launch.txt
+# when pm-run.sh starts it as `PortMaster.sh plorpos` (copied in before each run).
+
+## pysdl2 finds libSDL2*.so only in this path and in ldconfig, which BaseOS lacks:
+## our SDL2 is on the card, SDL2_mixer in the tools image (mk/build-sdl2mixer-h700.sh).
+pm_hook_gui_env() {
+  export PYSDL2_DLL_PATH="$LD_LIBRARY_PATH"
+}

@@ -8,8 +8,9 @@ the same table in four places - the identical failure the system accents had,
 where six of nine cards had drifted from config/systems.cfg.
 
 So: this module is the source. tools/genboot.py and tools/genmark.py import it.
-src/main.c cannot, being C, and carries the only hand-kept copy - draw_shell()
-names this file so the two can be compared when either changes.
+src/main.c used to hand-keep a copy for the shutdown animation (draw_shell,
+checked by tools/checkmark.py); the shutdown is three purple orbs since
+plorpos-3yv.91, so both are gone.
 
 CYAN is canonical for the whole system as of 2026-08-28, and is the same value
 as MENU_ACCENT in src/main.c and UI_CYAN_* in src/ui.h. The mark used to carry
@@ -47,6 +48,7 @@ LTGRN   = (128, 176, 118)     # shell, and the wordmark's Tort
 MIDGRN  = (104, 138, 96)      # shell, and the lower speed line
 DKGREEN = (61, 89, 67)        # the head, the upper speed line, and what dims
                               # the center at shutdown
+PURPLE  = (138, 92, 214)      # plorpOS's accent (plorpos-8m1.2): ui.h UI_CYAN_*, the Favorites card
 CYAN    = (61, 214, 255)      # the center, the wordmark's OS, the middle speed
                               # line; also the launcher's chrome and volume OSD
 

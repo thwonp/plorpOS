@@ -320,6 +320,10 @@ static uint32_t disc_console(const char *tag, const char *path)
 	if (!strcmp(tag, "PS")) return RC_CONSOLE_PLAYSTATION;
 	if (!strcmp(tag, "PCE") && cd) return RC_CONSOLE_PC_ENGINE_CD;
 	if ((!strcmp(tag, "MD") && cd) || !strcmp(tag, "SEGACD")) return RC_CONSOLE_SEGA_CD;
+	/* Not a disc, but hashed like one: RA takes a DS game's header, ARM9,
+	 * ARM7 and icon, read where the header points, never the whole 128 MB
+	 * cartridge (plorpos-3yv.107.1). */
+	if (!strcmp(tag, "NDS")) return RC_CONSOLE_NINTENDO_DS;
 	return 0;
 }
 

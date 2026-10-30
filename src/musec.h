@@ -54,6 +54,15 @@ void musec_play(const char *const *paths, int n, int start, double at, bool book
  * (plorpos-ggv.25, a queue kept over a restart). */
 void musec_load(const char *const *paths, int n, int start, double at, bool book,
                 double speed, const char *artist, const char *album);
+/* What Muse was found playing outside the restored queue (a book, or music
+ * restarted inside the 5 s before a save), relative to the root; "" if
+ * nothing. Cleared by any new queue. */
+const char *musec_orphan(void);
+/* The queue for what Muse is already playing, paths[start], without a PLAY:
+ * Muse plays on and the queue follows it (plorpos-3yv.71). n 0: only forgets
+ * the orphan. */
+void musec_adopt(const char *const *paths, int n, int start, bool book, double speed,
+                 const char *artist, const char *album);
 /* The queue in its own order, and the place in it of the track now. */
 int musec_queue(const char *const **paths, int *current, const char **artist,
                 const char **album);

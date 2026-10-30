@@ -9,6 +9,11 @@
 #   mk/h700-deploy.sh all       launcher, SDL2 and FFmpeg libraries, launch
 #                               script, Splore's wget shim, Muse and diatom; the frontend session restarts to run it
 #
+#   mk/h700-deploy.sh ds        the Nintendo DS shelf: DSperate (the Brick's build, mk/build-dsperate-brick.sh)
+#                               and its systems.cfg row, once; the launcher restarts to show it
+#
+# More than one device on adb: ANDROID_SERIAL=<serial>.
+#
 # The first `all` on a card that ran plorpOS under ROCKNIX moves that build's
 # tortos.elf, diatom, muse and musectl to TortOS/.rocknix/ - they cannot run on BaseOS, and
 # moving rather than deleting keeps the way back.
@@ -32,6 +37,21 @@ case $MODE in diatom|all)
 	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; } ;;
 esac
 
+if [ "$MODE" = ds ]; then
+	CORE=$ROOT/vendor/cores-brick/dsperate_libretro.so
+	[ -f "$CORE" ] || { echo "no $CORE; run mk/build-dsperate-brick.sh" >&2; exit 1; }
+	adb push "$CORE" "$CARD/TortOS/cores/dsperate_libretro.so.new" > /dev/null
+	adb shell "mv -f $CARD/TortOS/cores/dsperate_libretro.so.new $CARD/TortOS/cores/dsperate_libretro.so; mkdir -p '$CARD/Roms/Nintendo DS' '$CARD/Saves/Nintendo DS'"
+	# Through a file: a pipe into `adb shell cat` can wait for an EOF that never comes.
+	ROWS=$(mktemp)
+	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" > "$ROWS"
+	adb push "$ROWS" /tmp/rows.cfg > /dev/null
+	adb shell "grep -q '^sys|Nintendo DS|' $CARD/TortOS/systems.cfg || cat /tmp/rows.cfg >> $CARD/TortOS/systems.cfg; rm -f /tmp/rows.cfg"
+	rm -f "$ROWS"
+	echo "deployed DSperate $(md5sum "$CORE" | cut -c1-8) and the DS row; the launcher reads it at its next start"
+	exit 0
+fi
+
 if [ "$MODE" = all ]; then
 	adb shell "cd $CARD/TortOS && [ -d .rocknix ] || { mkdir .rocknix &&
 		for f in tortos.elf diatom muse musectl; do [ -f \$f ] && mv \$f .rocknix/; done; true; }"
@@ -45,6 +65,16 @@ if [ "$MODE" = all ]; then
 	adb shell "mkdir -p $CARD/TortOS/pico8"
 	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
 	adb shell "chmod +x $CARD/TortOS/pico8/wget"
+	# PortMaster's runner and what it runs on (plorpos-2wl.10)
+	adb shell "mkdir -p $CARD/TortOS/h700/portmaster"
+	for f in "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so"; do
+		[ -f "$f" ] && adb push "$f" "$CARD/TortOS/h700/portmaster/" > /dev/null
+	done
+	if [ -f "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" ]; then
+		adb shell "mkdir -p $CARD/TortOS/lib32"
+		adb push "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" "$CARD/TortOS/lib32/" > /dev/null
+	fi
+	adb shell "chmod +x $CARD/TortOS/h700/portmaster/pm-run.sh $CARD/TortOS/h700/portmaster/retroarch"
 fi
 case $MODE in muse|all)
 	adb shell "mkdir -p $CARD/TortOS/lib"

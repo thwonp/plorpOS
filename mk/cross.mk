@@ -25,6 +25,17 @@ CFLAGS += -DPLATFORM_H700
 # (src/muse/muse.c, MUSE_HANDOVER).
 MUSE_DEFS := -DMUSE_HANDOVER
 endif
+ifeq ($(PLATFORM),rotate)
+# Anbernic RG Rotate on Armbian (plorpos-3yv): the H700's branches all fit a
+# Linux handheld that is not a Brick, so it takes them, and PLATFORM_ROTATE
+# where it differs (src/platform_rotate.c says which). Its sound is PipeWire's,
+# as on the GKD (PLAT_PIPEWIRE in platform.h), so Muse keeps the codec open
+# like the GKD's: no MUSE_HANDOVER.
+CFLAGS += -DPLATFORM_H700 -DPLATFORM_ROTATE
+# Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
+# trixie's own libc headers in the sysroot never shadow the toolchain's.
+CFLAGS += -idirafter $(SYSROOT)/usr/include
+endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
 # the device at runtime, where they exist. The flag permits undefined symbols
@@ -33,9 +44,9 @@ endif
 # SDL function the shipped libraries lack.
 LDFLAGS := -L$(SYSROOT)/usr/lib -Wl,-rpath-link,$(SYSROOT)/usr/lib \
            -Wl,--allow-shlib-undefined
-LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl
-ifeq ($(PLATFORM),gkd)
-# The volume worker (platform_gkd.c). glibc 2.31 here still has it apart from
+LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl -lpthread
+ifneq ($(filter gkd rotate,$(PLATFORM)),)
+# The volume worker (platform_gkd.c, platform_rotate.c). glibc 2.31 here still has it apart from
 # libc; the device's 2.40 keeps libpthread.so.0 as a stub, so it resolves.
 LDLIBS += -lpthread
 endif
@@ -110,6 +121,12 @@ $(BUILD)/btplayer: tools/btplayer.c
 $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+		-o $@ $< -ldl
+
+# Preloaded into PortMaster ports on the H700 (sd/h700/portmaster/pm-run.sh).
+$(BUILD)/portcompat.so: tools/portcompat.c
+	mkdir -p $(BUILD)
+	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC \
 		-o $@ $< -ldl
 
 $(BUILD)/setbright: tools/setbright.c

@@ -84,7 +84,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		                              u->engine != NULL };
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
-		out[SM_DISPLAY] = (menu_row){ "Display Mode",  u->dmode,    true  };
+		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
+		out[SM_FILL]    = (menu_row){ "Display",       u->fill,     true  };
+		out[SM_SHADER]  = (menu_row){ "Shader", u->shader ? u->shader : "None",
+		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row
 		 * in a menu of live ones is a promise the launcher is not keeping,
@@ -111,6 +114,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
+		if (!u->fill) {
+			int i;
+
+			for (i = SM_FILL; i < SM_ROWS - 1; i++) out[i] = out[i + 1];
+			return SM_ROWS - 1;
+		}
 		return SM_ROWS;
 	}
 
@@ -127,7 +136,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* The Wi-Fi screen, named for everything on it now: the radio, and the
 	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
 	 * value is still the radio's, since that is what decides the rest. */
-	out[PM_WIFI]         = (menu_row){ "Wi-Fi Services", b->b, true };
+	out[PM_WIFI]         = (menu_row){ "Network Services", b->b, true };
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
@@ -145,10 +154,8 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
 	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
-	/* Box Art and the ScreenScraper account moved under here with gamelist
-	 * import (TortOS-mh0) - see sys_menu_scraping_build. Always live: the
-	 * import needs no network, whatever the other two do. */
-	out[PM_SCRAPING]     = (menu_row){ "Scraping",  NULL,      true  };
+	/* How games start, stop and rewind (plorpos-pyz). */
+	out[PM_GAME]         = (menu_row){ "Game Settings", NULL,   true  };
 	/* What every button does, per screen. Needs nothing of the device, which
 	 * is the point: it is the page you reach when the thing you have forgotten
 	 * is which button opens Muse. See src/controls.h. */
@@ -172,12 +179,12 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* Date & Time leads: setup, where the timers are settings (upstream
 	 * b3b4483, which put it in the top menu; ours is regrouped - z0d.1). */
 	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
+#if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
+#endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
-	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
-	out[ST_SUSPEND]  = (menu_row){ "Suspend Timeout", b->e, true };
 	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
 	 * screen but the game's. Off, the disc is only the low-battery dot. */
 	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
@@ -201,6 +208,8 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
 	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
+	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
+	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };
 	return US_ROWS;
 }
 

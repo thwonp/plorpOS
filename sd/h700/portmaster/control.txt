@@ -1,0 +1,63 @@
+#!/bin/bash
+#
+# plorpOS's PortMaster control.txt on the H700 handhelds (plorpos-2wl.10).
+# Unofficial: pm-run.sh copies this over the stock one before every run.
+# Modelled on the Rotate's (sd/rotate/portmaster/control.txt): BaseOS is no
+# CFW PortMaster knows, so it is named here, and the pad is given by GUID.
+#
+# SPDX-License-Identifier: MIT
+
+CUR_TTY=/dev/null
+
+export controlfolder="/mnt/SDCARD/.userdata/shared/portmaster/PortMaster"
+# Ports keep their files in "/$directory/ports/<name>": Roms/Ports on the card
+# (exFAT looks names up case-blind).
+export directory="mnt/SDCARD/Roms"
+
+# Root already, and no sudo on BaseOS.
+export ESUDO=""
+export ESUDOKILL="-1"
+export ESUDOKILL2="-1"
+
+SDLDBFILE="$controlfolder/gamecontrollerdb.txt"
+SDLDBUSERFILE="${HOME}/.config/SDL-GameControllerDB/gamecontrollerdb.txt"
+
+# The pad as the launcher gives it to native PICO-8 (platform_h700.c
+# plat_pico8_pad): SDL numbers the evdev buttons from BTN_JOYSTICK up, and
+# its own guess crosses Start and R2. Menu (b8) is the launcher's.
+# The RG35XX H has two sticks and the RG SP none, and tells by the axes its
+# pad reports (ABS_Z..ABS_RZ, bits 2-5): the H's stick clicks (codes 313 and
+# 316) sit between Menu and L2, moving L2/R2 up to b10/b11, and SDL numbers
+# its axes Z,RX,RY,RZ as a0..a3 - left X/Y, right X/Y.
+# Without a DEVICE the stock get_controls hands every port the whole 470 KB
+# database, and exporting it fails every exec past the argument limit.
+get_controls() {
+  DEVICE="19000000010000000100000000010000"
+  param_device="anbernic"
+  LOWRES="N"
+  ANALOGSTICKS="0"
+  local abs
+  abs="$(grep -A8 'Name="ANBERNIC-keys"' /proc/bus/input/devices | sed -n 's/^B: ABS=//p')"
+  [ -n "$abs" ] && (( (0x$abs & 0x3c) == 0x3c )) && ANALOGSTICKS="2"
+  export SDL_GAMECONTROLLERCONFIG_FILE="/tmp/gamecontrollerdb.txt"
+  local map="a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,"
+  if [ "$ANALOGSTICKS" = "2" ]; then
+    map="a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,leftstick:b9,lefttrigger:b10,righttrigger:b11,rightstick:b12,leftx:a0,lefty:a1,rightx:a2,righty:a3,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,"
+  else
+    map="${map}lefttrigger:b9,righttrigger:b10,"
+  fi
+  echo "$DEVICE,ANBERNIC-keys,$map" > "$SDL_GAMECONTROLLERCONFIG_FILE"
+  sdl_controllerconfig="$(< "$SDL_GAMECONTROLLERCONFIG_FILE")"
+}
+
+source $controlfolder/device_info.txt
+source $controlfolder/funcs.txt
+
+# Ports run bare on the framebuffer's GL, as they do on ROCKNIX's Panfrost,
+# and PortMaster's ROCKNIX branch is the one that skips its own compositor.
+# Ports only: PortMaster's own GUI stays generic (pm-run.sh sets
+# PLORPOS_PM_GUI).
+[ -n "${PLORPOS_PM_GUI:-}" ] || export CFW_NAME="ROCKNIX"
+
+export GPTOKEYB2="$ESUDO env LD_PRELOAD=$controlfolder/libinterpose.${DEVICE_ARCH}.so $controlfolder/gptokeyb2 $ESUDOKILL2"
+export GPTOKEYB="$ESUDO $controlfolder/gptokeyb $ESUDOKILL"

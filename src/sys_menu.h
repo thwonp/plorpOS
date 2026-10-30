@@ -35,20 +35,24 @@
  *
  * The rest are grouped a level down since plorpos-z0d.1: the timers under
  * System Settings, the look under UI Settings, and Cheevos and Over The Hare
- * on the Wi-Fi Services screen with the other things that need the network. */
+ * on the Network Services screen with the other things that need the network. */
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
 	PM_BT,
 	PM_AUDIO,
-	PM_SYSTEM, PM_UI, PM_SCRAPING,
+	PM_SYSTEM, PM_UI, PM_GAME,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
-/* Settings > System Settings: the clock, the three timers, the battery
+/* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
-	ST_CLOCK, ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND, ST_BATTPCT,
+	ST_CLOCK,
+#if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
+	ST_AUTO_OFF,
+#endif
+	ST_SLEEP, ST_BATTPCT,
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
 	ST_MUTESW,
 #endif
@@ -57,7 +61,7 @@ typedef enum {
 
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
-typedef enum { US_THEME, US_DIR, US_ORDER, US_ROWS } us_row;
+typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT, US_ROWS } us_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
@@ -71,8 +75,15 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
 	SM_GAMES, SM_CORE, SM_SORT,
-	SM_DISPLAY, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
+	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
 } sm_row;
+
+/* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
+ * where it means something - see sys_ui.fill - so on every other shelf the
+ * rows below it sit one higher. The build and the key handler both go through
+ * these two, so they cannot disagree about which row is where. */
+static inline int sm_index(bool fill, sm_row r) { return !fill && r > SM_FILL ? (int)r - 1 : (int)r; }
+static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >= SM_FILL ? i + 1 : i); }
 
 /* What the Favorites shelf's menu is, which is two of those rows.
  *
@@ -133,7 +144,7 @@ _Static_assert(MENU_MAX_ROWS >= ST_ROWS, "MENU_MAX_ROWS < ST_ROWS");
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
  * keeps it alive as long as it keeps the rows. */
-typedef struct { char a[24], b[CFG_STR], c[16], d[40], e[16]; } menu_bufs;
+typedef struct { char a[24], b[CFG_STR], c[16], d[40]; } menu_bufs;
 
 /* Everything either menu needs to know about the device, gathered by the
  * caller. A struct rather than a dozen arguments so that adding a fact to a
@@ -160,12 +171,12 @@ typedef struct {
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
 	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
+	const char *font;        /* the body face's name (plorpos-8m1.3) */
+	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
-	int         suspend_timeout; /* seconds light sleep waits before real
-	                              * suspend, never 0 - see PM_SUSPEND */
 	const char *clock;       /* now, as Date & Time's row shows it */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
@@ -184,11 +195,22 @@ typedef struct {
 	/* The system menu */
 	const char *sys_name;
 	const char *sys_core;
-	/* PICO-8's shelf: the engine's label, shown in Core's place and turned
-	 * over there. NULL on every other shelf, whose Core is a fact. */
+	/* PICO-8's shelf: the engine's label; a shelf with two cores (main.c
+	 * ALT_CORES): the core's. Shown in Core's place and turned over there.
+	 * NULL on every other shelf, whose Core is a fact. */
 	const char *engine;
 	int         game_count;
 	const char *dmode;
+	/* The DS's shelf: its layout row is Layout, and fill is the Display row's
+	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
+	 * the same, as on the Brick (plorpos-6ei.13, .17). */
+	bool        nds;
+	const char *fill;
+	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
+	 * and whether choosing one means anything: not without a list, and not
+	 * on PICO-8's shelf running native, which never goes through Diatom. */
+	const char *shader;
+	bool        shader_live;
 	/* The label of the shelf's sort order. A label rather than an index for
 	 * the same reason dmode is one: this file must not know the table, or a
 	 * check that links it would have to link the table too. */

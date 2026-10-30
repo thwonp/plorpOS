@@ -101,6 +101,12 @@ void ra_fetch_begin(const char *rom_hash, const char *set_path);
 int  ra_fetch_step(void);
 long ra_fetch_gameid(void);
 
+/* After a -1: RetroAchievements answered and has nothing to earn with this
+ * hash - no game for it (a hack, a translation, a dump it never listed), or
+ * only its "Unsupported Game Version" placeholder. Permanent, unlike a failed
+ * request, so a run over the library counts it apart (plorpos-3yv.107.3). */
+bool ra_fetch_unknown(void);
+
 /* Submit one unlock, softcore. Signed the way rcheevos signs it -
  * md5(achievement id + username + hardcore flag) - because the server checks
  * it. `rom_hash` is optional and is what real clients send.

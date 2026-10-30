@@ -104,6 +104,10 @@ typedef struct {
 	char esrb[16];
 	char note[8];              /* the source's own score, out of 20 */
 	char synopsis[GAME_SYNOPSIS_MAX];
+	/* The gamelist's <image>, as the list writes it (relative to the list's
+	 * folder). Not stored: only the Ports shelf reads it, from each port's
+	 * gameinfo.xml (plorpos-3yv.86.3). */
+	char image[256];
 } game_meta;
 
 /* False when there is no row - or only a rename's, which describes nothing.

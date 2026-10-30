@@ -40,6 +40,12 @@ FILE *atomic_open(const char *path, int mode);
  * original file is left exactly as it was. */
 bool atomic_commit(FILE *f, const char *path);
 
+/* The same, without waiting for the card: renamed into place at once, flushed
+ * to the card by a thread behind it. For bookmarks and scratch a launch
+ * writes, where a stall of a second is worse than a stale file after a power
+ * cut. Not for anything the player would miss. */
+bool atomic_commit_lazy(FILE *f, const char *path);
+
 /* Close and discard - for the case where the caller decides mid-write that
  * there is nothing worth keeping. */
 void atomic_abort(FILE *f, const char *path);

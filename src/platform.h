@@ -7,6 +7,14 @@
 #include <time.h>
 #include "platproc.h"
 
+/* PipeWire owns the sound (the GKD under ROCKNIX, the Rotate under Armbian):
+ * every stream mixes, the default sink is the output and moves the streams
+ * with it, and nothing hands the codec over. The audio paths in main.c and
+ * platform.c that the GKD wrote for it are the Rotate's too. */
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+#define PLAT_PIPEWIRE 1
+#endif
+
 /* Everything that knows it is running on a TrimUI Brick lives here: the
  * display, the buttons that arrive on three different devices, the panel
  * backlight, the codec, the battery, and the pipe to the resident emulator.
@@ -20,6 +28,8 @@
 #define TORTOS_SCREEN_W plat_screen_w
 #define TORTOS_SCREEN_H plat_screen_h
 extern int plat_screen_w, plat_screen_h;
+/* The panel in its own pixels, as Diatom draws on it (plorpos-6ei.17). */
+extern int plat_panel_w, plat_panel_h;
 float plat_scale(void);
 /* For plat_video_init, once the renderer knows its output size: derives the
  * scale and height from it and sets the renderer's scale to match. */
@@ -61,6 +71,22 @@ extern const char *const plat_pico8_path;
  * ADR-0044). */
 bool plat_two_sticks(void);
 
+/* The codec's own name, for aout_state.codec. The Bricks' alsa-lib settles
+ * what "default" means once per process, and a process that met a USB DAC
+ * there goes on meaning the DAC - Diatom asked for default and held the DAC;
+ * a Muse started with one plugged in failed every open after (plorpos-8wc.8).
+ * So there the codec is always named: the firmware's own shared path,
+ * /etc/asound.conf's Playback (softvol over dmix), which is all default is
+ * without a DAC - not sysdefault, the bare card, which would not share. Muse
+ * gets the same name in MUSE_CODEC for its own fallback. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && defined(__aarch64__)
+#define AOUT_CODEC_PCM "Playback"   /* the Bricks; not the desktop build */
+#else
+#define AOUT_CODEC_PCM ""
+#endif
+
+#define SWITCHER_HOLD_MS 700
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,
@@ -76,6 +102,13 @@ typedef enum {
 	/* The Brick Pro's right stick: its click and its directions, which
 	 * drive nothing else (diatom's ADR-0044). Same order. */
 	IN_R3, IN_RSLEFT, IN_RSRIGHT, IN_RSUP, IN_RSDOWN,
+	/* The Bricks' function keys, Fn1 the left: hotkey triggers since
+	 * brightness moved to MENU + Volume (plorpos-reo.22). */
+	IN_FN1, IN_FN2,
+	/* Not a key: Menu held for SWITCHER_HOLD_MS with nothing else pressed,
+	 * or a swipe up from the bottom of a touch panel - the game switcher
+	 * (plorpos-gl5). One poll down, the next up, as the touch presses are. */
+	IN_SWITCHER,
 	IN_COUNT,
 	IN_NONE = -1,
 } in_button;
@@ -95,6 +128,11 @@ SDL_Renderer *plat_renderer(void);
  * the present every frame of it goes through. Only the Brick differs: no
  * compositor, so no window either (plorpos-reo.8). */
 bool plat_video_init_over_child(void);
+#if defined(PLATFORM_ROTATE)
+/* The launcher's window kept across a child's run, hidden and shown again:
+ * under sway nothing needs it gone (plorpos-3yv.20). */
+void plat_window_show(bool on);
+#endif
 void plat_present(SDL_Renderer *r);
 
 bool plat_input_init(void);
@@ -160,7 +198,7 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
  * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
  * Brick's plorpos-cdd). */
@@ -187,9 +225,14 @@ typedef struct {
 	const char *opts[2];
 	int         disc;   /* an .m3u's disc to start on, 1-based; 0 = the core's choice (plorpos-gkd.47) */
 	const char *shader; /* SETDISPLAY fields for the chain, "" for None, NULL with no shader list */
+	const char *mode;   /* Diatom display mode for the first frame, e.g. "aspect"; NULL = its own */
+	const char *fill;   /* the DS's "aspect"|"stretch" for the first frame (plorpos-6ei.13); NULL: not sent */
 } plat_game;
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
+bool plat_resident_running(void);
+void plat_resident_flush(unsigned timeout_ms);
+void plat_screen_off(void);
 
 /* Called from inside plat_resident_wait when Diatom reports an achievement
  * unlocked. A callback rather than a queue because the wait blocks: anything
@@ -259,10 +302,10 @@ void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the
- * stored choice (validated, never NULL), and setting it. Global, db_dev. */
+ * stored choice (validated, never NULL) - what a binding that names no
+ * modifier holds (plorpos-6ei.6). Global, db_dev. */
 int         plat_hotkey_modifiers(const char *const **wire, const char *const **label);
 const char *plat_hotkey_modifier(void);
-void        plat_hotkey_modifier_set(const char *wire);
 
 /* Where Diatom is actually drawing the game, from its DISPLAY message. False
  * until it has said, which is the standalone path and the first moments of a
@@ -270,6 +313,9 @@ void        plat_hotkey_modifier_set(const char *wire);
  * its mode or rect can change, settling included (its ADR-0022), so the last
  * one heard is current. */
 bool plat_resident_rect(SDL_Rect *out);
+/* The mode Diatom said it is drawing in, the same way: a DS's Display Mode
+ * hotkey changes it under the launcher (plorpos-3yv.62). NULL until said. */
+const char *plat_resident_mode(void);
 /* Draw the paused game's preview where Diatom is drawing the game, or over the
  * whole screen until it has said. Diatom's rect is in the panel's own
  * pixels, which are layout units only where plat_scale() is 1. */
@@ -307,12 +353,12 @@ bool plat_sleep_supported(void);
 bool plat_sleep(void);
 
 /* NextUI's PWR_sleep: screen off, sound muted, CPU awake, until the power
- * button is released - or, left for the Suspend Timeout, real suspend via
+ * button is released - or, left for PLAT_SUSPEND_AFTER_S, real suspend via
  * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
  * whole of it. Returns false only when escalation found no suspend to go to,
  * which NextUI answers by powering off; the caller does that. waited_ms is
  * time the screen has already been dark (main.c's music_dark, after the
- * music stopped), counted toward the Suspend Timeout; 0 otherwise. */
+ * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
 
 /* END PolyForm-Noncommercial-1.0.0 */
@@ -340,9 +386,10 @@ void plat_clock_zone(const char *id);
 bool plat_usb_host(void);
 /* END PolyForm-Noncommercial-1.0.0 */
 
-/* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
- * light sleep waits unwoken before real suspend. Never 0. */
-int plat_suspend_timeout_secs(void);
+/* How long light sleep waits unwoken before real suspend, in seconds - fixed,
+ * no setting since plorpos-3yv.95 (it was NextUI's Suspend timeout, 30 s by
+ * default). On battery only: plat_light_sleep puts it off on a charger. */
+#define PLAT_SUSPEND_AFTER_S 10
 
 /* A tap sleeps (or powers off, when "power.tap" says to); a hold still powers off immediately, same as it always has - see
  * platform.c for the 400ms line between the two. Fed the button's current
@@ -358,6 +405,46 @@ pwr_action plat_power_tap_or_hold(bool down);
  * mid-game tap's PAUSE: launch() sleeps and RESUMEs rather than opening the
  * menu. */
 bool plat_resident_sleep_asked(void);
+
+/* Edge swipes over a running game (plorpos-3yv.45): the touch panel read
+ * straight from evdev, since the game's window has the focus and with it
+ * every touch SDL would deliver. A swipe in from the top is Muse, from the
+ * bottom the game switcher. Only the Rotate has a panel; elsewhere the fd is
+ * -1 and nothing is ever seen.
+ *
+ * Tight is a Nintendo DS game, whose bottom screen takes touches: the band
+ * narrows to GESTURE_TIGHT_PX and a swipe must be GESTURE_IN_PX in within
+ * GESTURE_TIGHT_MS, the window Diatom holds such a touch back from the core
+ * for - the two sides decide the same way from the same numbers. */
+typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER } gesture;
+#define GESTURE_BAND_PX  32
+#define GESTURE_TIGHT_PX 12
+#define GESTURE_IN_PX    30
+#define GESTURE_TIGHT_MS 100
+int     gesture_fd(void);
+void    gesture_tight(bool on);
+/* Drains the panel's queue; the swipe that completed in it, if any. */
+gesture gesture_read(void);
+/* Like plat_resident_sleep_asked, once: the gesture whose PAUSE the
+ * RES_PAUSED plat_resident_wait just returned answers. */
+gesture plat_resident_gesture_asked(void);
+/* Free drag (plorpos-gl5.5): a screen that moves things under the finger -
+ * the switcher's cards - asks the touch layer to stop turning drags into
+ * d-pad steps, and reads the drag itself, in panel pixels: where the finger
+ * is against where it went down while it is down, and once, on lifting, the
+ * same with its speed (px/ms). Taps, the long press and the edge swipes are
+ * unchanged. No panel: never active. */
+typedef struct {
+	bool  active;          /* a one-finger drag is under way */
+	bool  released;        /* it just ended (once) */
+	float dx, dy;          /* from where it went down */
+	float vx, vy;          /* at the release */
+} touch_drag_state;
+void plat_touch_free(bool on);
+bool plat_touch_drag_get(touch_drag_state *d);
+
+/* Why plat_run's on_menu was called: Menu (GESTURE_NONE) or a swipe. */
+gesture plat_run_menu_why(void);
 
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no
@@ -411,7 +498,7 @@ bool plat_hold_switch(void);
  * switch for its own reason - which volume window to use - so both halves ask
  * the hardware rather than one telling the other something it could get wrong. */
 bool plat_headphones_present(void);
-#if defined(PLATFORM_GKD)
+#if defined(PLAT_PIPEWIRE)
 /* PipeWire's default sink is the output, chosen in platform_gkd.c (gkd.9.3):
  * the Audio Output setting goes in, whether a Bluetooth sink exists comes
  * out. Nothing is sent to Diatom or Muse; both stay on "default". */
@@ -419,6 +506,7 @@ void plat_audio_speaker_only(bool on);
 bool plat_bt_audio(void);
 bool plat_usb_audio(void);          /* a USB DAC's sink exists */
 void plat_sink_follow(bool game);   /* a headset's own volume -> the level */
+void plat_audio_settle(unsigned ms); /* before a game: the speaker at the level */
 #endif
 /* kind: 1 = brightness, 2 = volume */
 void plat_osd_show(int kind, int val, int max);

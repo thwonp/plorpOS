@@ -23,12 +23,14 @@
 #define UI_TEXT_SOFT ((SDL_Color){ 198, 201, 214, 255 })
 #define UI_TEXT_DIM  ((SDL_Color){ 148, 153, 172, 255 })
 
-/* TortOS cyan: 0x3DD6FF. The one accent - menu chrome, volume OSD, and the
- * mark's center cell, where tools/markdef.py names it CYAN. The per-system
- * accents come from systems.cfg and are a separate thing. */
-#define UI_CYAN_R 61
-#define UI_CYAN_G 214
-#define UI_CYAN_B 255
+/* plorpOS purple: 0x8A5CD6 (plorpos-8m1.2; TortOS's cyan, 0x3DD6FF, before
+ * it). The one accent - menu chrome, volume OSD, earned achievements; it is
+ * tools/markdef.py's PURPLE. The names stay UI_CYAN_* so every user of the
+ * accent moved with this one edit. The per-system accents come from
+ * systems.cfg and are a separate thing. */
+#define UI_CYAN_R 138
+#define UI_CYAN_G 92
+#define UI_CYAN_B 214
 
 /* An earned achievement, in the cheevos list and on its detail card.
  *
@@ -40,7 +42,7 @@
  * Cyan is the one hue none of the eleven accents occupies, so an earned row
  * reads the same on every system. */
 #define UI_EARNED     ((SDL_Color){ UI_CYAN_R, UI_CYAN_G, UI_CYAN_B, 255 })
-#define UI_EARNED_RGB 0x3DD6FFu
+#define UI_EARNED_RGB 0x8A5CD6u
 
 /* One thickness for every horizontal indicator: the settings line across the
  * top and the position rail across the bottom are the same bar in two places,
@@ -52,10 +54,17 @@
  * than taken from the system accent, which would make one control change
  * color as you scrolled past it. */
 #define UI_OSD_BRIGHT ((SDL_Color){ 255, 206, 128, 255 })
-#define UI_OSD_VOLUME ((SDL_Color){  61, 214, 255, 255 })
+#define UI_OSD_VOLUME ((SDL_Color){ UI_CYAN_R, UI_CYAN_G, UI_CYAN_B, 255 })
 
 bool ui_init(SDL_Renderer *r, const char *font_path);
 void ui_quit(void);
+/* A face (UI Settings > Header Font / Body Font, plorpos-8m1.3 and
+ * plorpos-3yv.60): the file and its width correction, for the headings (head)
+ * or every other role. Kept across ui_init, so a screen that tears the UI down
+ * and brings it back keeps it; when the fonts are open, they are reopened at
+ * once and the text drawn from the old face dropped. NULL path: ui_init's own
+ * (head.ttf, or the font it was given), from the next ui_init. */
+void ui_set_face(bool head, const char *path, float scale);
 
 /* The type scale. One base size, a multiplier per role, and a global user
  * scale over the top -- so retuning a role is one number here instead of a
@@ -296,5 +305,49 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 
 /* rgb interpolation, for easing the background tint between systems */
 unsigned ui_mix(unsigned a, unsigned b, float t);
+
+/* ---- touch targets (plorpos-3yv.23) -----------------------------------
+ *
+ * What a tap can land on. While a frame draws, a screen records each item
+ * it shows as the presses that would select it from where the selection is
+ * now - a tile two to the right is (IN_RIGHT, 2), the selected item itself
+ * is n = 0 - so a tap sends the presses, and every screen's own wrapping,
+ * scrolling and skipping applies as it does for the d-pad. A menu panel
+ * drops whatever was recorded under it and makes a tap outside it a dismiss.
+ * The frame plat_present shows is the one a tap is checked against.
+ *
+ * Only the Rotate has a touch panel; elsewhere these cost nothing. */
+typedef enum {
+	UI_HIT_UNMAPPED,   /* the screen recorded nothing: no idea what's where */
+	UI_HIT_NONE,       /* empty space */
+	UI_HIT_ITEM,       /* an item: *button x *n (n 0 = the selected one) */
+	UI_HIT_OUTSIDE,    /* outside a menu panel */
+	UI_HIT_ID,         /* a screen's own key: *n is its id (ui_hit_id) */
+} ui_hit_kind;
+/* ui_hit_act: the same, but a tap on it is also A once there - a menu's row,
+ * which a touch means to choose; a shelf's tile only comes into focus
+ * (plorpos-3yv.56). */
+/* A screen whose items are not a d-pad walk away - the keyboard's keys, a
+ * tap on which types at once - records them by id instead; any tap on one
+ * hands the id to ui_hit_take, read on the screen's next poll (-1: none).
+ * ui_hit_clear drops what was recorded so far, as a backdrop drew it. */
+#ifdef PLATFORM_ROTATE
+void ui_hit(const SDL_Rect *r, int button, int n);
+void ui_hit_act(const SDL_Rect *r, int button, int n);
+void ui_hit_id(const SDL_Rect *r, int id);
+void ui_hit_modal(const SDL_Rect *panel);
+void ui_hit_clear(void);
+void ui_hit_frame(void);
+ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act);
+void ui_hit_give(int id);
+int  ui_hit_take(void);
+#else
+static inline void ui_hit(const SDL_Rect *r, int button, int n) { (void)r; (void)button; (void)n; }
+static inline void ui_hit_act(const SDL_Rect *r, int button, int n) { (void)r; (void)button; (void)n; }
+static inline void ui_hit_id(const SDL_Rect *r, int id) { (void)r; (void)id; }
+static inline void ui_hit_modal(const SDL_Rect *panel) { (void)panel; }
+static inline void ui_hit_clear(void) { }
+static inline int  ui_hit_take(void) { return -1; }
+#endif
 
 #endif

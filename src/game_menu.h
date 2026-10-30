@@ -107,17 +107,20 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
  * without opening a menu to get there. */
 
 typedef enum {
-	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_SHADER, GM_PALETTE, GM_DISC,
-	GM_CHEEVOS, GM_HOTKEYS, GM_RESET, GM_QUIT,
+	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_FILL, GM_SHADER, GM_PALETTE, GM_DISC,
+	GM_CHEEVOS, GM_HOTKEYS, GM_STYLUS, GM_RESET, GM_QUIT,
 	GM_ROWS
 } gm_row;
 
 /* What the in-game menu needs to know, gathered by the caller. */
 typedef struct {
 	const char *dmode;    /* the display mode's label */
+	bool        nds;      /* a DS game: the mode row is Layout (plorpos-6ei.13) */
+	const char *fill;     /* the DS's Display, "Aspect"|"Stretch"|"Integer"; NULL: no row (not a DS, or a panel where they all draw the same) */
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
+	const char *stylus;   /* "Left Stick"|"Right Stick"; NULL: not a DS game on a unit with two sticks (plorpos-reo.21.7) */
 	const char *disc;     /* "Disc N"; NULL: not an .m3u, or nothing to swap (plorpos-gkd.47) */
 	int         earned;
 	int         total;    /* 0: this game has no achievement set */

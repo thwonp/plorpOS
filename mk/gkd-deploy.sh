@@ -40,8 +40,12 @@ swap() { put "$1" "$GKD:$P/$2.new" && $S "mv -f $P/$2.new $P/$2"; }
 case $WHAT in elf)
 	[ -f "$ROOT/build/gkd/tortos.elf" ] || { echo "run make PLATFORM=gkd first"; exit 1; }
 	swap "$ROOT/build/gkd/tortos.elf" tortos.elf
-	put "$ROOT/config/systems.cfg" "$GKD:$P/"
-	echo "  + launcher"
+	# The DS and Ports shelves as on the Rotate (plorpos-46o.4, .5).
+	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" | $S "cat > $P/systems.cfg"
+	$S "mkdir -p $P/gkd/portmaster"
+	put "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$GKD:$P/gkd/portmaster/"
+	put "$ROOT/build/gkd/portfullscreen.so" "$GKD:$P/gkd/portmaster/"
+	echo "  + launcher, PortMaster runner"
 	# Muse runs until it is told to quit or dies; the launcher starts the new
 	# one the next time it finds no socket.
 	swap "$ROOT/build/gkd/muse" muse
@@ -50,7 +54,7 @@ case $WHAT in elf)
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$GKD:$P/cards/"
-	put "$ROOT/res/fonts/menu.ttf" "$ROOT/res/ssl/cacert.pem" "$ROOT/res/singles.png" "$GKD:$P/"
+	put "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/head.ttf" "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$ROOT/res/ssl/cacert.pem" "$ROOT/res/singles.png" "$GKD:$P/"
 	put "$ROOT/res/web/"* "$GKD:$P/res/web/"
 	put "$ROOT/res/fbneo-titles.tsv" "$GKD:$P/res/"
 	put "$ROOT/res/fonts/menu.ttf" "$GKD:$P/res/web/menu.ttf"
@@ -73,6 +77,8 @@ case $WHAT in boot)
 esac
 case $WHAT in vendor)
 	put "$ROOT/vendor/cores/"* "$GKD:$P/cores/"
+	# The GKD's own builds (mk/build-melondsds.sh, mk/build-dsperate.sh).
+	put "$ROOT/vendor/cores-gkd/"* "$GKD:$P/cores/"
 	echo "  + cores"
 esac
 $S sync

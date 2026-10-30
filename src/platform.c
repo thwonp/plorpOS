@@ -8,6 +8,7 @@
 #include "platform_dev.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <glob.h>
 #include <errno.h>
@@ -127,7 +128,7 @@ const char *plat_coreopt(const char *tag, int i)
  * seeding a binding the player never asked for is not what "opt-in" means.
  * A tag with no hotkey.<tag> row plays exactly as it always has. */
 #define HOTKEY_MAX 16
-static struct { char tag[8]; char map[128]; } hotkeys[HOTKEY_MAX];
+static struct { char tag[8]; char map[320]; } hotkeys[HOTKEY_MAX];
 static int nhotkeys = -1;                     /* -1 = not read yet */
 
 static bool hotkey_row(const char *key, const char *value, void *ctx)
@@ -165,6 +166,9 @@ const char *plat_hotkey_map(const char *tag)
 	if (!tag) return "";
 	for (i = 0; i < nhotkeys; i++)
 		if (!strcmp(hotkeys[i].tag, tag)) return hotkeys[i].map;
+	/* The DS on a unit with a right stick: its click is Stylus Tap until
+	 * the player binds anything (plorpos-6ei.6) - a default, not a seed. */
+	if (!strcmp(tag, "NDS") && plat_two_sticks()) return "d.r3:stylus";
 	return "";
 }
 
@@ -191,18 +195,18 @@ void plat_hotkey_set(const char *tag, const char *spec)
 	}
 }
 
-/* ---- the hotkey modifier: one key, chosen per device, held for every binding
- * above (diatom's ADR-0038, plorpos-gkd.43.1). Global, not per system, so the
- * muscle memory is the same in every game. The first entry is the default.
- * The stick clicks are the Brick Pro's; on the plain Brick those indexes are
- * its front brightness keys. */
+/* ---- the hotkey modifiers: the keys a binding may be held under (diatom's
+ * ADR-0038, plorpos-gkd.43.1). Each binding names its own since plorpos-6ei.6
+ * ("l3+a:ff"); hkmod, once a row of the Hotkeys screen, is now only what a
+ * spec saved before means. The stick click is the two-stick units'; R3 left
+ * the set to be a trigger of its own (plorpos-6ei.6). */
 #if defined(PLATFORM_GKD)
 /* The GKD's free Home key and its stick click as well (ADR-0037). */
 static const char *const HKMOD_WIRE[]  = { "menu", "home", "l3", "select" };
 static const char *const HKMOD_LABEL[] = { "Menu", "Home", "Stick Click", "Select" };
 #else
-static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3", "r3" };
-static const char *const HKMOD_LABEL[] = { "Menu", "Select", "L Stick Click", "R Stick Click" };
+static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Select", "L Stick Click" };
 #endif
 
 int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
@@ -212,7 +216,7 @@ int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
 #if defined(PLATFORM_GKD)
 	return 4;
 #else
-	return plat_is_brick_pro() ? 4 : 2;
+	return plat_two_sticks() ? 3 : 2;
 #endif
 }
 
@@ -227,11 +231,6 @@ const char *plat_hotkey_modifier(void)
 	for (i = 0; i < n; i++)
 		if (!strcmp(cur, wire[i])) return wire[i];
 	return wire[0];
-}
-
-void plat_hotkey_modifier_set(const char *wire)
-{
-	db_set_str(db_dev(), "hkmod", wire);
 }
 
 void paths_init(void)
@@ -342,6 +341,7 @@ static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 	if (pid == 0) {
 		ssize_t w;
 
+		setpgid(0, 0);   /* a group of its own: see group_term */
 		if (workdir) {
 			if (chdir(workdir) != 0) { /* still try to run */ }
 		}
@@ -353,8 +353,67 @@ static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 		(void)w;
 		_exit(127);
 	}
+	if (pid > 0) setpgid(pid, pid);   /* both sides, so no signal beats it */
 	return pid;
 }
+
+#ifdef __linux__
+/* A child is a process group of its own (run_fork), and is frozen, thawed and
+ * killed as one: a PortMaster port is a script whose game is its grandchild,
+ * which a signal to the script alone never reached (plorpos-3yv.86.3). For
+ * Diatom and PICO-8 the group is the one process, as before. */
+static void group_kill(pid_t pid, int sig)
+{
+	if (kill(-pid, sig) != 0) kill(pid, sig);
+}
+
+/* Ending a child: TERM to the group but its leader, so a port's script
+ * outlives its game and runs its own cleanup after it (pm_finish, westonwrap
+ * cleanup: gptokeyb, the runtimes' mounts) - and not to the script's tee
+ * (exec > >(tee log.txt)), whose end would take the script down with SIGPIPE
+ * mid-cleanup. A child with nothing under it gets the TERM itself. CONT as
+ * well: a stopped process does not act on TERM. After 3 s KILL to those same
+ * processes, if still there (Sopwith ignores TERM) - not to the cleanup the
+ * script started since, which a KILL to the group then cut short, leaving
+ * /tmp/godot mounted (plorpos-3yv.86.4). The whole group only at
+ * GROUP_KILL_MS, if the script is still there. */
+#define GROUP_KILL_MS 8000
+#define GROUP_MAX     64
+
+typedef struct { pid_t p[GROUP_MAX]; int n; } termed;
+
+static void group_term(pid_t pid, termed *t)
+{
+	DIR *d = opendir("/proc");
+	struct dirent *e;
+
+	t->n = 0;
+	while (d && (e = readdir(d))) {
+		pid_t p = (pid_t)atoi(e->d_name);
+		char path[64], comm[32] = "";
+		FILE *f;
+
+		if (p <= 0 || p == pid || getpgid(p) != pid) continue;
+		snprintf(path, sizeof path, "/proc/%d/comm", (int)p);
+		if ((f = fopen(path, "r"))) {
+			if (!fgets(comm, sizeof comm, f)) comm[0] = '\0';
+			fclose(f);
+		}
+		if (!strcmp(comm, "tee\n") || t->n == GROUP_MAX) continue;
+		kill(p, SIGTERM);
+		t->p[t->n++] = p;
+	}
+	if (d) closedir(d);
+	if (!t->n) t->p[t->n++] = pid, kill(pid, SIGTERM);
+	group_kill(pid, SIGCONT);
+}
+
+static void group_term_kill(pid_t pid, const termed *t)
+{
+	for (int i = 0; i < t->n; i++)
+		if (t->p[i] == pid || getpgid(t->p[i]) == pid) kill(t->p[i], SIGKILL);
+}
+#endif
 
 #ifdef __linux__
 /* End a child and wait for it: TERM, then KILL after 3 s. CONT as well, as a
@@ -363,15 +422,19 @@ static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 static void run_end(pid_t pid)
 {
 	int ms, status;
+	termed t;
 
-	kill(pid, SIGTERM);
-	kill(pid, SIGCONT);
-	for (ms = 0; ms < 3000; ms += 100) {
-		if (waitpid(pid, &status, WNOHANG) != 0) return;
+	group_term(pid, &t);
+	for (ms = 0; ms < GROUP_KILL_MS; ms += 100) {
+		if (waitpid(pid, &status, WNOHANG) != 0) break;
+		if (ms == 3000) group_term_kill(pid, &t);
 		usleep(100 * 1000);
 	}
-	kill(pid, SIGKILL);
-	waitpid(pid, &status, 0);
+	if (ms >= GROUP_KILL_MS) {
+		group_kill(pid, SIGKILL);
+		waitpid(pid, &status, 0);
+	}
+	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 }
 
 static void level_nudge(bool bright, int d)
@@ -424,7 +487,7 @@ static int lv_hold_wait(const lv_hold *h)
 }
 #endif
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 /* Where native PICO-8's sound goes, for pico8sdl.so's watcher to follow
  * (plorpos-7ny.35): "-" nothing, "" the default device, else the headset's
  * PCM and its link id - a headset that went and came back reopens. tmpfs. */
@@ -468,6 +531,10 @@ static void child_audio_release(void)
 	if (!fgets(now, sizeof now, f)) now[0] = '\0';
 	fclose(f);
 	if (!now[0] || now[0] == '-' || now[0] == '\t') return;   /* nothing, or the codec */
+	/* The Bricks name the codec (AOUT_CODEC_PCM): dmix shares it, so there is
+	 * nothing to let go of and no reason to keep the menu waiting for it. */
+	if (AOUT_CODEC_PCM[0] && !strncmp(now, AOUT_CODEC_PCM "\t", sizeof AOUT_CODEC_PCM))
+		return;
 	plat_child_audio(NULL, NULL);
 	while (plat_now_ms() - t0 < 400) {
 		usleep(5000);
@@ -480,6 +547,46 @@ static void child_audio_release(void)
 	        now[0] == '-' ? "let go" : "NOT let go", plat_now_ms() - t0);
 }
 #endif
+
+/* See platform_dev.h. */
+static struct { bool held, spent, swpulse; unsigned t0; } mf;
+
+void menu_filter_reset(bool held_now)
+{
+	mf.held = mf.spent = held_now;
+	mf.swpulse = false;
+}
+
+void menu_filter(in_state *st)
+{
+	bool raw = st->down[IN_MENU];
+	int b;
+
+	if (mf.swpulse) { st->down[IN_SWITCHER] = false; mf.swpulse = false; }
+	st->pressed[IN_MENU] = false;            /* never on the press */
+	if (raw && !mf.held) {
+		mf.held = true;
+		mf.spent = false;
+		mf.t0 = plat_now_ms();
+	}
+	if (mf.held && raw) {
+		for (b = 0; b < IN_COUNT; b++)
+			if (b != IN_MENU && st->pressed[b]) mf.spent = true;   /* a chord */
+		if (!mf.spent && plat_now_ms() - mf.t0 >= SWITCHER_HOLD_MS) {
+			mf.spent = true;
+			st->pressed[IN_SWITCHER] = st->down[IN_SWITCHER] = true;
+			mf.swpulse = true;
+		}
+	}
+	if (mf.held && !raw) {
+		mf.held = false;
+		if (!mf.spent) st->pressed[IN_MENU] = true;
+	}
+}
+
+static gesture run_menu_why;
+
+gesture plat_run_menu_why(void) { return run_menu_why; }
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
@@ -509,8 +616,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	int menu_code = 0;
 	int fd_menu = on_menu ? menu_key(&menu_code) : -1;
 	int fd_lv = levels_fd();
-	struct pollfd pfd[3] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 },
-	                         { fd_lv, POLLIN, 0 } };
+	int fd_ges = on_menu ? gesture_fd() : -1;
+	struct pollfd pfd[4] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 },
+	                         { fd_lv, POLLIN, 0 }, { fd_ges, POLLIN, 0 } };
+	if (fd_ges >= 0) gesture_read();          /* touches from before the run */
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		; /* drain stale events */
 	while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
@@ -518,23 +627,24 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
+	bool term_killed = false;   /* its game KILLed, the script let finish */
+	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
-#if defined(PLATFORM_H700)
-	/* Menu is the brightness modifier too (Menu+Vol): a tap goes on its
+	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
+	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
 	 * release, as pad_read and diatom have it, and only if no level key
 	 * went with it. Opened on the press, the menu met the release as a tap
 	 * of its own and closed again at once (plorpos-7ny.14). */
 	bool menu_held = false, menu_spent = false;
+	unsigned menu_t0 = 0;   /* held SWITCHER_HOLD_MS: the switcher (plorpos-gl5.3) */
 	const int menu_value = 0;
-#else
-	const int menu_value = 1;
-#endif
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		poll(pfd, 3, lv_hold_wait(&hold));
+		poll(pfd, 4, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
+		gesture swipe = fd_ges >= 0 ? gesture_read() : GESTURE_NONE;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
 		/* The volume keys: volume, or brightness with Home held, a step per
 		 * press and, held, the shelf's repeat (lv_hold). */
@@ -557,6 +667,23 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
+			/* The Rotate's volume keys share POWER's node (platform_rotate.c
+			 * levels_fd) and were dropped here: no volume or brightness in
+			 * a port or native PICO-8, and Menu+Vol held on into the switcher
+			 * (plorpos-3yv.86.5). Elsewhere this node has POWER alone. */
+			if (ev.type == EV_KEY && (ev.code == KEY_VOLUMEUP || ev.code == KEY_VOLUMEDOWN)) {
+				int d = ev.code == KEY_VOLUMEUP ? 1 : -1;
+
+				if (ev.value == 1) {
+					bool bright = levels_alt();
+
+					level_nudge(bright, d);
+					lv_hold_start(&hold, fd_power, ev.code, bright, d);
+					if (bright) menu_spent = true;
+				} else if (ev.value == 0 && hold.fd == fd_power && hold.code == ev.code) {
+					hold.next = 0;
+				}
+			}
 #if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == LID_CLOSE_KEY && ev.value == 1)
 				lid_tap = true;
@@ -574,9 +701,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				bool awake;
 
 				hold.next = 0;
-				kill(pid, SIGSTOP);
+				group_kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
-				kill(pid, SIGCONT);
+				group_kill(pid, SIGCONT);
 				run_asleep_ms += plat_now_ms() - t0;
 				fprintf(stderr, "sleep: %s after %us (child)\n",
 				        awake ? "awake" : "no suspend, powering off",
@@ -601,15 +728,13 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (d) {
 				level_nudge(bright, d);
 				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
-#if defined(PLATFORM_H700)
 				if (bright) menu_spent = true;
-#endif
 				continue;
 			}
-#if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
 				menu_spent = false;
+				menu_t0 = plat_now_ms();
 				continue;
 			}
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 0) {
@@ -618,7 +743,6 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu_held = false;
 				if (!tap) continue;
 			}
-#endif
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == menu_value) {
 				struct timespec now;
 
@@ -632,16 +756,27 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+		/* Menu held alone 700 ms: the switcher, and its release is then
+		 * nothing (plorpos-gl5.3). */
+		if (menu_held && !menu_spent && !menu &&
+		    plat_now_ms() - menu_t0 >= SWITCHER_HOLD_MS) {
+			menu_spent = true;
+			swipe = GESTURE_SWITCHER;
+		}
+		/* An edge swipe opens the same frozen-child screen, told why
+		 * (plorpos-3yv.45): Menu wins a tie. */
+		run_menu_why = menu ? GESTURE_NONE : swipe;
+		if (swipe != GESTURE_NONE) menu = true;
 		if (!term_at && !menu) lv_hold_tick(&hold);
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
 
 			hold.next = 0;       /* no hold carries through the menu */
 
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 			child_audio_release();
 #endif
-			kill(pid, SIGSTOP);
+			group_kill(pid, SIGSTOP);
 			if (child_hide(pid)) {
 				fprintf(stderr, "run: menu, child %d frozen\n", (int)pid);
 				c = on_menu(ctx);
@@ -653,13 +788,14 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 					;
 				while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
 					;
+				if (fd_ges >= 0) gesture_read();   /* the screen's own touches */
 				pwr_down = false;
 			}
 			if (c == RUN_CONTINUE) {
 				/* Muse may have started or stopped in the menu: said before
 				 * the game makes a sound, as game_menu does. */
 				if (on_tick) child_quiet(pid, on_tick(ctx));
-				kill(pid, SIGCONT);
+				group_kill(pid, SIGCONT);
 			}
 			else if (c == RUN_RESET) {
 				run_end(pid);
@@ -670,15 +806,23 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
 		if (g_terminating) quit = true;
 		if (quit && !term_at) {
-			kill(pid, SIGTERM);
-			kill(pid, SIGCONT);   /* a frozen child acts on TERM only once thawed */
+			group_term(pid, &ending);
 			term_at = plat_now_ms() | 1;
+			term_killed = false;
 		}
-		if (term_at && plat_now_ms() - term_at > 3000) {
-			kill(pid, SIGKILL);
+		/* Signed: term_at is now | 1, one ahead of a clock that has not
+		 * moved, and unsigned that read as 49 days gone - KILL straight
+		 * after the TERM, about every other quit (plorpos-3yv.86.4). */
+		if (term_at && !term_killed && (int)(plat_now_ms() - term_at) > 3000) {
+			group_term_kill(pid, &ending);
+			term_killed = true;
+		}
+		if (term_at && (int)(plat_now_ms() - term_at) > GROUP_KILL_MS) {
+			group_kill(pid, SIGKILL);
 			term_at = 0;
 		}
 	}
+	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 #else
 	(void)on_menu; (void)on_tick; (void)ctx;
 	if (waitpid(pid, &status, 0) < 0) { free(env); return -1; }
@@ -748,6 +892,9 @@ static size_t dused;
 static char   d_preview[1024];
 static SDL_Rect d_rect;
 static bool     d_rect_known;
+static SDL_Rect d_top, d_bottom;
+static bool     d_split_known;
+static char     d_mode[24];     /* DISPLAY's mode=, "" until said */
 static int    d_pend_vol = -1, d_pend_vol_n;      /* LEVEL events, held until */
 static int    d_pend_bri = -1, d_pend_bri_n;      /* EXIT hands levels back  */
 /* Diatom's QUIET, its ADR-0032: what the launcher wants, and what this
@@ -790,6 +937,11 @@ bool dsend(const char *fmt, ...)
 }
 
 /* One line, or NULL after timeout_ms with nothing complete. -1 blocks. */
+/* A second fd that ends dline's wait early, with no line - set only while
+ * diatom_wait runs, whose loop reads it. Every other caller is waiting for
+ * an answer and would read an early NULL as a timeout. */
+static int d_wake_fd = -1;
+
 static char *dline(int timeout_ms)
 {
 	static char out[2048];
@@ -809,7 +961,12 @@ static char *dline(int timeout_ms)
 			return out;
 		}
 		if (dsock < 0) return NULL;
-		if (poll(&p, 1, timeout_ms) <= 0) return NULL;
+		{
+			struct pollfd pp[2] = { p, { d_wake_fd, POLLIN, 0 } };
+
+			if (poll(pp, 2, timeout_ms) <= 0) return NULL;
+			if (!(pp[0].revents & (POLLIN | POLLHUP | POLLERR))) return NULL;
+		}
 		n = read(dsock, dbuf + dused, sizeof dbuf - dused);
 		if (n <= 0) { dclose(); return NULL; }
 		dused += (size_t)n;
@@ -820,7 +977,7 @@ static char *dline(int timeout_ms)
  * launch.sh wrote one, so on the GKD - and on the Brick after respawn_resident
  * started Diatom - there was no pid to escalate to, and a core wedged inside
  * retro_run kept the screen until someone ran kill -9 (plorpos-gkd.58). */
-static pid_t diatom_pid(void)
+pid_t diatom_pid(void)
 {
 	struct ucred cr;
 	socklen_t len = sizeof cr;
@@ -852,7 +1009,14 @@ unsigned plat_resident_generation(void) { return d_generation; }
  * only after. A launch that gave it 400 ms, as every caller once did, lost
  * that race on every resume at power-on and fell back to a standalone
  * emulator, where Menu ends the game (plorpos-7ny.34). */
-static bool dconnect_within(unsigned ready_ms)
+/* `connect_ms`: how long to wait for the socket to exist at all. No file
+ * yet is a Diatom still starting - launch.sh removes the socket and starts
+ * it only once the speaker's sink is up, up to 5 s on the Rotate - and a
+ * resume at power-on gets here ~0.4 s into the launcher. Without the wait
+ * it fell back to a standalone emulator every time (plorpos-3yv.66), the
+ * case ready_ms was meant to remove. A dead Diatom leaves its file, which
+ * refuses at once, so that fallback is still immediate. */
+static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 {
 	struct sockaddr_un a;
 	const char *path = plat_resident_socket();
@@ -876,7 +1040,13 @@ static bool dconnect_within(unsigned ready_ms)
 	memset(&a, 0, sizeof a);
 	a.sun_family = AF_UNIX;
 	snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
-	if (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) { dclose(); return false; }
+	t0 = plat_now_ms();
+	while (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) {
+		if (errno != ENOENT || plat_now_ms() - t0 >= connect_ms) { dclose(); return false; }
+		usleep(50 * 1000);
+	}
+	if (plat_now_ms() - t0 >= 100)
+		fprintf(stderr, "diatom: socket up after %u ms\n", plat_now_ms() - t0);
 
 	t0 = plat_now_ms();
 	while (dsock >= 0 && plat_now_ms() - t0 < ready_ms &&
@@ -900,7 +1070,7 @@ static bool dconnect_within(unsigned ready_ms)
 	return false;
 }
 
-static bool dconnect(void) { return dconnect_within(400); }
+static bool dconnect(void) { return dconnect_within(0, 400); }
 
 bool plat_resident_ready(void)
 {
@@ -909,7 +1079,7 @@ bool plat_resident_ready(void)
 
 bool plat_resident_ready_wait(void)
 {
-	return dconnect_within(8000);
+	return dconnect_within(6000, 8000);
 }
 
 
@@ -925,6 +1095,20 @@ static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
 void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
 static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
 static bool d_turbo_gba;
+static char d_turbo_key[600];     /* "turbo.<TAG>/<rom file>": this game's saved bits */
+
+/* Persistent Turbo Assignments (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
+ * the session - one row per game in the library db, beside its hotkeys, saved
+ * on every change and read back at RUN. Off is session-only, as before, and
+ * leaves saved rows alone, so turning it back On brings them back. */
+static bool d_turbo_persist(void) { return db_get_int(db_dev(), "persistturbo", 0) != 0; }
+
+static void d_turbo_save(void)
+{
+	if (!d_turbo_persist() || !d_turbo_key[0]) return;
+	if (d_turbo) db_set_int(db_lib(), d_turbo_key, (int)d_turbo);
+	else         db_del(db_lib(), d_turbo_key);
+}
 static void d_turbo_send(void);
 
 static void (*d_on_tick)(void);
@@ -937,7 +1121,29 @@ void plat_resident_on_tick(void (*fn)(void)) { d_on_tick = fn; }
  * that in a loop, returning to it after every in-game menu, and a local reset
  * to 0 on each re-entry made a running game look like one that never started.
  * The cost was not cosmetic - see the ERROR arm in diatom_wait. */
-static int d_got_running;
+static volatile int d_got_running;
+
+/* True once Diatom has said RUNNING for the game last sent; any thread. */
+bool plat_resident_running(void) { return d_got_running != 0; }
+
+/* Asks Diatom to put its SRAM on the card and says when it has. The pause no
+ * longer waits for that write (plorpos-2wl.12), so what needs it done - a
+ * sleep, which may never wake - asks here, with the screen already dark.
+ * Diatom answers FLUSHED whether a game is up, paused or none, so this is
+ * safe to call at any sleep; a Diatom that does not answer costs the timeout. */
+void plat_resident_flush(unsigned timeout_ms)
+{
+	unsigned t0 = plat_now_ms();
+	char *l;
+
+	if (dsock < 0 || !dsend("FLUSH")) return;
+	while (plat_now_ms() - t0 < timeout_ms) {
+		l = dline(100);
+		if (l && strncmp(l, "FLUSHED", 7) == 0) return;
+		if (dsock < 0) return;
+	}
+	fprintf(stderr, "flush: Diatom did not answer in %u ms\n", timeout_ms);
+}
 
 bool plat_resident_send(const plat_game *g)
 {
@@ -962,6 +1168,8 @@ bool plat_resident_send(const plat_game *g)
 		if (!dconnect()) return false;
 		d_preview[0] = '\0';
 		d_rect_known = false;
+		d_split_known = false;
+		d_mode[0] = '\0';
 		d_pend_vol = d_pend_bri = -1;
 
 		/* Before RUN, not after. mgba_sgb_borders and mgba_use_bios are both
@@ -1013,17 +1221,24 @@ bool plat_resident_send(const plat_game *g)
 		 * choice, and diatom reads 0 as the first disc (plorpos-gkd.47). */
 		char disc[24] = "";
 		if (g->disc > 0) snprintf(disc, sizeof disc, "\tdisc=%d", g->disc - 1);
+		/* fill= with mode=, for the same first frames (plorpos-6ei.13). */
+		char fill[24] = "";
+		if (g->fill) snprintf(fill, sizeof fill, "\tfill=%s", g->fill);
 		/* shots= is the Screenshot hotkey's folder (plorpos-gkd.86.2), at
 		 * the card's root beside Roms and Saves, where a player looks; Diatom
 		 * makes it on the first shot. */
-		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s"
+		/* mode= on RUN, not a SETDISPLAY after it: RUN's warmup draws three
+		 * frames before Diatom reads another message, so a GBA in Aspect or
+		 * a DS layout showed full-screen first (2026-10-25, the shader's
+		 * flash above over again). */
+		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s%s\tshots=%s/Screenshots",
-		           g->core, g->rom, tag,
+		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
+		           g->core, g->rom, tag, g->mode ? g->mode : "",
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : "", disc, P_CARD))
+		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD))
 			return false;
 
 		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.
@@ -1037,7 +1252,13 @@ bool plat_resident_send(const plat_game *g)
 		 * that was never sent, one that was refused, and a test rig that could
 		 * not press the button - which cost an hour on 2026-08-31. Diatom logs
 		 * the receiving half for the same reason. */
-		d_turbo = 0;
+		{
+			const char *f = g->rom ? strrchr(g->rom, '/') : NULL;
+
+			snprintf(d_turbo_key, sizeof d_turbo_key, "turbo.%s/%s", tag ? tag : "",
+			         f ? f + 1 : g->rom ? g->rom : "");
+		}
+		d_turbo = d_turbo_persist() ? (uint32_t)db_get_int(db_lib(), d_turbo_key, 0) : 0;
 		d_turbo_gba = tag && !strcmp(tag, "GBA");
 		d_turbo_send();
 
@@ -1061,7 +1282,26 @@ bool plat_resident_send(const plat_game *g)
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
 		 * SETHOTKEYS is. Set on the Hotkeys screen. */
-		dsend("SETREWINDSPEED\tevery=%d", db_get_int(db_dev(), "rewindspeed", 5));
+		{
+			int every = db_get_int(db_dev(), "rewindspeed", 0);
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+			/* Off for the DS on the Brick and H700 (plorpos-reo.21): a
+			 * capture is a 6 MB state that takes ~20 ms, which no frame of
+			 * a heavy 3D scene can spare on four Cortex-A53s. */
+			if (tag && !strcmp(tag, "NDS")) every = 0;
+#endif
+			dsend("SETREWINDSPEED\tevery=%d", every);
+		}
+		/* And the fast-forward hotkey's speed (plorpos-pyz.5), the same way:
+		 * Diatom puts it back to 4 at every RUN. Game Settings. */
+		dsend("SETFFSPEED\tspeed=%d", db_get_int(db_dev(), "ffspeed", 4));
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+		/* What moves the DS stylus (plorpos-reo.21.7): a unit with two sticks
+		 * uses one, the left unless Game Settings says the right, and leaves
+		 * the d-pad to the game; any other unit's d-pad is the cursor. */
+		dsend("SETSTYLUSSTICK\tstick=%s", !plat_two_sticks() ? "dpad"
+		      : db_get_int(db_dev(), "stylusstick", 1) ? "right" : "left");
+#endif
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
 		 * it is done drawing the moment the game is up - so the last thing
@@ -1253,6 +1493,7 @@ static void d_note_turbo(const char *l)
 	} else if (strstr(l, "clear=1")) {
 		d_turbo = 0;
 		d_turbo_send();
+		d_turbo_save();
 		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
 	} else if ((v = strstr(l, "btn="))) {
 		for (i = 0; i < TURBO_N; i++)
@@ -1260,6 +1501,7 @@ static void d_note_turbo(const char *l)
 		if (i == TURBO_N) return;
 		d_turbo ^= 1u << i;
 		d_turbo_send();
+		d_turbo_save();
 		for (int k = 0; turbo_names[i][k] && k < 3; k++)
 			up[k] = (char)toupper((unsigned char)turbo_names[i][k]);
 		if (d_on_turbo)
@@ -1270,14 +1512,28 @@ static void d_note_turbo(const char *l)
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
 static void d_note_display(const char *l)
 {
-	const char *r = strstr(l, "rect=");
+	const char *r = strstr(l, "rect="), *m = strstr(l, "mode=");
+	const char *top = strstr(l, "\ttop="), *bottom = strstr(l, "\tbottom=");
 	int w, h, x, y;
 
+	d_split_known = false;
+	if (m) snprintf(d_mode, sizeof d_mode, "%.*s", (int)strcspn(m + 5, "\t\n"), m + 5);
 	if (!r || sscanf(r + 5, "%dx%d+%d+%d", &w, &h, &x, &y) != 4) return;
 	if (w <= 0 || h <= 0) return;
 	d_rect.w = w; d_rect.h = h; d_rect.x = x; d_rect.y = y;
 	d_rect_known = true;
+	/* Optional DS screen destinations, already calculated by Diatom for
+	 * the active layout and actual panel. Older/single-screen replies keep
+	 * the original one-rectangle path. */
+	if (top && bottom &&
+	    sscanf(top + 5, "%dx%d+%d+%d", &d_top.w, &d_top.h, &d_top.x, &d_top.y) == 4 &&
+	    sscanf(bottom + 8, "%dx%d+%d+%d", &d_bottom.w, &d_bottom.h,
+	           &d_bottom.x, &d_bottom.y) == 4 &&
+	    d_top.w >= 0 && d_top.h >= 0 && d_bottom.w >= 0 && d_bottom.h >= 0)
+		d_split_known = true;
 }
+
+const char *plat_resident_mode(void) { return d_mode[0] ? d_mode : NULL; }
 
 bool plat_resident_rect(SDL_Rect *out)
 {
@@ -1289,6 +1545,7 @@ bool plat_resident_rect(SDL_Rect *out)
 /* ---- geometry --------------------------------------------------------- */
 
 int plat_screen_w = 1024, plat_screen_h = 768;
+int plat_panel_w = 1024, plat_panel_h = 768;
 static float g_scale = 1.0f;
 
 float plat_scale(void) { return g_scale; }
@@ -1307,6 +1564,8 @@ void plat_geometry_init(SDL_Renderer *r)
 
 	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
 	g_scale = (float)w / 1024 < (float)h / 768 ? (float)w / 1024 : (float)h / 768;
+	plat_panel_w = w;
+	plat_panel_h = h;
 	plat_screen_w = (int)(w / g_scale);
 	plat_screen_h = (int)(h / g_scale);
 	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
@@ -1319,12 +1578,19 @@ void plat_geometry_init(SDL_Renderer *r)
 void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
 {
 	SDL_Rect d;
+	int w = 0, h = 0;
 
 	if (!plat_resident_rect(&d)) { SDL_RenderCopy(r, bg, NULL, NULL); return; }
-	if (g_scale == 1.0f) { SDL_RenderCopy(r, bg, NULL, &d); return; }
-	SDL_RenderSetScale(r, 1.0f, 1.0f);
-	SDL_RenderCopy(r, bg, NULL, &d);
-	SDL_RenderSetScale(r, g_scale, g_scale);
+	if (g_scale != 1.0f) SDL_RenderSetScale(r, 1.0f, 1.0f);
+	if (d_split_known && SDL_QueryTexture(bg, NULL, NULL, &w, &h) == 0 && w > 0 && h > 1) {
+		SDL_Rect src = { 0, 0, w, h / 2 };
+		if (d_top.w > 0 && d_top.h > 0) SDL_RenderCopy(r, bg, &src, &d_top);
+		src.y = h / 2;
+		if (d_bottom.w > 0 && d_bottom.h > 0) SDL_RenderCopy(r, bg, &src, &d_bottom);
+	} else {
+		SDL_RenderCopy(r, bg, NULL, &d);
+	}
+	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
 }
 
 /* Only safe while Diatom is paused, which is the only place it is called from:
@@ -1462,6 +1728,26 @@ bool plat_resident_sleep_asked(void)
 	return was;
 }
 
+/* A mid-game edge swipe asked Diatom to PAUSE: the PAUSED is Muse or the
+ * switcher, not the menu (plorpos-3yv.45). */
+static gesture d_gesture_asked;
+
+gesture plat_resident_gesture_asked(void)
+{
+	gesture was = d_gesture_asked;
+	d_gesture_asked = GESTURE_NONE;
+	return was;
+}
+
+#if !defined(PLATFORM_ROTATE)
+void plat_touch_free(bool on) { (void)on; }
+bool plat_touch_drag_get(touch_drag_state *d) { memset(d, 0, sizeof *d); return false; }
+/* No touch panel: nothing to read, nothing ever swiped. */
+int     gesture_fd(void) { return -1; }
+void    gesture_tight(bool on) { (void)on; }
+gesture gesture_read(void) { return GESTURE_NONE; }
+#endif
+
 static int diatom_wait(void)
 {
 	int sent_stop = 0;
@@ -1502,6 +1788,11 @@ static int diatom_wait(void)
 				/* A sleep's PAUSE overtaken by a hold's STOP: the game is
 				 * ending, and its EXIT is what to wait for. */
 				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
+				if (d_gesture_asked && sent_stop) { d_gesture_asked = GESTURE_NONE; continue; }
+				/* Menu held 700 ms in the game: Diatom's word for the
+				 * switcher, read the way a swipe's PAUSE is (plorpos-gl5.3). */
+				if (strstr(l, "\tfor=switcher") && d_gesture_asked == GESTURE_NONE)
+					d_gesture_asked = GESTURE_SWITCHER;
 				return RES_PAUSED;
 			}
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
@@ -1589,6 +1880,20 @@ static int diatom_wait(void)
 			}
 		}
 #endif
+		/* An edge swipe over the game: PAUSE, and the PAUSED that answers
+		 * comes back to launch() as Muse or the switcher - see
+		 * plat_resident_gesture_asked. One at a time, and never over a
+		 * sleep's PAUSE or an ending game. */
+		{
+			gesture g = gesture_read();
+
+			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
+			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
+				d_gesture_asked = g;
+				dsend("PAUSE");
+			}
+		}
+
 		/* A termination arriving mid-game. Without this the loop waits for a
 		 * game that nobody is going to end, and the process cannot be
 		 * signaled out of it - which is how `killall tortos.elf` came to do
@@ -1628,9 +1933,12 @@ int plat_resident_wait(void)
 	int r;
 
 	screen_yield(true);
+	d_wake_fd = gesture_fd();
+	gesture_read();                  /* touches from before the game */
 	r = diatom_wait();
+	d_wake_fd = -1;
 	screen_yield(false);
-#if !defined(PLATFORM_GKD)
+#if !defined(PLAT_PIPEWIRE)
 	/* A pause hands the input back too, and with it the level: take the
 	 * game's now, not at EXIT. Otherwise the jack poll below re-applies this
 	 * side's older level the moment the menu opens, and the game resumes at
@@ -1728,7 +2036,7 @@ static unsigned resume_at;
  * sound muted, neither persisted (NextUI's SetRawVolume, not SetVolume - a
  * crash asleep must not boot dark and silent).
  *
- * Left unwoken for the Suspend Timeout it escalates into real suspend,
+ * Left unwoken for PLAT_SUSPEND_AFTER_S it escalates into real suspend,
  * plat_sleep(), and returns once that resumes. Charging, or a computer
  * attached, puts the escalation off a minute at a time instead - suspending
  * on external power hangs this kernel (TortOS-2pv), which is why NextUI
@@ -1745,23 +2053,41 @@ static unsigned resume_at;
  * (the music player) is paused by the caller, main.c's sleep_cycle; the
  * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
  * (TortOS-1v7.1.2.11). */
+/* The screen off, for a caller that has work to do before it sleeps and
+ * should not make anyone watch it (plorpos-2wl.12). */
+void plat_screen_off(void)
+{
+#ifdef __linux__
+	backlight_off();
+#endif
+}
+
 bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;
 #ifdef __linux__
 	int saved_vol = cur_vol;
-	int timeout_ms = plat_suspend_timeout_secs() * 1000;
+	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
 	unsigned since;
 
 	plat_input_flush();                   /* PAD_reset */
 	backlight_off();
+#if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0) apply_volume(0);
+#endif
+	/* Dark first: the SRAM write can take a second or two on a slow card, and
+	 * nobody should watch the screen wait for it. Before the sync below. */
+	plat_resident_flush(8000);
 	sync();
 
 	since = plat_now_ms() - waited_ms;    /* already dark that long */
 	for (;;) {
 		bool charging = false;
 
+		/* A SIGTERM ends the wait (its poll returns EINTR): a restart or a
+		 * shutdown during sleep waited systemd's 90 s for the SIGKILL
+		 * (plorpos-3yv.87). The caller sees quit_requested next poll. */
+		if (g_terminating) break;
 		if (power_key_within(200, 0)) break;
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
@@ -1775,7 +2101,17 @@ bool plat_light_sleep(unsigned waited_ms)
 	}
 
 	apply_brightness(cur_bright);
+#if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+#else
+	/* Not on the Rotate: its volume is a PipeWire sink's, which WirePlumber
+	 * saves - the 0 became a headset's stored level - and the default sink
+	 * here can be another than at the mute, a headset gone across the
+	 * suspend, so the speaker took the headset's level (plorpos-3yv.76).
+	 * Nothing plays to be muted: Muse is paused by sleep_cycle, a game by
+	 * its menu, and Diatom has let go of the speaker. */
+	(void)saved_vol;
+#endif
 	sync();
 	plat_input_flush();                   /* PAD_reset, and whatever was
 	                                       * pressed in the dark */
@@ -1813,11 +2149,6 @@ bool plat_usb_host(void)
 	return host;
 }
 
-int plat_suspend_timeout_secs(void)
-{
-	int v = db_get_int(db_dev(), "suspendtimeout", 30);
-	return v > 0 ? v : 30;          /* NextUI's default; 0 is not a choice */
-}
 
 #define POWER_HOLD_MS 400u
 

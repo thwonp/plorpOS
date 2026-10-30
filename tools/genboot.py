@@ -3,6 +3,11 @@
 """Render the TortOS boot animation and the still images that bracket it.
 
 Run from the repo root:  python3 tools/genboot.py
+  or, with plorpOS's own picture:  python3 tools/genboot.py --logo FILE.png [--out DIR]
+
+plorpOS ships the second: --logo res/boot/plorpos-wordmark.png, the Rotate's
+boot wordmark (head.ttf, Fredoka, at 264 pt: "plorp" #8A5CD6 + "OS" #EDEDF2,
+appended and trimmed with magick label:).
 
 Outputs (all under res/boot/):
   tortos-boot.mp4   1024x768, 30 fps, exactly 72 frames (2.400 s), H.264.
@@ -202,6 +207,26 @@ def render(n, font):
     return im.convert("RGB").resize((W, H), Image.LANCZOS)
 
 
+def render_logo(n, logo):
+    """plorpOS's drop-in (plorpos-8m1.1): a picture faded in over the
+    background and held, in place of the mark's animation. Same length, same
+    frame 0, same outputs - only what is drawn changes. The picture is fitted
+    into 60% of the width and centered; its own alpha is kept."""
+    im = Image.new("RGB", (W, H), BG)
+    a = eo(cl((n - 6) / 24.0))         # frames 6-30 fade in, then the hold
+    if a > 0:
+        lw = int(W * 0.6)
+        lh = int(logo.height * lw / logo.width)
+        if lh > H * 0.6:
+            lh = int(H * 0.6)
+            lw = int(logo.width * lh / logo.height)
+        pic = logo.resize((lw, lh), Image.LANCZOS)
+        if a < 1:
+            pic.putalpha(pic.getchannel("A").point(lambda v: int(v * a)))
+        im.paste(pic, ((W - lw) // 2, (H - lh) // 2), pic)
+    return im
+
+
 def find_ffmpeg():
     for cand in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
         if os.path.exists(cand):
@@ -213,6 +238,15 @@ def find_ffmpeg():
 
 
 def main():
+    global OUT_DIR
+    # --logo PNG [--out DIR]: the drop-in picture instead of the mark. --out
+    # keeps a trial out of res/boot until it is the one (plorpos-8m1.1).
+    logo = None
+    args = sys.argv[1:]
+    if "--logo" in args:
+        logo = Image.open(args[args.index("--logo") + 1]).convert("RGBA")
+    if "--out" in args:
+        OUT_DIR = args[args.index("--out") + 1]
     os.makedirs(OUT_DIR, exist_ok=True)
     if os.path.isdir(TMP_DIR):
         shutil.rmtree(TMP_DIR)
@@ -221,7 +255,7 @@ def main():
 
     first = None
     for i in range(N_FRAMES):
-        frame = render(i, font)
+        frame = render_logo(i, logo) if logo else render(i, font)
         if i == 0:
             first = frame
         frame.save(os.path.join(TMP_DIR, "f%04d.png" % i))
@@ -237,14 +271,19 @@ def main():
     first.convert("RGB").save(png)
 
     mp4 = os.path.join(OUT_DIR, "tortos-boot.mp4")
+    ffmpeg = find_ffmpeg()
+    # Fedora's ffmpeg has no libx264; its OpenH264 makes the same H.264 the
+    # device's ffmpeg plays (Baseline, a bitrate rather than a CRF).
+    encoders = subprocess.run([ffmpeg, "-hide_banner", "-encoders"],
+                              capture_output=True, text=True).stdout
+    codec = (["-c:v", "libx264", "-crf", "20"] if " libx264 " in encoders
+             else ["-c:v", "libopenh264", "-b:v", "4M"])
     subprocess.run([
-        find_ffmpeg(), "-y", "-loglevel", "error",
+        ffmpeg, "-y", "-loglevel", "error",
         "-framerate", str(FPS), "-start_number", "0",
         "-i", os.path.join(TMP_DIR, "f%04d.png"),
         "-frames:v", str(N_FRAMES), "-fps_mode", "passthrough",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20",
-        "-movflags", "+faststart", mp4,
-    ], check=True)
+    ] + codec + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4], check=True)
 
     for path in (mp4, bmp, png):
         print("%s  %d bytes" % (path, os.path.getsize(path)))

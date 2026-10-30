@@ -94,12 +94,12 @@ static const db_default device_defaults[] = {
 	{ "audioout",   "auto" },  /* auto | speaker - see src/audioout.h */
 	{ "autooff",    "60" },    /* Auto Sleep, seconds without input, 0 is off -
 	                              NextUI's Screen timeout default */
-	{ "suspendtimeout", "30" }, /* light sleep to real suspend, seconds, never
-	                              0 - NextUI's Suspend timeout default */
 	{ "autopoweroff", "0"  },  /* Auto Off, seconds without input, 0 is off -
 	                              mutually exclusive with autooff */
 	{ "wifi",       "0"  },    /* what THIS device was last doing, not the */
 	{ "bluetooth",  "0"  },    /* shipped default - seeding merges the two */
+	{ "font",       "quicksand" },   /* UI Settings > Body Font (plorpos-8m1.3) */
+	{ "headfont",   "fredoka" },     /* UI Settings > Header Font (plorpos-3yv.60) */
 	{ "cards",      CARDS_DEFAULT },
 	{ "cards_dir",  CARDS_DIR_DEFAULT },
 	{ "sys_order",  "year" },  /* SYS_ORDER_DEFAULT, config.h */
@@ -138,6 +138,53 @@ static const db_default library_defaults[] = {
 	 * panel shows the difference and its A72s can afford it. The Brick's
 	 * A53s run pcsx_rearmed at native resolution, as NextUI ships it. */
 	{ "coreopt.PS.pcsx_rearmed_neon_enhancement_enable", "enabled" },
+#endif
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
+	/* The Nintendo DS (plorpos-3yv.47): melonDS DS stacks the two screens
+	 * top over bottom in one frame and Diatom lays them out (Display Mode,
+	 * its ds-a/ds-b); one layout, no gap, so the frame is always that
+	 * shape. The panel is the stylus: touch mode, and no cursor drawn
+	 * over the bottom screen. JIT and the threaded renderer are what hold
+	 * 60 fps on the T618 (ds-spike.md: no JIT misses 27% of frames). */
+	{ "coreopt.NDS.melonds_touch_mode",                "touch" },
+	{ "coreopt.NDS.melonds_show_cursor",               "disabled" },
+	{ "coreopt.NDS.melonds_number_of_screen_layouts",  "1" },
+	{ "coreopt.NDS.melonds_screen_layout1",            "top-bottom" },
+	{ "coreopt.NDS.melonds_screen_gap",                "0" },
+	{ "coreopt.NDS.melonds_jit_enable",                "enabled" },
+	{ "coreopt.NDS.melonds_render_mode",               "software" },
+	{ "coreopt.NDS.melonds_threaded_renderer",         "enabled" },
+	{ "coreopt.NDS.melonds_show_current_layout",       "disabled" },
+#endif
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	/* The Brick (plorpos-reo.21): the d-pad is the stylus (Stylus Mode), so
+	 * the core's pointer is "touch" and it draws no cursor over the bottom
+	 * screen - Diatom stamps its own. One stacked layout, no gap, as the GKD;
+	 * Diatom shows one screen at a time. No performance option is set: the
+	 * 59.83 fps measured was on the core's defaults. */
+	{ "coreopt.NDS.melonds_touch_mode",                "touch" },
+	{ "coreopt.NDS.melonds_show_cursor",               "disabled" },
+	{ "coreopt.NDS.melonds_number_of_screen_layouts",  "1" },
+	{ "coreopt.NDS.melonds_screen_layout1",            "top-bottom" },
+	{ "coreopt.NDS.melonds_screen_gap",                "0" },
+#endif
+#if defined(PLATFORM_GKD)
+	/* No panel on the GKD (plorpos-46o.4): "touch" is still the pointer,
+	 * which Diatom moves with the stick and presses with Stylus - R2,
+	 * which the DS has no button for. Its own cursor is Diatom's, so
+	 * melonDS draws none. FF and rewind stay off the stick, which is the
+	 * cursor while a DS game runs. */
+	{ "hotkey.NDS",                                    "x:swap,d.r2:stylus" },
+#endif
+#if defined(PLATFORM_ROTATE)
+	/* The real mic, always listening like a DS's (plorpos-3yv.75): the
+	 * core's default is Hold, on RetroPad L3, which the Rotate does not
+	 * have - so out of the box the mic would never open. */
+	{ "coreopt.NDS.melonds_mic_input",                 "microphone" },
+	{ "coreopt.NDS.melonds_mic_input_active",          "always" },
+	/* Display Mode on Menu+X out of the box: the DS's own X stays a game
+	 * button alone (plorpos-3yv.47). */
+	{ "hotkey.NDS",                                    "x:swap" },
 #endif
 };
 

@@ -58,6 +58,15 @@ static const char *LAYER[3] = {
  * a key you can see is better than one more thing to memorize. */
 #define ROW_SPACE KB_ROWS
 
+/* Touch (plorpos-3yv.23.4): a tap types the key under it, wherever the
+ * selection is, and the hint chips are the face buttons they name. Ids for
+ * ui_hit_id: a key is its index in the grid, the space bar the one after,
+ * a chip KB_CHIP plus its place in the hint bar - L/R split in two. */
+#define KB_SPACE_ID (KB_ROWS * KB_COLS)
+#define KB_CHIP     64
+static const in_button CHIP_BTN[] = { IN_ACCEPT, IN_BACK, IN_X, IN_Y, IN_L1,
+                                      IN_START, IN_MENU, IN_R1 };
+
 typedef struct {
 	char buf[512];
 	int  len, cur;      /* cursor sits BEFORE buf[cur] */
@@ -197,6 +206,10 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 			                           : (SDL_Color){ 32, 35, 46, 255 });
 			ui_text(r, fk, lbl, q.x + KEY_W / 2, q.y + 12, 0,
 			        sel ? UI_TEXT : UI_TEXT_SOFT);
+			/* The gaps too, so a finger between two keys still types. */
+			ui_hit_id(&(SDL_Rect){ q.x - KEY_GAP / 2, q.y - KEY_GAP / 2,
+			                       KEY_W + KEY_GAP, KEY_H + KEY_GAP },
+			          i * KB_COLS + c);
 		}
 	}
 
@@ -209,6 +222,8 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 		                           : (SDL_Color){ 32, 35, 46, 255 });
 		ui_text(r, ui_font(UI_F_META), "space", q.x + q.w / 2, q.y + 8, 0,
 		        sel ? UI_TEXT : UI_TEXT_DIM);
+		ui_hit_id(&(SDL_Rect){ q.x, q.y - KEY_GAP / 2, q.w, q.h + KEY_GAP },
+		          KB_SPACE_ID);
 	}
 
 	/* The hint bar. Every verb has a button; showing the glyph is what
@@ -239,8 +254,19 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 			for (i = from; i < to; i++) total += hint_width(btn[i], lbl[i]);
 			hx = panel.x + (PANEL_W - total) / 2;
 			for (i = from; i < to; i++) {
+				int w = hint_width(btn[i], lbl[i]);
+				SDL_Rect hit = { hx - 6, y0 + n * lh - 6, w, lh + 4 };
+
 				draw_hint(r, hx, y0 + n * lh, btn[i], lbl[i]);
-				hx += hint_width(btn[i], lbl[i]);
+				if (i == 4) {   /* L/R: the left half is L, the right R */
+					hit.w /= 2;
+					ui_hit_id(&hit, KB_CHIP + 4);
+					hit.x += hit.w;
+					ui_hit_id(&hit, KB_CHIP + 7);
+				} else {
+					ui_hit_id(&hit, KB_CHIP + i);
+				}
+				hx += w;
 			}
 		}
 	}
@@ -278,9 +304,21 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
 
 	ui_pace pace = {0};
 
+	ui_hit_take();          /* a tap from before this keyboard is not ours */
 	for (;;) {
+		int tap;
+
 		plat_input_poll(in);
 		if (in->quit_requested) return KB_CANCEL;
+		/* A tapped key is selected and typed; a chip is its button. */
+		tap = ui_hit_take();
+		if (tap >= 0 && tap <= KB_SPACE_ID) {
+			k.row = tap == KB_SPACE_ID ? ROW_SPACE : tap / KB_COLS;
+			k.col = tap == KB_SPACE_ID ? 0 : tap % KB_COLS;
+			in->pressed[IN_ACCEPT] = true;
+		} else if (tap >= KB_CHIP && tap < KB_CHIP + 8) {
+			in->pressed[CHIP_BTN[tap - KB_CHIP]] = true;
+		}
 		/* Typing a password is the longest anyone stares at this device
 		 * without pressing anything, and it was the one screen where that
 		 * could go on forever. */
@@ -340,6 +378,7 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
 			}
 		}
 		if (backdrop) backdrop(ctx);
+		ui_hit_clear();       /* the screen behind takes no taps */
 		kb_draw(r, &k, title, accent);
 		plat_draw_osd(r);
 		plat_present(r);
