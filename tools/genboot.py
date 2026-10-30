@@ -5,6 +5,10 @@
 Run from the repo root:  python3 tools/genboot.py
   or, with plorpOS's own picture:  python3 tools/genboot.py --logo FILE.png [--out DIR]
 
+plorpOS ships the second: --logo res/boot/plorpos-wordmark.png, the Rotate's
+boot wordmark (head.ttf, Fredoka, at 264 pt: "plorp" #8A5CD6 + "OS" #EDEDF2,
+appended and trimmed with magick label:).
+
 Outputs (all under res/boot/):
   tortos-boot.mp4   1024x768, 30 fps, exactly 72 frames (2.400 s), H.264.
   bootlogo.bmp      frame 0 as a 24-bit BMP, for the bootloader splash slot.
@@ -267,14 +271,19 @@ def main():
     first.convert("RGB").save(png)
 
     mp4 = os.path.join(OUT_DIR, "tortos-boot.mp4")
+    ffmpeg = find_ffmpeg()
+    # Fedora's ffmpeg has no libx264; its OpenH264 makes the same H.264 the
+    # device's ffmpeg plays (Baseline, a bitrate rather than a CRF).
+    encoders = subprocess.run([ffmpeg, "-hide_banner", "-encoders"],
+                              capture_output=True, text=True).stdout
+    codec = (["-c:v", "libx264", "-crf", "20"] if " libx264 " in encoders
+             else ["-c:v", "libopenh264", "-b:v", "4M"])
     subprocess.run([
-        find_ffmpeg(), "-y", "-loglevel", "error",
+        ffmpeg, "-y", "-loglevel", "error",
         "-framerate", str(FPS), "-start_number", "0",
         "-i", os.path.join(TMP_DIR, "f%04d.png"),
         "-frames:v", str(N_FRAMES), "-fps_mode", "passthrough",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20",
-        "-movflags", "+faststart", mp4,
-    ], check=True)
+    ] + codec + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4], check=True)
 
     for path in (mp4, bmp, png):
         print("%s  %d bytes" % (path, os.path.getsize(path)))
