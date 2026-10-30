@@ -10,8 +10,8 @@ and move it between a Brick and a Brick Pro, saves and all.
 
 You need the Brick, a microSD card and, just this once, a computer.
 
-Download **`plorpOS-brick-v1.5.3.zip`** from
-[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+Download the Brick zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it.
 It goes on the card as it is, this guide (`INSTALL.md`) included:
 
 ```
@@ -34,7 +34,7 @@ Saves/       one folder per console, ready for saves from another device
 3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
    books to `Audiobooks/`, now or over Wi-Fi later. BIOS files go loose in
    `Bios/`; which ones each console needs is in
-   [Supported systems](https://github.com/thwonp/TortOS/blob/main/README.md#supported-systems).
+   [Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems).
 
 > [!IMPORTANT]
 > `.tmp_update` starts with a dot, so most computers hide it and it gets left
@@ -99,15 +99,8 @@ the right stick by default, or the left one, picked with the in-game menu's
 on - there is no Stylus Mode - and hides after 2 s without a move or a tap;
 **R Stick Click** is Stylus Tap until you bind another.
 
-This is DSperate built without its profile-guided optimisation for the
-Brick's older system libraries. A heavy 3D scene needs about as long as a
-frame, so Diatom now skips drawing a frame when drawing it would put the game
-behind schedule (never more than two in a row): emulation and sound stay at
-full speed and the picture repeats for a frame. In the games tested that was
-about 1% of frames in the busiest scenes and none in Metroid Prime Hunters'
-gameplay. Held at 59.83 fps with no slow-downs: Advance Wars: Dual Strike,
-Pokemon Pearl, Dragon Quest V and GTA: Chinatown Wars (boot and early scenes,
-every layout) and Metroid Prime Hunters (in play, every layout).
+In the heaviest 3D scenes plorpOS skips drawing a frame rather than let the
+game slow down (never two in a row); sound and speed stay full.
 
 Rewind is off for the DS on the Brick: each capture is a 6 MB state that takes
 about 20 ms, more than a busy frame can spare. Saving and loading a state
@@ -122,16 +115,12 @@ folder. The first launch unpacks PortMaster and can take longer than later
 starts. Wi-Fi is needed to browse or install ports from the app.
 
 Press A at plorpOS's support notice. PortMaster then presents its own terms
-for you to review. Its self-upgrade is not verified on this build; choose
-Cancel if offered an upgrade. MENU opens Continue / Reset / Quit while a
+for you to review. If it offers to upgrade itself, choose Cancel. MENU opens Continue / Reset / Quit while a
 port runs. Deleting a port removes its data folder, including its saves.
 
-The runtime uses the Brick firmware's SDL and graphics libraries. A port
-working on another handheld does not establish compatibility with the
-Brick's firmware. 2048, Apotris, Balatro (LOVE), Pullywog (GameMaker), and
-PortMaster's GUI have been exercised on a plain Brick. The ARM32 userland
-needed by box86 ports such as Shovel Knight is not included. Brick Pro Ports
-are not verified.
+Ports work on the Brick and Brick Pro, but support is still experimental: a
+port that runs on another handheld may not run here. 32-bit (box86) ports such
+as Shovel Knight don't run on the Brick.
 
 ## Audio output
 
@@ -151,5 +140,23 @@ Before you reformat the card or give the Brick away:
 - **Forget your Wi-Fi networks** with X on the Wi-Fi screen. Their passwords
   are stored on the Brick, not on the card.
 
-The files the hook leaves on the Brick itself are listed in the README, under
-*What TortOS leaves on the Brick itself*.
+<details>
+<summary>What plorpOS leaves on the Brick itself</summary>
+
+A boot hook that looks for the card, and hands back to the stock system when
+plorpOS isn't on it:
+
+```
+/usr/trimui/bin/runtrimui.sh            the hook
+/usr/trimui/bin/runtrimui-original.sh   the stock hook, moved aside
+/usr/trimui/bin/setbright               brightness before the boot animation,
+/usr/trimui/bin/tortos-bootbright.sh    both copied again every boot
+/etc/init.d/runtrimui                   patched to call the line above
+/etc/init.d/runtrimui.tortos-bak        the version before that patch
+/etc/splash.png                         the loading splash
+/mnt/boot/bootlogo.bmp                  the boot logo
+```
+
+None of them is a driver, and none replaces anything the system needs to run.
+
+</details>

@@ -98,7 +98,7 @@ cartridges; use their own folders to give them their own cards.
 - **Sega CD** games need `bios_CD_U.bin`, `bios_CD_E.bin` and `bios_CD_J.bin` (US, Europe, Japan); each disc uses its own region's.
 - **PlayStation** runs without one; add `scph5500.bin`, `scph5501.bin` and `scph5502.bin` (Japan, US, Europe) for the best compatibility, and each disc uses its own region's.
 - **Game Boy Advance** runs without its BIOS; add `gba_bios.bin` if you want the original boot animation.
-- **Native PICO-8** needs `pico8_64` and `pico8.dat` from PICO-8's Raspberry Pi download. fake-08 needs nothing.
+- **Native PICO-8** needs `pico8_64` and `pico8.dat` from PICO-8's Raspberry Pi download (on the RG Nano, `pico8_dyn` and `pico8.dat`). fake-08 needs nothing.
 - **Nintendo DS** runs most games on the cores' own free BIOS; encrypted dumps need `bios7.bin`, `bios9.bin` and `firmware.bin`.
 
 ## Install

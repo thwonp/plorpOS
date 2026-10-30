@@ -40,10 +40,11 @@ A unit that already runs base618 has it: skip this step.
 
 ## 1. Flash the card
 
-- Check `plorpOS-rotate-v<version>.img.xz` against `SHA256SUMS`
-- **Extract it** (7-Zip on Windows, `xz -d` on Linux/macOS) - some flashing tools choke on the decompression buffer.
+- Download the Rotate card image (`.img.xz`) from
+  [Releases](https://github.com/thwonp/plorpOS/releases/latest) and check it against `SHA256SUMS`.
+- **Extract it** (7-Zip on Windows, `xz -d` on Linux/macOS) - some flashing tools choke on the compressed file.
 - Write the extracted `.img` to a microSD card of 8 GB or more, with balenaEtcher /
-Rufus / Raspberry Pi Imager / etc., or `sudo dd if=plorpOS-rotate-v<version>.img of=/dev/sdX bs=4M conv=fsync`.
+Rufus / Raspberry Pi Imager / etc., or `sudo dd if=<image>.img of=/dev/sdX bs=4M conv=fsync`.
 
 ## 2. First boot
 
@@ -95,7 +96,27 @@ double tap for the next - on the shelf and in a game.
 to the headset while it is connected and back to the speaker after; Muse
 pauses when the headset goes. Its own buttons play/pause and skip in Muse.
 
+## Nintendo DS
+
+Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks DSperate-lr (the default) or
+melonDS DS. The in-game Layout row has **Focus Top**, **Focus Bottom**, **Even Split**, **Top
+Overlay** and **Bottom Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
+through them. The Display row under it sets the Overlays' big screen to **Aspect**, **Stretch** or
+**Integer**.
+
+Touch the bottom screen to use the stylus. Or, in Hotkeys, bind **Stylus Mode** (the D-pad moves a
+cursor over the bottom screen) and **Stylus Tap** (hold to touch where the cursor is). The cursor
+hides after 2 s still.
+
+## Ports
+
+PortMaster is the first entry on the Ports shelf. Open it on Wi-Fi to install ports; they land in
+`Roms/Ports/` and on the shelf. This is unofficial support: report problems to plorpOS, not the
+PortMaster team.
+
 ## Updating
 
-Copy a newer `plorpOS/` folder over the one on the PLORPOS partition. A release that changes the
-system underneath (the kernel, for one) comes as a new card image.
+From an earlier version, download the Rotate update zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and copy its `plorpOS/` folder over the
+one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
+underneath (the kernel, for one) comes only as a new card image.

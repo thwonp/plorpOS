@@ -1,27 +1,24 @@
-# Installing on an Anbernic H700 (RG SP)
+# Installing on an Anbernic H700 (RG SP, RG34xxSP, RG35XX H)
 
 plorpOS runs on top of **BaseOS**, a small system for Anbernic's H700
 handhelds by Prashant Vaibhav (<https://github.com/pvaibhav/BaseOS>). BaseOS
 goes on one microSD card and starts whatever frontend it finds on the other;
 plorpOS is that frontend. plorpOS does not include or change BaseOS.
 
-Tested with **BaseOS 1.3.0** on the **RG SP**. Other H700 models
-come later.
-
-You need the RG SP, two microSD cards and a computer.
+One zip runs on the **RG SP**, **RG34xxSP** and **RG35XX H**. You need the
+device, two microSD cards and a computer.
 
 ## 1. BaseOS on the first card (TF1)
 
-From [BaseOS's releases](https://github.com/pvaibhav/BaseOS/releases), download
-the image for your model - for the RG SP, `baseos-rgsp-<version>.img.zip` -
-and write it to a card as BaseOS's own instructions say. Put it in the slot
+Use the latest [BaseOS release](https://github.com/pvaibhav/BaseOS/releases)
+for your H700 device, and write it to a card as BaseOS's own instructions say. Put it in the slot
 marked **TF1** and turn the device on once: it grows its storage, then says
 there is no frontend on the card. Turn it off.
 
 ## 2. plorpOS on the second card (TF2)
 
-Download **`plorpOS-h700-v<version>.zip`** from
-[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. Copy
+Download the H700 zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it. Copy
 everything in it to the root of a FAT32 or exFAT card:
 
 ```
@@ -78,7 +75,7 @@ runs a few percent slow in its busiest stretches. Rewind is off for the DS
 - **Saved Wi-Fi networks** live on the plorpOS card, in
   `.userdata/rgsp/wpa_supplicant.conf`, with their passwords.
 - **Brightness:** hold Menu and press Volume +/-.
-- **The lid:** closing it sleeps, like a tap of POWER, and opening it wakes
+- **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
   the device from that sleep. Once it has gone on into a deep sleep, only
   POWER wakes it.
 - **Logs** are in `.userdata/rgsp/logs/` on the plorpOS card.
@@ -88,7 +85,7 @@ runs a few percent slow in its busiest stretches. Rewind is off for the DS
   `Audiobooks/`.
 - **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
   BaseOS installs them on the next start. plorpOS leaves unknown files there
-  alone. A BaseOS version other than the tested one may work, but is untested.
+  alone.
 - **Over USB** (for developers): BaseOS offers `adb`, but only with a
   USB-A to USB-C cable attached before the device is turned on. A USB-C to
   USB-C cable from a USB-C-only computer powers nothing and connects nothing.

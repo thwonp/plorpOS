@@ -9,8 +9,8 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.6.1.zip`** from
-[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
+Download the GKD zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
 ```
@@ -68,7 +68,7 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
    books to `Audiobooks/`. BIOS files go loose in `Bios/`; which ones each
    console needs is in
-   [Supported systems](https://github.com/thwonp/TortOS/blob/main/README.md#supported-systems).
+   [Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems).
 
 ```
 TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
@@ -86,6 +86,14 @@ Saves/       one folder per console, ready for saves from another device
 ROCKNIX puts an empty `Splore.png` there at every boot, for its own
 EmulationStation, and it would show up as a broken cart. It doesn't turn off
 Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
+
+**Nintendo DS:** put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core
+row picks DSperate-lr (the default) or melonDS DS. The in-game Layout row has
+**Focus Top**, **Focus Bottom**, **Even Split**, **Top Overlay** and **Bottom
+Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
+through them. The Display row under it sets the Overlays' big screen to
+**Aspect**, **Stretch** or **Integer**. The stick moves a stylus cursor over
+the bottom screen and R2 touches; the cursor hides after 2 s still.
 
 **Ports:** open PortMaster, the first entry on the Ports shelf, with the GKD on
 Wi-Fi; the ports it installs land in `Roms/Ports/` and on the shelf. PortMaster
