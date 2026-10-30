@@ -137,6 +137,8 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 #if defined(PLATFORM_H700)
 	if (plat_screen_w * 3 <= plat_screen_h * 4) font_k = 0.88f;
 #endif
+	/* Brick Pro: the Brick's scale reads too large on its panel (pky.21; the user chose 0.82) */
+	if (plat_is_brick_pro()) font_k = 0.82f;
 	{
 		char head[512];
 		const char *slash = strrchr(font_path, '/');
