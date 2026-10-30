@@ -9379,7 +9379,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
 		if (is_nds_tag(a->sys.systems[o].tag))
-			u.stylus = db_get_int(db_dev(), "stylusstick", 0) ? "Right Stick" : "Left Stick";
+			u.stylus = db_get_int(db_dev(), "stylusstick", 1) ? "Right Stick" : "Left Stick";
 	}
 #endif
 	u.disc   = g_disc.count > 1 ? g_disc.label : NULL;
@@ -11222,7 +11222,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
 	/* Layout -> (Display Mode) is the DS's, Layout <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
-	 * Stylus Mode where there is no stick either: the last four action rows.
+	 * Stylus Mode where there is no stick either (two sticks: always on): the
+	 * last four action rows.
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
@@ -11235,7 +11236,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 #elif defined(PLATFORM_GKD)
 			shown = i == HK_ROW_COUNT - 4 || i == HK_ROW_COUNT - 2; /* Layout ->, Stylus Tap */
 #else
-			shown = true;
+			/* a stick's cursor is always on: no Stylus Mode (plorpos-6ei.1) */
+			shown = !(plat_two_sticks() && i == HK_ROW_COUNT - 1);
 #endif
 		}
 		if (shown) vis[nact++] = i;
@@ -12032,7 +12034,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
 	 * game under this menu uses it when it resumes. */
 	if (sel == GM_STYLUS && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		int right = !db_get_int(db_dev(), "stylusstick", 0);
+		int right = !db_get_int(db_dev(), "stylusstick", 1);
 
 		db_set_int(db_dev(), "stylusstick", right);
 		plat_resident_line("SETSTYLUSSTICK\tstick=%s", right ? "right" : "left");

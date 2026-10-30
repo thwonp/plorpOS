@@ -1299,7 +1299,7 @@ bool plat_resident_send(const plat_game *g)
 		 * uses one, the left unless Game Settings says the right, and leaves
 		 * the d-pad to the game; any other unit's d-pad is the cursor. */
 		dsend("SETSTYLUSSTICK\tstick=%s", !plat_two_sticks() ? "dpad"
-		      : db_get_int(db_dev(), "stylusstick", 0) ? "right" : "left");
+		      : db_get_int(db_dev(), "stylusstick", 1) ? "right" : "left");
 #endif
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
