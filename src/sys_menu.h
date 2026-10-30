@@ -75,8 +75,15 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
 	SM_GAMES, SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
+	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
 } sm_row;
+
+/* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
+ * where it means something - see sys_ui.fill - so on every other shelf the
+ * rows below it sit one higher. The build and the key handler both go through
+ * these two, so they cannot disagree about which row is where. */
+static inline int sm_index(bool fill, sm_row r) { return !fill && r > SM_FILL ? (int)r - 1 : (int)r; }
+static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >= SM_FILL ? i + 1 : i); }
 
 /* What the Favorites shelf's menu is, which is two of those rows.
  *
@@ -194,6 +201,11 @@ typedef struct {
 	const char *engine;
 	int         game_count;
 	const char *dmode;
+	/* The DS's shelf: its layout row is Layout, and fill is the Display row's
+	 * value - "Aspect" or "Stretch" - or NULL on a 4:3 panel, where the two
+	 * draw the same (plorpos-6ei.13). */
+	bool        nds;
+	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not
 	 * on PICO-8's shelf running native, which never goes through Diatom. */

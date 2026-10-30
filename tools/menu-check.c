@@ -426,31 +426,51 @@ static void system_menu(void)
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("system menu:\n");
-	ck(n == SM_ROWS, "every row is filled");
+	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
 	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
 	ck(!strcmp(val(&rows[SM_GAMES]), "412"), "the count is the real one");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
-	ck(SM_SHADER == SM_DISPLAY + 1 && !strcmp(rows[SM_SHADER].label, "Shader"),
+	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Shader"),
 	   "Shader sits under Display Mode");
-	ck(!strcmp(val(&rows[SM_SHADER]), "Scanlines") && rows[SM_SHADER].live,
+	ck(!strcmp(rows[SM_DISPLAY].label, "Display Mode"), "Display Mode keeps its name off the DS");
+	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
 	   "and carries the system's shader");
-	ck(rows[SM_DISPLAY].live && rows[SM_RESCAN].live, "the two live rows are live");
+	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
 	ck(!rows[SM_GAMES].live && !rows[SM_CORE].live, "reported facts are not rows to press");
-	ck(rows[SM_BOXART].live, "Box Art is live on a network");
+	ck(rows[sm_index(false, SM_BOXART)].live, "Box Art is live on a network");
 
 	/* The same menu with the radio down. Only Box Art changes. */
 	u.wifi = WIFI_OFF;
 	sys_menu_build(&u, rows, &b, &heading);
-	ck(!rows[SM_BOXART].live, "Box Art dies with the radio");
-	ck(!strcmp(val(&rows[SM_BOXART]), "needs Wi-Fi"), "and says why");
-	ck(rows[SM_RESCAN].live, "Rescan does not need a network");
+	ck(!rows[sm_index(false, SM_BOXART)].live, "Box Art dies with the radio");
+	ck(!strcmp(val(&rows[sm_index(false, SM_BOXART)]), "needs Wi-Fi"), "and says why");
+	ck(rows[sm_index(false, SM_RESCAN)].live, "Rescan does not need a network");
 
 	/* No list, or PICO-8 running native: nothing a shader would reach. */
 	u.shader = NULL; u.shader_live = false;
 	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[SM_SHADER]), "None") && !rows[SM_SHADER].live,
+	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "None") && !rows[sm_index(false, SM_SHADER)].live,
 	   "Shader reads None and is not a stop when it cannot apply");
+
+	/* The DS (plorpos-6ei.13): its layouts are Layout, and Display - Aspect
+	 * or Stretch - sits under it where the panel is not 4:3. */
+	u.wifi = WIFI_CONNECTED;
+	u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
+	n = sys_menu_build(&u, rows, &b, &heading);
+	ck(n == SM_ROWS, "DS: every row, Display included");
+	ck(!strcmp(rows[SM_DISPLAY].label, "Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
+	   "DS: the layout row is Layout");
+	ck(!strcmp(rows[SM_FILL].label, "Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
+	   "DS: Display under it, with its value");
+	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
+	   "DS: Shader under Display");
+	u.fill = NULL;
+	n = sys_menu_build(&u, rows, &b, &heading);
+	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Layout")
+	   && !strcmp(rows[SM_FILL].label, "Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
+	   "DS on a 4:3 panel: Layout, no Display row, the rows below one higher");
+	u.nds = false; u.dmode = "Sharp";
 
 	/* Favorites, which is not a system: no core and no folder, so four of the
 	 * six rows have nothing to describe and one of them - Display Mode -
@@ -624,12 +644,12 @@ static void cursor_reaches(void)
 	printf("system menu, what the cursor can reach:\n");
 	ck(k == 5, "five rows, not seven");
 	ck(holds(got, k, SM_DISPLAY), "Display Mode");
-	ck(holds(got, k, SM_SHADER), "Shader");
+	ck(holds(got, k, sm_index(false, SM_SHADER)), "Shader");
 	/* Live since sorting stopped being alphabetical-only. It was a
 	 * placeholder for long enough that this check counted three. */
 	ck(holds(got, k, SM_SORT), "Sort By");
-	ck(holds(got, k, SM_BOXART), "Box Art");
-	ck(holds(got, k, SM_RESCAN), "Rescan Folder");
+	ck(holds(got, k, sm_index(false, SM_BOXART)), "Box Art");
+	ck(holds(got, k, sm_index(false, SM_RESCAN)), "Rescan Folder");
 	ck(!holds(got, k, SM_GAMES) && !holds(got, k, SM_CORE),
 	   "the reported facts are not stops");
 
@@ -873,6 +893,7 @@ static void ingame_rows(void)
 	int got[GM_ROWS], n, k;
 
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
+	u.nds = false; u.fill = NULL;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
 	u.disc = "Disc 2"; u.stylus = NULL;
 	n = gm_rows(&u, rows, &b);
@@ -888,8 +909,23 @@ static void ingame_rows(void)
 	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
-	ck(GM_SHADER == GM_DISPLAY + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
-	   "Shader is under Display (plorpos-gkd.72.4)");
+	ck(GM_FILL == GM_DISPLAY + 1 && GM_SHADER == GM_FILL + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
+	   "Shader is under Display (plorpos-gkd.72.4), the DS's Display between them");
+	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display"),
+	   "not a DS: Display is the mode, no second Display row");
+	u.nds = true; u.fill = "Aspect";
+	gm_rows(&u, rows, &b);
+	ck(!strcmp(rows[GM_DISPLAY].label, "Layout") && rows[GM_FILL].live
+	   && !strcmp(rows[GM_FILL].label, "Display") && !strcmp(val(&rows[GM_FILL]), "Aspect"),
+	   "a DS: Layout, then Display with its value (plorpos-6ei.13)");
+	u.fill = NULL;
+	{
+		int ids[GM_ROWS], m = gm_compact(rows, gm_rows(&u, rows, &b), ids), hit = 0;
+		for (int i = 0; i < m; i++) hit |= ids[i] == GM_FILL;
+		ck(!hit && !strcmp(rows[GM_DISPLAY].label, "Layout"), "a DS on a 4:3 panel: no Display row");
+	}
+	u.nds = false;
+	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(val(&rows[GM_SHADER]), "Real LCD"), "and carries the shader's name");
 	ck(rows[GM_SHADER].live, "and is reachable with a list");
 	ck(GM_PALETTE == GM_SHADER + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),
@@ -907,7 +943,7 @@ static void ingame_rows(void)
 	ck(!strcmp(rows[GM_HOTKEYS].label, "Hotkeys"), "Hotkeys is there");
 	ck(rows[GM_HOTKEYS].live, "and is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS - 1, "every row but Stylus Stick (not a DS game) is a stop");
+	ck(k == GM_ROWS - 2, "every row but Stylus Stick and the DS's Display (not a DS game) is a stop");
 
 	u.earned = 0; u.total = 0;
 	n = gm_rows(&u, rows, &b);
@@ -915,7 +951,7 @@ static void ingame_rows(void)
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "none"), "Achievements says none");
 	ck(!rows[GM_CHEEVOS].live, "and does nothing");
 	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS - 2, "so the cursor steps over it");
+	ck(k == GM_ROWS - 3, "so the cursor steps over it");
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
@@ -947,32 +983,32 @@ static void ingame_rows(void)
 		   "Disc says None and does nothing on a game not launched from an .m3u");
 		m = gm_compact(rows, n, ids);
 		printf("in-game menu as drawn, a Brick's Game Boy-less, one-disc game:\n");
-		ck(m == GM_ROWS - 4, "Shader, Palette, Disc and Stylus Stick are not drawn at all");
+		ck(m == GM_ROWS - 5, "Display (the DS's), Shader, Palette, Disc and Stylus Stick are not drawn at all");
 		for (i = 0; i < m; i++) {
 			if (!strcmp(rows[i].label, "Shader")) shader = 1;
 			if (!strcmp(rows[i].label, "Palette")) palette = 1;
 			if (!strcmp(rows[i].label, "Disc")) disc = 1;
 		}
 		ck(!shader && !palette && !disc, "no such label is anywhere");
-		ck(ids[GM_SHADER] == GM_CHEEVOS && !strcmp(rows[GM_SHADER].label, "Achievements"),
+		ck(ids[GM_DISPLAY + 1] == GM_CHEEVOS && !strcmp(rows[GM_DISPLAY + 1].label, "Achievements"),
 		   "the row under Display reads back as Achievements");
 		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Quit"),
 		   "and the last as Quit");
-		ck(!rows[GM_SHADER].live,
+		ck(!rows[GM_DISPLAY + 1].live,
 		   "a dead Cheevos stays drawn (its none is an answer)");
 
 		u.shaders = true; u.palette = "Auto";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 2 && ids[GM_PALETTE] == GM_PALETTE &&
-		   ids[GM_DISC] == GM_CHEEVOS,
+		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_PALETTE &&
+		   ids[GM_DISC - 1] == GM_CHEEVOS,
 		   "a Game Boy game on the GKD draws every row but Disc");
 
 		u.palette = NULL; u.disc = "Disc 1";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 2 && ids[GM_PALETTE] == GM_DISC &&
-		   !strcmp(rows[GM_PALETTE].label, "Disc"),
+		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_DISC &&
+		   !strcmp(rows[GM_PALETTE - 1].label, "Disc"),
 		   "an .m3u PlayStation game draws Disc where Palette would be");
 	}
 }

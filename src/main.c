@@ -225,6 +225,28 @@ _Static_assert(DMODE_COUNT == 12, "DS_RING indexes DMODES");
  * or set before the layouts existed) is the set's first. */
 static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
 
+/* The DS's Display, Aspect or Stretch (plorpos-6ei.13): Top/Bottom Only and
+ * the Overlays' big screen at 4:3 or filling the panel. One setting, since the
+ * DS is the only system with it. Shown only on a panel that is not 4:3,
+ * where the two would draw the same picture. */
+static bool ds_fill_shown(const char *tag)
+{
+	return is_nds_tag(tag) && plat_screen_w * 3 != plat_screen_h * 4;
+}
+
+static bool ds_stretch(void) { return db_get_int(db_dev(), "dsfill", 0) != 0; }
+static const char *ds_fill_label(void) { return ds_stretch() ? "Stretch" : "Aspect"; }
+
+/* Turned over from a menu: saved, and sent to a game that is running. */
+static void ds_fill_toggle(bool live)
+{
+	db_set_int(db_dev(), "dsfill", !ds_stretch());
+	if (live) {
+		plat_resident_line("SETDISPLAY\tfill=%s", ds_stretch() ? "stretch" : "aspect");
+		plat_resident_sync_rect(150);
+	}
+}
+
 static int dmode_step(const char *tag, int cur, int d)
 {
 	int i;
@@ -5163,6 +5185,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
+		u.nds        = is_nds_tag(sc->tag);
+		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -7792,7 +7816,7 @@ static int menu_shelf_width(app *a)
 		/* And every shader name, as the in-game menu measures them. */
 		for (k = 0; !own && k < a->shaders.count; k++) {
 			int mw;
-			rows[SM_SHADER].value = a->shaders.e[k].name;
+			rows[sm_index(ds_fill_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
@@ -8416,6 +8440,14 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * knew that from the day the menu was cut to two rows, and left and
 		 * right on Favorites' Sort By did nothing at all. */
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
+		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
+			sel = sm_row_at(ds_fill_shown(a->sys.systems[a->sys_cursor].tag), sel);
+		/* The DS's Display: two values, so left, right and A all turn it
+		 * over, saved at once. */
+		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
+			ds_fill_toggle(false);
+			return MENU_STAY;
+		}
 		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
 		 * shelf with two (ALT_CORES). Two values, so left, right and A all
 		 * turn it over, saved at once like Display Mode. No check for the
@@ -9375,6 +9407,8 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
 	u.dmode  = DMODES[gm_dmode_now(owner_view(a))].label;
+	u.nds    = is_nds_tag(a->sys.systems[owner_view(a) - a->view].tag);
+	u.fill   = ds_fill_shown(a->sys.systems[owner_view(a) - a->view].tag) ? ds_fill_label() : NULL;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
 	u.shaders = a->shaders.count > 1;
 	{
@@ -11536,6 +11570,12 @@ static int gm_width(app *a)
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
+	for (k = 0; k < 2 && rows[GM_FILL].live; k++) {
+		int mw;
+		rows[GM_FILL].value = k ? "Stretch" : "Aspect";
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
 	for (k = 0; k < 2 && rows[GM_STYLUS].live; k++) {
 		int mw;
 		rows[GM_STYLUS].value = k ? "Right Stick" : "Left Stick";
@@ -12041,6 +12081,12 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	 * menu redraws into it. */
 	if (sel == GM_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
 		gm_cycle_display(a, key == IN_RIGHT ? 1 : -1);
+		return MENU_STAY;
+	}
+	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
+	 * Layout is, so it is judged against the game it is for. */
+	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		ds_fill_toggle(true);
 		return MENU_STAY;
 	}
 	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
@@ -13282,6 +13328,8 @@ static void launch_one(app *a)
 			 * game, so a system never set would otherwise inherit whatever
 			 * the previous one chose; on RUN so the first frame has it. */
 			.mode   = DMODES[a->view[o].dmode].name,
+			.fill   = is_nds_tag(a->sys.systems[o].tag)
+			          ? (ds_stretch() ? "stretch" : "aspect") : NULL,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
