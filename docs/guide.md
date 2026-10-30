@@ -193,7 +193,8 @@ The system menu opens on a shelf of games and applies to that system alone:
 | **Games** | how many the shelf found |
 | **Core** | which libretro core runs them |
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
-| **Display Mode** | left/right cycles it; saved the moment it changes |
+| **Display Mode** | left/right cycles it; saved the moment it changes. On the DS shelf it is **Layout** |
+| **Display** | DS shelf only, on a panel that is not 4:3: **Aspect** or **Stretch** for Top Only, Bottom Only and the Overlays' big screen |
 | **Shader** | the console's shader, the one the in-game Shader row picks: left/right steps through the list, A opens it; greyed on PICO-8 running native |
 | **Box Art** | fetch what this system is missing, and nothing else |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |

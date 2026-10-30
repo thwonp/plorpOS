@@ -40,7 +40,7 @@
 - **Sega CD and 32X,** either combined on the Genesis shelf or on their own dedicated shelves.
 - **Achievements for disc games and arcade sets**
 - **Nintendo DS** on the RG Rotate, the GKD, the Brick and the H700 handhelds: DSperate-lr, or melonDS DS on
-  the shelf's Core row (Rotate and GKD), with achievements. Display Mode lays the two screens
+  the shelf's Core row (Rotate and GKD), with achievements. On the DS the Layout row lays the two screens
   out (Focus Top, Focus Bottom, Even Split, Top Overlay, Bottom Overlay), and
   a hotkey steps through them. On the GKD the stick moves a stylus cursor over
   the bottom screen and R2 touches. The Brick, Brick Pro and H700 handhelds
@@ -48,7 +48,10 @@
   Overlay, stepped with the **Screen Layout ->** and **Screen Layout <-**
   hotkeys. The Focus layouts draw the big screen at a whole-number scale; the
   Overlays fill the screen with one DS screen and lay the other, 80% opaque,
-  over the bottom-right corner. On a unit with two sticks the right stick is
+  over that picture's bottom-right corner. Where the panel is not 4:3 (RG SP,
+  RG34xxSP, GKD, Rotate) a Display row under Layout picks **Aspect** (4:3, the
+  default) or **Stretch** (the whole panel) for Top Only, Bottom Only and the
+  Overlays' big screen. On a unit with two sticks the right stick is
   the stylus, always on (its cursor hides after 2 s still), and R Stick Click
   touches; elsewhere the D-pad becomes the stylus with the **Stylus Mode** and
   **Stylus Tap** hotkeys, which you bind. **Blow Into Mic**, held, blows into
@@ -288,7 +291,7 @@ The volume buttons work everywhere. Brightness is MENU with the volume buttons o
 - **Download Achievement Sets:** every game's achievements onto the card at once, for playing offline. Games already downloaded are skipped, so running it again is quick.
 - **Scraping:** Box Art, ScreenScraper, Import gamelist.xml metadata.
 
-**A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Shader (the same list as the in-game menu's, for that console's games), Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
+**A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode (Layout and Display on the DS), Shader (the same list as the in-game menu's, for that console's games), Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
 **Favorites' menu:** Sort By, with a console's four orders.
 

@@ -73,12 +73,14 @@ The PIN is new every time you open Over The Hare.
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`. The Brick has six layouts, in the
-in-game menu's Display row: **Top Only** (the default) and **Bottom Only**,
+in-game menu's Layout row: **Top Only** (the default) and **Bottom Only**,
 one screen fullscreen; **Top Focus** and **Bottom Focus**, one screen at
 three times the size of the other, which sits against its right edge (the
 bottom screen at the bottom-right of Top Focus, the top screen at the top-right
 of Bottom Focus); and **Top Overlay** and **Bottom Overlay**, one screen
 filling the display and the other, 80% opaque, over its bottom-right corner.
+(The Brick's panel is 4:3, so the other handhelds' Aspect/Stretch Display row
+would change nothing here and is not shown.)
 The **Screen Layout ->** and **Screen Layout <-** hotkeys go round them in
 that order, so two buttons can flip between neighbouring layouts.
 

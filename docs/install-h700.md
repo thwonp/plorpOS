@@ -47,13 +47,16 @@ Your settings, saves, play time and achievements live in `.userdata/` and
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
-There are six layouts, in the in-game menu's Display row: **Top Only** (the
+There are six layouts, in the in-game menu's Layout row: **Top Only** (the
 default) and **Bottom Only**, one screen at full height; **Top Focus** and
 **Bottom Focus**, one screen at twice the DS's size and the other in the width
 left over at its right; and **Top Overlay** and **Bottom Overlay**, one screen
 filling the display at 4:3 and the other, 80% opaque, over its bottom-right
 corner. The **Screen Layout ->** and **Screen Layout <-** hotkeys step through
-them.
+them. On the 720x480 RG SP and RG34xxSP the **Display** row under Layout picks
+**Aspect** (4:3, the default) or **Stretch** (the whole panel) for Top Only,
+Bottom Only and the Overlays' big screen; the RG35XX H's panel is 4:3, so it
+has no Display row.
 
 On the RG SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
 Mode** (turns the cursor on and off; it shows only while the bottom screen is
