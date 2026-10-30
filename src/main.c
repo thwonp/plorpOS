@@ -225,24 +225,55 @@ _Static_assert(DMODE_COUNT == 12, "DS_RING indexes DMODES");
  * or set before the layouts existed) is the set's first. */
 static bool is_nds_tag(const char *tag) { return !strcmp(tag, "NDS"); }
 
-/* The DS's Display, Aspect or Stretch (plorpos-6ei.13): Top/Bottom Only and
- * the Overlays' big screen at 4:3 or filling the panel. One setting, since the
- * DS is the only system with it. Shown only on a panel that is not 4:3,
- * where the two would draw the same picture. */
-static bool ds_fill_shown(const char *tag)
+/* The DS's Display (plorpos-6ei.13, .17): Top/Bottom Only and the Overlays'
+ * big screen at 4:3, filling the panel, or at the largest whole multiple of
+ * 256x192. One setting, since the DS is the only system with it. Offered
+ * only as far as it changes the picture on this panel: Stretch where the
+ * panel is not 4:3, Integer where the multiple is not the 4:3 fit - so the
+ * Brick's 1024x768 has no row at all (4x is the whole panel), the RG35XX H's
+ * Aspect and Integer. Index = the dsfill value = Diatom's fill= order. */
+static const char *const FILL_NAME[]  = { "aspect", "stretch", "integer" };
+static const char *const FILL_LABEL[] = { "Aspect", "Stretch", "Integer" };
+
+static int ds_fill_opts(int out[3])
 {
-	return is_nds_tag(tag) && plat_screen_w * 3 != plat_screen_h * 4;
+	int pw = plat_panel_w, ph = plat_panel_h, aw = pw, n = 0,
+	    k = pw / 256 < ph / 192 ? pw / 256 : ph / 192;
+
+	if (aw * 3 / 4 > ph) aw = ph * 4 / 3;
+	out[n++] = 0;
+	if (pw * 3 != ph * 4) out[n++] = 1;
+	if (k >= 1 && k * 256 != aw) out[n++] = 2;
+	return n;
 }
 
-static bool ds_stretch(void) { return db_get_int(db_dev(), "dsfill", 0) != 0; }
-static const char *ds_fill_label(void) { return ds_stretch() ? "Stretch" : "Aspect"; }
-
-/* Turned over from a menu: saved, and sent to a game that is running. */
-static void ds_fill_toggle(bool live)
+static bool ds_fill_shown(const char *tag)
 {
-	db_set_int(db_dev(), "dsfill", !ds_stretch());
+	int o[3];
+
+	return is_nds_tag(tag) && ds_fill_opts(o) > 1;
+}
+
+/* The saved fill, or Aspect when this panel does not offer it. */
+static int ds_fill_now(void)
+{
+	int o[3], n = ds_fill_opts(o), v = db_get_int(db_dev(), "dsfill", 0), i;
+
+	for (i = 0; i < n; i++) if (o[i] == v) return v;
+	return 0;
+}
+
+static const char *ds_fill_label(void) { return FILL_LABEL[ds_fill_now()]; }
+
+/* Stepped from a menu: saved, and sent to a game that is running. */
+static void ds_fill_step(int d, bool live)
+{
+	int o[3], n = ds_fill_opts(o), cur = ds_fill_now(), i = 0;
+
+	while (i < n && o[i] != cur) i++;
+	db_set_int(db_dev(), "dsfill", o[((i + d) % n + n) % n]);
 	if (live) {
-		plat_resident_line("SETDISPLAY\tfill=%s", ds_stretch() ? "stretch" : "aspect");
+		plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[ds_fill_now()]);
 		plat_resident_sync_rect(150);
 	}
 }
@@ -8442,10 +8473,10 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
 			sel = sm_row_at(ds_fill_shown(a->sys.systems[a->sys_cursor].tag), sel);
-		/* The DS's Display: two values, so left, right and A all turn it
-		 * over, saved at once. */
+		/* The DS's Display: left and right step it, A steps forward, saved
+		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-			ds_fill_toggle(false);
+			ds_fill_step(d ? d : 1, false);
 			return MENU_STAY;
 		}
 		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
@@ -11570,9 +11601,9 @@ static int gm_width(app *a)
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
-	for (k = 0; k < 2 && rows[GM_FILL].live; k++) {
+	for (k = 0; k < 3 && rows[GM_FILL].live; k++) {
 		int mw;
-		rows[GM_FILL].value = k ? "Stretch" : "Aspect";
+		rows[GM_FILL].value = FILL_LABEL[k];
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
@@ -12086,7 +12117,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		ds_fill_toggle(true);
+		ds_fill_step(key == IN_LEFT ? -1 : 1, true);
 		return MENU_STAY;
 	}
 	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
@@ -13328,8 +13359,7 @@ static void launch_one(app *a)
 			 * game, so a system never set would otherwise inherit whatever
 			 * the previous one chose; on RUN so the first frame has it. */
 			.mode   = DMODES[a->view[o].dmode].name,
-			.fill   = is_nds_tag(a->sys.systems[o].tag)
-			          ? (ds_stretch() ? "stretch" : "aspect") : NULL,
+			.fill   = is_nds_tag(a->sys.systems[o].tag) ? FILL_NAME[ds_fill_now()] : NULL,
 		};
 		if (plat_resident_send(&g)) {
 			int r;

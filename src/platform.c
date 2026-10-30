@@ -1545,6 +1545,7 @@ bool plat_resident_rect(SDL_Rect *out)
 /* ---- geometry --------------------------------------------------------- */
 
 int plat_screen_w = 1024, plat_screen_h = 768;
+int plat_panel_w = 1024, plat_panel_h = 768;
 static float g_scale = 1.0f;
 
 float plat_scale(void) { return g_scale; }
@@ -1563,6 +1564,8 @@ void plat_geometry_init(SDL_Renderer *r)
 
 	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
 	g_scale = (float)w / 1024 < (float)h / 768 ? (float)w / 1024 : (float)h / 768;
+	plat_panel_w = w;
+	plat_panel_h = h;
 	plat_screen_w = (int)(w / g_scale);
 	plat_screen_h = (int)(h / g_scale);
 	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);

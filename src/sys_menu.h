@@ -202,8 +202,8 @@ typedef struct {
 	int         game_count;
 	const char *dmode;
 	/* The DS's shelf: its layout row is Layout, and fill is the Display row's
-	 * value - "Aspect" or "Stretch" - or NULL on a 4:3 panel, where the two
-	 * draw the same (plorpos-6ei.13). */
+	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
+	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,

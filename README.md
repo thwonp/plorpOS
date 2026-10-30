@@ -48,10 +48,11 @@
   Overlay, stepped with the **Screen Layout ->** and **Screen Layout <-**
   hotkeys. The Focus layouts draw the big screen at a whole-number scale; the
   Overlays fill the screen with one DS screen and lay the other, 80% opaque,
-  over that picture's bottom-right corner. Where the panel is not 4:3 (RG SP,
-  RG34xxSP, GKD, Rotate) a Display row under Layout picks **Aspect** (4:3, the
-  default) or **Stretch** (the whole panel) for Top Only, Bottom Only and the
-  Overlays' big screen. On a unit with two sticks the right stick is
+  over that picture's bottom-right corner. A Display row under Layout picks
+  **Aspect** (4:3, the default), **Stretch** (the whole panel) or **Integer**
+  (the largest whole multiple) for Top Only, Bottom Only and the Overlays' big
+  screen, offering only what changes the picture on that panel (none on the
+  Brick, whose 4x is the whole panel; Aspect and Integer on the RG35XX H). On a unit with two sticks the right stick is
   the stylus, always on (its cursor hides after 2 s still), and R Stick Click
   touches; elsewhere the D-pad becomes the stylus with the **Stylus Mode** and
   **Stylus Tap** hotkeys, which you bind. **Blow Into Mic**, held, blows into

@@ -28,6 +28,8 @@
 #define TORTOS_SCREEN_W plat_screen_w
 #define TORTOS_SCREEN_H plat_screen_h
 extern int plat_screen_w, plat_screen_h;
+/* The panel in its own pixels, as Diatom draws on it (plorpos-6ei.17). */
+extern int plat_panel_w, plat_panel_h;
 float plat_scale(void);
 /* For plat_video_init, once the renderer knows its output size: derives the
  * scale and height from it and sets the renderer's scale to match. */

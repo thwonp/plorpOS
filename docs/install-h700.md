@@ -53,10 +53,11 @@ default) and **Bottom Only**, one screen at full height; **Top Focus** and
 left over at its right; and **Top Overlay** and **Bottom Overlay**, one screen
 filling the display at 4:3 and the other, 80% opaque, over its bottom-right
 corner. The **Screen Layout ->** and **Screen Layout <-** hotkeys step through
-them. On the 720x480 RG SP and RG34xxSP the **Display** row under Layout picks
-**Aspect** (4:3, the default) or **Stretch** (the whole panel) for Top Only,
-Bottom Only and the Overlays' big screen; the RG35XX H's panel is 4:3, so it
-has no Display row.
+them. The **Display** row under Layout picks how Top Only, Bottom Only and the
+Overlays' big screen fill the display: **Aspect** (4:3, the default),
+**Stretch** (the whole panel, on the 720x480 RG SP and RG34xxSP) or
+**Integer** (2x, 512x384). The RG35XX H's panel is 4:3, so it offers Aspect
+and Integer only.
 
 On the RG SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
 Mode** (turns the cursor on and off; it shows only while the bottom screen is

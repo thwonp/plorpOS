@@ -116,7 +116,7 @@ typedef enum {
 typedef struct {
 	const char *dmode;    /* the display mode's label */
 	bool        nds;      /* a DS game: the mode row is Layout (plorpos-6ei.13) */
-	const char *fill;     /* the DS's Display, "Aspect"|"Stretch"; NULL: no row (not a DS, or a 4:3 panel) */
+	const char *fill;     /* the DS's Display, "Aspect"|"Stretch"|"Integer"; NULL: no row (not a DS, or a panel where they all draw the same) */
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
