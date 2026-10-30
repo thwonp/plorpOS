@@ -66,40 +66,30 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 - **Favorites, sorting, Rename and Delete Game,** and **Play Time** for every game and console.
 
 ## Supported systems
-| Console | Put games in | File types | Core |
-|---|---|---|---|
-| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
-| Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
-| NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm |
-| Master System | `Roms/Master System` | `.sms` `.zip` | PicoDrive |
-| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA |
-| Genesis, 32X and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip` `.chd` `.cue` `.m3u` | PicoDrive |
-| TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast |
-| Game Gear | `Roms/Game Gear` | `.gg` `.zip` | PicoDrive |
-| Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
-| SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
-| Sega CD | `Roms/Sega CD` | `.chd` `.cue` `.m3u` | PicoDrive |
-| Sega 32X | `Roms/32X` | `.32x` `.zip` | PicoDrive |
-| PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
-| Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
-| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
-| Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
-| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
-| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS |
-| Ports | `Roms/Ports` | installed by PortMaster | - |
+| Console | Put games in | File types | Core | Bios |
+|---|---|---|---|---|
+| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano uses `pico_dyn` instead of `pico8_64`) |
+| Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
+| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA | - |
+| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA | - |
+| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA | Optional: `gba_bios.bin` |
+| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
+| Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |
+| NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm | - |
+| Sega Genesis, 32X | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip`  | PicoDrive | - |
+| Sega CD | `Roms/Genesis` or `Roms/Sega CD` | `.chd` `.cue` `.m3u` | PicoDrive | `bios_CD_U.bin`, `bios_CD_E.bin`, `bios_CD_J.bin` |
+| Sega Master System | `Roms/Master System` | `.sms` `.zip` | PicoDrive | - |
+| Sega Game Gear | `Roms/Game Gear` | `.gg` `.zip` | PicoDrive | - |
+| TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast | `syscard3.pce` for CD games |
+| Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo | `neogeo.zip` |
+| Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop | - |
+| Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop | - |
+| PlayStation 1 | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed | Optional: `scph5501.bin` (US) `scph5500.bin` (JP) `scph5502.bin` (EU) |
+| Ports | `Roms/Ports` | installed by PortMaster | - | - |
 
-Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
-cartridges; use their own folders to give them their own cards.
+**BIOS files** go loose under `Bios/`
 
-**BIOS files** go loose in `Bios/`, never in a folder of their own.
-
-- **Neo Geo** needs `neogeo.zip`.
-- **TurboGrafx-CD** games need `syscard3.pce`.
-- **Sega CD** games need `bios_CD_U.bin`, `bios_CD_E.bin` and `bios_CD_J.bin` (US, Europe, Japan); each disc uses its own region's.
-- **PlayStation** runs without one; add `scph5500.bin`, `scph5501.bin` and `scph5502.bin` (Japan, US, Europe) for the best compatibility, and each disc uses its own region's.
-- **Game Boy Advance** runs without its BIOS; add `gba_bios.bin` if you want the original boot animation.
-- **Native PICO-8** needs `pico8_64` and `pico8.dat` from PICO-8's Raspberry Pi download (on the RG Nano, `pico8_dyn` and `pico8.dat`). fake-08 needs nothing.
-- **Nintendo DS** runs most games on the cores' own free BIOS; encrypted dumps need `bios7.bin`, `bios9.bin` and `firmware.bin`.
+Sega CD and 32X games can live in `Roms/Genesis` or use their own folders to split them into their own shelf.
 
 ## Install
 
