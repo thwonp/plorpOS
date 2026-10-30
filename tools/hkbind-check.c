@@ -21,56 +21,56 @@ static void ck(int cond, const char *what)
 int main(void)
 {
 	int b[HK_ROW_COUNT];
-	char out[128];
+	char out[320];
 
 	printf("a full valid spec:\n");
-	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate", b);
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "L2"), "ff row -> L2");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "R2"), "rewind row -> R2");
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "X"),  "savestate row -> X");
 	ck(!strcmp(HK_TRIG_NAME[b[3]], "Y"),  "loadstate row -> Y");
 
 	printf("round-trips through serialize:\n");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate"), "byte for byte");
 
 	printf("the Screenshot row (plorpos-gkd.86.2):\n");
-	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot", b);
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[4]], "L1") && !hk_trig_mod(b[4]), "screenshot row -> L1, direct");
 	ck(!strcmp(HK_ACTION_LABEL[4], "Screenshot"), "labelled Screenshot");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot"),
 	   "a full set of five round-trips byte for byte");
-	hk_parse("l2:ff", b);
+	hk_parse("l2:ff", b, NULL);
 	ck(b[4] == 0, "unbound by default");
 
 	printf("the Turbo Assign row (plorpos-tkh):\n");
-	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo", b);
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[5]], "R1") && !hk_trig_mod(b[5]), "turbo row -> R1, direct");
 	ck(!strcmp(HK_ACTION_LABEL[5], "Turbo Assign"), "labelled Turbo Assign");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo"),
 	   "a full set of six round-trips byte for byte");
-	hk_parse("l2:ff", b);
+	hk_parse("l2:ff", b, NULL);
 	ck(b[5] == 0, "unbound by default");
 
 	printf("the L1/R1/A/B buttons (plorpos-gkd.22):\n");
-	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate", b);
+	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "L1"), "ff row -> L1");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "R1"), "rewind row -> R1");
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "A"),  "savestate row -> A");
 	ck(!strcmp(HK_TRIG_NAME[b[3]], "B"),  "loadstate row -> B");
 
 	printf("a spec saved with display/filter keeps the rest (plorpos-gkd.73):\n");
-	hk_parse("sright:ff,sleft:rewind,x:display,a:filter", b);
+	hk_parse("sright:ff,sleft:rewind,x:display,a:filter", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "Stick Right"), "ff row -> Stick Right");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "Stick Left"),  "rewind row -> Stick Left");
 	ck(!b[2] && !b[3], "X and A bound nothing - neither is an action now");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "sright:ff,sleft:rewind"), "and a save drops them");
 
 	printf("layers and directions (plorpos-gkd.43.2):\n");
-	hk_parse("d.x:ff,x:rewind,up:savestate,sright:loadstate", b);
+	hk_parse("d.x:ff,x:rewind,up:savestate,sright:loadstate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "X") && !hk_trig_mod(b[0]), "ff row -> X, direct");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "X") && hk_trig_mod(b[1]),  "rewind row -> X, with the modifier");
 	ck(b[0] != b[1], "X and d.X are two triggers");
@@ -78,13 +78,13 @@ int main(void)
 	   "savestate row -> d-pad Up, with the modifier");
 	ck(!strcmp(HK_TRIG_NAME[b[3]], "Stick Right") && hk_trig_mod(b[3]) && hk_trig_stick(b[3]),
 	   "loadstate row -> Stick Right, with the modifier");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "d.x:ff,x:rewind,up:savestate,sright:loadstate"),
 	   "round-trips byte for byte");
 	ck(!hk_trig_mod(0) && !hk_trig_stick(0), "None is neither");
 
 	printf("a stored pre-43.2 spec keeps its meaning (the modifier layer):\n");
-	hk_parse("r2:ff,l1:loadstate", b);
+	hk_parse("r2:ff,l1:loadstate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "R2") && hk_trig_mod(b[0]), "ff row -> R2, with the modifier");
 	ck(!strcmp(HK_TRIG_NAME[b[3]], "L1") && hk_trig_mod(b[3]), "loadstate row -> L1, with the modifier");
 
@@ -101,7 +101,7 @@ int main(void)
 			   "only the left stick makes (left) stick triggers");
 		}
 	}
-	hk_parse("x:ff,d.x:rewind,up:savestate,sright:loadstate", b);
+	hk_parse("x:ff,d.x:rewind,up:savestate,sright:loadstate", b, NULL);
 	ck(b[0] == hk_trig_from(HK_IN_X, 1),      "Mod + X is x");
 	ck(b[1] == hk_trig_from(HK_IN_X, 0),      "X alone is d.x");
 	ck(b[2] == hk_trig_from(HK_IN_UP, 1),     "Mod + Up is up");
@@ -109,7 +109,7 @@ int main(void)
 	ck(hk_trig_from(HK_IN_COUNT, 1) == 0 && hk_trig_from(-1, 0) == 0, "out of range is None");
 
 	printf("the Brick Pro's right stick, both layers (plorpos-pky.17):\n");
-	hk_parse("rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate", b);
+	hk_parse("rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "R Stick Up") && hk_trig_mod(b[0]) && !hk_trig_stick(b[0]),
 	   "ff row -> R Stick Up, with the modifier");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "R Stick Up") && !hk_trig_mod(b[1]),
@@ -118,37 +118,63 @@ int main(void)
 	   "press-to-bind makes the same two");
 	ck(b[2] == hk_trig_from(HK_IN_RSLEFT, 0) && b[3] == hk_trig_from(HK_IN_RSRIGHT, 1),
 	   "R Stick Left alone is d.rsleft; Mod + R Stick Right is rsright");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate"),
 	   "round-trips byte for byte");
 
 	printf("the Bricks' function keys (plorpos-reo.22):\n");
-	hk_parse("d.fn1:screenshot,fn2:ff", b);
+	hk_parse("d.fn1:screenshot,fn2:ff", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[4]], "Fn1") && !hk_trig_mod(b[4]) && b[4] == hk_trig_from(HK_IN_FN1, 0),
 	   "screenshot row -> Fn1 alone");
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "Fn2") && hk_trig_mod(b[0]) && b[0] == hk_trig_from(HK_IN_FN2, 1),
 	   "ff row -> Fn2 with the modifier");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "fn2:ff,d.fn1:screenshot"), "round trip, in row order");
 
+	printf("each binding its own modifier (plorpos-6ei.6):\n");
+	{
+		int m[HK_ROW_COUNT];
+
+		hk_parse("l3+a:ff,menu+a:rewind,x:savestate,d.r3:stylus,home+up:loadstate", b, m);
+		ck(b[0] == hk_trig_from(HK_IN_A, 1) && m[0] == hk_mod_from_wire("l3"), "ff row -> L3 + A");
+		ck(b[1] == b[0] && m[1] == hk_mod_from_wire("menu"), "rewind row -> Menu + A, the same input");
+		ck(hk_trig_mod(b[2]) && m[2] == -1, "a prefixless binding names none (the device's hkmod)");
+		ck(!strcmp(HK_TRIG_NAME[b[8]], "R Stick Click") && !hk_trig_mod(b[8]) && m[8] == -1
+		   && b[8] == hk_trig_from(HK_IN_R3, 0), "stylus row -> R3 alone");
+		ck(b[3] == hk_trig_from(HK_IN_UP, 1) && m[3] == hk_mod_from_wire("home"), "the GKD's Home names one too");
+		hk_serialize(b, m, out, sizeof out);
+		ck(!strcmp(out, "l3+a:ff,menu+a:rewind,x:savestate,home+up:loadstate,d.r3:stylus"),
+		   "round trip, in row order, prefixes kept");
+		hk_parse("r3+a:ff,l3+d.x:rewind,select+x:savestate", b, m);
+		ck(!b[0], "r3 is no modifier: dropped");
+		ck(!b[1], "a direct trigger cannot carry a modifier: dropped");
+		ck(b[2] == hk_trig_from(HK_IN_X, 1) && m[2] == hk_mod_from_wire("select"), "select + X kept");
+		ck(hk_trig_from(HK_IN_R3, 1) == hk_trig_from(HK_IN_R3, 1) && hk_trig_mod(hk_trig_from(HK_IN_R3, 1)),
+		   "Mod + R3 is r3");
+	}
+	ck(hk_trig_stickdir(hk_trig_from(HK_IN_SUP, 1)) && hk_trig_stickdir(hk_trig_from(HK_IN_RSLEFT, 0))
+	   && hk_trig_stickdir(hk_trig_from(HK_IN_RSDOWN, 1)), "stick directions, either stick, are stick directions");
+	ck(!hk_trig_stickdir(hk_trig_from(HK_IN_UP, 1)) && !hk_trig_stickdir(hk_trig_from(HK_IN_R3, 0))
+	   && !hk_trig_stickdir(hk_trig_from(HK_IN_FN1, 0)), "the d-pad, R3 and Fn are not");
+
 	printf("empty spec means every row is None:\n");
-	hk_parse("", b);
+	hk_parse("", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "None"), "ff row -> None");
 	ck(!strcmp(HK_TRIG_NAME[b[1]], "None"), "rewind row -> None");
-	hk_serialize(b, out, sizeof out);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, ""), "serializes to an empty string");
 
 	printf("NULL spec is treated the same as empty:\n");
-	hk_parse(NULL, b);
+	hk_parse(NULL, b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "None"), "ff row -> None");
 
 	printf("an unknown button name is ignored, not a crash:\n");
-	hk_parse("select:ff,x:savestate", b);
+	hk_parse("select:ff,x:savestate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "None"), "ff row untouched - select is not a candidate");
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "X"), "the other, valid fragment still parsed");
 
 	printf("an unknown action name is ignored, not a crash:\n");
-	hk_parse("l2:warp,x:savestate", b);
+	hk_parse("l2:warp,x:savestate", b, NULL);
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "X"), "savestate row still parsed");
 	{
 		int i, any = 0;
@@ -157,15 +183,15 @@ int main(void)
 	}
 
 	printf("serialize skips None rows entirely, no dangling comma:\n");
-	hk_parse("x:savestate", b);
-	hk_serialize(b, out, sizeof out);
+	hk_parse("x:savestate", b, NULL);
+	hk_serialize(b, NULL, out, sizeof out);
 	ck(!strcmp(out, "x:savestate"), "one entry, no leading or trailing comma");
 
 	printf("a too-small output buffer truncates rather than overflows:\n");
-	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate", b);
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate", b, NULL);
 	{
 		char tiny[6];
-		hk_serialize(b, tiny, sizeof tiny);
+		hk_serialize(b, NULL, tiny, sizeof tiny);
 		ck(strlen(tiny) < sizeof tiny, "null-terminated within bounds");
 	}
 

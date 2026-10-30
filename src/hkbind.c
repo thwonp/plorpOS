@@ -19,6 +19,7 @@ const char *const HK_TRIG_NAME[] = {
 	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
 	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
 	"Fn1", "Fn2", "Fn1", "Fn2",   /* the Bricks' function keys (plorpos-reo.22) */
+	"R Stick Click", "R Stick Click",  /* R3, no longer a modifier (plorpos-6ei.6) */
 };
 static const char *const HK_TRIG_WIRE[] = {
 	NULL,
@@ -29,23 +30,37 @@ static const char *const HK_TRIG_WIRE[] = {
 	"rsup", "rsdown", "rsleft", "rsright",
 	"d.rsup", "d.rsdown", "d.rsleft", "d.rsright",
 	"fn1", "fn2", "d.fn1", "d.fn2",
+	"r3", "d.r3",
 };
 enum { HK_FIRST_DIRECT = 9, HK_FIRST_DPAD = 17, HK_FIRST_STICK = 21,
        HK_FIRST_RSTICK = 25, HK_FIRST_RSTICK_DIRECT = 29,
-       HK_FIRST_FN = 33, HK_FIRST_FN_DIRECT = 35 };
+       HK_FIRST_FN = 33, HK_FIRST_FN_DIRECT = 35, HK_R3 = 37, HK_R3_DIRECT = 38 };
 
 int hk_trig_mod(int t)
 {
 	return t > 0 && (t < HK_FIRST_DIRECT
 	                 || (t >= HK_FIRST_DPAD && t < HK_FIRST_RSTICK_DIRECT)
-	                 || (t >= HK_FIRST_FN && t < HK_FIRST_FN_DIRECT));
+	                 || (t >= HK_FIRST_FN && t < HK_FIRST_FN_DIRECT) || t == HK_R3);
 }
 int hk_trig_stick(int t) { return t >= HK_FIRST_STICK && t < HK_FIRST_RSTICK; }
+int hk_trig_stickdir(int t) { return t >= HK_FIRST_STICK && t < HK_FIRST_FN; }
+
+/* A binding's own modifier (plorpos-6ei.6): the wire's prefix, "l3+a". */
+const char *const HK_MOD_WIRE[HK_MOD_COUNT] = { "menu", "select", "l3", "home" };
+int hk_mod_from_wire(const char *w)
+{
+	int m;
+
+	for (m = 0; w && m < HK_MOD_COUNT; m++)
+		if (!strcmp(w, HK_MOD_WIRE[m])) return m;
+	return -1;
+}
 
 int hk_trig_from(int input, int mod)
 {
 	if (input < 0 || input >= HK_IN_COUNT) return 0;
 	if (input < HK_IN_UP) return (mod ? 1 : HK_FIRST_DIRECT) + input;
+	if (input == HK_IN_R3) return mod ? HK_R3 : HK_R3_DIRECT;
 	if (input >= HK_IN_FN1)
 		return (mod ? HK_FIRST_FN : HK_FIRST_FN_DIRECT) + (input - HK_IN_FN1);
 	if (input >= HK_IN_RSUP)
@@ -81,31 +96,41 @@ _Static_assert(sizeof HK_ACTION_LABEL / sizeof *HK_ACTION_LABEL == HK_ROW_COUNT,
 _Static_assert(sizeof HK_ACTION_WIRE / sizeof *HK_ACTION_WIRE == HK_ROW_COUNT,
                "HK_ROW_COUNT must match HK_ACTION_WIRE's length");
 
-void hk_parse(const char *spec, int trig_for_row[HK_ROW_COUNT])
+void hk_parse(const char *spec, int trig_for_row[HK_ROW_COUNT], int mod_for_row[HK_ROW_COUNT])
 {
-	char buf[192], *save = NULL, *tok;
+	char buf[320], *save = NULL, *tok;
 	int i;
 
-	for (i = 0; i < HK_ROW_COUNT; i++) trig_for_row[i] = 0;
+	for (i = 0; i < HK_ROW_COUNT; i++) {
+		trig_for_row[i] = 0;
+		if (mod_for_row) mod_for_row[i] = -1;
+	}
 	if (!spec || !*spec) return;
 	snprintf(buf, sizeof buf, "%s", spec);
 	for (tok = strtok_r(buf, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
-		char *colon = strchr(tok, ':');
-		int b, r;
+		char *colon = strchr(tok, ':'), *plus = strchr(tok, '+'), *in = tok;
+		int b, r, m = -1;
 
 		if (!colon) continue;
 		*colon = '\0';
+		if (plus && plus < colon) {
+			*plus = '\0';
+			if ((m = hk_mod_from_wire(tok)) < 0) continue;
+			in = plus + 1;
+		}
 		for (b = 1; b < HK_TRIG_COUNT; b++)
-			if (!strcmp(tok, HK_TRIG_WIRE[b])) break;
-		if (b == HK_TRIG_COUNT) continue;
+			if (!strcmp(in, HK_TRIG_WIRE[b])) break;
+		if (b == HK_TRIG_COUNT || (m >= 0 && !hk_trig_mod(b))) continue;
 		for (r = 0; r < HK_ROW_COUNT; r++)
 			if (!strcmp(colon + 1, HK_ACTION_WIRE[r])) break;
 		if (r == HK_ROW_COUNT) continue;
 		trig_for_row[r] = b;
+		if (mod_for_row) mod_for_row[r] = m;
 	}
 }
 
-void hk_serialize(const int trig_for_row[HK_ROW_COUNT], char *out, size_t n)
+void hk_serialize(const int trig_for_row[HK_ROW_COUNT], const int mod_for_row[HK_ROW_COUNT],
+                  char *out, size_t n)
 {
 	char *p = out;
 	size_t left = n;
@@ -116,8 +141,14 @@ void hk_serialize(const int trig_for_row[HK_ROW_COUNT], char *out, size_t n)
 		int written;
 
 		if (!trig_for_row[r]) continue;
-		written = snprintf(p, left, "%s%s:%s", p == out ? "" : ",",
-		                   HK_TRIG_WIRE[trig_for_row[r]], HK_ACTION_WIRE[r]);
+		{
+			int t = trig_for_row[r], m = mod_for_row && hk_trig_mod(t) ? mod_for_row[r] : -1;
+
+			written = snprintf(p, left, "%s%s%s%s:%s", p == out ? "" : ",",
+			                   m >= 0 && m < HK_MOD_COUNT ? HK_MOD_WIRE[m] : "",
+			                   m >= 0 && m < HK_MOD_COUNT ? "+" : "",
+			                   HK_TRIG_WIRE[t], HK_ACTION_WIRE[r]);
+		}
 		if (written < 0 || (size_t)written >= left) break;
 		p += written;
 		left -= (size_t)written;

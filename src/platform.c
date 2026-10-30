@@ -128,7 +128,7 @@ const char *plat_coreopt(const char *tag, int i)
  * seeding a binding the player never asked for is not what "opt-in" means.
  * A tag with no hotkey.<tag> row plays exactly as it always has. */
 #define HOTKEY_MAX 16
-static struct { char tag[8]; char map[192]; } hotkeys[HOTKEY_MAX];
+static struct { char tag[8]; char map[320]; } hotkeys[HOTKEY_MAX];
 static int nhotkeys = -1;                     /* -1 = not read yet */
 
 static bool hotkey_row(const char *key, const char *value, void *ctx)
@@ -166,6 +166,9 @@ const char *plat_hotkey_map(const char *tag)
 	if (!tag) return "";
 	for (i = 0; i < nhotkeys; i++)
 		if (!strcmp(hotkeys[i].tag, tag)) return hotkeys[i].map;
+	/* The DS on a unit with a right stick: its click is Stylus Tap until
+	 * the player binds anything (plorpos-6ei.6) - a default, not a seed. */
+	if (!strcmp(tag, "NDS") && plat_two_sticks()) return "d.r3:stylus";
 	return "";
 }
 
@@ -192,18 +195,18 @@ void plat_hotkey_set(const char *tag, const char *spec)
 	}
 }
 
-/* ---- the hotkey modifier: one key, chosen per device, held for every binding
- * above (diatom's ADR-0038, plorpos-gkd.43.1). Global, not per system, so the
- * muscle memory is the same in every game. The first entry is the default.
- * The stick clicks are the Brick Pro's; on the plain Brick those indexes are
- * its front brightness keys. */
+/* ---- the hotkey modifiers: the keys a binding may be held under (diatom's
+ * ADR-0038, plorpos-gkd.43.1). Each binding names its own since plorpos-6ei.6
+ * ("l3+a:ff"); hkmod, once a row of the Hotkeys screen, is now only what a
+ * spec saved before means. The stick click is the two-stick units'; R3 left
+ * the set to be a trigger of its own (plorpos-6ei.6). */
 #if defined(PLATFORM_GKD)
 /* The GKD's free Home key and its stick click as well (ADR-0037). */
 static const char *const HKMOD_WIRE[]  = { "menu", "home", "l3", "select" };
 static const char *const HKMOD_LABEL[] = { "Menu", "Home", "Stick Click", "Select" };
 #else
-static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3", "r3" };
-static const char *const HKMOD_LABEL[] = { "Menu", "Select", "L Stick Click", "R Stick Click" };
+static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Select", "L Stick Click" };
 #endif
 
 int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
@@ -213,7 +216,7 @@ int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
 #if defined(PLATFORM_GKD)
 	return 4;
 #else
-	return plat_two_sticks() ? 4 : 2;
+	return plat_two_sticks() ? 3 : 2;
 #endif
 }
 
@@ -228,11 +231,6 @@ const char *plat_hotkey_modifier(void)
 	for (i = 0; i < n; i++)
 		if (!strcmp(cur, wire[i])) return wire[i];
 	return wire[0];
-}
-
-void plat_hotkey_modifier_set(const char *wire)
-{
-	db_set_str(db_dev(), "hkmod", wire);
 }
 
 void paths_init(void)

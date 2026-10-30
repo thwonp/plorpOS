@@ -11162,12 +11162,12 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * mode to the shelf and in-game menus and nearest as the only filter; a saved
  * binding naming either is dropped by hk_parse and skipped by Diatom.
  *
- * A Hotkey Modifier row (global - which key is held for all of them, diatom's
- * ADR-0038) above four fixed action rows, cycled left and right the way
- * Display Mode already is -
- * not a "press any button to capture it" flow, which this codebase has
- * never built anywhere and would have been the highest-risk new interaction
- * to write with no way to run it. A button already bound to one row is
+ * The action rows, each bound by pressing its trigger: a button alone, or
+ * held under one of the device's modifiers - the first one held names the
+ * binding's own (plorpos-6ei.6, "l3+a:ff"), so FF on L3 + A and rewind on
+ * Menu + A live side by side. There is no Hotkey Modifier row any more; a
+ * spec saved before names none and keeps the device's old one (hkmod). A
+ * trigger already bound to one row is
  * cleared from whichever OTHER row held it rather than refusing the change:
  * the wire format itself refuses a spec with a button claimed twice
  * (diatom's hotkeys_set), so allowing that here would mean silently failing
@@ -11198,6 +11198,7 @@ static const struct { in_button b; int hk; } HK_CAPTURE[] = {
 	{ IN_UP, HK_IN_UP }, { IN_DOWN, HK_IN_DOWN },
 	{ IN_LEFT, HK_IN_LEFT }, { IN_RIGHT, HK_IN_RIGHT },
 	{ IN_FN1, HK_IN_FN1 }, { IN_FN2, HK_IN_FN2 },
+	{ IN_R3, HK_IN_R3 },
 };
 
 /* The launcher key behind a modifier's wire name (plat_hotkey_modifiers). */
@@ -11205,32 +11206,34 @@ static in_button hk_modifier_button(const char *wire)
 {
 	if (!strcmp(wire, "select")) return IN_SELECT;
 	if (!strcmp(wire, "l3"))     return IN_L3;
-	if (!strcmp(wire, "r3"))     return IN_R3;
 	if (!strcmp(wire, "home"))   return IN_HOME;
 	return IN_MENU;
 }
 
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
-	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
-	 * follow it, action i at row i + 1. Rewind Speed moved to Game Settings
-	 * (plorpos-pyz.3). The rule and legend are drawn after them and are never
-	 * selected. */
-	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
-	int trig_for_row[HK_ROW_COUNT];
+	/* The action rows, action vis[i] at row i. Rewind Speed moved to Game
+	 * Settings (plorpos-pyz.3). The rule and legend are drawn after them
+	 * and are never selected. */
+	enum { FIRST_ACT = 0, ROWS = HK_SCREEN_ROWS };
+	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 2];
-	char vals[HK_ROW_COUNT][32];
+	char vals[HK_ROW_COUNT][40];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
-	int mod = 0, sel = 0, done = 0, i;
+	/* The modifier a spec that names none holds (hkmod), as an HK_MOD_WIRE
+	 * index - what a row with mod -1 means. */
+	const char *legacy_wire = plat_hotkey_modifier();
+	const int legacy = hk_mod_from_wire(legacy_wire);
+	int sel = 0, done = 0, i;
 	/* Press-to-bind (plorpos-gkd.43.3): A on an action row waits for the
 	 * next trigger. Only a lone MENU tap cancels - B is bindable, and MENU
-	 * held is the default modifier - so it is judged on the release. */
+	 * held is a modifier - so it is judged on the release. */
 	bool capturing = false, menu_tap = false;
 	bool changed = false;
-	char spec[192];
+	char spec[320];
 
-	hk_parse(plat_hotkey_map(tag), trig_for_row);
+	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
 	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
@@ -11256,11 +11259,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	}
 	const int NROWS = FIRST_ACT + nact;
 
-	{
-		const char *cur = plat_hotkey_modifier();
-		while (mod < nmods - 1 && strcmp(mod_wire[mod], cur)) mod++;
-	}
-
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -11270,18 +11268,28 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		plat_input_poll(&a->in);
 
 		if (capturing) {
-			int act = sel - FIRST_ACT, t = 0;
-			bool held = a->in.down[hk_modifier_button(mod_wire[mod])];
+			int act = sel - FIRST_ACT, t = 0, held = -1, m;
 			size_t k;
 
+			/* The first of the device's modifiers held names the binding's. */
+			for (m = 0; m < nmods && held < 0; m++)
+				if (a->in.down[hk_modifier_button(mod_wire[m])])
+					held = hk_mod_from_wire(mod_wire[m]);
 			for (k = 0; k < sizeof HK_CAPTURE / sizeof HK_CAPTURE[0] && !t; k++)
 				if (a->in.pressed[HK_CAPTURE[k].b])
-					t = hk_trig_from(HK_CAPTURE[k].hk, held);
+					t = hk_trig_from(HK_CAPTURE[k].hk, held >= 0);
+			/* No stick direction is a DS hotkey: the stylus has one stick
+			 * and the d-pad folds the other (plorpos-6ei.6). Wait on. */
+			if (t && is_nds_tag(tag) && hk_trig_stickdir(t)) t = 0;
 			if (t) {
 				/* Taken from whichever row held it: one trigger, one action. */
-				for (i = 0; i < HK_ROW_COUNT; i++)
-					if (trig_for_row[i] == t) trig_for_row[i] = 0;
+				for (i = 0; i < HK_ROW_COUNT; i++) {
+					int mi = mod_for_row[i] < 0 ? legacy : mod_for_row[i];
+					if (trig_for_row[i] == t && (!hk_trig_mod(t) || mi == held))
+						trig_for_row[i] = 0;
+				}
 				trig_for_row[vis[act]] = t;
+				mod_for_row[vis[act]] = hk_trig_mod(t) ? held : -1;
 				capturing = false;
 				changed = true;
 			} else if (a->in.pressed[IN_MENU]) {
@@ -11296,17 +11304,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
 
-			if (sel == MOD_ROW) {
-				int d = 0;
-
-				if (in_repeat(&a->in, IN_LEFT))  d = -1;
-				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
-				if (d) {
-					mod = (mod + d + nmods) % nmods;
-					plat_hotkey_modifier_set(mod_wire[mod]);
-					changed = true;
-				}
-			} else if (a->in.pressed[IN_ACCEPT]) {
+			if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
 			} else if (a->in.pressed[IN_X] && trig_for_row[vis[sel - FIRST_ACT]]) {
@@ -11318,14 +11316,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 
 		if (changed) {
-			hk_serialize(trig_for_row, spec, sizeof spec);
+			hk_serialize(trig_for_row, mod_for_row, spec, sizeof spec);
 			plat_hotkey_set(tag, spec);
 			/* Live, not only persisted: this screen is only ever open
 			 * mid-session (reached from the in-game menu), so the change
 			 * should take hold without the player having to quit and
 			 * relaunch to see it. */
 			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-			                   spec, mod_wire[mod]);
+			                   spec, legacy_wire);
 			changed = false;
 		}
 
@@ -11338,15 +11336,17 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			}
 		}
 
-		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
 		for (i = 0; i < nact; i++) {
-			int t = trig_for_row[vis[i]];
+			int t = trig_for_row[vis[i]], m, mi = mod_for_row[vis[i]] < 0 ? legacy : mod_for_row[vis[i]];
+			const char *ml = "";
 
+			for (m = 0; m < nmods; m++)        /* the device's own name for it */
+				if (hk_mod_from_wire(mod_wire[m]) == mi) ml = mod_label[m];
 			if (capturing && i == sel - FIRST_ACT)
 				snprintf(vals[i], sizeof vals[i], "Press...");
 			else
 				snprintf(vals[i], sizeof vals[i], "%s%s%s%s",
-				         hk_trig_mod(t) ? mod_label[mod] : "",
+				         hk_trig_mod(t) ? ml : "",
 				         hk_trig_mod(t) ? " + " : "",
 				         hk_trig_stick(t) && plat_two_sticks() ? "L " : "",
 				         HK_TRIG_NAME[t]);

@@ -20,9 +20,16 @@
 /* Trigger 0 is None. The name is the input alone ("X", "Stick Up"); the
  * screen puts the modifier's own label in front where hk_trig_mod says so. */
 extern const char *const HK_TRIG_NAME[];
-#define HK_TRIG_COUNT 37
+#define HK_TRIG_COUNT 39
 int hk_trig_mod(int t);     /* needs the modifier held */
 int hk_trig_stick(int t);   /* the (left) stick's direction - "L Stick" on the Pro */
+int hk_trig_stickdir(int t); /* either stick's direction: never a DS hotkey (plorpos-6ei.6) */
+/* A binding's own modifier, by index (plorpos-6ei.6): "l3+a:ff". -1 is
+ * none named - a spec saved before, which holds the device's one modifier
+ * (hkmod) the way it always did. */
+#define HK_MOD_COUNT 4
+extern const char *const HK_MOD_WIRE[HK_MOD_COUNT];   /* menu select l3 home */
+int hk_mod_from_wire(const char *w);
 
 /* Press-to-bind (plorpos-gkd.43.3): the trigger an input makes, pressed with
  * the modifier held (`mod`) or alone - 0 (None) for a d-pad or left-stick
@@ -34,6 +41,7 @@ enum {
 	HK_IN_SUP, HK_IN_SDOWN, HK_IN_SLEFT, HK_IN_SRIGHT,
 	HK_IN_RSUP, HK_IN_RSDOWN, HK_IN_RSLEFT, HK_IN_RSRIGHT,
 	HK_IN_FN1, HK_IN_FN2,   /* the Bricks' function keys (plorpos-reo.22) */
+	HK_IN_R3,               /* the right stick's click (plorpos-6ei.6) */
 	HK_IN_COUNT
 };
 int hk_trig_from(int input, int mod);
@@ -44,12 +52,14 @@ extern const char *const HK_ACTION_LABEL[];  /* "Fast-Forward", "Rewind", ... */
  * (0..HK_TRIG_COUNT-1, 0 = None) per action row. A fragment that names an
  * unknown button or action is simply not represented - the same "ignore
  * what does not parse" the wire format's own parser (Diatom's hotkeys_set)
- * uses one layer up. */
-void hk_parse(const char *spec, int trig_for_row[HK_ROW_COUNT]);
+ * uses one layer up. mod_for_row, when not NULL, gets each row's own
+ * modifier (HK_MOD_WIRE index, -1 for none named). */
+void hk_parse(const char *spec, int trig_for_row[HK_ROW_COUNT], int mod_for_row[HK_ROW_COUNT]);
 
 /* The reverse of hk_parse: one entry per row with a real trigger, skipping
  * "None" rows entirely - an unbound action is simply absent from the spec,
  * which is what an empty binding means on the wire. */
-void hk_serialize(const int trig_for_row[HK_ROW_COUNT], char *out, size_t n);
+void hk_serialize(const int trig_for_row[HK_ROW_COUNT], const int mod_for_row[HK_ROW_COUNT],
+                  char *out, size_t n);
 
 #endif

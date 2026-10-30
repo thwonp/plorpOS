@@ -299,10 +299,10 @@ void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the
- * stored choice (validated, never NULL), and setting it. Global, db_dev. */
+ * stored choice (validated, never NULL) - what a binding that names no
+ * modifier holds (plorpos-6ei.6). Global, db_dev. */
 int         plat_hotkey_modifiers(const char *const **wire, const char *const **label);
 const char *plat_hotkey_modifier(void);
-void        plat_hotkey_modifier_set(const char *wire);
 
 /* Where Diatom is actually drawing the game, from its DISPLAY message. False
  * until it has said, which is the standalone path and the first moments of a
