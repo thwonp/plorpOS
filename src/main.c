@@ -11220,7 +11220,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[192];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-	/* Layout -> (Display Mode) is the DS's, Layout <- where there are four
+	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on): the
 	 * last four action rows.
@@ -11341,7 +11341,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i], true };
 		}
 		rows[NROWS] = MENU_RULE;
-		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
+		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press button(s)    Menu: cancel"
 		                                     : "A: set    X: clear");
 
 		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, NROWS + 2, sel))) {
