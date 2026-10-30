@@ -130,7 +130,7 @@ mcopy -o -i "$W/p2-out.img" "$W/initrd-fw.cpio.gz" ::/initrd-fw.cpio.gz
 #    off (the data partition is what grows).
 echo "image: packing the rootfs (${ROOT_MB} MiB, UUID $UUID)"
 ROOT_HASH=$(openssl passwd -6 plorpos)
-docker run --rm -v "$W:/w" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$ROOT_HASH" \
+docker run --rm -v "$W:/w:z" -e UUID="$UUID" -e ROOT_MB="$ROOT_MB" -e ROOT_HASH="$ROOT_HASH" \
 	debian:trixie-slim sh -euc '
 	apt-get -qq update > /dev/null && apt-get -qq install -y e2fsprogs zstd > /dev/null
 	mkdir /r
