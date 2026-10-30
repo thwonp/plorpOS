@@ -58,10 +58,11 @@ const char *const HK_ACTION_LABEL[] = {
 	"Screen Layout ->", /* the DS's Display Mode, last so other shelves drop it (plorpos-3yv.47, .62) */
 	"Screen Layout <-", /* the same round the other way, where there are four layouts (plorpos-reo.21) */
 	"Stylus Tap",    /* the DS's on a port with no panel (the GKD's cursor, plorpos-46o.4) */
-	"Stylus Mode"    /* the DS's on a port with neither panel nor stick: d-pad as cursor (plorpos-reo.21) */
+	"Stylus Mode",   /* the DS's on a port with neither panel nor stick: d-pad as cursor (plorpos-reo.21) */
+	"Blow Into Mic"  /* the DS's everywhere: held, noise into the mic (plorpos-6ei.3) */
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapback", "stylus", "stylusmode"
+	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapback", "stylus", "stylusmode", "blow"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from

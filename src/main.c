@@ -11222,22 +11222,23 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
 	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
-	 * Stylus Mode where there is no stick either (two sticks: always on): the
-	 * last four action rows.
+	 * Stylus Mode where there is no stick either (two sticks: always on), and
+	 * Blow Into Mic on every device (plorpos-6ei.3): the last five action rows.
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
+	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
-		bool shown = i < HK_ROW_COUNT - 4;
+		bool shown = i < R_SWAP;
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
-			shown = i == HK_ROW_COUNT - 4;                          /* Layout -> */
+			shown = i == R_SWAP || i == R_BLOW;
 #elif defined(PLATFORM_GKD)
-			shown = i == HK_ROW_COUNT - 4 || i == HK_ROW_COUNT - 2; /* Layout ->, Stylus Tap */
+			shown = i == R_SWAP || i == R_STYLUS || i == R_BLOW;
 #else
 			/* a stick's cursor is always on: no Stylus Mode (plorpos-6ei.1) */
-			shown = !(plat_two_sticks() && i == HK_ROW_COUNT - 1);
+			shown = !(plat_two_sticks() && i == R_STYLUSMODE);
 #endif
 		}
 		if (shown) vis[nact++] = i;
