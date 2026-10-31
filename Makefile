@@ -406,11 +406,12 @@ build-native/controls-check: tools/controls-check.c src/controls.c \
 build-native/menu-check: tools/menu-check.c src/wifi_menu.c src/wifi.c \
                         src/sys_menu.c src/menu.c src/game_menu.c \
                         src/audioout.c src/wifi_menu.h src/sys_menu.h \
-                        src/game_menu.h src/menu.h src/audioout.h FORCE
+                        src/game_menu.h src/menu.h src/audioout.h \
+                        src/daisy.c src/daisy.h FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -o $@ \
 	      tools/menu-check.c src/wifi_menu.c src/wifi.c src/sys_menu.c \
-	      src/menu.c src/game_menu.c src/audioout.c
+	      src/menu.c src/game_menu.c src/audioout.c src/daisy.c
 
 build-native/xfer-check: tools/xfer-check.c src/xfer.c src/xfer.h FORCE
 	@mkdir -p build-native

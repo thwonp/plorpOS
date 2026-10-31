@@ -1,0 +1,597 @@
+diff --git a/3ds/core/pd_settings.c b/3ds/core/pd_settings.c
+index a122806..2a8ca87 100644
+--- a/3ds/core/pd_settings.c
++++ b/3ds/core/pd_settings.c
+@@ -14,6 +14,18 @@ void pd_settings_defaults(struct pd_settings* s) {
+     s->tabBar = PD_TAB_BAR_DEFAULT;
+     s->hud = true;
+     s->hudHidden = 0;
++    s->scaling = PD_SCALE_INTEGER;
++    s->ffAudio = false;
++    s->rewind = false;
++    s->runIndoors = false;
++}
++
++const int PD_FF_SPEEDS[PD_FF_CHOICES] = {2, 3, 4, 5, 6, 8, 10, 0};
++
++int pd_ff_index(int speed) {
++    for (int i = 0; i < PD_FF_CHOICES; i++)
++        if (PD_FF_SPEEDS[i] == speed) return i;
++    return 0;
+ }
+ 
+ static bool int_in(const char* v, int lo, int hi, int* out) {
+@@ -36,7 +48,10 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
+         const char* key = line;
+         const char* value = eq + 1;
+         if (!strcmp(key, "screen")) int_in(value, 0, PD_SCREEN_MODES - 1, &s->screenMode);
+-        else if (!strcmp(key, "ff")) int_in(value, PD_FF_MIN, PD_FF_MAX, &s->ffSpeed);
++        else if (!strcmp(key, "ff")) {
++            int n;
++            if (int_in(value, 0, 10, &n) && PD_FF_SPEEDS[pd_ff_index(n)] == n) s->ffSpeed = n;
++        }
+         else if (!strcmp(key, "guide")) int_in(value, 0, 0xFFFF, &s->guideNotice);
+         else if (!strcmp(key, "aspect")) int_in(value, 0, PD_ASPECTS - 1, &s->aspect);
+         else if (!strcmp(key, "autozoom")) {
+@@ -54,17 +69,29 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
+         } else if (!strcmp(key, "hudhide")) {
+             int bits;
+             if (int_in(value, 0, (1 << PD_HUD_PARTS) - 1, &bits)) s->hudHidden = bits;
++        } else if (!strcmp(key, "scaling")) int_in(value, 0, PD_SCALINGS - 1, &s->scaling);
++        else {
++            int on;
++            bool* b = !strcmp(key, "ffaudio") ? &s->ffAudio : !strcmp(key, "rewind") ? &s->rewind
++                    : !strcmp(key, "runindoors") ? &s->runIndoors : NULL;
++            if (b && int_in(value, 0, 1, &on)) *b = on;
+         }
+     }
+     fclose(f);
+     return true;
+ }
+ 
++// plorpOS: through a temporary file and a rename, as plorpOS writes it, so neither reads half a file.
+ bool pd_settings_save(const struct pd_settings* s, const char* path) {
+-    FILE* f = fopen(path, "w");
++    char tmp[1100];
++    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
++    FILE* f = fopen(tmp, "w");
+     if (!f) return false;
+     fprintf(f, "screen=%d\nff=%d\nguide=%d\naspect=%d\nautozoom=%d\nwildoff=%d\ntabs=%d\nhud=%d\nhudhide=%d\n",
+             s->screenMode, s->ffSpeed, s->guideNotice, s->aspect, s->autoZoom ? 1 : 0, s->wildOff ? 1 : 0, s->tabBar,
+             s->hud ? 1 : 0, s->hudHidden);
+-    return fclose(f) == 0;
++    fprintf(f, "scaling=%d\nffaudio=%d\nrewind=%d\nrunindoors=%d\n", s->scaling, s->ffAudio ? 1 : 0,
++            s->rewind ? 1 : 0, s->runIndoors ? 1 : 0);
++    if (fclose(f) != 0) return false;
++    return rename(tmp, path) == 0;
+ }
+diff --git a/3ds/core/pd_ui.c b/3ds/core/pd_ui.c
+index 0835e07..75c91d1 100644
+--- a/3ds/core/pd_ui.c
++++ b/3ds/core/pd_ui.c
+@@ -319,7 +319,7 @@ static void act(struct pd_ui* ui, int id) {
+         if (id >= HIT_OPTION && id < HIT_OPTION + 8) {
+             int i = id - HIT_OPTION;
+             if (ui->overlay == PD_OVERLAY_PICK_SCREEN) ui->settings->screenMode = i;
+-            if (ui->overlay == PD_OVERLAY_PICK_FF) ui->settings->ffSpeed = PD_FF_MIN + i;
++            if (ui->overlay == PD_OVERLAY_PICK_FF && i < PD_FF_CHOICES) ui->settings->ffSpeed = PD_FF_SPEEDS[i];
+             if (ui->overlay == PD_OVERLAY_PICK_ASPECT && i < PD_ASPECTS) ui->settings->aspect = i;
+             close_overlay(ui, PD_ACTION_SETTINGS_CHANGED);
+         } else if (id == HIT_YES) {
+diff --git a/3ds/core/pd_ui.h b/3ds/core/pd_ui.h
+index 95b593d..03e703d 100644
+--- a/3ds/core/pd_ui.h
++++ b/3ds/core/pd_ui.h
+@@ -51,6 +51,14 @@ enum pd_aspect {
+ 
+ #define PD_FF_MIN 2
+ #define PD_FF_MAX 4
++// plorpOS: the fast-forward speeds offered (the app's RATES less 1.5x), 0 = MAX: as many frames as a
++// screen refresh has time for.
++#define PD_FF_CHOICES 8
++extern const int PD_FF_SPEEDS[PD_FF_CHOICES];
++int pd_ff_index(int speed);
++
++// plorpOS: how ORIGINAL's picture fills the screen - whole pixels, the largest 3:2, or all of it.
++enum pd_scaling { PD_SCALE_INTEGER, PD_SCALE_FIT, PD_SCALE_STRETCH, PD_SCALINGS };
+ 
+ // What the player set; the host loads and saves it (pd_settings.h).
+ struct pd_settings {
+@@ -63,6 +71,11 @@ struct pd_settings {
+     int tabBar;      // TAB BAR: a bit per enum pd_tab on the bar (PARTY .. DEX, CARD); the rest open from MORE
+     bool hud;        // HUD over the overworld (hosts with hasHud) ...
+     int hudHidden;   // ... less these parts: a bit per enum pd_hud_part
++    // plorpOS (its in-game menu writes these too):
++    int scaling;     // enum pd_scaling, ASPECT ORIGINAL's picture
++    bool ffAudio;    // the game's sound sped up under fast-forward, else silent
++    bool rewind;     // REWIND: the last ~20 s kept for the rewind hotkey
++    bool runIndoors; // RUN INDOORS: every map lets the player run
+ };
+ 
+ // TAB BAR: at most this many tabs beside the gear (the app's MAX_BAR_TABS).
+diff --git a/3ds/core/pd_ui_settings.c b/3ds/core/pd_ui_settings.c
+index 3a67218..0c58c76 100644
+--- a/3ds/core/pd_ui_settings.c
++++ b/3ds/core/pd_ui_settings.c
+@@ -92,7 +92,10 @@ void ui_settings_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game
+ 
+     if (!host || !host->hideScreenMode)
+         setting(ui, c, ix, &y, iw, SETTING_SCREEN, "SCREEN", pd_screen_mode_name(ui->settings->screenMode));
+-    snprintf(buf, sizeof(buf), "%dx", ui->settings->ffSpeed);
++    if (ui->settings->ffSpeed)
++        snprintf(buf, sizeof(buf), "%dx", ui->settings->ffSpeed);
++    else
++        snprintf(buf, sizeof(buf), "MAX");
+     setting(ui, c, ix, &y, iw, SETTING_FF, "FAST-FORWARD", buf);
+     if (host && host->hasExpand) {
+         if (host->expandGame) {
+@@ -234,7 +237,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
+     pd_dim(c, 0xE6);
+     // Swallows taps beside the windows (they close the overlay).
+     ui_add_hit(ui, 0, 0, c->w, c->h, HIT_SCRIM);
+-    static const char* const FF[PD_FF_MAX - PD_FF_MIN + 1] = { "2x", "3x", "4x" };
++    static const char* const FF[PD_FF_CHOICES] = { "2x", "3x", "4x", "5x", "6x", "8x", "10x", "MAX" };
+     switch (ui->overlay) {
+     case PD_OVERLAY_PICK_SCREEN:
+         pick_list(ui, c, "SCREEN", SCREEN_NAMES, PD_SCREEN_MODES, ui->settings->screenMode);
+@@ -243,7 +246,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
+         pick_list(ui, c, "ASPECT", ASPECT_NAMES, PD_ASPECTS, ui->settings->aspect);
+         break;
+     case PD_OVERLAY_PICK_FF:
+-        pick_list(ui, c, "FAST-FORWARD", FF, PD_FF_MAX - PD_FF_MIN + 1, ui->settings->ffSpeed - PD_FF_MIN);
++        pick_list(ui, c, "FAST-FORWARD", FF, PD_FF_CHOICES, pd_ff_index(ui->settings->ffSpeed));
+         break;
+     case PD_OVERLAY_TAB_BAR:
+         tab_bar_page(ui, c);
+diff --git a/linux/CMakeLists.txt b/linux/CMakeLists.txt
+index 8f64735..93480eb 100644
+--- a/linux/CMakeLists.txt
++++ b/linux/CMakeLists.txt
+@@ -16,9 +16,11 @@ find_library(SDL2_LIBRARY NAMES SDL2 REQUIRED)
+ find_package(Threads REQUIRED)
+ file(GLOB PD_CORE CONFIGURE_DEPENDS ../3ds/core/*.c)
+ add_library(pd_linux_common STATIC host_io.c wild.c fly.c field_items.c hud.c quick_menu.c ${PD_CORE} ../3ds/desktop/pd_png.c ../app/src/main/cpp/pk_savevf.c
+-  ../app/src/main/cpp/pk_call.c ../app/src/main/cpp/pk_wide.c ../app/src/main/cpp/pk_wide_gb.c)
++  ../app/src/main/cpp/pk_call.c ../app/src/main/cpp/pk_wide.c ../app/src/main/cpp/pk_wide_gb.c
++  ../app/src/main/cpp/pk_rewind.c)
+ target_include_directories(pd_linux_common PUBLIC ../3ds/core ../third_party/mgba/include ${CMAKE_CURRENT_BINARY_DIR}/mgba/include ${SDL2_INCLUDE_DIR})
+-target_compile_definitions(pd_linux_common PUBLIC _GNU_SOURCE _POSIX_C_SOURCE=200809L)
++target_compile_definitions(pd_linux_common PUBLIC _GNU_SOURCE _POSIX_C_SOURCE=200809L
++  USE_PTHREADS) # plorpOS: libmgba is, and pk_rewind.c needs its threaded mCoreRewindContext
+ target_compile_options(pd_linux_common PRIVATE -Wall -Wextra)
+ # The app's EXPAND sources, built as they are.
+ set_source_files_properties(../app/src/main/cpp/pk_wide.c ../app/src/main/cpp/pk_wide_gb.c PROPERTIES COMPILE_OPTIONS -Wno-unused-parameter)
+diff --git a/linux/host_io.c b/linux/host_io.c
+index 63033cd..7fb88ac 100644
+--- a/linux/host_io.c
++++ b/linux/host_io.c
+@@ -157,6 +157,7 @@ static bool same_save(const unsigned char *a, size_t an, const unsigned char *b,
+ static int newest_first(const void *a, const void *b) {
+   return -strcmp(*(char *const *)a, *(char *const *)b);
+ }
++const char *pocket_backup_dir;
+ bool pocket_save_backup(const char *savePath, time_t now) {
+   size_t size;
+   unsigned char *save = read_all(savePath, &size);
+@@ -170,8 +171,11 @@ bool pocket_save_backup(const char *savePath, time_t now) {
+   const char *file = slash ? slash + 1 : savePath;
+   const char *dot = strrchr(file, '.');
+   char dir[1100], stem[256], ext[32] = "sav";
+-  snprintf(dir, sizeof dir, "%.*s%s", slash ? (int)(slash - savePath + 1) : 0,
+-           savePath, POCKET_BACKUP_DIR);
++  if (pocket_backup_dir)
++    snprintf(dir, sizeof dir, "%s", pocket_backup_dir);
++  else
++    snprintf(dir, sizeof dir, "%.*s%s", slash ? (int)(slash - savePath + 1) : 0,
++             savePath, POCKET_BACKUP_DIR);
+   snprintf(stem, sizeof stem, "%.*s.backup-", dot && dot != file ? (int)(dot - file) : (int)strlen(file), file);
+   if (dot && dot != file)
+     snprintf(ext, sizeof ext, "%s", dot + 1);
+diff --git a/linux/host_io.h b/linux/host_io.h
+index 179833a..ae36a40 100644
+--- a/linux/host_io.h
++++ b/linux/host_io.h
+@@ -16,5 +16,7 @@ struct VFile *pocket_save_wrap(struct VFile *inner,
+  * needed copy couldn't be written; no save, or an empty one, needs none. */
+ #define POCKET_BACKUP_DIR "pokedaisy-backups"
+ #define POCKET_BACKUP_KEEP 10
++/* plorpOS: where the copies go instead of beside the save; NULL = beside it. */
++extern const char *pocket_backup_dir;
+ bool pocket_save_backup(const char *savePath, time_t now);
+ #endif
+diff --git a/linux/main.c b/linux/main.c
+index a1c2e59..f2170f7 100644
+--- a/linux/main.c
++++ b/linux/main.c
+@@ -13,10 +13,12 @@
+ #include "quick_menu.h"
+ #include "wild.h"
+ #include "../app/src/main/cpp/pk_wide.h"
++#include "../app/src/main/cpp/pk_rewind.h"
+ #include <SDL.h>
+ #include <dirent.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <linux/input.h>
+ #include <mgba-util/vfs.h>
+ #include <mgba/core/blip_buf.h>
+ #include <mgba/core/core.h>
+@@ -60,6 +62,9 @@ static int appError;
+ static unsigned audioNonzero;
+ #endif
+ static const char *root = ".";
++/* plorpOS: --save FILE, the battery save another emulator keeps (its backups
++ * then go to DATA/backups); NULL = DATA/saves/ROM.sav. */
++static const char *saveFile;
+ static char message[128];
+ static unsigned messageUntil;
+ enum {
+@@ -78,6 +83,13 @@ enum {
+   L2,
+   R2,
+   MENU,
++  L3,
++  SUP, // plorpOS: the left stick's directions apart (they're also the D-pad's), and the Brick's Fn keys
++  SDOWN,
++  SLEFT,
++  SRIGHT,
++  FN1,
++  FN2,
+   NKEYS
+ };
+ static SDL_GameController *controller;
+@@ -215,6 +227,7 @@ static int controller_button(int button) {
+     case SDL_CONTROLLER_BUTTON_BACK:return SELECT;
+     case SDL_CONTROLLER_BUTTON_START:return START;
+     case SDL_CONTROLLER_BUTTON_GUIDE:return MENU;
++    case SDL_CONTROLLER_BUTTON_LEFTSTICK:return L3;
+     case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:return L;
+     case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:return R;
+     case SDL_CONTROLLER_BUTTON_DPAD_UP:return UP;
+@@ -272,6 +285,23 @@ static void controller_removed(SDL_JoystickID id) {
+     if (SDL_IsGameController(i))
+       controller_added(i);
+ }
++/* plorpOS: keys SDL's joystick never reports (below BTN_MISC: the Brick's Fn keys, KEY_F1 / KEY_F2), read
++ * from the pad's own node beside SDL: POCKET_FN_KEYS=NODE:FN1CODE:FN2CODE. */
++static void fn_keys(void) {
++  static int fd = -2, code[2];
++  if (fd == -2) {
++    const char *spec = getenv("POCKET_FN_KEYS");
++    char node[256];
++    fd = -1;
++    if (spec && sscanf(spec, "%255[^:]:%d:%d", node, &code[0], &code[1]) == 3)
++      fd = open(node, O_RDONLY | O_NONBLOCK);
++  }
++  struct input_event ev;
++  while (fd >= 0 && read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev)
++    for (int i = 0; i < 2; i++)
++      if (ev.type == EV_KEY && ev.code == code[i] && ev.value != 2)
++        key(FN1 + i, ev.value != 0);
++}
+ static void events(void) {
+   pressed = 0;
+   SDL_Event e;
+@@ -296,8 +326,10 @@ static void events(void) {
+     if(e.type == SDL_CONTROLLERAXISMOTION) {
+       if(e.caxis.axis==SDL_CONTROLLER_AXIS_TRIGGERLEFT)key(L2,e.caxis.value>16000);
+       if(e.caxis.axis==SDL_CONTROLLER_AXIS_TRIGGERRIGHT)key(R2,e.caxis.value>16000);
+-      if(e.caxis.axis==SDL_CONTROLLER_AXIS_LEFTX) {key(LEFT,e.caxis.value < -16000);key(RIGHT,e.caxis.value > 16000);}
+-      if(e.caxis.axis==SDL_CONTROLLER_AXIS_LEFTY) {key(UP,e.caxis.value < -16000);key(DOWN,e.caxis.value > 16000);}
++      if(e.caxis.axis==SDL_CONTROLLER_AXIS_LEFTX) {key(LEFT,e.caxis.value < -16000);key(RIGHT,e.caxis.value > 16000);
++        key(SLEFT,e.caxis.value < -16000);key(SRIGHT,e.caxis.value > 16000);}
++      if(e.caxis.axis==SDL_CONTROLLER_AXIS_LEFTY) {key(UP,e.caxis.value < -16000);key(DOWN,e.caxis.value > 16000);
++        key(SUP,e.caxis.value < -16000);key(SDOWN,e.caxis.value > 16000);}
+     }
+     if (!controller && rawTrimui && (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP))
+       key(joy(e.jbutton.button), e.type == SDL_JOYBUTTONDOWN);
+@@ -317,6 +349,7 @@ static void events(void) {
+         e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+       held = 0;
+   }
++  fn_keys();
+ }
+ static void repeat_directions(void) {
+   for (int k = RIGHT; k <= DOWN; k++)
+@@ -326,6 +359,92 @@ static void repeat_directions(void) {
+     }
+ }
+ static bool down(int k) { return (pressed & (1u << k)) != 0; }
++/* plorpOS: its GBA hotkeys, POCKET_HOTKEYS in Diatom's wire ("l2:ff,d.x:savestate,select+r1:rewind"): a
++ * trigger held with its modifier (the binding's own, else POCKET_HOTKEY_MOD's), or alone with "d.". The
++ * game doesn't get a trigger while it's a hotkey's (hotkeyMask). Set at all, the host owns MENU - its own
++ * in-game menu and the modifier - and MENU no longer opens this GAME menu (START+SELECT still does). */
++enum { HK_FF, HK_REWIND, HK_SAVE, HK_LOAD, HK_ACTIONS };
++static struct {
++  int action, key, mod; // mod -1: alone
++} hotkey[16];
++static int hotkeyN;
++static unsigned hotkeyMask;
++static bool hostMenu;
++static int key_named(const char *s) {
++  static const struct {
++    const char *name;
++    int key;
++  } names[] = {{"a", A},       {"b", B},         {"x", X},         {"y", Y},           {"l1", L},
++               {"r1", R},      {"l2", L2},       {"r2", R2},       {"up", UP},         {"down", DOWN},
++               {"left", LEFT}, {"right", RIGHT}, {"menu", MENU},   {"select", SELECT}, {"l3", L3},
++               {"sup", SUP},   {"sdown", SDOWN}, {"sleft", SLEFT}, {"sright", SRIGHT}, {"fn1", FN1},
++               {"fn2", FN2}};
++  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++)
++    if (!strcmp(s, names[i].name))
++      return names[i].key;
++  return -1;
++}
++static void hotkeys_load(void) {
++  static const char *const actions[HK_ACTIONS] = {"ff", "rewind", "savestate", "loadstate"};
++  const char *spec = getenv("POCKET_HOTKEYS"), *mod = getenv("POCKET_HOTKEY_MOD");
++  char buf[512], *save = NULL;
++  hostMenu = spec != NULL;
++  hotkeyN = 0;
++  snprintf(buf, sizeof buf, "%s", spec ? spec : "");
++  for (char *t = strtok_r(buf, ",", &save); t && hotkeyN < 16; t = strtok_r(NULL, ",", &save)) {
++    char *colon = strchr(t, ':'), *plus = strchr(t, '+');
++    int action = -1, m, k;
++    if (!colon)
++      continue;
++    *colon = 0;
++    for (int i = 0; i < HK_ACTIONS; i++)
++      if (!strcmp(colon + 1, actions[i]))
++        action = i;
++    if (plus) {
++      *plus = 0;
++      m = key_named(t);
++      k = key_named(plus + 1);
++    } else if (!strncmp(t, "d.", 2)) {
++      m = -2;
++      k = key_named(t + 2);
++    } else {
++      m = key_named(mod ? mod : "menu");
++      k = key_named(t);
++    }
++    // Others (screenshot, turbo, the right stick, the GKD's Home) aren't this host's.
++    if (action < 0 || k < 0 || m == -1)
++      continue;
++    hotkey[hotkeyN].action = action;
++    hotkey[hotkeyN].key = k;
++    hotkey[hotkeyN++].mod = m < 0 ? -1 : m;
++  }
++  if (spec)
++    fprintf(stderr, "Hotkeys: %d of \"%s\"\n", hotkeyN, spec);
++}
++/* The actions held this frame; *fired: those whose trigger went down now. */
++static unsigned hotkeys_held(unsigned *fired) {
++  unsigned on = 0;
++  *fired = 0;
++  hotkeyMask = 0;
++  for (int i = 0; i < hotkeyN; i++) {
++    unsigned bit = 1u << hotkey[i].key;
++    bool mod = hotkey[i].mod >= 0 ? (held & (1u << hotkey[i].mod)) != 0
++                                  : !(hostMenu && (held & (1u << MENU)));
++    // pressed too: a tap shorter than a frame is let go before this sees it.
++    if (!((held | pressed) & bit) || !mod)
++      continue;
++    on |= 1u << hotkey[i].action;
++    if (pressed & bit)
++      *fired |= 1u << hotkey[i].action;
++    pressed &= ~bit;
++    hotkeyMask |= bit;
++    // A stick direction is the D-pad's too: the game doesn't get that either.
++    if (hotkey[i].key >= SUP && hotkey[i].key <= SRIGHT)
++      hotkeyMask |= 1u << (hotkey[i].key == SUP ? UP : hotkey[i].key == SDOWN ? DOWN
++                           : hotkey[i].key == SLEFT ? LEFT : RIGHT);
++  }
++  return on;
++}
+ /* The companion's canvas for an ow x oh screen: the largest whole scale that
+  * keeps it at least 320x240 (the 3DS's, which every tab is laid out for), so
+  * its pixel text is about as big on every panel: 320x240 at 2x on 640x480,
+@@ -460,6 +579,7 @@ static void wide_tick(struct mCore *c, bool skip, const struct pd_settings *s) {
+ }
+ // Gameplay scales in physical panel pixels; the companion keeps its 512x384
+ // grid.
++static int gameScaling; // plorpOS: enum pd_scaling, for ASPECT ORIGINAL's picture
+ static bool render_game(unsigned gw, unsigned gh) {
+   int ow, oh;
+   if (SDL_GetRendererOutputSize(renderer, &ow, &oh) < 0 || ow <= 0 || oh <= 0)
+@@ -474,6 +594,16 @@ static bool render_game(unsigned gw, unsigned gh) {
+   lastGameRect =
+       (SDL_Rect){(ow - (int)gw * scale) / 2, (oh - (int)gh * scale) / 2,
+                  (int)gw * scale, (int)gh * scale};
++  if (gameScaling == PD_SCALE_STRETCH)
++    lastGameRect = (SDL_Rect){0, 0, ow, oh};
++  else if (gameScaling == PD_SCALE_FIT) {
++    int w = ow, h = (int)((long)ow * gh / gw);
++    if (h > oh) {
++      h = oh;
++      w = (int)((long)oh * gw / gh);
++    }
++    lastGameRect = (SDL_Rect){(ow - w) / 2, (oh - h) / 2, w, h};
++  }
+   // The textures take mGBA's pixels as they are (XBGR: SDL's BGR888).
+   if (SDL_UpdateTexture(gameTexture, &(SDL_Rect){0, 0, (int)gw, (int)gh}, video, 256 * 4) < 0) {
+     notice(SDL_GetError());
+@@ -816,7 +946,8 @@ static void pacing_check(double frameMs) {
+   avg = 0;
+   count = 0;
+ }
+-static void audio_rate(struct mCore *c, double gameHz) {
++/* plorpOS: speed > 1 is fast-forward with its sound: as many samples as one frame's, so it plays sped up. */
++static void audio_rate(struct mCore *c, double gameHz, int speed) {
+   double rate = 32768;
+   if (vsyncPaced && audio && screenHz > 0) {
+     double queued = SDL_GetQueuedAudioSize(audio) / 4.0, target = 32768 * 0.06;
+@@ -824,6 +955,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
+     d = d > 1 ? 1 : d < -1 ? -1 : d;
+     rate = 32768 * gameHz / screenHz * (1 + 0.005 * d);
+   }
++  rate /= speed;
+   for (int i = 0; i < 2; i++)
+     blip_set_rates(c->getAudioChannel(c, i), c->frequency(c), rate);
+ }
+@@ -878,6 +1010,28 @@ static void perf_frame(uint64_t start, double hz) {
+ static void test_frame(struct mCore *, bool, int, struct pd_ui *,
+                        struct pd_snapshot *);
+ #endif
++/* plorpOS: REWIND, the app's ring - a state every 2 frames, 600 of them (~20 s) - while settings.rewind. */
++static struct mCoreRewindContext rewindRing;
++static bool rewindOn;
++static int rewindTick;
++static void rewind_follow(bool on) {
++  if (on == rewindOn)
++    return;
++  if (rewindOn)
++    pk_rewind_deinit(&rewindRing);
++  else
++    pk_rewind_init(&rewindRing, 600);
++  rewindOn = on;
++  rewindTick = 0;
++}
++/* plorpOS: fast-forward's frames this refresh - its speed, or for MAX as many as ~80% of a frame's time fits
++ * (frameMs: what one cost lately). */
++static int ff_frames(const struct pd_settings *s, double hz, double frameMs) {
++  if (s->ffSpeed)
++    return s->ffSpeed;
++  int n = frameMs > 0 ? (int)(800.0 / hz / frameMs) : 2;
++  return n < 2 ? 2 : n > 30 ? 30 : n;
++}
+ static void run_game(const char *path, int maxFrames, const char *shot) {
+   FILE *f = fopen(path, "rb");
+   if (!f) {
+@@ -933,7 +1087,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   char sav[1024], ss[1024];
+   const char *name = strrchr(path, '/');
+   name = name ? name + 1 : path;
+-  snprintf(sav, sizeof sav, "%s/saves/%s.sav", root, name);
++  if (saveFile)
++    snprintf(sav, sizeof sav, "%s", saveFile);
++  else
++    snprintf(sav, sizeof sav, "%s/saves/%s.sav", root, name);
+   snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
+   struct pocket_save_status saveStatus = {0};
+   if (!pocket_save_backup(sav, time(NULL))) {
+@@ -1009,6 +1166,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   const char *repelNames[REPEL_KINDS];
+   struct pd_ui ui;
+   pd_ui_init(&ui, &settings);
++  hotkeys_load();
++  rewind_follow(settings.rewind);
++  double frameCost = 0;
++  uint64_t lastStart = 0;
+   struct pd_snapshot snap = {0};
+   struct pd_host_info host = {.hideScreenMode = true, .hasExpand = true, .hasHud = c->platform(c) == mPLATFORM_GBA,
+                               .expandGame = wideSupported, .count = 1, .labels = {"HOST"}};
+@@ -1036,9 +1197,33 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   while (running && !leave) {
+     uint64_t frameStart = SDL_GetPerformanceCounter();
+     if(saveStatus.failed) { appError=1; notice("Save I/O failed; stopping game"); break; }
++    // plorpOS: back from a pause (its in-game menu stops this process, as does sleep): what its OPTIONS
++    // changed in settings.ini, taken at once.
++    if (lastStart && (frameStart - lastStart) * 4 > SDL_GetPerformanceFrequency()) {
++      struct pd_settings fresh;
++      if (pd_settings_load(&fresh, config)) {
++        settings = fresh;
++        if (wildSwitch)
++          pk_field_wild(wildSwitch, settings.wildOff);
++        hudDrawnKey = 0;
++      }
++    }
++    lastStart = frameStart;
++    rewind_follow(settings.rewind);
++    gameScaling = settings.aspect == PD_ASPECT_ORIGINAL || !wideSupported ? settings.scaling : PD_SCALE_INTEGER;
+     events();
+     audio_check();
+     repeat_directions();
++    // plorpOS's hotkeys, over the game only.
++    unsigned hkFired = 0, hkOn = 0;
++    hotkeyMask = 0;
++    if (!companion && !quickOpen)
++      hkOn = hotkeys_held(&hkFired);
++    if (hkFired & (1u << HK_SAVE))
++      notice(state(c, ss, true) ? "State saved" : "State save failed");
++    if (hkFired & (1u << HK_LOAD))
++      notice(access(ss, F_OK) ? "No state saved yet" : state(c, ss, false) ? "State loaded" : "State load failed");
++    bool ffHeld = hkOn & (1u << HK_FF), rewinding = (hkOn & (1u << HK_REWIND)) && rewindOn;
+     if (down(X)) {
+       menuOpen = 0;
+       companion = !companion;
+@@ -1046,7 +1231,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+       if (audio)
+         SDL_ClearQueuedAudio(audio);
+     }
+-    if (down(MENU) || ((down(START) || down(SELECT)) &&
++    if ((!hostMenu && down(MENU)) || ((down(START) || down(SELECT)) &&
+                        (held & (1u << START)) && (held & (1u << SELECT)))) {
+       menuOpen = menuOpen ? 0 : 1;
+       companion = true;
+@@ -1309,24 +1494,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+         confirmMenu.selected = 0;
+       }
+     } else {
+-      muted = ff;
+-      c->setKeys(c, (quickOpen ? 0 : held & 1023) | (gameKeyFrames > 0 ? gameKeys : 0));
+-      int count = ff ? settings.ffSpeed : 1;
+-      audio_rate(c, hz);
++      bool fast = (ff || ffHeld) && !rewinding;
++      muted = (fast && !settings.ffAudio) || rewinding;
++      c->setKeys(c, (quickOpen ? 0 : held & ~hotkeyMask & 1023) | (gameKeyFrames > 0 ? gameKeys : 0));
++      int count = fast ? ff_frames(&settings, hz, frameCost) : 1;
++      audio_rate(c, hz, count);
++      uint64_t runStart = SDL_GetPerformanceCounter();
+       for (int i = 0; i < count; i++) {
+         uint64_t t = SDL_GetPerformanceCounter();
++        // REWIND: back one entry, then that frame runs to draw it; at the oldest, stand still.
++        if (rewinding && !pk_rewind_restore(&rewindRing, c))
++          break;
++        if (rewindOn && !rewinding && ++rewindTick >= 2) {
++          rewindTick = 0;
++          pk_rewind_append(&rewindRing, c);
++        }
+         c->runFrame(c);
+         if (gameKeyFrames > 0 && --gameKeyFrames == 0)
+-          c->setKeys(c, quickOpen ? 0 : held & 1023);
++          c->setKeys(c, quickOpen ? 0 : held & ~hotkeyMask & 1023);
+         if (c->platform(c) == mPLATFORM_GBA)
+           pk_rest_note(c);
+         if (fieldKnown)
+-          fieldFlags = pk_field_state(c, 0, wildSwitch && settings.wildOff ? 0 : 100);
++          fieldFlags = pk_field_state(c, settings.runIndoors, wildSwitch && settings.wildOff ? 0 : 100);
+         emuMs += ms_since(t);
+         t = SDL_GetPerformanceCounter();
+         wide_tick(c, i < count - 1, &settings);
+         wideMs += ms_since(t);
+       }
++      if (fast)
++        frameCost = frameCost * 0.8 + 0.2 * ms_since(runStart) / count;
+     }
+     // The companion's data: fresh when it opens (it pauses the game), else twice a
+     // second - read through the bus byte by byte, every frame cost frame time.
+@@ -1502,6 +1698,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   if (audio)
+     SDL_ClearQueuedAudio(audio);
+ cleanup:
++  rewind_follow(false);
+   pk_wide_configure(0);
+   wideSupported = wideReady = false;
+   c->unloadROM(c);
+@@ -1520,6 +1717,8 @@ int main(int argc, char **argv) {
+   for (int i = 1; i < argc; i++) {
+     if (!strcmp(argv[i], "--data") && i + 1 < argc)
+       root = argv[++i];
++    else if (!strcmp(argv[i], "--save") && i + 1 < argc)
++      saveFile = argv[++i];
+     else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
+       frames = atoi(argv[++i]);
+     else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
+@@ -1532,6 +1731,11 @@ int main(int argc, char **argv) {
+   signal(SIGTERM, stop);
+   mkdir(root, 0755);
+   char path[1024];
++  static char backups[1024];
++  if (saveFile) {
++    snprintf(backups, sizeof backups, "%s/backups", root);
++    pocket_backup_dir = backups;
++  }
+   const char *dirs[] = {"roms", "saves", "states"};
+   for (int i = 0; i < 3; i++) {
+     snprintf(path, sizeof path, "%s/%s", root, dirs[i]);

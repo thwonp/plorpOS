@@ -53,6 +53,7 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "btnmap.h"
+#include "daisy.h"
 #include "shaderlist.h"
 #include "clock.h"
 #include "gbpal.h"
@@ -323,6 +324,7 @@ typedef struct {
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	bool in_port;               /* a PortMaster port runs: no Splore row */
+	const char *daisy_ini;      /* PokeDaisy runs: its settings, the Options row's */
 	SDL_Renderer *r;
 } app;
 
@@ -12539,7 +12541,12 @@ typedef struct {
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
 	bool       port;       /* a PortMaster port: no Splore row at all */
+	const char *daisy_ini; /* PokeDaisy: an Options row (plorpos-wjw) */
+	const menu_style *style;   /* the menu's, for Options' own */
 } nm_ctx;
+
+/* PokeDaisy's rows read in Continue, Options, Reset, Quit order. */
+enum { NMD_OPTIONS = 1, NMD_RESET, NMD_QUIT };
 
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
@@ -12553,6 +12560,13 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
+	if (c->daisy_ini) {
+		gm_native_rows(true, rows);
+		rows[NMD_RESET] = rows[GMN_RESET];
+		rows[NMD_OPTIONS] = (menu_row){ "Options", NULL, true };
+		rows[NMD_QUIT] = rows[GMN_QUIT];
+		return NMD_QUIT + 1;
+	}
 	if (c->port) {
 		gm_native_rows(true, rows);
 		rows[GMN_SPLORE] = rows[GMN_QUIT];
@@ -12582,11 +12596,46 @@ static menu_result nm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
+/* PokeDaisy's Options (plorpos-wjw): its settings.ini, written as the menu
+ * is left; PokeDaisy reads it again as it is thawed. */
+static int do_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)max;
+	*heading = "Options";
+	return daisy_rows(ctx, rows);
+}
+
+static menu_result do_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)a;
+	if (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)
+		daisy_step(ctx, sel, key == IN_LEFT ? -1 : 1);
+	return MENU_STAY;
+}
+
+static void daisy_options(app *a, nm_ctx *c)
+{
+	daisy_opts o, was;
+
+	daisy_load(c->daisy_ini, &o);
+	was = o;
+	menu_run(a, c->style, do_build, do_key, &o);
+	if (memcmp(&o, &was, sizeof o) && !daisy_save(c->daisy_ini, &o))
+		fprintf(stderr, "pokedaisy: %s not written\n", c->daisy_ini);
+}
+
 static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (c->daisy_ini) {
+		if (sel == NMD_OPTIONS) {
+			daisy_options(a, c);
+			return MENU_STAY;
+		}
+		sel = sel == NMD_RESET ? GMN_RESET : sel == NMD_QUIT ? GMN_QUIT : sel;
+	}
 	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
@@ -12599,8 +12648,8 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 	menu_style st = { 0 };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port, a->daisy_ini, &st };
 
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
@@ -13126,8 +13175,9 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	struct stat was, now;
 	bool had;
 	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
+	char ini[LIB_PATH + 16], keys[320], mod[40];
 	const char *slash = strrchr(file, '/');
-	char *argv[16], *dot;
+	char *argv[24], *dot;
 	int n = 0, i, r;
 
 	daisy_bin(bin, sizeof bin);
@@ -13139,6 +13189,15 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 
 	argv[n++] = (char *)"/usr/bin/env";
 	argv[n++] = (char *)"POCKET_FULLSCREEN=1";
+	/* The pad whether or not its window has the focus: under sway the in-game
+	 * menu's window takes it, and after Continue the game heard nothing. */
+	argv[n++] = (char *)"SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1";
+	/* The GBA shelf's hotkeys, the ones it can (plorpos-wjw.3); set at all,
+	 * Menu is ours alone - this menu and the modifier. */
+	snprintf(keys, sizeof keys, "POCKET_HOTKEYS=%s", plat_hotkey_map("GBA"));
+	snprintf(mod, sizeof mod, "POCKET_HOTKEY_MOD=%s", plat_hotkey_modifier());
+	argv[n++] = keys;
+	argv[n++] = mod;
 	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
 	argv[n++] = bin;
 	argv[n++] = (char *)"--data"; argv[n++] = data;
@@ -13146,10 +13205,13 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	argv[n++] = (char *)rom;
 	argv[n] = NULL;
 	had = stat(srm, &was) == 0;
+	snprintf(ini, sizeof ini, "%s/settings.ini", data);
 	a->in_port = true;   /* native_menu: no Splore row */
+	a->daisy_ini = ini;  /* ... and an Options row */
 	a->pico8_splore = false;
 	r = run_alone(a, argv, native_menu, native_tick);
 	a->in_port = false;
+	a->daisy_ini = NULL;
 	if (stat(srm, &now) == 0 &&
 	    (!had || now.st_mtime != was.st_mtime || now.st_size != was.st_size) &&
 	    unlink(st) == 0) {

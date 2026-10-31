@@ -14,6 +14,7 @@
 #include "../src/sys_menu.h"
 #include "../src/cards.h"
 #include "../src/game_menu.h"
+#include "../src/daisy.h"
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -1190,6 +1191,56 @@ static void card_sets(void)
 	ck(ok, "a step always lands on a different, real set");
 }
 
+/* PokeDaisy's Options (plorpos-wjw): what the rows say, how they step, and a
+ * save that keeps the companion's own lines and reads back as it was. */
+static void daisy_options(void)
+{
+	const char *path = "build-native/daisy-check.ini";
+	daisy_opts o, back;
+	menu_row rows[DO_ROWS + 2];
+	char line[128];
+	FILE *f;
+	int n, tabs = 0, aspects = 0;
+
+	printf("daisy options\n");
+	remove(path);
+	daisy_load(path, &o);
+	ck(o.ff == 2 && o.autozoom && o.hud && !o.rewind && !o.aspect && !o.scaling,
+	   "no file: PokeDaisy's defaults");
+	n = daisy_rows(&o, rows);
+	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "eight rows, a rule, a note");
+	ck(!strcmp(rows[DO_ASPECT].value, "Integer") && !strcmp(rows[DO_FF].value, "2x") &&
+	   !strcmp(rows[DO_WILD].value, "On"), "defaults read Integer, 2x, encounters On");
+	ck(!rows[DO_AUTOZOOM].live, "Auto Zoom In is Zoom Out's: quiet otherwise");
+
+	daisy_step(&o, DO_ASPECT, -1);
+	ck(o.aspect == 2 && !strcmp((daisy_rows(&o, rows), rows[DO_ASPECT].value), "Zoom Out")
+	   && rows[DO_AUTOZOOM].live, "Aspect left of Integer is Zoom Out, and Auto Zoom In wakes");
+	for (n = 0; n < 5; n++) { daisy_step(&o, DO_ASPECT, +1); aspects++; }
+	ck(o.aspect == 2 && aspects == 5, "Aspect goes round its five");
+	daisy_step(&o, DO_ASPECT, +1);
+	daisy_step(&o, DO_ASPECT, +1);
+	ck(!o.aspect && o.scaling == 1, "Integer, then Fit");
+	daisy_step(&o, DO_FF, -1);
+	ck(o.ff == 0 && !strcmp((daisy_rows(&o, rows), rows[DO_FF].value), "Max"), "left of 2x is Max");
+
+	f = fopen(path, "w");
+	fputs("screen=0\nff=4\ntabs=31\nhudhide=2\n", f);
+	fclose(f);
+	o.rewind = o.wildoff = true;
+	ck(daisy_save(path, &o), "saved");
+	f = fopen(path, "r");
+	while (f && fgets(line, sizeof line, f)) {
+		if (!strcmp(line, "tabs=31\n") || !strcmp(line, "hudhide=2\n") || !strcmp(line, "screen=0\n")) tabs++;
+		ck(strcmp(line, "ff=4\n") != 0, "the old ff line replaced, not kept");
+	}
+	if (f) fclose(f);
+	ck(tabs == 3, "the companion's own lines kept");
+	daisy_load(path, &back);
+	ck(!memcmp(&back, &o, sizeof o), "reads back as saved");
+	remove(path);
+}
+
 int main(void)
 {
 	off_state();
@@ -1214,6 +1265,7 @@ int main(void)
 	ingame_rows();
 	native_rows();
 	audio_row();
+	daisy_options();
 	if (fails) { printf("\n%d menu check(s) failed\n", fails); return 1; }
 	printf("\nok: menus contain what they should\n");
 	return 0;

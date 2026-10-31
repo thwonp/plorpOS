@@ -50,11 +50,14 @@ const char *const plat_child_env[] = {
 };
 const char plat_child_libpath[] = "";
 /* SDL numbers B (BTN_SOUTH) b0, A b1, X (BTN_NORTH) b2, Y b3; the rest as
- * portmaster/control.txt has them. */
+ * portmaster/control.txt has them. Menu (b10) and the stick's click are the
+ * GBA hotkeys' modifiers and the stick (a0, a1) their triggers, which
+ * PokeDaisy reads (plorpos-wjw.3); the stick also walks. */
 const char *const plat_daisy_env[] = {
 	"SDL_GAMECONTROLLERCONFIG=1900c3cb010000000321000000010000,gkd_atom_joypad,"
 	"a:b0,b:b1,x:b3,y:b2,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,"
-	"righttrigger:b7,back:b8,start:b9,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,"
+	"righttrigger:b7,back:b8,start:b9,guide:b10,leftstick:b11,dpup:b12,dpdown:b13,"
+	"dpleft:b14,dpright:b15,leftx:a0,lefty:a1,"
 	"platform:Linux,",
 	NULL
 };

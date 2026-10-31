@@ -732,6 +732,16 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				if (bright) menu_spent = true;
 				continue;
 			}
+			/* Another button with Menu held is a chord - one of the
+			 * game's own hotkeys (PokeDaisy's, plorpos-wjw.3) - so
+			 * Menu's release opens nothing. A d-pad hat or an analogue
+			 * trigger counts as a button. */
+			if (menu_held && ev.code != menu_code &&
+			    ((ev.type == EV_KEY && ev.value == 1) ||
+			     (ev.type == EV_ABS && ev.value != 0 &&
+			      (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y ||
+			       ev.code == ABS_Z || ev.code == ABS_RZ))))
+				menu_spent = true;
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
 				menu_spent = false;

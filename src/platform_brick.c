@@ -71,13 +71,19 @@ const char *const plat_child_env[] = {
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
 /* SDL numbers B (304) b0, A b1, Y (307) b2, X (308) b3 - JOY_* below; the
- * rest as portmaster/control.txt has them. ALSA, as ports get it (pm-run.sh). */
+ * rest as portmaster/control.txt has them. Menu (316, b8) and the stick
+ * clicks are the GBA hotkeys' modifiers, which PokeDaisy reads
+ * (plorpos-wjw.3). ALSA, as ports get it (pm-run.sh). */
 const char *const plat_daisy_env[] = {
 	"SDL_GAMECONTROLLERCONFIG=0300a3845e0400008e02000014010000,TRIMUI Player1,"
-	"a:b0,b:b1,x:b2,y:b3,back:b6,start:b7,leftshoulder:b4,rightshoulder:b5,"
+	"a:b0,b:b1,x:b2,y:b3,back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+	"leftshoulder:b4,rightshoulder:b5,"
 	"lefttrigger:a2,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
 	"platform:Linux,",
 	"SDL_AUDIODRIVER=alsa",
+	/* Fn1 and Fn2 (KEY_F1/KEY_F2), which SDL never reports: hotkey
+	 * triggers, read from the pad's node (plorpos-wjw.3). */
+	"POCKET_FN_KEYS=/dev/input/event3:59:60",
 	NULL
 };
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */

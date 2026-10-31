@@ -7,9 +7,15 @@
 # calls every device's SDL2 has) and glibc 2.27, so it is linked against the
 # Brick's SDL2 - the oldest firmware - and runs on the GKD, H700 and Rotate.
 #
-#   pokedaisy-save.patch - --save FILE: the game's own Saves/<console>/<rom>.srm,
-#   the same raw save Diatom's mGBA keeps, so both play one save. Its backups
-#   then go to DATA/backups, not beside the save.
+#   pokedaisy-plorpos.patch -
+#   --save FILE: the game's own Saves/<console>/<rom>.srm, the same raw save
+#   Diatom's mGBA keeps, so both play one save. Its backups then go to
+#   DATA/backups, not beside the save (plorpos-c9p).
+#   What plorpOS's in-game menu sets (plorpos-wjw): settings.ini's new keys
+#   (scaling, ffaudio, rewind, runindoors; ff 5-10 and 0 = MAX), read again
+#   whenever the game was paused; plorpOS's GBA hotkeys from POCKET_HOTKEYS
+#   (fast-forward, rewind, quick save / load; buttons, stick directions and
+#   the Brick's Fn keys via POCKET_FN_KEYS), MENU then plorpOS's alone.
 #
 # Only the mgba submodule is needed (not melonDS or rcheevos). Its CMake build
 # renames a zlib header in its tree, hence the forced update before each build.
@@ -34,7 +40,7 @@ git -C "$SRC" checkout -q -f "$PIN"
 git -C "$SRC" clean -qfdx
 git -C "$SRC" submodule -q update --init --force third_party/mgba
 git -C "$SRC/third_party/mgba" clean -qfdx
-git -C "$SRC" apply "$ROOT/mk/patches/pokedaisy-save.patch"
+git -C "$SRC" apply "$ROOT/mk/patches/pokedaisy-plorpos.patch"
 
 docker run --rm -v "$SRC:/w:z" -v "$ROOT/sysroot:/sysroot:ro,z" -w /w $IMAGE sh -c '
 set -e
@@ -52,7 +58,7 @@ set(CMAKE_C_FLAGS_INIT "-mcpu=cortex-a53")
 EOF
 cmake -S linux -B build -DCMAKE_TOOLCHAIN_FILE=/tmp/tc.cmake -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_LTO=OFF -DBUILD_TESTING=OFF >build.cfg.log
-cmake --build build -j"$(nproc)" >build.log
+cmake --build build -j"$(nproc)" >build.log 2>&1 || { grep -B2 -A8 "error" build.log | head -40; exit 1; }
 aarch64-linux-gnu-strip -o build/pokedaisy-linux.stripped build/pokedaisy-linux
 # Never ship one a device cannot load: libSDL2 and libc only, nothing past
 # the Brick firmware glibc 2.33.
@@ -79,7 +85,7 @@ cat > "$OUT/SOURCE.txt" <<EOF
 PokeDaisy Linux host, GPL-3.0. Source:
   https://github.com/lidor30/pokedaisy commit $PIN
   with mGBA $(git -C "$SRC/third_party/mgba" rev-parse HEAD)
-  plus plorpOS's patch, mk/patches/pokedaisy-save.patch in
+  plus plorpOS's patch, mk/patches/pokedaisy-plorpos.patch in
   https://github.com/thwonp/plorpOS
 EOF
 echo "  built  pokedaisy ${PIN%${PIN#???????}} -> vendor/pokedaisy"
