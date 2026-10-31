@@ -357,6 +357,9 @@ static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
 static bool is_ports(const system_cfg *s);
 static void pm_here(char *out, size_t n, const char *leaf);
+static bool daisy_can(const system_cfg *s, const char *file);
+static bool daisy_plays(const system_cfg *s, const char *file);
+static void daisy_set(const system_cfg *s, const char *file, bool on);
 /* Game Settings (plorpos-pyz): read where they act, so a change holds from
  * the next launch on without anything to reload. */
 static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
@@ -6343,6 +6346,8 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 
 	memset(gi, 0, sizeof *gi);
 	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
+	if (daisy_can(s, g->file))
+		gi->play_with = daisy_plays(s, g->file) ? "PokeDaisy" : "plorpOS";
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -6980,6 +6985,13 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 	if (key == IN_X) return MENU_DONE;
 	if (key != IN_ACCEPT || sel >= n || !rows[sel].live) return MENU_STAY;
 
+	if (!strcmp(rows[sel].label, "Play With")) {
+		const system_cfg *s = &a->sys.systems[c->owner];
+
+		daisy_set(s, c->g->file, !daisy_plays(s, c->g->file));
+		gi_gather(a, c->owner, c->g, &c->gi);
+		return MENU_STAY;
+	}
 	if (!strcmp(rows[sel].label, "Synopsis")) {
 		game_meta m;
 
@@ -13047,6 +13059,88 @@ static int run_port(app *a, const system_cfg *s, const char *file)
 	return r;
 }
 
+/* ---- PokeDaisy -----------------------------------------------------------
+ *
+ * A GBA game set to Play With PokeDaisy (the info screen, plorpos-c9p) runs in
+ * lidor30/pokedaisy's Linux host instead of Diatom: mGBA with a companion that
+ * reads the Pokemon games as they play. A separate GPL-3.0 program, built by
+ * mk/build-pokedaisy.sh and shipped in <plorpOS>/pokedaisy, run the way a port
+ * is - native_menu's Continue, Reset and Quit, power sleeps, never the
+ * resident. It plays the game's own Saves/<folder>/<rom>.srm (the patch's
+ * --save), the raw save Diatom's mGBA keeps, so either can carry on the game.
+ * Its states, settings and save backups are its own, in shared/pokedaisy.
+ * Only .gba: the companion is Gen 3's, and its host opens .gb/.gbc/.gba but
+ * no zip. The choice is per game, in the library db: playwith.<TAG>/<file>,
+ * present only for PokeDaisy. */
+static void daisy_bin(char *out, size_t n)
+{
+	snprintf(out, n, "%s/pokedaisy/pokedaisy-linux", P_ROOT);
+}
+
+static void daisy_key(char *out, size_t n, const system_cfg *s, const char *file)
+{
+	snprintf(out, n, "playwith.%s/%s", s->tag, file);
+}
+
+static bool daisy_can(const system_cfg *s, const char *file)
+{
+	const char *dot = strrchr(file, '.');
+	char bin[LIB_PATH];
+
+	if (strcmp(s->tag, "GBA") || !dot || strcasecmp(dot, ".gba")) return false;
+	daisy_bin(bin, sizeof bin);
+	return access(bin, X_OK) == 0;
+}
+
+static bool daisy_plays(const system_cfg *s, const char *file)
+{
+	char key[LIB_PATH + 32];
+
+	if (!daisy_can(s, file)) return false;
+	daisy_key(key, sizeof key, s, file);
+	return db_has(db_lib(), key);
+}
+
+static void daisy_set(const system_cfg *s, const char *file, bool on)
+{
+	char key[LIB_PATH + 32];
+
+	daisy_key(key, sizeof key, s, file);
+	if (on) db_set_str(db_lib(), key, "pokedaisy");
+	else    db_del(db_lib(), key);
+}
+
+/* `save` is the shelf's Saves folder; the .srm in it is named as Diatom names
+ * it, the ROM's file name without its extension (diatom save.c). */
+static int run_daisy(app *a, const char *rom, const char *save, const char *file)
+{
+	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
+	const char *slash = strrchr(file, '/');
+	char *argv[16], *dot;
+	int n = 0, i, r;
+
+	daisy_bin(bin, sizeof bin);
+	snprintf(data, sizeof data, "%s/pokedaisy", P_SHARED);
+	mkdir(data, 0755);
+	snprintf(base, sizeof base, "%s", slash ? slash + 1 : file);
+	if ((dot = strrchr(base, '.'))) *dot = '\0';
+	snprintf(srm, sizeof srm, "%s/%s.srm", save, base);
+
+	argv[n++] = (char *)"/usr/bin/env";
+	argv[n++] = (char *)"POCKET_FULLSCREEN=1";
+	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
+	argv[n++] = bin;
+	argv[n++] = (char *)"--data"; argv[n++] = data;
+	argv[n++] = (char *)"--save"; argv[n++] = srm;
+	argv[n++] = (char *)rom;
+	argv[n] = NULL;
+	a->in_port = true;   /* native_menu: no Splore row */
+	a->pico8_splore = false;
+	r = run_alone(a, argv, native_menu, native_tick);
+	a->in_port = false;
+	return r;
+}
+
 /* -home is where PICO-8 keeps everything it writes - config, log, cart data,
  * Splore's downloads - and -desktop its screenshots, which by default would
  * land beside the carts and show on the shelf as .png carts. Both under
@@ -13341,6 +13435,8 @@ static void launch_one(app *a)
 		return;
 	}
 	native |= is_ports(s);   /* run by the launcher too, never the resident */
+	bool daisy = !native && daisy_plays(s, romfile);
+	native |= daisy;
 
 	/* Front of the switcher's list, in memory only - the tick writes it.
 	 * Splore is a place, not a game (plorpos-gl5.1). */
@@ -13626,6 +13722,15 @@ static void launch_one(app *a)
 		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
 		stats_begin(s->tag, from, plat_now_ms());
 		fprintf(stderr, "port exited %d\n", run_port(a, s, from));
+		stats_asleep(plat_run_asleep_ms());
+		stats_end(NULL, plat_now_ms());
+		if (!a->running) return;
+	} else if (daisy) {
+		char from[LIB_PATH];
+
+		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
+		stats_begin(s->tag, from, plat_now_ms());
+		fprintf(stderr, "pokedaisy exited %d\n", run_daisy(a, rom, save, from));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;

@@ -866,10 +866,18 @@ static void info_rows(void)
 	ck(rows[n - 1].live, "and needs no network");
 	k = reachable(rows, n, got, GI_MAX);
 	ck(got[k - 1] == n - 1, "and is reachable");
+	/* A game PokeDaisy can run: Play With, live, before the other actions
+	 * (plorpos-c9p). Everything shown at once still fits GI_MAX. */
+	gi.play_with = "PokeDaisy";
+	n = gi_rows(rows, &gi, true);
+	printf("game info, a game PokeDaisy can run:\n");
+	ck(!strcmp(rows[n - 4].label, "Play With") && !strcmp(val(&rows[n - 4]), "PokeDaisy")
+	   && rows[n - 4].live, "Play With says what runs it, above Box Art");
 	snprintf(gi.year, sizeof gi.year, "1995");
 	snprintf(gi.genre, sizeof gi.genre, "Platform");
 	n = gi_rows(rows, &gi, true);
 	ck(n == GI_MAX, "every row at once fits GI_MAX");
+	gi.play_with = NULL;
 	gi.deletable = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)

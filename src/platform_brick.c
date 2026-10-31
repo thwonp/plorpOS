@@ -70,6 +70,16 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
+/* SDL numbers B (304) b0, A b1, X (307) b2, Y b3; the rest as
+ * portmaster/control.txt has them. ALSA, as ports get it (pm-run.sh). */
+const char *const plat_daisy_env[] = {
+	"SDL_GAMECONTROLLERCONFIG=0300a3845e0400008e02000014010000,TRIMUI Player1,"
+	"a:b0,b:b1,x:b3,y:b2,back:b6,start:b7,leftshoulder:b4,rightshoulder:b5,"
+	"lefttrigger:a2,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+	"platform:Linux,",
+	"SDL_AUDIODRIVER=alsa",
+	NULL
+};
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 /* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */

@@ -205,6 +205,11 @@ bool plat_resident_ready_wait(void);
 void plat_child_audio(const char *dev, const char *link);
 void plat_child_audio_reset(void);
 #endif
+/* What PokeDaisy runs with besides the child environment (plorpos-c9p), NULL
+ * ended: the pad as SDL_GAMECONTROLLERCONFIG, by POSITION - PokeDaisy takes
+ * SDL's a (bottom) as game B and b (right) as game A, as an Xbox pad has them -
+ * and without guide, so MENU stays the launcher's alone. */
+extern const char *const plat_daisy_env[];
 #if defined(PLATFORM_H700)
 /* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
  * wants it, for native PICO-8 (plorpos-7ny.41). */

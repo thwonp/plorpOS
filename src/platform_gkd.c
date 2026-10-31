@@ -49,6 +49,15 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = "";
+/* SDL numbers B (BTN_SOUTH) b0, A b1, X (BTN_NORTH) b2, Y b3; the rest as
+ * portmaster/control.txt has them. */
+const char *const plat_daisy_env[] = {
+	"SDL_GAMECONTROLLERCONFIG=1900c3cb010000000321000000010000,gkd_atom_joypad,"
+	"a:b0,b:b1,x:b3,y:b2,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,"
+	"righttrigger:b7,back:b8,start:b9,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,"
+	"platform:Linux,",
+	NULL
+};
 const char *const plat_pico8_preload = NULL;
 const char *const plat_pico8_path = NULL;   /* ROCKNIX's wget is GNU, with TLS */
 

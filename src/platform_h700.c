@@ -52,6 +52,15 @@ const char *const plat_child_env[] = {
 };
 /* Our SDL2 lives on the card; BaseOS has no aarch64 one. */
 const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib";
+/* SDL numbers A (304) b0, B b1, Y (306) b2, X b3. No triggers: their
+ * numbers differ on a unit with sticks (portmaster/control.txt), and a GBA
+ * game has none. Not yet tried on a device. */
+const char *const plat_daisy_env[] = {
+	"SDL_GAMECONTROLLERCONFIG=19000000010000000100000000010000,ANBERNIC-keys,"
+	"a:b1,b:b0,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,"
+	"dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,",
+	NULL
+};
 /* Native PICO-8 quiet while Muse plays, as on the Brick (child_quiet). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 /* Splore downloads with wget, and BaseOS's BusyBox wget has no TLS: the
