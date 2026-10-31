@@ -1,0 +1,85 @@
+diff --git a/linux/host_io.c b/linux/host_io.c
+index 63033cd..7fb88ac 100644
+--- a/linux/host_io.c
++++ b/linux/host_io.c
+@@ -157,6 +157,7 @@ static bool same_save(const unsigned char *a, size_t an, const unsigned char *b,
+ static int newest_first(const void *a, const void *b) {
+   return -strcmp(*(char *const *)a, *(char *const *)b);
+ }
++const char *pocket_backup_dir;
+ bool pocket_save_backup(const char *savePath, time_t now) {
+   size_t size;
+   unsigned char *save = read_all(savePath, &size);
+@@ -170,8 +171,11 @@ bool pocket_save_backup(const char *savePath, time_t now) {
+   const char *file = slash ? slash + 1 : savePath;
+   const char *dot = strrchr(file, '.');
+   char dir[1100], stem[256], ext[32] = "sav";
+-  snprintf(dir, sizeof dir, "%.*s%s", slash ? (int)(slash - savePath + 1) : 0,
+-           savePath, POCKET_BACKUP_DIR);
++  if (pocket_backup_dir)
++    snprintf(dir, sizeof dir, "%s", pocket_backup_dir);
++  else
++    snprintf(dir, sizeof dir, "%.*s%s", slash ? (int)(slash - savePath + 1) : 0,
++             savePath, POCKET_BACKUP_DIR);
+   snprintf(stem, sizeof stem, "%.*s.backup-", dot && dot != file ? (int)(dot - file) : (int)strlen(file), file);
+   if (dot && dot != file)
+     snprintf(ext, sizeof ext, "%s", dot + 1);
+diff --git a/linux/host_io.h b/linux/host_io.h
+index 179833a..ae36a40 100644
+--- a/linux/host_io.h
++++ b/linux/host_io.h
+@@ -16,5 +16,7 @@ struct VFile *pocket_save_wrap(struct VFile *inner,
+  * needed copy couldn't be written; no save, or an empty one, needs none. */
+ #define POCKET_BACKUP_DIR "pokedaisy-backups"
+ #define POCKET_BACKUP_KEEP 10
++/* plorpOS: where the copies go instead of beside the save; NULL = beside it. */
++extern const char *pocket_backup_dir;
+ bool pocket_save_backup(const char *savePath, time_t now);
+ #endif
+diff --git a/linux/main.c b/linux/main.c
+index a1c2e59..34f1376 100644
+--- a/linux/main.c
++++ b/linux/main.c
+@@ -60,6 +60,9 @@ static int appError;
+ static unsigned audioNonzero;
+ #endif
+ static const char *root = ".";
++/* plorpOS: --save FILE, the battery save another emulator keeps (its backups
++ * then go to DATA/backups); NULL = DATA/saves/ROM.sav. */
++static const char *saveFile;
+ static char message[128];
+ static unsigned messageUntil;
+ enum {
+@@ -933,7 +936,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   char sav[1024], ss[1024];
+   const char *name = strrchr(path, '/');
+   name = name ? name + 1 : path;
+-  snprintf(sav, sizeof sav, "%s/saves/%s.sav", root, name);
++  if (saveFile)
++    snprintf(sav, sizeof sav, "%s", saveFile);
++  else
++    snprintf(sav, sizeof sav, "%s/saves/%s.sav", root, name);
+   snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
+   struct pocket_save_status saveStatus = {0};
+   if (!pocket_save_backup(sav, time(NULL))) {
+@@ -1520,6 +1526,8 @@ int main(int argc, char **argv) {
+   for (int i = 1; i < argc; i++) {
+     if (!strcmp(argv[i], "--data") && i + 1 < argc)
+       root = argv[++i];
++    else if (!strcmp(argv[i], "--save") && i + 1 < argc)
++      saveFile = argv[++i];
+     else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
+       frames = atoi(argv[++i]);
+     else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
+@@ -1532,6 +1540,11 @@ int main(int argc, char **argv) {
+   signal(SIGTERM, stop);
+   mkdir(root, 0755);
+   char path[1024];
++  static char backups[1024];
++  if (saveFile) {
++    snprintf(backups, sizeof backups, "%s/backups", root);
++    pocket_backup_dir = backups;
++  }
+   const char *dirs[] = {"roms", "saves", "states"};
+   for (int i = 0; i < 3; i++) {
+     snprintf(path, sizeof path, "%s/%s", root, dirs[i]);

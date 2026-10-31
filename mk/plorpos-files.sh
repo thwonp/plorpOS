@@ -73,6 +73,15 @@ plorpos_files() {
 		echo "payload: run mk/fetch-vendor.sh" >&2
 		exit 1
 	fi
+	# PokeDaisy, what a GBA game set to Play With PokeDaisy runs (plorpos-c9p):
+	# one aarch64 binary for every device, with its GPL-3.0 notices and source.
+	if grep -q '^sys|[^|]*|[^|]*|mgba|GBA|' "$_p/systems.cfg"; then
+		[ -x "$ROOT/vendor/pokedaisy/pokedaisy-linux" ] || {
+			echo "payload: no vendor/pokedaisy - run mk/build-pokedaisy.sh" >&2
+			exit 1
+		}
+		cp -R "$ROOT/vendor/pokedaisy" "$_p/"
+	fi
 }
 
 # plorpos_rom_folders P: the ROM folder of every system in P/systems.cfg, one a
