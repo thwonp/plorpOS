@@ -13111,9 +13111,20 @@ static void daisy_set(const system_cfg *s, const char *file, bool on)
 }
 
 /* `save` is the shelf's Saves folder; the .srm in it is named as Diatom names
- * it, the ROM's file name without its extension (diatom save.c). */
-static int run_daisy(app *a, const char *rom, const char *save, const char *file)
+ * it, the ROM's file name without its extension (diatom save.c).
+ *
+ * `st` and `apv` are the game's Diatom autosave and its Auto card. A session
+ * that changed the .srm leaves that autosave behind the game's own save:
+ * resumed, the game would come up where Diatom left it, and its next save
+ * would write over what was played here (plorpos-c9p.3). So it goes, card
+ * and all, and Diatom next starts the game from its save. Judged here, by
+ * the .srm before and after, rather than by comparing times at Diatom's
+ * launch: Diatom's own last SRAM flush can land after its autosave. */
+static int run_daisy(app *a, const char *rom, const char *save, const char *file,
+                     const char *st, const char *apv)
 {
+	struct stat was, now;
+	bool had;
 	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
 	const char *slash = strrchr(file, '/');
 	char *argv[16], *dot;
@@ -13134,10 +13145,17 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	argv[n++] = (char *)"--save"; argv[n++] = srm;
 	argv[n++] = (char *)rom;
 	argv[n] = NULL;
+	had = stat(srm, &was) == 0;
 	a->in_port = true;   /* native_menu: no Splore row */
 	a->pico8_splore = false;
 	r = run_alone(a, argv, native_menu, native_tick);
 	a->in_port = false;
+	if (stat(srm, &now) == 0 &&
+	    (!had || now.st_mtime != was.st_mtime || now.st_size != was.st_size) &&
+	    unlink(st) == 0) {
+		unlink(apv);
+		fprintf(stderr, "pokedaisy: the save moved on; Diatom's autosave dropped\n");
+	}
 	return r;
 }
 
@@ -13730,7 +13748,8 @@ static void launch_one(app *a)
 
 		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
 		stats_begin(s->tag, from, plat_now_ms());
-		fprintf(stderr, "pokedaisy exited %d\n", run_daisy(a, rom, save, from));
+		preview_path(a, o, &v->list.items[v->cursor], apv, sizeof apv);
+		fprintf(stderr, "pokedaisy exited %d\n", run_daisy(a, rom, save, from, st, apv));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;
