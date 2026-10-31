@@ -102,7 +102,6 @@ int daisy_rows(const daisy_opts *o, menu_row *out)
 	out[DO_AUTOZOOM]   = (menu_row){ "Auto Zoom In", on_off(o->autozoom), o->aspect == 2 };
 	out[DO_FF]         = (menu_row){ "Fast-Forward Speed", FF_LABEL[ff_index(o->ff)], true };
 	out[DO_FFSOUND]    = (menu_row){ "Fast-Forward Sound", o->ffaudio ? "Sped Up" : "Off", true };
-	out[DO_REWIND]     = (menu_row){ "Rewind", on_off(o->rewind), true };
 	out[DO_RUNINDOORS] = (menu_row){ "Run Indoors", on_off(o->runindoors), true };
 	out[DO_WILD]       = (menu_row){ "Wild Encounters", on_off(!o->wildoff), true };
 	out[DO_HUD]        = (menu_row){ "HUD", on_off(o->hud), true };
@@ -124,7 +123,6 @@ void daisy_step(daisy_opts *o, int row, int dir)
 	case DO_AUTOZOOM:   o->autozoom = !o->autozoom; break;
 	case DO_FF:         o->ff = FF[(ff_index(o->ff) + NFF + dir) % NFF]; break;
 	case DO_FFSOUND:    o->ffaudio = !o->ffaudio; break;
-	case DO_REWIND:     o->rewind = !o->rewind; break;
 	case DO_RUNINDOORS: o->runindoors = !o->runindoors; break;
 	case DO_WILD:       o->wildoff = !o->wildoff; break;
 	case DO_HUD:        o->hud = !o->hud; break;

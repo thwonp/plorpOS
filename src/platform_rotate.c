@@ -73,6 +73,7 @@ const char *const plat_daisy_env[] = {
 	"platform:Linux,",
 	NULL
 };
+const char *plat_daisy_fn_keys(void) { return NULL; }
 /* Neither, as on the GKD: Debian's SDL has sensors, PipeWire quiets PICO-8
  * (child_quiet) and follows the output, and Debian's wget is GNU, with TLS. */
 const char *const plat_pico8_preload = NULL;

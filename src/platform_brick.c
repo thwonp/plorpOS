@@ -81,11 +81,17 @@ const char *const plat_daisy_env[] = {
 	"lefttrigger:a2,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
 	"platform:Linux,",
 	"SDL_AUDIODRIVER=alsa",
-	/* Fn1 and Fn2 (KEY_F1/KEY_F2), which SDL never reports: hotkey
-	 * triggers, read from the pad's node (plorpos-wjw.3). */
-	"POCKET_FN_KEYS=/dev/input/event3:59:60",
 	NULL
 };
+/* Fn1 and Fn2, hotkey triggers PokeDaisy reads from the pad's node
+ * (plorpos-wjw.3): the plain Brick's 317/318 (SDL's b9/b10 too), the Pro's
+ * KEY_F1/KEY_F2, which SDL never reports - see CODE_FN_LEFT. Both, there, by
+ * model: the Pro's 317/318 are its stick clicks (plorpos-wjw.7). */
+const char *plat_daisy_fn_keys(void)
+{
+	return plat_is_brick_pro() ? "POCKET_FN_KEYS=/dev/input/event3:59:60"
+	                           : "POCKET_FN_KEYS=/dev/input/event3:317:318";
+}
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 /* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */

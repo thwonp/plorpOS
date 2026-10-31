@@ -15,11 +15,13 @@ typedef struct {
 	int  aspect;     /* settings.ini aspect: 0 Original, 1 Expand, 2 Zoom Out */
 	int  scaling;    /* scaling: Original's 0 Integer, 1 Fit, 2 Stretch */
 	int  ff;         /* ff: 2-10 times, 0 = Max */
+	/* rewind: no row - a Rewind hotkey keeps PokeDaisy's history on, as
+	 * in plorpOS's games (plorpos-wjw.7); kept, as the file has it. */
 	bool autozoom, ffaudio, rewind, runindoors, wildoff, hud;
 } daisy_opts;
 
 typedef enum {
-	DO_ASPECT, DO_AUTOZOOM, DO_FF, DO_FFSOUND, DO_REWIND, DO_RUNINDOORS,
+	DO_ASPECT, DO_AUTOZOOM, DO_FF, DO_FFSOUND, DO_RUNINDOORS,
 	DO_WILD, DO_HUD, DO_ROWS
 } daisy_row;
 

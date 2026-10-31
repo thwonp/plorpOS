@@ -1208,7 +1208,7 @@ static void daisy_options(void)
 	ck(o.ff == 2 && o.autozoom && o.hud && !o.rewind && !o.aspect && !o.scaling,
 	   "no file: PokeDaisy's defaults");
 	n = daisy_rows(&o, rows);
-	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "eight rows, a rule, a note");
+	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "seven rows, a rule, a note");
 	ck(!strcmp(rows[DO_ASPECT].value, "Integer") && !strcmp(rows[DO_FF].value, "2x") &&
 	   !strcmp(rows[DO_WILD].value, "On"), "defaults read Integer, 2x, encounters On");
 	ck(!rows[DO_AUTOZOOM].live, "Auto Zoom In is Zoom Out's: quiet otherwise");

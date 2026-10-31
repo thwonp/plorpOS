@@ -13234,6 +13234,7 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	snprintf(keys, sizeof keys, "POCKET_HOTKEYS_FILE=%s/hotkeys.txt", data);
 	argv[n++] = keys;
 	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
+	if (plat_daisy_fn_keys()) argv[n++] = (char *)plat_daisy_fn_keys();
 	argv[n++] = bin;
 	argv[n++] = (char *)"--data"; argv[n++] = data;
 	argv[n++] = (char *)"--save"; argv[n++] = srm;

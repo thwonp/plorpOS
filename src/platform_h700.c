@@ -61,6 +61,7 @@ const char *const plat_daisy_env[] = {
 	"dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,",
 	NULL
 };
+const char *plat_daisy_fn_keys(void) { return NULL; }
 /* Native PICO-8 quiet while Muse plays, as on the Brick (child_quiet). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 /* Splore downloads with wget, and BaseOS's BusyBox wget has no TLS: the

@@ -174,13 +174,13 @@ Options, Hotkeys, Reset and Quit, and power sleeps as in any game. **Options** s
 PokeDaisy's Aspect (Integer, Fit, Stretch, or Expand and Zoom Out, which draw
 the map past the GBA's edges in the games PokeDaisy knows), Auto Zoom In,
 fast-forward speed (2x to 10x, or Max: as fast as the device keeps a smooth
-picture) and sound (off, or sped up), Rewind (the last 20 seconds), Run
-Indoors, Wild Encounters and its HUD; they take effect on Continue, and the
+picture) and sound (off, or sped up), Run Indoors, Wild Encounters and its
+HUD; they take effect on Continue, and the
 companion's own Settings (X, then the gear) shows the same values plus its
 tab bar and HUD parts. **Hotkeys** there is the GBA shelf's Hotkeys screen
 - the same bindings as any GBA game - with the four PokeDaisy takes:
-Fast-Forward and Rewind while held (Rewind once Options has it on), Quick Save
-and Quick Load into PokeDaisy's own state. Screenshot, Turbo Assign and Button
+Fast-Forward and Rewind while held (the last 20 seconds, kept while Rewind has
+a hotkey), Quick Save and Quick Load into PokeDaisy's own state. Screenshot, Turbo Assign and Button
 Mapping, the right stick and the GKD's Home key don't reach PokeDaisy. Its states and settings are its own,
 in .userdata/shared/pokedaisy, along with a copy of each save before it opens
 it. No achievements there, and only .gba files (not zipped ones).
