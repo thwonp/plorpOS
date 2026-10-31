@@ -10,7 +10,9 @@ const char *const BM_SRC_LABEL[BM_SRC_N] = { "A", "B", "X", "Y", "L1", "R1", "L2
 
 /* Labels and targets read from each core's input descriptors (2026-10-30):
  * PicoDrive Y=A B=B A=C L=X X=Y R=Z and Button 1 = B on the Master System;
- * beetle-pce-fast A=I B=II; mednafen_ngp B=A A=B; fake08 B=O A=X;
+ * beetle-pce-fast A=I B=II; mednafen_ngp B=A A=B; fake08 B=O A=X; FBNeo's
+ * Neo Geo on the plain joypad Diatom sets (its classic layout, every game)
+ * B=A A=B Y=C X=D;
  * pcsx_rearmed the usual RetroPad-as-DualShock. */
 static const bm_row GENERIC[] = { { "A", "a" }, { "B", "b" }, { "X", "x" }, { "Y", "y" },
 	{ "L1", "l1" }, { "R1", "r1" }, { "L2", "l2" }, { "R2", "r2" } };
@@ -23,6 +25,7 @@ static const bm_row MD[]    = { { "A", "y" }, { "B", "b" }, { "C", "a" },
 	{ "X", "l1" }, { "Y", "x" }, { "Z", "r1" } };
 static const bm_row PCE[]   = { { "I", "a" }, { "II", "b" } };
 static const bm_row NGP[]   = { { "A", "b" }, { "B", "a" } };
+static const bm_row NEOGEO[] = { { "A", "b" }, { "B", "a" }, { "C", "y" }, { "D", "x" } };
 static const bm_row PICO8[] = { { "O", "b" }, { "X", "a" } };
 static const bm_row PS[]    = { { "Cross", "b" }, { "Circle", "a" }, { "Square", "y" },
 	{ "Triangle", "x" }, { "L1", "l1" }, { "R1", "r1" }, { "L2", "l2" }, { "R2", "r2" } };
@@ -34,7 +37,7 @@ static const struct { const char *tag; const bm_row *rows; int n; } SYSTEMS[] = 
 	{ "SMS", ROWS(SMS) }, { "GG", ROWS(SMS) },
 	{ "MD", ROWS(MD) }, { "SEGACD", ROWS(MD) }, { "32X", ROWS(MD) },
 	{ "PCE", ROWS(PCE) }, { "NGP", ROWS(NGP) }, { "NGPC", ROWS(NGP) },
-	{ "PICO8", ROWS(PICO8) }, { "PS", ROWS(PS) },
+	{ "NEOGEO", ROWS(NEOGEO) }, { "PICO8", ROWS(PICO8) }, { "PS", ROWS(PS) },
 };
 
 int bm_rows(const char *tag, const bm_row **rows)

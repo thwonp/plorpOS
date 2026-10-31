@@ -151,7 +151,8 @@ its own turbo buttons for next time. How it works is in [turbo.md](turbo.md).
 
 **Button Mapping** (in-game menu > Hotkeys > Button Mapping) moves the game's
 buttons, for the whole console. Each row is a button as that console's pad
-names it - A, B, C, X, Y, Z on the Genesis, I and II on the TurboGrafx-16 -
+names it - A, B, C, X, Y, Z on the Genesis, A to D on the Neo Geo, I and II on the
+TurboGrafx-16 -
 and holds the button that sends it: press A on a row, then the button. A
 button moved to a row leaves its old one, and a button on no row sends the
 game nothing. X clears a row; Reset to Default puts them back. Two-button

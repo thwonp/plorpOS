@@ -23,6 +23,8 @@ int main(void)
 	CHECK(bm_rows("NES", &rows) == 2, "NES: two rows");
 	CHECK(bm_rows("MD", &rows) == 6 && !strcmp(rows[2].label, "C") && !strcmp(rows[2].target, "a"),
 	      "Genesis: six rows, C is retropad A");
+	CHECK(bm_rows("NEOGEO", &rows) == 4 && !strcmp(rows[3].label, "D") && !strcmp(rows[3].target, "x"),
+	      "Neo Geo: A B C D, D is retropad X");
 	CHECK(bm_rows("ARCADE", &rows) == 8, "an unlisted system gets the generic eight");
 
 	/* defaults */
