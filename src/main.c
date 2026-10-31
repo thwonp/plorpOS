@@ -52,6 +52,7 @@
 #include "cards.h"
 #include "game_menu.h"
 #include "hkbind.h"
+#include "btnmap.h"
 #include "shaderlist.h"
 #include "clock.h"
 #include "gbpal.h"
@@ -11281,12 +11282,118 @@ static in_button hk_modifier_button(const char *wire)
 	return IN_MENU;
 }
 
+/* Button Mapping (plorpos-c4l): Hotkeys > Button Mapping. One row per game
+ * button, as the system's pad names it (btnmap.c), holding the physical
+ * button that sends it. A on a row waits for a button, as Hotkeys does;
+ * the button leaves whichever row held it, and a button on no row sends the
+ * game nothing. X clears a row, Reset puts the system's defaults back. Saved
+ * per system and sent at once. Directions, START, SELECT and MENU are never
+ * rows, so nothing here can lock the player out of a menu. */
+static const struct { in_button b; const char *src; } BM_CAPTURE[] = {
+	{ IN_ACCEPT, "a" }, { IN_BACK, "b" }, { IN_X, "x" }, { IN_Y, "y" },
+	{ IN_L1, "l1" }, { IN_R1, "r1" }, { IN_L2, "l2" }, { IN_R2, "r2" },
+};
+
+static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
+{
+	const bm_row *bm;
+	const int nr = bm_rows(tag, &bm), R_RESET = nr, NROWS = nr + 1;
+	int held[BM_ROWS_MAX], sel = 0, done = 0, i;
+	menu_row rows[BM_ROWS_MAX + 3];
+	bool capturing = false, menu_tap = false, changed = false;
+	char spec[160];
+	ui_pace pace = {0};
+
+	bm_parse(tag, plat_btnmap(tag), held);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+
+	while (!done && !want_quit) {
+		plat_input_poll(&a->in);
+
+		if (capturing) {
+			size_t k;
+			int src = -1;
+
+			for (k = 0; k < sizeof BM_CAPTURE / sizeof BM_CAPTURE[0] && src < 0; k++)
+				if (a->in.pressed[BM_CAPTURE[k].b]) src = bm_src_index(BM_CAPTURE[k].src);
+			if (src >= 0) {
+				for (i = 0; i < nr; i++)       /* one button, one row */
+					if (held[i] == src) held[i] = -1;
+				held[sel] = src;
+				capturing = false;
+				changed = true;
+			} else if (a->in.pressed[IN_MENU]) {
+				menu_tap = true;
+			} else if (a->in.down[IN_MENU]) {
+				for (k = 0; k < IN_COUNT; k++)
+					if (k != IN_MENU && a->in.pressed[k]) menu_tap = false;
+			} else if (menu_tap) {
+				capturing = menu_tap = false;   /* a lone tap, released */
+			}
+		} else {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
+
+			if (a->in.pressed[IN_ACCEPT] && sel == R_RESET) {
+				bm_parse(tag, "", held);
+				changed = true;
+			} else if (a->in.pressed[IN_ACCEPT]) {
+				capturing = true;
+				menu_tap = false;
+			} else if (a->in.pressed[IN_X] && sel < nr && held[sel] >= 0) {
+				held[sel] = -1;
+				changed = true;
+			}
+
+			if (menu_leaving(a)) done = 1;
+		}
+
+		if (changed) {
+			bm_serialize(tag, held, spec, sizeof spec);
+			plat_btnmap_set(tag, spec);
+			changed = false;
+		}
+
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
+		}
+
+		for (i = 0; i < nr; i++)
+			rows[i] = (menu_row){ bm[i].label,
+			                      capturing && i == sel ? "Press..."
+			                      : held[i] < 0 ? "None" : BM_SRC_LABEL[held[i]], true };
+		rows[R_RESET] = (menu_row){ "Reset to Default", "", true };
+		rows[NROWS] = MENU_RULE;
+		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
+		                                     : "A: set    X: clear");
+
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Button Mapping", rows, NROWS + 2, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		chv_backdrop(a, bg, false);
+		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, MENU_ACCENT);
+		draw_battery(a->r);
+		plat_present(a->r);
+	}
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
-	/* The action rows, action vis[i] at row i. Rewind Speed moved to Game
-	 * Settings (plorpos-pyz.3). The rule and legend are drawn after them
-	 * and are never selected. */
-	enum { FIRST_ACT = 0, ROWS = HK_SCREEN_ROWS };
+	/* Button Mapping, then the action rows, action vis[i] at row
+	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
+	 * and its spare row is Button Mapping's (plorpos-c4l). The rule and
+	 * legend are drawn after them and are never selected. */
+	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 2];
 	char vals[HK_ROW_COUNT][40];
@@ -11330,6 +11437,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	}
 	const int NROWS = FIRST_ACT + nact;
 
+	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -11375,10 +11483,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
 
-			if (a->in.pressed[IN_ACCEPT]) {
+			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
+				button_map_screen(a, bg, tag);
+				pace = (ui_pace){0};
+			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
-			} else if (a->in.pressed[IN_X] && trig_for_row[vis[sel - FIRST_ACT]]) {
+			} else if (a->in.pressed[IN_X] && sel >= FIRST_ACT &&
+			           trig_for_row[vis[sel - FIRST_ACT]]) {
 				trig_for_row[vis[sel - FIRST_ACT]] = 0;
 				changed = true;
 			}
