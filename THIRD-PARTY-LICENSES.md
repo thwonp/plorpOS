@@ -71,6 +71,19 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
+## PokeDaisy (`vendor/pokedaisy/`, shipped as `TortOS/pokedaisy/`)
+
+A separate program the launcher runs for GBA games set to Play With PokeDaisy,
+never linked into it: the Linux host of PokeDaisy, https://github.com/lidor30/pokedaisy,
+by Lidor Itzhari, **GPL-3.0**, built from tag v1.3.3 (commit 52f9597) with mGBA
+(MPL-2.0) at the commit it pins, plus one patch of ours,
+`mk/patches/pokedaisy-save.patch` (GPL-3.0 like the code it changes), by
+`mk/build-pokedaisy.sh`. The folder carries its LICENSE, NOTICE, the notices
+of mGBA, blip_buf (LGPL-2.1) and inih (BSD) and its font (Pixel Operator, CC0),
+and SOURCE.txt, which says where that exact source is.
+
+---
+
 ## Runtime libraries
 
 None are redistributed. Measured 2026-08-26, the cores need only
