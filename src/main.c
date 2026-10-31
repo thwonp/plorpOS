@@ -2989,13 +2989,14 @@ static void on_turbo(plat_turbo_event ev, const char *btn)
 	switch (ev) {
 	case PLAT_TURBO_CANCEL:  plat_resident_line("OVERLAY\tpath=%s\tms=0", p); return;
 	case PLAT_TURBO_ARMED:   snprintf(line, sizeof line, "Press a button"); break;
+	case PLAT_TURBO_PICKED:  snprintf(line, sizeof line, "%s on: press a button", btn); break;
 	case PLAT_TURBO_ON:      snprintf(line, sizeof line, "On: %s", btn);   break;
 	case PLAT_TURBO_OFF:     snprintf(line, sizeof line, "Off: %s", btn);  break;
 	case PLAT_TURBO_CLEARED: snprintf(line, sizeof line, "Cleared");       break;
 	}
 	if (notice_render("Turbo", line, p))
 		plat_resident_line("OVERLAY\tpath=%s\tms=%d", p,
-		                   ev == PLAT_TURBO_ARMED ? 4000 : 1500);
+		                   ev == PLAT_TURBO_ARMED || ev == PLAT_TURBO_PICKED ? 4000 : 1500);
 }
 
 /* ---------- where you were ------------------------------------------------ */
