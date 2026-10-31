@@ -6870,7 +6870,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
@@ -11401,7 +11401,9 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 	memset(&a->in, 0, sizeof a->in);
 }
 
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+/* daisy: from PokeDaisy's in-game menu (plorpos-wjw.5) - only the four
+ * actions it takes, and no Button Mapping, which it does not. */
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -11436,7 +11438,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
-		bool shown = i < R_SWAP;
+		bool shown = i < R_SWAP && (!daisy || i <= 3);   /* ff rewind save load */
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
@@ -11452,6 +11454,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	const int NROWS = FIRST_ACT + nact;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
+	if (daisy) {
+		rows[R_MAPPING] = (menu_row){ "Button Mapping", "Not in PokeDaisy", false };
+		sel = FIRST_ACT;
+	}
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -11494,8 +11500,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
+			if (in_repeat(&a->in, IN_UP)) {
+				sel = (sel + NROWS - 1) % NROWS;
+				if (daisy && sel == R_MAPPING) sel = NROWS - 1;
+			}
+			if (in_repeat(&a->in, IN_DOWN)) {
+				sel = (sel + 1) % NROWS;
+				if (daisy && sel == R_MAPPING) sel = FIRST_ACT;
+			}
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, tag);
@@ -12319,7 +12331,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, false);
 		break;
 	}
 	case GM_RESET:
@@ -12541,12 +12553,12 @@ typedef struct {
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
 	bool       port;       /* a PortMaster port: no Splore row at all */
-	const char *daisy_ini; /* PokeDaisy: an Options row (plorpos-wjw) */
+	const char *daisy_ini; /* PokeDaisy: Options and Hotkeys rows (plorpos-wjw) */
 	const menu_style *style;   /* the menu's, for Options' own */
 } nm_ctx;
 
-/* PokeDaisy's rows read in Continue, Options, Reset, Quit order. */
-enum { NMD_OPTIONS = 1, NMD_RESET, NMD_QUIT };
+/* PokeDaisy's rows read in Continue, Options, Hotkeys, Reset, Quit order. */
+enum { NMD_OPTIONS = 1, NMD_HOTKEYS, NMD_RESET, NMD_QUIT };
 
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
@@ -12562,9 +12574,10 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 	*heading = NULL;       /* no title, as the in-game menu */
 	if (c->daisy_ini) {
 		gm_native_rows(true, rows);
+		rows[NMD_QUIT] = rows[GMN_QUIT];
 		rows[NMD_RESET] = rows[GMN_RESET];
 		rows[NMD_OPTIONS] = (menu_row){ "Options", NULL, true };
-		rows[NMD_QUIT] = rows[GMN_QUIT];
+		rows[NMD_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };
 		return NMD_QUIT + 1;
 	}
 	if (c->port) {
@@ -12613,6 +12626,20 @@ static menu_result do_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
+/* PokeDaisy's hotkeys file, beside its settings.ini: the GBA shelf's
+ * bindings, then the modifier a binding naming none holds. */
+static void daisy_keys_write(const char *ini)
+{
+	char path[LIB_PATH + 32];
+	const char *slash = strrchr(ini, '/');
+	FILE *f;
+
+	snprintf(path, sizeof path, "%.*s/hotkeys.txt", slash ? (int)(slash - ini) : 0, ini);
+	if (!(f = fopen(path, "w"))) return;
+	fprintf(f, "%s\n%s\n", plat_hotkey_map("GBA"), plat_hotkey_modifier());
+	fclose(f);
+}
+
 static void daisy_options(app *a, nm_ctx *c)
 {
 	daisy_opts o, was;
@@ -12632,6 +12659,13 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 	if (c->daisy_ini) {
 		if (sel == NMD_OPTIONS) {
 			daisy_options(a, c);
+			return MENU_STAY;
+		}
+		if (sel == NMD_HOTKEYS) {
+			/* The GBA shelf's, shared; PokeDaisy reads them again on
+			 * Continue (plorpos-wjw.5). */
+			hotkeys_screen(a, NULL, "GBA", true);
+			daisy_keys_write(c->daisy_ini);
 			return MENU_STAY;
 		}
 		sel = sel == NMD_RESET ? GMN_RESET : sel == NMD_QUIT ? GMN_QUIT : sel;
@@ -13175,7 +13209,7 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	struct stat was, now;
 	bool had;
 	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
-	char ini[LIB_PATH + 16], keys[320], mod[40];
+	char ini[LIB_PATH + 16], keys[LIB_PATH + 40];
 	const char *slash = strrchr(file, '/');
 	char *argv[24], *dot;
 	int n = 0, i, r;
@@ -13192,12 +13226,13 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	/* The pad whether or not its window has the focus: under sway the in-game
 	 * menu's window takes it, and after Continue the game heard nothing. */
 	argv[n++] = (char *)"SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1";
-	/* The GBA shelf's hotkeys, the ones it can (plorpos-wjw.3); set at all,
-	 * Menu is ours alone - this menu and the modifier. */
-	snprintf(keys, sizeof keys, "POCKET_HOTKEYS=%s", plat_hotkey_map("GBA"));
-	snprintf(mod, sizeof mod, "POCKET_HOTKEY_MOD=%s", plat_hotkey_modifier());
+	/* The GBA shelf's hotkeys, the ones it can (plorpos-wjw.3), in a file
+	 * the Hotkeys row rewrites (.5); set at all, Menu is ours alone - this
+	 * menu and the modifier. */
+	snprintf(ini, sizeof ini, "%s/settings.ini", data);
+	daisy_keys_write(ini);
+	snprintf(keys, sizeof keys, "POCKET_HOTKEYS_FILE=%s/hotkeys.txt", data);
 	argv[n++] = keys;
-	argv[n++] = mod;
 	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
 	argv[n++] = bin;
 	argv[n++] = (char *)"--data"; argv[n++] = data;
@@ -13205,7 +13240,6 @@ static int run_daisy(app *a, const char *rom, const char *save, const char *file
 	argv[n++] = (char *)rom;
 	argv[n] = NULL;
 	had = stat(srm, &was) == 0;
-	snprintf(ini, sizeof ini, "%s/settings.ini", data);
 	a->in_port = true;   /* native_menu: no Splore row */
 	a->daisy_ini = ini;  /* ... and an Options row */
 	a->pico8_splore = false;

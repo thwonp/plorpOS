@@ -13,7 +13,7 @@
 #   DATA/backups, not beside the save (plorpos-c9p).
 #   What plorpOS's in-game menu sets (plorpos-wjw): settings.ini's new keys
 #   (scaling, ffaudio, rewind, runindoors; ff 5-10 and 0 = MAX), read again
-#   whenever the game was paused; plorpOS's GBA hotkeys from POCKET_HOTKEYS
+#   whenever the game was paused; plorpOS's GBA hotkeys from POCKET_HOTKEYS_FILE
 #   (fast-forward, rewind, quick save / load; buttons, stick directions and
 #   the Brick's Fn keys via POCKET_FN_KEYS), MENU then plorpOS's alone.
 #

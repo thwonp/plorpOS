@@ -200,7 +200,7 @@ index 179833a..ae36a40 100644
  bool pocket_save_backup(const char *savePath, time_t now);
  #endif
 diff --git a/linux/main.c b/linux/main.c
-index a1c2e59..f2170f7 100644
+index a1c2e59..5eb56eb 100644
 --- a/linux/main.c
 +++ b/linux/main.c
 @@ -13,10 +13,12 @@
@@ -293,14 +293,16 @@ index a1c2e59..f2170f7 100644
  }
  static void repeat_directions(void) {
    for (int k = RIGHT; k <= DOWN; k++)
-@@ -326,6 +359,92 @@ static void repeat_directions(void) {
+@@ -326,6 +359,101 @@ static void repeat_directions(void) {
      }
  }
  static bool down(int k) { return (pressed & (1u << k)) != 0; }
-+/* plorpOS: its GBA hotkeys, POCKET_HOTKEYS in Diatom's wire ("l2:ff,d.x:savestate,select+r1:rewind"): a
-+ * trigger held with its modifier (the binding's own, else POCKET_HOTKEY_MOD's), or alone with "d.". The
-+ * game doesn't get a trigger while it's a hotkey's (hotkeyMask). Set at all, the host owns MENU - its own
-+ * in-game menu and the modifier - and MENU no longer opens this GAME menu (START+SELECT still does). */
++/* plorpOS: its GBA hotkeys, in the file POCKET_HOTKEYS_FILE names - Diatom's wire on its first line
++ * ("l2:ff,d.x:savestate,select+r1:rewind"), the modifier a binding naming none holds on its second - read
++ * at start and again after a pause (its in-game menu can change them). A trigger is held with its modifier,
++ * or alone with "d.". The game doesn't get a trigger while it's a hotkey's (hotkeyMask). Set at all, the
++ * host owns MENU - its own in-game menu and the modifier - and MENU no longer opens this GAME menu
++ * (START+SELECT still does). */
 +enum { HK_FF, HK_REWIND, HK_SAVE, HK_LOAD, HK_ACTIONS };
 +static struct {
 +  int action, key, mod; // mod -1: alone
@@ -324,11 +326,20 @@ index a1c2e59..f2170f7 100644
 +}
 +static void hotkeys_load(void) {
 +  static const char *const actions[HK_ACTIONS] = {"ff", "rewind", "savestate", "loadstate"};
-+  const char *spec = getenv("POCKET_HOTKEYS"), *mod = getenv("POCKET_HOTKEY_MOD");
-+  char buf[512], *save = NULL;
-+  hostMenu = spec != NULL;
++  const char *path = getenv("POCKET_HOTKEYS_FILE");
++  char buf[512] = "", modBuf[32] = "menu", *mod = modBuf, *save = NULL;
++  FILE *f = path ? fopen(path, "r") : NULL;
++  hostMenu = path != NULL;
 +  hotkeyN = 0;
-+  snprintf(buf, sizeof buf, "%s", spec ? spec : "");
++  if (f) {
++    if (!fgets(buf, sizeof buf, f))
++      buf[0] = 0;
++    if (!fgets(modBuf, sizeof modBuf, f))
++      snprintf(modBuf, sizeof modBuf, "menu");
++    fclose(f);
++  }
++  buf[strcspn(buf, "\r\n")] = 0;
++  modBuf[strcspn(modBuf, "\r\n")] = 0;
 +  for (char *t = strtok_r(buf, ",", &save); t && hotkeyN < 16; t = strtok_r(NULL, ",", &save)) {
 +    char *colon = strchr(t, ':'), *plus = strchr(t, '+');
 +    int action = -1, m, k;
@@ -346,7 +357,7 @@ index a1c2e59..f2170f7 100644
 +      m = -2;
 +      k = key_named(t + 2);
 +    } else {
-+      m = key_named(mod ? mod : "menu");
++      m = key_named(mod);
 +      k = key_named(t);
 +    }
 +    // Others (screenshot, turbo, the right stick, the GKD's Home) aren't this host's.
@@ -356,8 +367,6 @@ index a1c2e59..f2170f7 100644
 +    hotkey[hotkeyN].key = k;
 +    hotkey[hotkeyN++].mod = m < 0 ? -1 : m;
 +  }
-+  if (spec)
-+    fprintf(stderr, "Hotkeys: %d of \"%s\"\n", hotkeyN, spec);
 +}
 +/* The actions held this frame; *fired: those whose trigger went down now. */
 +static unsigned hotkeys_held(unsigned *fired) {
@@ -386,7 +395,7 @@ index a1c2e59..f2170f7 100644
  /* The companion's canvas for an ow x oh screen: the largest whole scale that
   * keeps it at least 320x240 (the 3DS's, which every tab is laid out for), so
   * its pixel text is about as big on every panel: 320x240 at 2x on 640x480,
-@@ -460,6 +579,7 @@ static void wide_tick(struct mCore *c, bool skip, const struct pd_settings *s) {
+@@ -460,6 +588,7 @@ static void wide_tick(struct mCore *c, bool skip, const struct pd_settings *s) {
  }
  // Gameplay scales in physical panel pixels; the companion keeps its 512x384
  // grid.
@@ -394,7 +403,7 @@ index a1c2e59..f2170f7 100644
  static bool render_game(unsigned gw, unsigned gh) {
    int ow, oh;
    if (SDL_GetRendererOutputSize(renderer, &ow, &oh) < 0 || ow <= 0 || oh <= 0)
-@@ -474,6 +594,16 @@ static bool render_game(unsigned gw, unsigned gh) {
+@@ -474,6 +603,16 @@ static bool render_game(unsigned gw, unsigned gh) {
    lastGameRect =
        (SDL_Rect){(ow - (int)gw * scale) / 2, (oh - (int)gh * scale) / 2,
                   (int)gw * scale, (int)gh * scale};
@@ -411,7 +420,7 @@ index a1c2e59..f2170f7 100644
    // The textures take mGBA's pixels as they are (XBGR: SDL's BGR888).
    if (SDL_UpdateTexture(gameTexture, &(SDL_Rect){0, 0, (int)gw, (int)gh}, video, 256 * 4) < 0) {
      notice(SDL_GetError());
-@@ -816,7 +946,8 @@ static void pacing_check(double frameMs) {
+@@ -816,7 +955,8 @@ static void pacing_check(double frameMs) {
    avg = 0;
    count = 0;
  }
@@ -421,7 +430,7 @@ index a1c2e59..f2170f7 100644
    double rate = 32768;
    if (vsyncPaced && audio && screenHz > 0) {
      double queued = SDL_GetQueuedAudioSize(audio) / 4.0, target = 32768 * 0.06;
-@@ -824,6 +955,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
+@@ -824,6 +964,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
      d = d > 1 ? 1 : d < -1 ? -1 : d;
      rate = 32768 * gameHz / screenHz * (1 + 0.005 * d);
    }
@@ -429,7 +438,7 @@ index a1c2e59..f2170f7 100644
    for (int i = 0; i < 2; i++)
      blip_set_rates(c->getAudioChannel(c, i), c->frequency(c), rate);
  }
-@@ -878,6 +1010,28 @@ static void perf_frame(uint64_t start, double hz) {
+@@ -878,6 +1019,28 @@ static void perf_frame(uint64_t start, double hz) {
  static void test_frame(struct mCore *, bool, int, struct pd_ui *,
                         struct pd_snapshot *);
  #endif
@@ -458,7 +467,7 @@ index a1c2e59..f2170f7 100644
  static void run_game(const char *path, int maxFrames, const char *shot) {
    FILE *f = fopen(path, "rb");
    if (!f) {
-@@ -933,7 +1087,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -933,7 +1096,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    char sav[1024], ss[1024];
    const char *name = strrchr(path, '/');
    name = name ? name + 1 : path;
@@ -470,7 +479,7 @@ index a1c2e59..f2170f7 100644
    snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
    struct pocket_save_status saveStatus = {0};
    if (!pocket_save_backup(sav, time(NULL))) {
-@@ -1009,6 +1166,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1009,6 +1175,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    const char *repelNames[REPEL_KINDS];
    struct pd_ui ui;
    pd_ui_init(&ui, &settings);
@@ -481,7 +490,7 @@ index a1c2e59..f2170f7 100644
    struct pd_snapshot snap = {0};
    struct pd_host_info host = {.hideScreenMode = true, .hasExpand = true, .hasHud = c->platform(c) == mPLATFORM_GBA,
                                .expandGame = wideSupported, .count = 1, .labels = {"HOST"}};
-@@ -1036,9 +1197,33 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1036,9 +1206,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    while (running && !leave) {
      uint64_t frameStart = SDL_GetPerformanceCounter();
      if(saveStatus.failed) { appError=1; notice("Save I/O failed; stopping game"); break; }
@@ -495,6 +504,7 @@ index a1c2e59..f2170f7 100644
 +          pk_field_wild(wildSwitch, settings.wildOff);
 +        hudDrawnKey = 0;
 +      }
++      hotkeys_load();
 +    }
 +    lastStart = frameStart;
 +    rewind_follow(settings.rewind);
@@ -515,7 +525,7 @@ index a1c2e59..f2170f7 100644
      if (down(X)) {
        menuOpen = 0;
        companion = !companion;
-@@ -1046,7 +1231,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1046,7 +1241,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
        if (audio)
          SDL_ClearQueuedAudio(audio);
      }
@@ -524,7 +534,7 @@ index a1c2e59..f2170f7 100644
                         (held & (1u << START)) && (held & (1u << SELECT)))) {
        menuOpen = menuOpen ? 0 : 1;
        companion = true;
-@@ -1309,24 +1494,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1309,24 +1504,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
          confirmMenu.selected = 0;
        }
      } else {
@@ -566,7 +576,7 @@ index a1c2e59..f2170f7 100644
      }
      // The companion's data: fresh when it opens (it pauses the game), else twice a
      // second - read through the bus byte by byte, every frame cost frame time.
-@@ -1502,6 +1698,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1502,6 +1708,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    if (audio)
      SDL_ClearQueuedAudio(audio);
  cleanup:
@@ -574,7 +584,7 @@ index a1c2e59..f2170f7 100644
    pk_wide_configure(0);
    wideSupported = wideReady = false;
    c->unloadROM(c);
-@@ -1520,6 +1717,8 @@ int main(int argc, char **argv) {
+@@ -1520,6 +1727,8 @@ int main(int argc, char **argv) {
    for (int i = 1; i < argc; i++) {
      if (!strcmp(argv[i], "--data") && i + 1 < argc)
        root = argv[++i];
@@ -583,7 +593,7 @@ index a1c2e59..f2170f7 100644
      else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
        frames = atoi(argv[++i]);
      else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
-@@ -1532,6 +1731,11 @@ int main(int argc, char **argv) {
+@@ -1532,6 +1741,11 @@ int main(int argc, char **argv) {
    signal(SIGTERM, stop);
    mkdir(root, 0755);
    char path[1024];
