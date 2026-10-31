@@ -167,6 +167,10 @@ typedef bool (*run_tick_fn)(void *ctx);
 int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
               run_menu_fn on_menu, run_tick_fn on_tick, void *ctx);
 bool plat_run_power_pressed(void);
+/* An analogue trigger's evdev event (ABS_Z, ABS_RZ) as a button: past the
+ * middle of the range fd's node reports (plorpos-wjw.6). */
+struct input_event;
+bool plat_abs_pressed(int fd, const struct input_event *ev);
 /* How long the last plat_run spent asleep (a power tap), to keep out of
  * Play Time. */
 unsigned plat_run_asleep_ms(void);

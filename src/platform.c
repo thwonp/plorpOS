@@ -589,6 +589,18 @@ static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
 
+bool plat_abs_pressed(int fd, const struct input_event *ev)
+{
+#ifdef __linux__
+	struct input_absinfo ai;
+
+	if (fd >= 0 && ioctl(fd, EVIOCGABS(ev->code), &ai) == 0 && ai.maximum > ai.minimum)
+		return ev->value > ai.minimum + (ai.maximum - ai.minimum) / 2;
+#endif
+	(void)fd;
+	return ev->value > 0;
+}
+
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
@@ -739,8 +751,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (menu_held && ev.code != menu_code &&
 			    ((ev.type == EV_KEY && ev.value == 1) ||
 			     (ev.type == EV_ABS && ev.value != 0 &&
-			      (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y ||
-			       ev.code == ABS_Z || ev.code == ABS_RZ))))
+			      (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y)) ||
+			     (ev.type == EV_ABS && (ev.code == ABS_Z || ev.code == ABS_RZ) &&
+			      plat_abs_pressed(fd_menu, &ev))))
 				menu_spent = true;
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
