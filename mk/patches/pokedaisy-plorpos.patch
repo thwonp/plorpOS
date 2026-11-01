@@ -1,5 +1,113 @@
+diff --git a/3ds/core/pd_card.c b/3ds/core/pd_card.c
+index 2c8ed15..830d12d 100644
+--- a/3ds/core/pd_card.c
++++ b/3ds/core/pd_card.c
+@@ -8,6 +8,9 @@
+ // --- the data (readTrainerCard) ---
+ 
+ // pokeemerald's sHoennToNationalOrder: the Hoenn dex's national numbers.
++// Emerald Legacy's regional dex past Hoenn's (TrainerCard.kt LEGACY_HOENN_TO_NATIONAL).
++static const uint16_t LEGACY_EXTRA[8] = { 77, 78, 198, 215, 220, 221, 228, 229 };
++
+ static const uint16_t HOENN_TO_NATIONAL[202] = {
+     252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271,
+     272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 63, 64,
+@@ -59,8 +62,10 @@ bool pd_card_info(const struct pd_game* g, const struct pd_snapshot* s, struct p
+     int caught = 0;
+     if (national) {
+         for (int n = 1; n <= PD_NATIONAL_COUNT; n++) caught += pd_dex_caught(s, n);
+-    } else if (cfg->cardStyle == PD_CARD_HOENN) {
++    } else if (cfg->cardStyle == PD_CARD_HOENN || cfg->cardStyle == PD_CARD_LEGACY) {
+         for (int i = 0; i < 202; i++) caught += pd_dex_caught(s, HOENN_TO_NATIONAL[i]);
++        if (cfg->cardStyle == PD_CARD_LEGACY)
++            for (int i = 0; i < 8; i++) caught += pd_dex_caught(s, LEGACY_EXTRA[i]);
+     } else {
+         for (int n = 1; n <= 151; n++) caught += pd_dex_caught(s, n);
+     }
+@@ -76,7 +81,10 @@ bool pd_card_info(const struct pd_game* g, const struct pd_snapshot* s, struct p
+     // HasAllHoennMons: the Hoenn dex minus Jirachi and Deoxys.
+     bool allHoenn = true;
+     for (int i = 0; i < 200 && allHoenn; i++) allHoenn = pd_dex_caught(s, HOENN_TO_NATIONAL[i]);
++    // Legacy's regional dex runs 210 (Hoenn's 202, JIRACHI and DEOXYS still left out of "all", then eight more).
++    for (int i = 0; i < 8 && allHoenn && cfg->cardStyle == PD_CARD_LEGACY; i++) allHoenn = pd_dex_caught(s, LEGACY_EXTRA[i]);
+     c->stars = (hof != 0) + allHoenn;
++    if (cfg->extraStarFlag && pd_flag(s, cfg->extraStarFlag)) c->stars++;
+     if (cfg->museumWinnersOff) {
+         bool all = true;
+         for (int i = 0; i < 5; i++) all &= s->museumWinners[i] != 0;
+@@ -90,7 +98,7 @@ bool pd_card_info(const struct pd_game* g, const struct pd_snapshot* s, struct p
+         c->stars += all;
+     }
+ 
+-    bool hoenn = cfg->cardStyle == PD_CARD_HOENN;
++    bool hoenn = cfg->cardStyle == PD_CARD_HOENN || cfg->cardStyle == PD_CARD_LEGACY;
+     c->linkWins = capped(s, STAT_LINK_BATTLE_WINS, 9999);
+     c->linkLosses = capped(s, STAT_LINK_BATTLE_LOSSES, 9999);
+     c->trades = capped(s, STAT_POKEMON_TRADES, 0xFFFF);
+@@ -106,14 +114,14 @@ bool pd_card_info(const struct pd_game* g, const struct pd_snapshot* s, struct p
+ // --- the art (TrainerCardArt.render) ---
+ 
+ struct blobs {
+-    int gfx, front, back, bg, pals[5], femalePal, badgesPal, badgesGfx;
++    int gfx, front, back, bg, pals[6], femalePal, badgesPal, badgesGfx; // pals: one per star count; [5] -1 = none
+     int picMale, picMalePal, picFemale, picFemalePal, font, widths;
+     int stickers[5]; // FireRed: the tiles, then a palette per brag level; -1 = none
+ };
+ 
+ static const struct blobs KANTO = {
+     PD_FR_CARD_GFX, PD_FR_CARD_FRONT, PD_FR_CARD_BACK, PD_FR_CARD_BG,
+-    { PD_FR_CARD_PAL0, PD_FR_CARD_PAL1, PD_FR_CARD_PAL2, PD_FR_CARD_PAL3, PD_FR_CARD_PAL4 },
++    { PD_FR_CARD_PAL0, PD_FR_CARD_PAL1, PD_FR_CARD_PAL2, PD_FR_CARD_PAL3, PD_FR_CARD_PAL4, -1 },
+     PD_FR_CARD_FEMALE_PAL, PD_FR_CARD_BADGES_PAL, PD_FR_CARD_BADGES_GFX,
+     PD_FR_PIC_RED, PD_FR_PIC_RED_PAL, PD_FR_PIC_LEAF, PD_FR_PIC_LEAF_PAL,
+     PD_FR_FONT_NORMAL, PD_FR_FONT_NORMAL_WIDTHS,
+@@ -123,7 +131,17 @@ static const struct blobs KANTO = {
+ 
+ static const struct blobs HOENN = {
+     PD_EM_CARD_GFX, PD_EM_CARD_FRONT, PD_EM_CARD_BACK, PD_EM_CARD_BG,
+-    { PD_EM_CARD_PAL0, PD_EM_CARD_PAL1, PD_EM_CARD_PAL2, PD_EM_CARD_PAL3, PD_EM_CARD_PAL4 },
++    { PD_EM_CARD_PAL0, PD_EM_CARD_PAL1, PD_EM_CARD_PAL2, PD_EM_CARD_PAL3, PD_EM_CARD_PAL4, -1 },
++    PD_EM_CARD_FEMALE_PAL, PD_EM_CARD_BADGES_PAL, PD_EM_CARD_BADGES_GFX,
++    PD_EM_PIC_BRENDAN, PD_EM_PIC_BRENDAN_PAL, PD_EM_PIC_MAY, PD_EM_PIC_MAY_PAL,
++    PD_EM_FONT_NORMAL, PD_EM_FONT_NORMAL_WIDTHS,
++    { -1, -1, -1, -1, -1 },
++};
++
++// Emerald Legacy (TrainerCardArt.kt LEGACY): HOENN's, the fifth star on LeafGreen's black palette.
++static const struct blobs LEGACY = {
++    PD_EM_CARD_GFX, PD_EM_CARD_FRONT, PD_EM_CARD_BACK, PD_EM_CARD_BG,
++    { PD_EM_CARD_PAL0, PD_EM_CARD_PAL1, PD_EM_CARD_PAL2, PD_EM_CARD_PAL3, PD_EM_CARD_PAL4, PD_LG_CARD_PAL5 },
+     PD_EM_CARD_FEMALE_PAL, PD_EM_CARD_BADGES_PAL, PD_EM_CARD_BADGES_GFX,
+     PD_EM_PIC_BRENDAN, PD_EM_PIC_BRENDAN_PAL, PD_EM_PIC_MAY, PD_EM_PIC_MAY_PAL,
+     PD_EM_FONT_NORMAL, PD_EM_FONT_NORMAL_WIDTHS,
+@@ -491,12 +509,12 @@ static void hoenn_text(const struct art* a, const struct blobs* b, const struct
+ bool pd_card_render(const struct pd_game* g, const struct pd_card_info* c, bool back, bool colon, bool backdrop,
+                     uint32_t* img) {
+     bool kanto = c->style == PD_CARD_KANTO;
+-    const struct blobs* b = kanto ? &KANTO : &HOENN;
++    const struct blobs* b = kanto ? &KANTO : c->style == PD_CARD_LEGACY ? &LEGACY : &HOENN;
+     struct art a = { .img = img, .lay = kanto ? &KANTO_LAYOUT : &HOENN_LAYOUT };
+-    if (c->style != PD_CARD_KANTO && c->style != PD_CARD_HOENN) return false;
++    if (c->style != PD_CARD_KANTO && c->style != PD_CARD_HOENN && c->style != PD_CARD_LEGACY) return false;
+     // Every blob the card needs, or no card.
+     const int need[] = {
+-        b->gfx, b->front, b->back, b->bg, b->pals[0], b->pals[1], b->pals[2], b->pals[3], b->pals[4],
++        b->gfx, b->front, b->back, b->bg, b->pals[0], b->pals[1], b->pals[2], b->pals[3], b->pals[4], b->pals[5],
+         b->femalePal, b->badgesPal, b->badgesGfx, b->picMale, b->picMalePal, b->picFemale, b->picFemalePal,
+         b->font, b->widths, PD_CARD_STAR_PAL, b->stickers[0], b->stickers[1], b->stickers[2], b->stickers[3],
+         b->stickers[4],
+@@ -509,7 +527,8 @@ bool pd_card_render(const struct pd_game* g, const struct pd_card_info* c, bool
+     a.d[PD_CARD_STAR_PAL] = pd_romart_blob(g, PD_CARD_STAR_PAL);
+ 
+     uint32_t pal[256] = { 0 };
+-    int stars = c->stars < 0 ? 0 : c->stars > 4 ? 4 : c->stars;
++    int most = b->pals[5] >= 0 ? 5 : 4;
++    int stars = c->stars < 0 ? 0 : c->stars > most ? most : c->stars;
+     palette(a.d[b->pals[stars]], 48, pal);
+     if (c->female) palette(a.d[b->femalePal], 16, pal + 16);
+     palette(a.d[b->badgesPal], 16, pal + 48);
 diff --git a/3ds/core/pd_configs_gen.h b/3ds/core/pd_configs_gen.h
-index ded2491..1d81c83 100644
+index ded2491..1651687 100644
 --- a/3ds/core/pd_configs_gen.h
 +++ b/3ds/core/pd_configs_gen.h
 @@ -24,6 +24,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
@@ -33,7 +141,15 @@ index ded2491..1d81c83 100644
      .trainers = 0x0823EB38,
      .learnsets = 0x0825D824,
      .wildHeaders = 0x083C9D28,
-@@ -124,6 +133,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -66,6 +75,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .nationalFlag = 0x840,
+     .stickerVar = 0x4049,
+     .frontierSymbolFlag = 0,
++    .extraStarFlag = 0,
+     .museumWinnersOff = 0,
+     .frontierBpOff = 0,
+     .flyFlagGet = 0x0806E6E4,
+@@ -124,6 +134,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -41,7 +157,7 @@ index ded2491..1d81c83 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -133,6 +143,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -133,6 +144,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -50,7 +166,7 @@ index ded2491..1d81c83 100644
      .monIconTable = 0x083D37A0,
      .monIconPaletteIndices = 0x083D3E80,
      .monIconPaletteTable = 0x083D4038,
-@@ -154,6 +166,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -154,6 +167,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -58,7 +174,7 @@ index ded2491..1d81c83 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -163,6 +176,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -163,6 +177,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -67,7 +183,15 @@ index ded2491..1d81c83 100644
      .monIconTable = 0x083D35DC,
      .monIconPaletteIndices = 0x083D3CBC,
      .monIconPaletteTable = 0x083D3E74,
-@@ -235,6 +250,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -177,6 +193,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .nationalFlag = 0x840,
+     .stickerVar = 0x4049,
+     .frontierSymbolFlag = 0,
++    .extraStarFlag = 0,
+     .museumWinnersOff = 0,
+     .frontierBpOff = 0,
+     .flyFlagGet = 0x0806E6D0,
+@@ -235,6 +252,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -75,7 +199,7 @@ index ded2491..1d81c83 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -247,7 +263,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -247,7 +265,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
@@ -86,7 +210,15 @@ index ded2491..1d81c83 100644
      .monIconTable = 0x083D364C,
      .monIconPaletteIndices = 0x083D3D2C,
      .monIconPaletteTable = 0x083D3EE4,
-@@ -320,6 +339,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -262,6 +283,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .nationalFlag = 0x840,
+     .stickerVar = 0x4049,
+     .frontierSymbolFlag = 0,
++    .extraStarFlag = 0,
+     .museumWinnersOff = 0,
+     .frontierBpOff = 0,
+     .flyFlagGet = 0x0806E6E4,
+@@ -320,6 +342,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .mapHeader = 0x02037318,
      .encryptionKeyOff = 0xAC,
      .moneyOff = 0x490,
@@ -94,7 +226,7 @@ index ded2491..1d81c83 100644
      .bagPockets = 0x02039DD8,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
      .dexSeenCopy1 = 0x988,
-@@ -332,7 +352,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -332,7 +355,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .enemyParty = 0x02024744,
      .battlerPartyIndexes = 0x0202406E,
      .battleStructPtr = 0x0202449C,
@@ -105,7 +237,7 @@ index ded2491..1d81c83 100644
      .monIconTable = 0x0857BCA8,
      .monIconPaletteIndices = 0x0857C388,
      .monIconPaletteTable = 0x0857C540,
-@@ -348,6 +371,11 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -348,6 +374,11 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .regionalOrder = 0x0831DFB8,
      .regionalCount = 202,
      .regionName = "HOENN",
@@ -117,13 +249,21 @@ index ded2491..1d81c83 100644
      .trainers = 0x08310030,
      .learnsets = 0x0832937C,
      .wildHeaders = 0x08552D48,
-@@ -406,4 +434,338 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -362,6 +393,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+     .nationalFlag = 0x896,
+     .stickerVar = 0,
+     .frontierSymbolFlag = 0x8C4,
++    .extraStarFlag = 0,
+     .museumWinnersOff = 0x2F90,
+     .frontierBpOff = 0xEBA,
+     .flyFlagGet = 0x0809D790,
+@@ -406,4 +438,350 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .pcScript = 0x0203FFF4,
  };
  
 +// plorpOS's Linux port: the hacks, as their records reach gen3/records/c_hacks.toml. Emerald Legacy v1.1.4: retail's
 +// structs with its own addresses, its own TrainerMon (guideTables.trainerMon).
-+// gamedata/gen3/hacks/emerald_legacy.toml: emerald_legacy (ram, foes, icons, dex, guide, fly, field)
++// gamedata/gen3/hacks/emerald_legacy.toml: emerald_legacy (ram, foes, icons, dex, guide, card, fly, field)
 +static const struct pd_config PD_CONFIG_EMERALD_LEGACY = {
 +    .playerParty = 0x020244EC,
 +    .playerPartyCount = 0x020244E9,
@@ -179,6 +319,18 @@ index ded2491..1d81c83 100644
 +    .wildHeaders = 0x08585028,
 +    .probeTrainer = 265,
 +    .probeName = "ROXANNE",
++    .cardStyle = PD_CARD_LEGACY,
++    .gameStatsOff = 0x1714,
++    .badgeFlag = 0x8C7,
++    .pokedexFlag = 0x8C1,
++    .nationalVar = 0x4046,
++    .nationalVarValue = 0x302,
++    .nationalFlag = 0x8F6,
++    .stickerVar = 0,
++    .frontierSymbolFlag = 0x924,
++    .extraStarFlag = 0x1CA,
++    .museumWinnersOff = 12552,
++    .frontierBpOff = 0xECE,
 +    .flyFlagGet = 0x0809EBFC,
 +    .flySetUp = 0x081BA1C8,
 +    .flyGetMapsecType = 0x081275EC,
@@ -605,7 +757,7 @@ index dafc939..92df1ba 100644
 +    g->unsupported = "Not a version the companion knows";
 +}
 diff --git a/3ds/core/pd_game.h b/3ds/core/pd_game.h
-index d8dff14..e5e0c17 100644
+index d8dff14..9d16c13 100644
 --- a/3ds/core/pd_game.h
 +++ b/3ds/core/pd_game.h
 @@ -15,6 +15,17 @@ enum pd_game_kind {
@@ -655,7 +807,25 @@ index d8dff14..e5e0c17 100644
      int probeTrainer;     // checks the tables match the ROM ...
      const char* probeName; // ... by this trainer's name
  
-@@ -133,6 +150,7 @@ struct pd_game {
+@@ -82,6 +99,7 @@ struct pd_config {
+     int nationalVar, nationalVarValue, nationalFlag;
+     int stickerVar;
+     int frontierSymbolFlag;
++    int extraStarFlag; // a flag worth one more star (Legacy's FLAG_CAUGHT_MEW); 0 = none
+     uint32_t museumWinnersOff, frontierBpOff; // in SaveBlock1 / SaveBlock2
+ 
+     // FLY (the app's FlyFns / HealWarp, Fly.kt): the game's own functions, called between frames (the Linux host's
+@@ -116,7 +134,8 @@ struct pd_config {
+     uint32_t pcSpecials, pcFn, pcCrcs[2], pcScript;
+ };
+ 
+-enum pd_card_style { PD_CARD_NONE, PD_CARD_KANTO, PD_CARD_HOENN };
++// LEGACY: Emerald Legacy's - HOENN's card, a fifth star (extraStarFlag) on a black one, Hoenn's dex and eight more.
++enum pd_card_style { PD_CARD_NONE, PD_CARD_KANTO, PD_CARD_HOENN, PD_CARD_LEGACY };
+ 
+ // The bag's pockets, in a fixed order of our own (the app's POCKET_* ids).
+ enum pd_pocket {
+@@ -133,6 +152,7 @@ struct pd_game {
      char code[5];       // ROM header game code, e.g. "BPRE"
      int revision;       // ROM header 0xBC
      const char* title;  // "Pokémon FireRed"
@@ -663,7 +833,7 @@ index d8dff14..e5e0c17 100644
      const struct pd_config* cfg; // NULL = detected but not supported
      const char* unsupported;     // why, when cfg is NULL
      // The ROM's bytes (0x08000000 on the bus), for the tabs that read its
-@@ -140,6 +158,7 @@ struct pd_game {
+@@ -140,6 +160,7 @@ struct pd_game {
      const uint8_t* rom;
      size_t romSize;
      unsigned loadId; // new on every pd_game_detect (see pd_rom_id)
@@ -671,7 +841,7 @@ index d8dff14..e5e0c17 100644
  };
  
  // Which ROM the tabs' caches were built from: 0 = none, else new for every
-@@ -155,4 +174,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
+@@ -155,4 +176,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
  // Reads the ROM header (the first 0xC0 bytes of the ROM) and its size.
  void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize);
  
@@ -2038,6 +2208,30 @@ index 7eb88af..5f89902 100644
 +void pd_draw_party_ball(struct pd_canvas* c, int x, int y);
  
  #endif
+diff --git a/3ds/core/pd_map_gen.c b/3ds/core/pd_map_gen.c
+index 3eec6bf..9c6206c 100644
+--- a/3ds/core/pd_map_gen.c
++++ b/3ds/core/pd_map_gen.c
+@@ -61,6 +61,7 @@ const struct pd_blob_sig pd_blob_sigs[PD_BLOB_COUNT] = {
+     [PD_EM_FONT_NORMAL] = { false, 32768, 0xA7757FEEu, 314, 0x2FD9CE0079AD4F11ull, 0xE1B0, PD_BLOB_EMERALD },
+     [PD_EM_FONT_NORMAL_WIDTHS] = { false, 512, 0x002DEBCBu, 38, 0xD417A07C815713A0ull, 0xDFE0, PD_BLOB_EMERALD },
+     [PD_CARD_STAR_PAL] = { false, 32, 0xB6380DF6u, 0, 0xF6817DDB3D14BFE1ull, 0xD9B3, PD_BLOB_FIRERED | PD_BLOB_EMERALD },
++    [PD_LG_CARD_PAL5] = { false, 96, 0x46E1B864u, 0, 0xED03EED40A1C9008ull, 0x9E4E, PD_BLOB_FIRERED | PD_BLOB_EMERALD },
+ };
+ 
+ static const unsigned char firered_layout0_0[330] = {
+diff --git a/3ds/core/pd_romart.h b/3ds/core/pd_romart.h
+index 536f062..7259df3 100644
+--- a/3ds/core/pd_romart.h
++++ b/3ds/core/pd_romart.h
+@@ -33,6 +33,7 @@ enum pd_blob {
+     PD_EM_PIC_BRENDAN, PD_EM_PIC_BRENDAN_PAL, PD_EM_PIC_MAY, PD_EM_PIC_MAY_PAL,
+     PD_EM_FONT_NORMAL, PD_EM_FONT_NORMAL_WIDTHS,
+     PD_CARD_STAR_PAL,
++    PD_LG_CARD_PAL5,
+     PD_BLOB_COUNT,
+ };
+ 
 diff --git a/3ds/core/pd_settings.c b/3ds/core/pd_settings.c
 index a122806..2a8ca87 100644
 --- a/3ds/core/pd_settings.c
@@ -2696,9 +2890,22 @@ index 8139044..26c6544 100644
      emit_areas(out, "pd_areas_firered", areas_of("GuideAreasFireRedGen.kt", "GUIDE_AREAS_FIRERED_RAW"))
      emit_areas(out, "pd_areas_leafgreen", areas_of("GuideAreasLeafGreenGen.kt", "GUIDE_AREAS_LEAFGREEN_RAW"))
      emit_areas(out, "pd_areas_emerald", areas_of("GuideAreasEmeraldGen.kt", "GUIDE_AREAS_EMERALD_RAW"))
+diff --git a/3ds/tools/gen_map_tables.py b/3ds/tools/gen_map_tables.py
+index 55e4d77..a0fc76f 100644
+--- a/3ds/tools/gen_map_tables.py
++++ b/3ds/tools/gen_map_tables.py
+@@ -34,6 +34,8 @@ BLOBS = [
+     "EM_PIC_BRENDAN", "EM_PIC_BRENDAN_PAL", "EM_PIC_MAY", "EM_PIC_MAY_PAL",
+     "EM_FONT_NORMAL", "EM_FONT_NORMAL_WIDTHS",
+     "CARD_STAR_PAL",
++    # Emerald Legacy's card (TrainerCardArt.kt LEGACY): HOENN's, plus the fifth star's (black) palette.
++    "LG_CARD_PAL5",
+ ]
+ 
+ 
 diff --git a/gamedata/gen3/records/ported.toml b/gamedata/gen3/records/ported.toml
 new file mode 100644
-index 0000000..08ddf5d
+index 0000000..adfc746
 --- /dev/null
 +++ b/gamedata/gen3/records/ported.toml
 @@ -0,0 +1,3251 @@
@@ -2719,7 +2926,7 @@ index 0000000..08ddf5d
 +schema = 'gen3_card'
 +base = 'TRAINER_CARD_EMERALD'
 +kotlin = false
-+style = { kotlin = 'CardStyle.LEGACY' }
++style = 'CardStyle.LEGACY'
 +gameStatsOff = 0x1714
 +flagsOff = 0x13D8
 +varsOff = 0x1510
@@ -2743,7 +2950,7 @@ index 0000000..08ddf5d
 +schema = 'gen3_card'
 +base = 'TRAINER_CARD_EMERALD'
 +kotlin = false
-+style = { kotlin = 'CardStyle.GLAZED' }
++style = 'CardStyle.GLAZED'
 +regionalDex = 'GLAZED_REGIONAL_TO_NATIONAL'
 +
 +#
@@ -2758,7 +2965,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_IMPERIUM]
 +schema = 'gen3_card'
 +kotlin = false
-+style = { kotlin = 'CardStyle.IMPERIUM' }
++style = 'CardStyle.IMPERIUM'
 +gameStatsOff = 0x1CF0
 +flagsOff = 0x19C4
 +varsOff = 0x1AF0
@@ -2788,7 +2995,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_LAZARUS]
 +schema = 'gen3_card'
 +kotlin = false
-+style = { kotlin = 'CardStyle.LAZARUS' }
++style = 'CardStyle.LAZARUS'
 +gameStatsOff = 0x1618
 +flagsOff = 0x12E8
 +varsOff = 0x1414
@@ -2823,7 +3030,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_RECHARGED_YELLOW_V1_8_0]
 +schema = 'gen3_card'
 +kotlin = false
-+style = { kotlin = 'CardStyle.RECHARGED_YELLOW' }
++style = 'CardStyle.RECHARGED_YELLOW'
 +gameStatsOff = 0xB50
 +flagsOff = 0xEFB
 +varsOff = 0x1028
@@ -2857,7 +3064,7 @@ index 0000000..08ddf5d
 +schema = 'gen3_card'
 +base = 'TRAINER_CARD_RECHARGED_YELLOW_V1_8_0'
 +kotlin = false
-+style = { kotlin = 'CardStyle.RECHARGED_YELLOW_V1_9' }
++style = 'CardStyle.RECHARGED_YELLOW_V1_9'
 +monIconTable = 0x0886ABD0
 +monPaletteTable = 0x0864A95C
 +
@@ -2890,7 +3097,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_SOULGOLD]
 +schema = 'gen3_card'
 +kotlin = false
-+style = { kotlin = 'CardStyle.SOULGOLD' }
++style = 'CardStyle.SOULGOLD'
 +gameStatsOff = 0x2144
 +flagsOff = 0x1898
 +varsOff = 0x1B42
@@ -2935,7 +3142,7 @@ index 0000000..08ddf5d
 +schema = 'gen3_card'
 +base = 'TRAINER_CARD_FIRERED'
 +kotlin = false
-+style = { kotlin = 'CardStyle.UNBOUND' }
++style = 'CardStyle.UNBOUND'
 +dexFlags = 'CFRU_DEX_FLAGS'
 +nationalAlways = true
 +nationalCount = 905
@@ -2950,7 +3157,7 @@ index 0000000..08ddf5d
 +[record.CFRU_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x310
 +caught = 0x38D
 +bytes = 125
@@ -2966,7 +3173,7 @@ index 0000000..08ddf5d
 +[record.EMERALD_LEGACY_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x5C
 +caught = 0x28
 +bytes = 52
@@ -2976,7 +3183,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_CELIA_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x59
 +caught = 0x28
 +bytes = 49
@@ -2986,7 +3193,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_DREAMSTONE_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x3494
 +caught = 0x3515
 +bytes = 129
@@ -2995,7 +3202,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_ELITE_REDUX_V2_65_4_1B_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x2E54
 +caught = 0x2F10
 +bytes = 188
@@ -3004,7 +3211,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_EMERALD_ROGUE_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x30B4
 +caught = 0x3179
 +bytes = 197
@@ -3016,7 +3223,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_EMERALD_SEAGLASS_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x28FC
 +caught = 0x2932
 +bytes = 54
@@ -3025,7 +3232,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_GAIA_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.FIXED' }
++block = 'DexFlagBlock.FIXED'
 +seen = 0x0203C400
 +caught = 0x0203C45B
 +bytes = 91
@@ -3034,7 +3241,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_HEART_AND_SOUL_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x39C0
 +caught = 0x3A7F
 +bytes = 191
@@ -3043,7 +3250,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_IMPERIUM_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x2F58
 +caught = 0x2FD9
 +bytes = 129
@@ -3052,7 +3259,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_LAZARUS_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x32A8
 +caught = 0x3329
 +bytes = 129
@@ -3061,7 +3268,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_MARIOMON_V1_5_1_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x3790
 +caught = 0x37A4
 +bytes = 20
@@ -3070,7 +3277,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_ODYSSEY_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x5C
 +caught = 0x28
 +bytes = 52
@@ -3079,7 +3286,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_QUETZAL_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x2560
 +caught = 0
 +bytes = 150
@@ -3098,7 +3305,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RADICAL_RED_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x310
 +caught = 0x3B4
 +bytes = 164
@@ -3107,7 +3314,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RECHARGED_EMERALD_REBALANCED_V2_2_8_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 96  # = 0x5C + (4)
 +caught = 44  # = 0x28 + (4)
 +bytes = 52
@@ -3116,7 +3323,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RECHARGED_EMERALD_V2_2_5_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 92  # = 0x5C + (0)
 +caught = 40  # = 0x28 + (0)
 +bytes = 52
@@ -3125,7 +3332,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RECHARGED_EMERALD_V2_2_8_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 92  # = 0x5C + (0)
 +caught = 40  # = 0x28 + (0)
 +bytes = 52
@@ -3134,7 +3341,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RECHARGED_YELLOW_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x5C
 +caught = 0x28
 +bytes = 52
@@ -3143,7 +3350,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_ROWE_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x3320
 +caught = 0x33DC
 +bytes = 0xBC
@@ -3152,7 +3359,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_RUBY_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x5C
 +caught = 0x28
 +bytes = 52
@@ -3162,7 +3369,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_SOULGOLD_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x31F8
 +caught = 0x3279
 +bytes = 129
@@ -3171,7 +3378,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_TMT2_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x289C
 +caught = 0x2920
 +bytes = 132
@@ -3180,7 +3387,7 @@ index 0000000..08ddf5d
 +[record.POKEDEX_WISHES_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x359C
 +caught = 0x361D
 +bytes = 129
@@ -3189,7 +3396,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_IMPERIUM_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x2F58
 +caught = 0x2FD9
 +bytes = 129
@@ -3198,7 +3405,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_LAZARUS_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x32A8
 +caught = 0x3329
 +bytes = 0x81
@@ -3207,7 +3414,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_RECHARGED_YELLOW_V1_8_0_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_2' }
++block = 'DexFlagBlock.SAVE_BLOCK_2'
 +seen = 0x5C
 +caught = 0x28
 +bytes = 0x34
@@ -3216,7 +3423,7 @@ index 0000000..08ddf5d
 +[record.TRAINER_CARD_SOULGOLD_DEX_FLAGS]
 +schema = 'gen3_dexflags'
 +kotlin = false
-+block = { kotlin = 'DexFlagBlock.SAVE_BLOCK_1' }
++block = 'DexFlagBlock.SAVE_BLOCK_1'
 +seen = 0x31F8
 +caught = 0x3279
 +bytes = 0x81
@@ -3291,7 +3498,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x083AFD00
 +probeTrainer = 14
 +probeName = 'Terrence'
-+guide = { kotlin = 'GuideId.AMETHYST' }
++guide = 'GuideId.AMETHYST'
 +trainerMon = 'GUIDE_TABLES_AMETHYST_TRAINER_MON'
 +learnsetCfru = true
 +altTrainers = { kotlin = 'listOf(0x089CECCCL, 0x089B8A34L, 0x089C63B8L)' }  # HARD, DIVERGENT, DIVERGENT + HARD
@@ -3307,7 +3514,7 @@ index 0000000..08ddf5d
 +kotlin = false
 +trainers = 0x08A25A14
 +learnsets = 0x09ADB8D0
-+guide = { kotlin = 'GuideId.AMETHYST_V141' }
++guide = 'GuideId.AMETHYST_V141'
 +mapGroups = 0x083526A8
 +altTrainers = { kotlin = 'listOf(0x08A1861CL, 0x08A02384L, 0x08A0FD08L)' }
 +
@@ -3324,7 +3531,7 @@ index 0000000..08ddf5d
 +trainers = 0x0823EAC8
 +learnsets = 0x0825D7B4
 +wildHeaders = 0x087339C0
-+guide = { kotlin = 'GuideId.ULTRA_VIOLET' }
++guide = 'GuideId.ULTRA_VIOLET'
 +mapGroups = 0x0872AF04
 +
 +# Pokémon Ash Gray: rev 0's gTrainers / learnsets, its own gWildMonHeaders and gMapGroups (all their literal-pool words).
@@ -3335,7 +3542,7 @@ index 0000000..08ddf5d
 +base = 'GUIDE_TABLES_ULTRA_VIOLET'
 +kotlin = false
 +wildHeaders = 0x088CD1F8
-+guide = { kotlin = 'GuideId.ASH_GRAY' }
++guide = 'GuideId.ASH_GRAY'
 +mapGroups = 0x0873E2F4
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
@@ -3347,7 +3554,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x08C01578
 +sb1FlagsOff = 0xEF0
 +sb1VarsOff = 0x1010
-+guide = { kotlin = 'GuideId.CELIA' }
++guide = 'GuideId.CELIA'
 +mapGroups = 0x089DCD7C
 +
 +#
@@ -3372,7 +3579,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 12
 +probeName = 'Inger'
-+guide = { kotlin = 'GuideId.DREAMSTONE' }
++guide = 'GuideId.DREAMSTONE'
 +trainerStride = 0x28
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -3402,7 +3609,7 @@ index 0000000..08ddf5d
 +flagBytes = 767
 +probeTrainer = 265
 +probeName = 'Roxanne'
-+guide = { kotlin = 'GuideId.ELITE_REDUX' }
++guide = 'GuideId.ELITE_REDUX'
 +trainerStride = 0x38
 +trainerNameLen = 20
 +trainerNamePtr = true
@@ -3524,7 +3731,7 @@ index 0000000..08ddf5d
 +# One struct TrainerMon for every party (its "trainer control"): nickname, IVs / EVs, lvl +0x19, species +0x1A,
 +# heldItem +0x1C, moves +0x1E (none = the level-up moves, as CreateNPCTrainerParty does), 0x2C bytes.
 +trainerMon = 'GUIDE_TABLES_EMERALD_LEGACY_TRAINER_MON'
-+guide = { kotlin = 'GuideId.EMERALD_LEGACY' }
++guide = 'GuideId.EMERALD_LEGACY'
 +mapGroups = 0x084AF90C
 +# ROUTE 101-104
 +# 110, 111, 112, 114
@@ -3551,7 +3758,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x08A2E1CC
 +probeTrainer = 414
 +probeName = 'Fernando'
-+guide = { kotlin = 'GuideId.GAIA' }
++guide = 'GuideId.GAIA'
 +mapGroups = 0x083528DC
 +
 +# Pokémon Ghost Grey: rev 0's gTrainers (414 is its first leader, ASTON), learnsets and gMapGroups, its own
@@ -3563,7 +3770,7 @@ index 0000000..08ddf5d
 +base = 'GUIDE_TABLES_ULTRA_VIOLET'
 +kotlin = false
 +wildHeaders = 0x09300100
-+guide = { kotlin = 'GuideId.GHOST_GREY' }
++guide = 'GuideId.GHOST_GREY'
 +mapGroups = 0x083526A8
 +probeName = 'Aston'
 +
@@ -3578,7 +3785,7 @@ index 0000000..08ddf5d
 +kotlin = false
 +wildHeaders = 0x094CA3F4
 +probeName = 'SPARKY'
-+guide = { kotlin = 'GuideId.GLAZED' }
++guide = 'GuideId.GLAZED'
 +
 +#
 +# Pokémon GS Chronicles v2.7.6 (CFRU): gTrainers rewritten in place at FireRed rev 0's address
@@ -3597,7 +3804,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x08A31664
 +probeTrainer = 321
 +probeName = 'Falkner'
-+guide = { kotlin = 'GuideId.GS_CHRONICLES' }
++guide = 'GuideId.GS_CHRONICLES'
 +mapGroups = 0x083526A8
 +
 +#
@@ -3623,7 +3830,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x130
 +probeTrainer = 402
 +probeName = 'FALKNER'
-+guide = { kotlin = 'GuideId.HEART_AND_SOUL' }
++guide = 'GuideId.HEART_AND_SOUL'
 +trainerStride = 0x34
 +trainerNameOff = 0x1F
 +trainerNameLen = 11
@@ -3656,7 +3863,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 265
 +probeName = 'Roxanne'
-+guide = { kotlin = 'GuideId.IMPERIUM' }
++guide = 'GuideId.IMPERIUM'
 +trainerStride = 0x78
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -3689,7 +3896,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 8
 +probeName = 'Polymnia'
-+guide = { kotlin = 'GuideId.LAZARUS' }
++guide = 'GuideId.LAZARUS'
 +trainerStride = 0x24
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -3724,7 +3931,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 102
 +probeName = 'PEACH'
-+guide = { kotlin = 'GuideId.MARIOMON' }
++guide = 'GuideId.MARIOMON'
 +trainerStride = 0x2C
 +trainerNameOff = 0x13
 +trainerNameLen = 12
@@ -3784,7 +3991,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x092C5540
 +probeTrainer = 33
 +probeName = 'Karin'
-+guide = { kotlin = 'GuideId.ODYSSEY' }
++guide = 'GuideId.ODYSSEY'
 +mapGroups = 0x083526A8
 +
 +#
@@ -3803,7 +4010,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x08A1B1B0
 +probeTrainer = 1
 +probeName = 'CISSY'
-+guide = { kotlin = 'GuideId.ORANGE_ISLANDS' }
++guide = 'GuideId.ORANGE_ISLANDS'
 +mapGroups = 0x083526A8
 +
 +#
@@ -3829,7 +4036,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x1D3
 +probeTrainer = 265
 +probeName = 'ROXANNE'
-+guide = { kotlin = 'GuideId.QUETZAL' }
++guide = 'GuideId.QUETZAL'
 +trainerStride = 0x20
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -3878,7 +4085,7 @@ index 0000000..08ddf5d
 +kotlin = false
 +trainers = 0x08406948
 +wildHeaders = 0x08F34160
-+guide = { kotlin = 'GuideId.QUETZAL_V084' }
++guide = 'GuideId.QUETZAL_V084'
 +altTrainers = { kotlin = 'emptyList()' }
 +mapGroups = 0x0861310C
 +altMapSecGroups = 'none'
@@ -3941,7 +4148,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x0872C984
 +probeTrainer = 414
 +probeName = 'Brock'
-+guide = { kotlin = 'GuideId.RADICAL_RED' }
++guide = 'GuideId.RADICAL_RED'
 +mapGroups = 0x083526A8
 +
 +#
@@ -3966,7 +4173,7 @@ index 0000000..08ddf5d
 +sb1FlagsOff = 0x1344
 +sb1VarsOff = 0x1470
 +probeName = 'Roxanne'
-+guide = { kotlin = 'GuideId.RECHARGED_EMERALD' }
++guide = 'GuideId.RECHARGED_EMERALD'
 +trainerStride = 0x24
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -4032,7 +4239,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 414
 +probeName = 'Brock'
-+guide = { kotlin = 'GuideId.RECHARGED_YELLOW' }
++guide = 'GuideId.RECHARGED_YELLOW'
 +trainerStride = 0x24
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -4050,7 +4257,7 @@ index 0000000..08ddf5d
 +learnsets = 0x08869920
 +wildHeaders = 0x08962648
 +mapGroups = 0x08A356F0
-+guide = { kotlin = 'GuideId.RECHARGED_YELLOW_V180' }
++guide = 'GuideId.RECHARGED_YELLOW_V180'
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
 +[record.GUIDE_TABLES_RECHARGED_YELLOW_V1_9_0]
@@ -4061,7 +4268,7 @@ index 0000000..08ddf5d
 +learnsets = 0x088693DC
 +wildHeaders = 0x08962810
 +mapGroups = 0x08A35758
-+guide = { kotlin = 'GuideId.RECHARGED_YELLOW_V190' }
++guide = 'GuideId.RECHARGED_YELLOW_V190'
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
 +[record.GUIDE_TABLES_RECHARGED_YELLOW_V1_9_4]
@@ -4072,7 +4279,7 @@ index 0000000..08ddf5d
 +learnsets = 0x089493E0
 +wildHeaders = 0x08A42E88
 +mapGroups = 0x08B16238
-+guide = { kotlin = 'GuideId.RECHARGED_YELLOW_V194' }
++guide = 'GuideId.RECHARGED_YELLOW_V194'
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
 +[record.GUIDE_TABLES_RECHARGED_YELLOW_V1_9_7]
@@ -4092,7 +4299,7 @@ index 0000000..08ddf5d
 +base = 'GUIDE_TABLES_ULTRA_VIOLET'
 +kotlin = false
 +wildHeaders = 0x083C9CB8
-+guide = { kotlin = 'GuideId.ROCKET_EDITION' }
++guide = 'GuideId.ROCKET_EDITION'
 +mapGroups = 0x083526A8
 +probeName = 'Brock'  # its text is mixed case
 +
@@ -4116,7 +4323,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x120
 +probeTrainer = 265
 +probeName = 'ROXANNE'
-+guide = { kotlin = 'GuideId.RUBY' }
++guide = 'GuideId.RUBY'
 +mapGroups = 0x083085A0
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
@@ -4127,7 +4334,7 @@ index 0000000..08ddf5d
 +trainers = 0x081F04A4
 +learnsets = 0x08207B70
 +wildHeaders = 0x0839D2B4
-+guide = { kotlin = 'GuideId.SAPPHIRE' }
++guide = 'GuideId.SAPPHIRE'
 +mapGroups = 0x08308530
 +
 +# Emerald Seaglass v3.0: gTrainers 0x0851C8CC (34 refs, Emerald's ids: 265 = ROXANNE), 0x20-byte
@@ -4146,7 +4353,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 265
 +probeName = 'ROXANNE'
-+guide = { kotlin = 'GuideId.SEAGLASS' }
++guide = 'GuideId.SEAGLASS'
 +trainerStride = 0x24
 +trainerNameOff = 0x13
 +trainerNameLen = 11
@@ -4174,7 +4381,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x2AA
 +probeTrainer = 19
 +probeName = 'Falkner'
-+guide = { kotlin = 'GuideId.SOULGOLD' }
++guide = 'GuideId.SOULGOLD'
 +trainerStride = 0x34
 +trainerNameOff = 0x1F
 +trainerNameLen = 11
@@ -4235,7 +4442,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x0892E408
 +probeTrainer = 414
 +probeName = 'Milo'
-+guide = { kotlin = 'GuideId.SWORD_SHIELD' }
++guide = 'GuideId.SWORD_SHIELD'
 +mapGroups = 0x087B1010
 +
 +#
@@ -4257,7 +4464,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x2C4
 +probeTrainer = 415
 +probeName = 'BROCK'
-+guide = { kotlin = 'GuideId.TEAM_ROCKET' }
++guide = 'GuideId.TEAM_ROCKET'
 +# 24-byte TrainerMons: iv, level (u16), species, held item, six EVs, a nature, moves +0x10.
 +trainerMon = 'GUIDE_TABLES_TEAM_ROCKET_TRAINER_MON'
 +
@@ -4277,7 +4484,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x12C
 +probeTrainer = 265
 +probeName = 'ROXANNE'
-+guide = { kotlin = 'GuideId.TMT2' }
++guide = 'GuideId.TMT2'
 +trainerStride = 0x2C
 +trainerNameOff = 0x17
 +trainerNameLen = 11
@@ -4306,7 +4513,7 @@ index 0000000..08ddf5d
 +wildHeaders = 0x08C230D8
 +probeTrainer = 6
 +probeName = 'Mirskle'
-+guide = { kotlin = 'GuideId.UNBOUND' }
++guide = 'GuideId.UNBOUND'
 +mapGroups = 0x08B70498
 +mapGroupsXor = 0x00B749DE
 +
@@ -4342,7 +4549,7 @@ index 0000000..08ddf5d
 +flagBytes = 0x130
 +probeTrainer = 885
 +probeName = 'EDWARDS'
-+guide = { kotlin = 'GuideId.WISHES' }
++guide = 'GuideId.WISHES'
 +trainerStride = 0x38
 +trainerNameOff = 0x1F
 +trainerNameLen = 13
@@ -5999,10 +6206,18 @@ index 0000000..1a04668
 +kotlin = 'Int'
 +type = 'int'
 diff --git a/gamedata/targets/3ds.toml b/gamedata/targets/3ds.toml
-index 54b8f29..1c2d13c 100644
+index 54b8f29..073ed95 100644
 --- a/gamedata/targets/3ds.toml
 +++ b/gamedata/targets/3ds.toml
-@@ -37,6 +37,7 @@ saveBlock2Ptr = 'saveBlock2Ptr'
+@@ -17,6 +17,7 @@ POCKET_KEY_ITEMS = 'PD_POCKET_KEY'
+ [names.CardStyle]
+ KANTO = 'PD_CARD_KANTO'
+ HOENN = 'PD_CARD_HOENN'
++LEGACY = 'PD_CARD_LEGACY'
+ 
+ # Each part is a set of pd_config fields = a path into the config: a field, then (through a record
+ # the field names) that record's field, a list's index. A record a config doesn't have counts as its
+@@ -37,6 +38,7 @@ saveBlock2Ptr = 'saveBlock2Ptr'
  mapHeader = 'mapHeader'
  encryptionKeyOff = 'encryptionKeyOff'
  moneyOff = 'moneyOff'
@@ -6010,7 +6225,7 @@ index 54b8f29..1c2d13c 100644
  bagPockets = 'bagPockets'
  bagOrder = 'bagPocketOrder'
  dexSeenCopy1 = 'pokedex.flags.seenCopies.0'
-@@ -52,10 +53,13 @@ flagBytes = 'guideTables.flagBytes'
+@@ -52,10 +54,13 @@ flagBytes = 'guideTables.flagBytes'
  enemyParty = 'enemyParty'
  battlerPartyIndexes = 'battlerPartyIndexes'
  battleStructPtr = 'battleStructPtr'
@@ -6024,7 +6239,7 @@ index 54b8f29..1c2d13c 100644
  monIconTable = 'monIconTable'
  monIconPaletteIndices = 'monIconPaletteIndices'
  monIconPaletteTable = 'monIconPaletteTable'
-@@ -77,6 +81,11 @@ regionName = 'pokedex.regionName'
+@@ -77,6 +82,11 @@ regionName = 'pokedex.regionName'
  
  # GUIDE's live pages.
  [part.guide]
@@ -6036,7 +6251,15 @@ index 54b8f29..1c2d13c 100644
  trainers = 'guideTables.trainers'
  learnsets = 'guideTables.learnsets'
  wildHeaders = 'guideTables.wildHeaders'
-@@ -173,3 +182,28 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
+@@ -94,6 +104,7 @@ nationalVarValue = 'trainerCard.nationalVarValue'
+ nationalFlag = 'trainerCard.nationalFlag'
+ stickerVar = { path = 'trainerCard.stickerVar', none = -1 }
+ frontierSymbolFlag = { path = 'trainerCard.frontierSymbolFlag', none = -1 }
++extraStarFlag = { path = 'trainerCard.extraStarFlag', none = -1 }
+ museumWinnersOff = { path = 'trainerCard.museumWinnersOff', none = -1 }
+ frontierBpOff = { path = 'trainerCard.frontierBpOff', none = -1 }
+ 
+@@ -173,3 +184,28 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
  name = 'EMERALD'
  parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
  records = { items = 'FIELD_ITEMS_EMERALD' }
@@ -6045,7 +6268,7 @@ index 54b8f29..1c2d13c 100644
 +# structs with its own addresses, its own TrainerMon (guideTables.trainerMon).
 +[config.emerald_legacy]
 +name = 'EMERALD_LEGACY'
-+parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'fly', 'field']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
 +records = { items = 'FIELD_ITEMS_EMERALD_LEGACY' }
 +
 +# Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
@@ -6607,10 +6830,10 @@ index 9a2348a..71c74a8 100644
              last_file = r["file"]
 diff --git a/scripts/port_records.py b/scripts/port_records.py
 new file mode 100644
-index 0000000..666e85a
+index 0000000..b1400f3
 --- /dev/null
 +++ b/scripts/port_records.py
-@@ -0,0 +1,322 @@
+@@ -0,0 +1,325 @@
 +#!/usr/bin/env python3
 +"""plorpOS's Linux port: moves the records the Gen 3 configs name (PokedexTables, GuideTables, TrainerCardSave,
 +DexFlags, FieldItemFns, FlyFns, PcFns, PartyItemFns, HealWarp) from the app's Kotlin vals into
@@ -6764,6 +6987,9 @@ index 0000000..666e85a
 +                lits = [" ".join(a.split()).strip("() ") for a in cv.split_args(m.group(1)) if a.strip()]
 +                return "[" + ", ".join(cv.toml_int(l) if re.fullmatch(r"-?(0x[0-9A-Fa-f_]+|\d+)L?", l)
 +                                       else str(i) for l, i in zip(lits, items)) + "]", None
++    plain = " ".join(rhs.split())
++    if ftype == "ref" and re.fullmatch(r"[A-Za-z_]\w*\.[A-Z_][A-Z0-9_]*", plain):  # an enum value: CardStyle.LEGACY
++        return cv.toml_str(plain), None
 +    return cv.to_toml(field, rhs, ftype, {})
 +
 +
