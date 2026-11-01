@@ -1208,7 +1208,15 @@ static void daisy_options(void)
 	ck(o.ff == 2 && o.autozoom && o.hud && !o.rewind && !o.aspect && !o.scaling,
 	   "no file: PokeDaisy's defaults");
 	n = daisy_rows(&o, rows);
-	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "seven rows, a rule, a note");
+	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "ten rows, a rule, a note");
+	ck(!strcmp(rows[DO_HUDLAYOUT].value, "Corners") && !strcmp(rows[DO_HUDLOOK].value, "Glass") &&
+	   !strcmp(rows[DO_HUDSIZE].value, "Normal") && rows[DO_HUDLAYOUT].live, "HUD defaults: Corners, Glass, Normal");
+	daisy_step(&o, DO_HUDLAYOUT, -1);
+	daisy_step(&o, DO_HUDSIZE, +1);
+	ck(o.hudlayout == 3 && o.hudsize == 2, "Layout left of Corners is Dock; Size right of Normal is Large");
+	daisy_step(&o, DO_HUD, +1);
+	ck(!(daisy_rows(&o, rows), rows[DO_HUDLOOK].live), "HUD off: its Layout / Look / Size quiet");
+	daisy_step(&o, DO_HUD, +1);
 	ck(!strcmp(rows[DO_ASPECT].value, "Integer") && !strcmp(rows[DO_FF].value, "2x") &&
 	   !strcmp(rows[DO_WILD].value, "On"), "defaults read Integer, 2x, encounters On");
 	ck(!rows[DO_AUTOZOOM].live, "Auto Zoom In is Zoom Out's: quiet otherwise");

@@ -2591,13 +2591,16 @@ index 536f062..7259df3 100644
  };
  
 diff --git a/3ds/core/pd_settings.c b/3ds/core/pd_settings.c
-index a122806..2a8ca87 100644
+index a122806..e517084 100644
 --- a/3ds/core/pd_settings.c
 +++ b/3ds/core/pd_settings.c
-@@ -14,6 +14,18 @@ void pd_settings_defaults(struct pd_settings* s) {
+@@ -14,6 +14,21 @@ void pd_settings_defaults(struct pd_settings* s) {
      s->tabBar = PD_TAB_BAR_DEFAULT;
      s->hud = true;
      s->hudHidden = 0;
++    s->hudLayout = PD_HUD_CORNERS;
++    s->hudLook = PD_HUD_GLASS;
++    s->hudSize = PD_HUD_NORMAL;
 +    s->scaling = PD_SCALE_INTEGER;
 +    s->ffAudio = false;
 +    s->rewind = false;
@@ -2613,7 +2616,7 @@ index a122806..2a8ca87 100644
  }
  
  static bool int_in(const char* v, int lo, int hi, int* out) {
-@@ -36,7 +48,10 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
+@@ -36,7 +51,10 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
          const char* key = line;
          const char* value = eq + 1;
          if (!strcmp(key, "screen")) int_in(value, 0, PD_SCREEN_MODES - 1, &s->screenMode);
@@ -2625,11 +2628,14 @@ index a122806..2a8ca87 100644
          else if (!strcmp(key, "guide")) int_in(value, 0, 0xFFFF, &s->guideNotice);
          else if (!strcmp(key, "aspect")) int_in(value, 0, PD_ASPECTS - 1, &s->aspect);
          else if (!strcmp(key, "autozoom")) {
-@@ -54,17 +69,29 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
+@@ -54,17 +72,33 @@ bool pd_settings_load(struct pd_settings* s, const char* path) {
          } else if (!strcmp(key, "hudhide")) {
              int bits;
              if (int_in(value, 0, (1 << PD_HUD_PARTS) - 1, &bits)) s->hudHidden = bits;
-+        } else if (!strcmp(key, "scaling")) int_in(value, 0, PD_SCALINGS - 1, &s->scaling);
++        } else if (!strcmp(key, "hudlayout")) int_in(value, 0, PD_HUD_LAYOUTS - 1, &s->hudLayout);
++        else if (!strcmp(key, "hudlook")) int_in(value, 0, PD_HUD_LOOKS - 1, &s->hudLook);
++        else if (!strcmp(key, "hudsize")) int_in(value, 0, PD_HUD_SIZES - 1, &s->hudSize);
++        else if (!strcmp(key, "scaling")) int_in(value, 0, PD_SCALINGS - 1, &s->scaling);
 +        else {
 +            int on;
 +            bool* b = !strcmp(key, "ffaudio") ? &s->ffAudio : !strcmp(key, "rewind") ? &s->rewind
@@ -2652,6 +2658,7 @@ index a122806..2a8ca87 100644
              s->screenMode, s->ffSpeed, s->guideNotice, s->aspect, s->autoZoom ? 1 : 0, s->wildOff ? 1 : 0, s->tabBar,
              s->hud ? 1 : 0, s->hudHidden);
 -    return fclose(f) == 0;
++    fprintf(f, "hudlayout=%d\nhudlook=%d\nhudsize=%d\n", s->hudLayout, s->hudLook, s->hudSize);
 +    fprintf(f, "scaling=%d\nffaudio=%d\nrewind=%d\nrunindoors=%d\n", s->scaling, s->ffAudio ? 1 : 0,
 +            s->rewind ? 1 : 0, s->runIndoors ? 1 : 0);
 +    if (fclose(f) != 0) return false;
@@ -2911,11 +2918,67 @@ index 30cb2c1..fffb5d4 100644
  // Names in the game's own casing: FireRed / Emerald print species and moves
  // in capitals with a small é (the app's gameCase()). Writes into buf.
 diff --git a/3ds/core/pd_ui.c b/3ds/core/pd_ui.c
-index 0835e07..75c91d1 100644
+index 0835e07..8c914b7 100644
 --- a/3ds/core/pd_ui.c
 +++ b/3ds/core/pd_ui.c
-@@ -319,7 +319,7 @@ static void act(struct pd_ui* ui, int id) {
-         if (id >= HIT_OPTION && id < HIT_OPTION + 8) {
+@@ -61,10 +61,26 @@ int ui_more_tabs(const struct pd_ui* ui, enum pd_tab out[UI_BAR_CHOICES]) {
+ }
+ 
+ const char* pd_hud_part_name(int part) {
+-    static const char* const NAMES[PD_HUD_PARTS] = { "PARTY", "MINIMAP", "POKé BALLS", "REPEL STEPS" };
++    static const char* const NAMES[PD_HUD_PARTS] = { "PARTY", "MINIMAP", "POKé BALLS", "REPEL STEPS", "PC", "BAG",
++                                                     "WILD POKéMON" };
+     return part >= 0 && part < PD_HUD_PARTS ? NAMES[part] : "";
+ }
+ 
++const char* pd_hud_layout_name(int layout) {
++    static const char* const NAMES[PD_HUD_LAYOUTS] = { "CORNERS", "CORNERS 2", "RAILS", "DOCK" };
++    return layout >= 0 && layout < PD_HUD_LAYOUTS ? NAMES[layout] : "";
++}
++
++const char* pd_hud_look_name(int look) {
++    static const char* const NAMES[PD_HUD_LOOKS] = { "GLASS", "WHITE GLASS", "WINDOW" };
++    return look >= 0 && look < PD_HUD_LOOKS ? NAMES[look] : "";
++}
++
++const char* pd_hud_size_name(int size) {
++    static const char* const NAMES[PD_HUD_SIZES] = { "SMALL", "NORMAL", "LARGE" };
++    return size >= 0 && size < PD_HUD_SIZES ? NAMES[size] : "";
++}
++
+ void ui_toggle_act(struct pd_ui* ui, int i) {
+     struct pd_settings* s = ui->settings;
+     if (ui->overlay == PD_OVERLAY_MORE) {
+@@ -78,8 +94,13 @@ void ui_toggle_act(struct pd_ui* ui, int i) {
+         return;
+     }
+     if (ui->overlay == PD_OVERLAY_HUD) {
++        // HUD, then LAYOUT / LOOK / SIZE (each cycles on a press, FieldHud.kt's fieldHudRows), then the parts.
+         if (i == 0) s->hud = !s->hud;
+-        else if (i <= PD_HUD_PARTS) s->hudHidden ^= 1 << (i - 1);
++        else if (!s->hud) return;
++        else if (i == 1) s->hudLayout = (s->hudLayout + 1) % PD_HUD_LAYOUTS;
++        else if (i == 2) s->hudLook = (s->hudLook + 1) % PD_HUD_LOOKS;
++        else if (i == 3) s->hudSize = (s->hudSize + 1) % PD_HUD_SIZES;
++        else if (i - 4 < PD_HUD_PARTS) s->hudHidden ^= 1 << (i - 4);
+         ui->action = PD_ACTION_SETTINGS_CHANGED;
+         return;
+     }
+@@ -308,7 +329,7 @@ static void act(struct pd_ui* ui, int id) {
+         return;
+     }
+     if (ui->overlay == PD_OVERLAY_TAB_BAR || ui->overlay == PD_OVERLAY_HUD || ui->overlay == PD_OVERLAY_MORE) {
+-        if (id >= HIT_OPTION && id < HIT_OPTION + 8) {
++        if (id >= HIT_OPTION && id < HIT_OPTION + 16) {
+             ui_toggle_act(ui, id - HIT_OPTION);
+         } else if (id == HIT_NO || id == HIT_SCRIM) {
+             close_overlay(ui, PD_ACTION_NONE);
+@@ -316,10 +337,10 @@ static void act(struct pd_ui* ui, int id) {
+         return;
+     }
+     if (ui->overlay != PD_OVERLAY_NONE) {
+-        if (id >= HIT_OPTION && id < HIT_OPTION + 8) {
++        if (id >= HIT_OPTION && id < HIT_OPTION + 16) {
              int i = id - HIT_OPTION;
              if (ui->overlay == PD_OVERLAY_PICK_SCREEN) ui->settings->screenMode = i;
 -            if (ui->overlay == PD_OVERLAY_PICK_FF) ui->settings->ffSpeed = PD_FF_MIN + i;
@@ -2924,7 +2987,7 @@ index 0835e07..75c91d1 100644
              close_overlay(ui, PD_ACTION_SETTINGS_CHANGED);
          } else if (id == HIT_YES) {
 diff --git a/3ds/core/pd_ui.h b/3ds/core/pd_ui.h
-index 95b593d..03e703d 100644
+index 95b593d..04f398e 100644
 --- a/3ds/core/pd_ui.h
 +++ b/3ds/core/pd_ui.h
 @@ -51,6 +51,14 @@ enum pd_aspect {
@@ -2942,10 +3005,13 @@ index 95b593d..03e703d 100644
  
  // What the player set; the host loads and saves it (pd_settings.h).
  struct pd_settings {
-@@ -63,6 +71,11 @@ struct pd_settings {
+@@ -63,16 +71,30 @@ struct pd_settings {
      int tabBar;      // TAB BAR: a bit per enum pd_tab on the bar (PARTY .. DEX, CARD); the rest open from MORE
      bool hud;        // HUD over the overworld (hosts with hasHud) ...
      int hudHidden;   // ... less these parts: a bit per enum pd_hud_part
++    int hudLayout;   // enum pd_hud_layout (the app's FieldHudLayout)
++    int hudLook;     // enum pd_hud_look (FieldHudLook)
++    int hudSize;     // enum pd_hud_size (FieldHudSize)
 +    // plorpOS (its in-game menu writes these too):
 +    int scaling;     // enum pd_scaling, ASPECT ORIGINAL's picture
 +    bool ffAudio;    // the game's sound sped up under fast-forward, else silent
@@ -2954,6 +3020,25 @@ index 95b593d..03e703d 100644
  };
  
  // TAB BAR: at most this many tabs beside the gear (the app's MAX_BAR_TABS).
+ #define PD_MAX_BAR_TABS 5
+ #define PD_TAB_BAR_DEFAULT (1 << PD_TAB_PARTY | 1 << PD_TAB_BAG | 1 << PD_TAB_MAP | 1 << PD_TAB_GUIDE | 1 << PD_TAB_DEX)
+ 
+-// The HUD's parts (the app's FieldHudPart less its buttons: with no touch screen BAG, PC and WILD are the
+-// QUICK MENU's, and a tap on a party icon or the minimap has nothing to open).
+-enum pd_hud_part { PD_HUD_PARTY, PD_HUD_MAP, PD_HUD_BALLS, PD_HUD_REPEL, PD_HUD_PARTS };
++// The HUD's parts (the app's FieldHudPart, in its order) and SETTINGS > HUD's LAYOUT / LOOK / SIZE
++// (FieldHudSettings.kt). The buttons (PC, BAG, WILD) are reached with the HUD hotkey on a host without touch.
++enum pd_hud_part { PD_HUD_PARTY, PD_HUD_MAP, PD_HUD_BALLS, PD_HUD_REPEL, PD_HUD_PC, PD_HUD_BAG, PD_HUD_WILD, PD_HUD_PARTS };
++enum pd_hud_layout { PD_HUD_CORNERS, PD_HUD_CORNERS_2, PD_HUD_RAILS, PD_HUD_DOCK, PD_HUD_LAYOUTS };
++enum pd_hud_look { PD_HUD_GLASS, PD_HUD_WHITE_GLASS, PD_HUD_WINDOW, PD_HUD_LOOKS };
++enum pd_hud_size { PD_HUD_SMALL, PD_HUD_NORMAL, PD_HUD_LARGE, PD_HUD_SIZES };
+ const char* pd_hud_part_name(int part);
++const char* pd_hud_layout_name(int layout);
++const char* pd_hud_look_name(int look);
++const char* pd_hud_size_name(int size);
+ 
+ enum pd_action {
+     PD_ACTION_NONE,
 diff --git a/3ds/core/pd_ui_guide.c b/3ds/core/pd_ui_guide.c
 index ed5ddc8..504b538 100644
 --- a/3ds/core/pd_ui_guide.c
@@ -3106,7 +3191,7 @@ index d53bb2b..833554a 100644
 +    char_bitmap(c, BALL, 20, x, y, 1, "KRHW", RED_WHITE);
 +}
 diff --git a/3ds/core/pd_ui_settings.c b/3ds/core/pd_ui_settings.c
-index 3a67218..0c58c76 100644
+index 3a67218..9277e99 100644
 --- a/3ds/core/pd_ui_settings.c
 +++ b/3ds/core/pd_ui_settings.c
 @@ -92,7 +92,10 @@ void ui_settings_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game
@@ -3121,7 +3206,72 @@ index 3a67218..0c58c76 100644
      setting(ui, c, ix, &y, iw, SETTING_FF, "FAST-FORWARD", buf);
      if (host && host->hasExpand) {
          if (host->expandGame) {
-@@ -234,7 +237,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
+@@ -156,7 +159,7 @@ static void pick_list(struct pd_ui* ui, struct pd_canvas* c, const char* title,
+ // A page of ON / OFF rows (TAB BAR's, HUD's), each flipped by A / a tap, or a plain list (MORE's: values NULL);
+ // a grey note under them. B / a tap beside it closes it.
+ static void toggle_page(struct pd_ui* ui, struct pd_canvas* c, const char* title, const char* const* labels,
+-                        const bool* on, const bool* muted, int n, const char* note) {
++                        const bool* on, const bool* muted, int n, const char* note, const char* const* values) {
+     int x = MARGIN, w = c->w - 2 * MARGIN;
+     int y = CONTENT_Y + 4;
+     title_window(c, y, title);
+@@ -168,11 +171,13 @@ static void toggle_page(struct pd_ui* ui, struct pd_canvas* c, const char* title
+     for (int i = 0; i < n; i++) {
+         bool sel = ui->pressedId == HIT_OPTION + i;
+         if (on) {
+-            ui_row(c, ix, ry, iw, labels[i], on[i] ? "ON" : "OFF", sel);
++            // A value of its own (HUD's LAYOUT / LOOK / SIZE), else ON / OFF.
++            const char* v = values && values[i] ? values[i] : on[i] ? "ON" : "OFF";
++            ui_row(c, ix, ry, iw, labels[i], v, sel);
+             if (muted && muted[i]) {
+                 // Its value while the whole thing is off: shown, greyed.
+                 pd_fill(c, ix + iw * 42 / 100, ry + 1, iw - iw * 42 / 100, ROW_H - 2, sel ? PD_ROW_SELECTED : PD_LIST_FILL);
+-                pd_text(c, ix + iw * 42 / 100, pd_text_y(ry, ROW_H), on[i] ? "ON" : "OFF", PD_MUTED, PD_MUTED_SHADOW);
++                pd_text(c, ix + iw * 42 / 100, pd_text_y(ry, ROW_H), v, PD_MUTED, PD_MUTED_SHADOW);
+             }
+         } else {
+             if (sel) pd_fill(c, ix - 4, ry, iw + 8, ROW_H, PD_ROW_SELECTED);
+@@ -192,18 +197,23 @@ static void tab_bar_page(struct pd_ui* ui, struct pd_canvas* c) {
+         labels[i] = ui_tab_label(UI_BAR_CHOICE[i]);
+         on[i] = (ui->settings->tabBar >> UI_BAR_CHOICE[i]) & 1;
+     }
+-    toggle_page(ui, c, "TAB BAR", labels, on, NULL, UI_BAR_CHOICES, "At most 5 on the bar; the rest open from MORE.");
++    toggle_page(ui, c, "TAB BAR", labels, on, NULL, UI_BAR_CHOICES, "At most 5 on the bar; the rest open from MORE.", NULL);
+ }
+ 
++// FieldHud.kt's fieldHudRows: the switch, LAYOUT / LOOK / SIZE (a press cycles them), then which parts show.
+ static void hud_page(struct pd_ui* ui, struct pd_canvas* c) {
+-    const char* labels[1 + PD_HUD_PARTS] = { "HUD" };
+-    bool on[1 + PD_HUD_PARTS] = { ui->settings->hud }, muted[1 + PD_HUD_PARTS] = { false };
++    enum { N = 4 + PD_HUD_PARTS };
++    const struct pd_settings* s = ui->settings;
++    const char* labels[N] = { "HUD", "LAYOUT", "LOOK", "SIZE" };
++    const char* values[N] = { NULL, pd_hud_layout_name(s->hudLayout), pd_hud_look_name(s->hudLook),
++                              pd_hud_size_name(s->hudSize) };
++    bool on[N] = { s->hud, true, true, true }, muted[N] = { false, !s->hud, !s->hud, !s->hud };
+     for (int i = 0; i < PD_HUD_PARTS; i++) {
+-        labels[1 + i] = pd_hud_part_name(i);
+-        on[1 + i] = !((ui->settings->hudHidden >> i) & 1);
+-        muted[1 + i] = !ui->settings->hud;
++        labels[4 + i] = pd_hud_part_name(i);
++        on[4 + i] = !((s->hudHidden >> i) & 1);
++        muted[4 + i] = !s->hud;
+     }
+-    toggle_page(ui, c, "HUD", labels, on, muted, 1 + PD_HUD_PARTS, "Shown over the overworld, off in menus and battles.");
++    toggle_page(ui, c, "HUD", labels, on, muted, N, "Shown over the overworld, off in menus and battles.", values);
+ }
+ 
+ static void more_page(struct pd_ui* ui, struct pd_canvas* c) {
+@@ -211,7 +221,7 @@ static void more_page(struct pd_ui* ui, struct pd_canvas* c) {
+     const char* labels[UI_BAR_CHOICES];
+     int n = ui_more_tabs(ui, more);
+     for (int i = 0; i < n; i++) labels[i] = ui_tab_label(more[i]);
+-    toggle_page(ui, c, "MORE", labels, NULL, NULL, n, "Which tabs are on the bar: SETTINGS > TAB BAR.");
++    toggle_page(ui, c, "MORE", labels, NULL, NULL, n, "Which tabs are on the bar: SETTINGS > TAB BAR.", NULL);
+ }
+ 
+ static void confirm(struct pd_ui* ui, struct pd_canvas* c, const char* title, const char* text, const char* yes) {
+@@ -234,7 +244,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
      pd_dim(c, 0xE6);
      // Swallows taps beside the windows (they close the overlay).
      ui_add_hit(ui, 0, 0, c->w, c->h, HIT_SCRIM);
@@ -3130,7 +3280,7 @@ index 3a67218..0c58c76 100644
      switch (ui->overlay) {
      case PD_OVERLAY_PICK_SCREEN:
          pick_list(ui, c, "SCREEN", SCREEN_NAMES, PD_SCREEN_MODES, ui->settings->screenMode);
-@@ -243,7 +246,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
+@@ -243,7 +253,7 @@ void ui_overlay(struct pd_ui* ui, struct pd_canvas* c) {
          pick_list(ui, c, "ASPECT", ASPECT_NAMES, PD_ASPECTS, ui->settings->aspect);
          break;
      case PD_OVERLAY_PICK_FF:
@@ -7159,25 +7309,847 @@ index 179833a..ae36a40 100644
  bool pocket_save_backup(const char *savePath, time_t now);
  #endif
 diff --git a/linux/hud.c b/linux/hud.c
-index 662762a..68ed719 100644
+index 662762a..3c8ee8d 100644
 --- a/linux/hud.c
 +++ b/linux/hud.c
-@@ -175,7 +175,9 @@ static void balls_panel(struct pd_canvas *c, const struct pd_game *g, const stru
-   for (int i = 0; i < n; i++) {
-     char t[12];
-     snprintf(t, sizeof t, "%d", b[i].quantity);
--    pd_draw_item_icon(c, g, b[i].id, bx, y + PAD, false);
-+    // Ruby / Sapphire keep no item icons: a drawn ball in the icon's place, as the app does.
-+    if (!pd_draw_item_icon(c, g, b[i].id, bx, y + PAD, false))
-+      pd_draw_party_ball(c, bx + (PD_ITEM_ICON - 20) / 2, y + PAD + (PD_ITEM_ICON - 20) / 2);
-     bx += PD_ITEM_ICON + 1;
-     bx += pd_text(c, bx, pd_text_y(y, BALLS_H), t, INK, INK_SHADOW) + 4;
+@@ -1,36 +1,89 @@
+-/* The HUD (hud.h): FieldHud.kt's CornersLayout - the minimap top right (never top left, where the games slide a new
+- * area's name in), the party along the bottom left, REPEL STEPS over the balls bottom right. GPL-3.0. */
++/* The HUD (hud.h): FieldHud.kt's layouts in C. CORNERS - the minimap top right (never top left, where the games slide
++ * a new area's name in), the party along the bottom left, REPEL STEPS / the balls / the buttons bottom right;
++ * CORNERS 2 the right side the other way up; RAILS two columns at the sides; DOCK one bar along the bottom; the
++ * compact HUD (no party, no minimap: a MAP button) where the party doesn't fit beside the buttons. GPL-3.0. */
+ #include "hud.h"
+ 
+ #include "pd_icon.h"
+ #include "pd_map.h"
+ #include "pd_style.h"
+ #include "pd_tables.h"
+-#include "pd_ui.h"
+ #include "quick_menu.h"
+ #include <stdio.h>
+ #include <string.h>
+ 
+-#define GLASS_FILL 0xB8121620u // FieldHud.kt's GLASS_FILL / _EDGE (ARGB)
+-#define GLASS_EDGE 0x66FFFFFFu
+-#define LEAD_FILL 0xC8283448u
+-#define ACCENT 0x00F8C030u
+-#define INK 0x00F8F8F8u
+-#define INK_SHADOW 0x00303840u
+-#define MUTED 0x00A8B0C0u
++// FieldHud.kt's looks: GLASS_INK / WHITE_INK (ARGB where see-through), WINDOW = the OPTION title window's colours.
++struct look {
++  uint32_t fill, edge, text, shadow, accent, muted, cellOn;
++  bool window;
++};
++static const struct look LOOKS[PD_HUD_LOOKS] = {
++    {0xB8121620u, 0x66FFFFFFu, 0xF4F6FA, 0x0C0F15, 0xFFCF5A, 0xB2BACB, 0x59FFFFFFu, false},
++    {0xC4F6F7FAu, 0x59000000u, 0x262B34, 0xD9DCE3, 0xC8321E, 0x6A7282, 0x4D000000u, false},
++    {PD_TITLE_FILL, PD_MUTED, PD_LABEL, PD_LABEL_SHADOW, PD_VALUE, PD_MUTED, 0xFFE9A8, true},
++};
++
+ #define PAD 4
+ #define EDGE 6 // CornersLayout's padding
++#define GAP 4  // between a column's windows
+ #define TILE 30
+ #define TILE_GAP 3
+-#define MAP_W 104
+-#define MAP_H 64
+ #define LINE 12
++#define MON_ROW_H 30 // RAILS' party rows
++#define MON_ROW_W (TILE + 4 + 44)
++#define BUTTON_H (3 + 16 + 1 + LINE + 3)
++#define RAIL_MIN 70 // a rail's least width (FieldHud's u * 50; COMPANION's button in this font)
++
++struct hud {
++  struct pd_canvas *c;
++  const struct pd_game *g;
++  const struct pd_snapshot *s;
++  const struct hud_state *h;
++  const struct pd_settings *st;
++  const struct look *L;
++  struct hud_hits *out;
++  int partyN;           // party members shown (0: PARTY off)
++  struct pd_item ball[3];
++  int balls;            // ball kinds shown, most first
++  bool repel, map;      // REPEL STEPS showing; MINIMAP on and something to show
++  int button[5], buttons; // the buttons shown, in order (enum hud_target)
++};
++
++static bool shows(const struct hud *u, int part) { return !(u->st->hudHidden >> part & 1); }
++
++static void hit(struct hud *u, int x, int y, int w, int h, int id) {
++  if (u->out && u->out->n < HUD_MAX_HITS)
++    u->out->at[u->out->n++] = (__typeof__(u->out->at[0])){x, y, w, h, id};
++}
++
++static void panel(struct hud *u, int x, int y, int w, int h) {
++  if (u->L->window) {
++    pd_title_box(u->c, x, y, w, h, PD_TITLE_FILL);
++    return;
++  }
++  pd_round_rect(u->c, x, y, w, h, 4, u->L->edge);
++  pd_round_rect(u->c, x + 1, y + 1, w - 2, h - 2, 3, u->L->fill);
++}
++
++static int text(struct hud *u, int x, int y, const char *t, uint32_t color) {
++  return pd_text(u->c, x, y, t, color, u->L->shadow);
++}
+ 
+-static void panel(struct pd_canvas *c, int x, int y, int w, int h) {
+-  pd_round_rect(c, x, y, w, h, 4, GLASS_EDGE);
+-  pd_round_rect(c, x + 1, y + 1, w - 2, h - 2, 3, GLASS_FILL);
++// Pixel art, a character a pixel ('.' clear): keys[i] is drawn in cols[i], anything else in [other].
++static void art(struct pd_canvas *c, const char *const *rows, int x, int y, const char *keys, const uint32_t *cols,
++                uint32_t other) {
++  for (int yy = 0; rows[yy]; yy++)
++    for (int xx = 0; rows[yy][xx]; xx++) {
++      char ch = rows[yy][xx];
++      if (ch == '.')
++        continue;
++      const char *k = strchr(keys, ch);
++      pd_fill(c, x + xx, y + yy, 1, 1, k ? cols[k - keys] : other);
++    }
+ }
+ 
++// ---- Party --------------------------------------------------------------------------------------
++
+ // The party menu's HP bar without its "HP" tag (HudHpBar): a dark frame, the two-tone fill by how much is left.
+ static void hp_bar(struct pd_canvas *c, int x, int y, int w, int hp, int maxHp) {
+   pd_fill(c, x, y, w, 5, 0x404848);
+@@ -57,86 +110,134 @@ static void status_chip(struct pd_canvas *c, int cx, int y, const char *label) {
+   pd_text(c, cx - w / 2 + 3, y - 2, label, 0xFFFFFF, PD_NO_SHADOW);
+ }
+ 
+-static int party_width(const struct pd_snapshot *s) {
+-  int n = s->partyCount < PD_PARTY_SIZE ? s->partyCount : PD_PARTY_SIZE;
+-  return n ? 2 * PAD + 2 + n * TILE + (n - 1) * TILE_GAP : 0;
++// One member's icon at (x, y) in a TILE-wide slot: faded when fainted, its status chip over the top.
++static void mon_icon(struct hud *u, const struct pd_mon *m, int x, int y) {
++  bool egg = m->species == PD_SPECIES_EGG, fainted = !egg && m->hp == 0;
++  pd_draw_mon_icon(u->c, u->g, m->species, x + (TILE - PD_ICON) / 2, y - 5, fainted);
++  const char *status = egg ? "" : fainted ? "FNT" : pd_status_label(m->status);
++  if (*status)
++    status_chip(u->c, x + TILE / 2, y - 3, status);
+ }
+-#define PARTY_H (2 * PAD + 2 + 26 + LINE + 6)
+ 
+-static void party_row(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s, int x, int y) {
+-  int n = s->partyCount < PD_PARTY_SIZE ? s->partyCount : PD_PARTY_SIZE;
+-  panel(c, x, y, party_width(s), PARTY_H);
+-  int tx = x + PAD + 1, ty = y + PAD + 1;
+-  for (int i = 0; i < n; i++, tx += TILE + TILE_GAP) {
+-    const struct pd_mon *m = &s->party[i];
+-    bool egg = m->species == PD_SPECIES_EGG, fainted = !egg && m->hp == 0;
+-    if (i == 0) { // the lead (the one that goes out first): a lit tile with an accent edge
+-      pd_round_rect(c, tx - 2, ty - 2, TILE + 4, PARTY_H - 2 * PAD - 2 + 4, 3, ACCENT);
+-      pd_round_rect(c, tx - 1, ty - 1, TILE + 2, PARTY_H - 2 * PAD - 2 + 2, 3, LEAD_FILL);
+-    }
+-    pd_draw_mon_icon(c, g, m->species, tx + (TILE - PD_ICON) / 2, ty - 5, fainted);
+-    if (egg)
++// The lead (the one that goes out first): a lit cell with an accent edge.
++static void lead(struct hud *u, int x, int y, int w, int h) {
++  pd_round_rect(u->c, x, y, w, h, 3, u->L->accent);
++  pd_round_rect(u->c, x + 1, y + 1, w - 2, h - 2, 3, u->L->cellOn);
++}
++
++#define TILE_H (26 + LINE + 6)
++static int tiles_width(const struct hud *u) { return u->partyN ? u->partyN * TILE + (u->partyN - 1) * TILE_GAP : 0; }
++
++// The party as tiles from (x, y) (HudMonTile): icon, then Lv and the HP bar under it.
++static void party_tiles(struct hud *u, int x, int y) {
++  for (int i = 0; i < u->partyN; i++, x += TILE + TILE_GAP) {
++    const struct pd_mon *m = &u->s->party[i];
++    if (i == 0)
++      lead(u, x - 2, y - 2, TILE + 4, TILE_H + 4);
++    mon_icon(u, m, x, y);
++    hit(u, x - 2, y - 2, TILE + 4, TILE_H + 4, HUD_SLOT + i);
++    if (m->species == PD_SPECIES_EGG)
++      continue;
++    char lv[8];
++    snprintf(lv, sizeof lv, "Lv%d", m->level);
++    text(u, x + (TILE - pd_text_width(lv)) / 2, y + 24, lv, u->L->text);
++    hp_bar(u->c, x, y + 26 + LINE, TILE, m->hp, m->maxHp);
++  }
++}
++
++#define PARTY_H (2 * PAD + 2 + TILE_H)
++static int party_width(const struct hud *u) { return u->partyN ? 2 * PAD + 2 + tiles_width(u) : 0; }
++
++static void party_row(struct hud *u, int x, int y) {
++  panel(u, x, y, party_width(u), PARTY_H);
++  party_tiles(u, x + PAD + 1, y + PAD + 1);
++}
++
++// RAILS' party: a row each (HudMonRow), the icon then Lv over the HP bar.
++static int party_column_h(const struct hud *u) {
++  return u->partyN ? 2 * PAD + 2 + u->partyN * MON_ROW_H + (u->partyN - 1) * GAP : 0;
++}
++
++static void party_column(struct hud *u, int x, int y, int w) {
++  panel(u, x, y, w, party_column_h(u));
++  int rx = x + PAD + 1, ry = y + PAD + 1;
++  for (int i = 0; i < u->partyN; i++, ry += MON_ROW_H + GAP) {
++    const struct pd_mon *m = &u->s->party[i];
++    if (i == 0)
++      lead(u, rx - 1, ry - 1, w - 2 * PAD, MON_ROW_H + 2);
++    mon_icon(u, m, rx, ry + 2);
++    hit(u, rx - 1, ry - 1, w - 2 * PAD, MON_ROW_H + 2, HUD_SLOT + i);
++    if (m->species == PD_SPECIES_EGG)
+       continue;
+-    const char *status = fainted ? "FNT" : pd_status_label(m->status);
+-    if (*status)
+-      status_chip(c, tx + TILE / 2, ty - 3, status);
+     char lv[8];
+     snprintf(lv, sizeof lv, "Lv%d", m->level);
+-    pd_text(c, tx + (TILE - pd_text_width(lv)) / 2, ty + 24, lv, INK, INK_SHADOW);
+-    hp_bar(c, tx, ty + 26 + LINE, TILE, m->hp, m->maxHp);
++    int tx = rx + TILE + 3;
++    text(u, tx, ry + 2, lv, u->L->text);
++    hp_bar(u->c, tx, ry + 4 + LINE + 2, w - 2 * PAD - 2 - TILE - 6, m->hp, m->maxHp);
    }
+ }
+ 
+-#define MINIMAP_W (MAP_W + 2 * PAD)
+-#define MINIMAP_H (MAP_H + 2 * PAD + 3 + LINE)
++// ---- Minimap ------------------------------------------------------------------------------------
+ 
+-// The region map around the player's head (HudMiniMap): the map at 1x, its name under it.
+-static bool minimap(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s, int x, int y) {
+-  const struct pd_map_art *art = pd_map_art(g);
++static bool has_minimap(const struct hud *u) {
++  const char *name = pd_mapsec_name(u->g, u->s->mapsec);
++  return pd_map_art(u->g) || (name && *name);
++}
++
++static int minimap_w(int mw) { return mw + 2 * PAD; }
++static int minimap_h(int mh, int lines) { return mh + 2 * PAD + 3 + lines * LINE; }
++
++// The region map around the player's head (HudMiniMap), mw x mh at 1x, the place's name under it ([lines]: RAILS'
++// narrow one wraps it onto two).
++static void minimap(struct hud *u, int x, int y, int mw, int mh, int lines) {
++  const struct pd_map_art *a = pd_map_art(u->g);
+   int page = -1, tx = 0, ty = 0;
+-  const char *name = pd_mapsec_name(g, s->mapsec);
+-  bool has = art && pd_map_player_tile(g, s, &page, &tx, &ty) && page >= 0 && page < art->pages;
+-  if (!has && !(name && *name))
+-    return false;
+-  panel(c, x, y, MINIMAP_W, MINIMAP_H);
++  const char *name = pd_mapsec_name(u->g, u->s->mapsec);
++  bool has = a && pd_map_player_tile(u->g, u->s, &page, &tx, &ty) && page >= 0 && page < a->pages;
++  panel(u, x, y, minimap_w(mw), minimap_h(mh, lines));
++  hit(u, x, y, minimap_w(mw), minimap_h(mh, lines), HUD_MAP);
+   int mx = x + PAD, my = y + PAD;
+   if (has) {
+     int cx = tx * 8 + 4, cy = ty * 8 + 4;
+-    int left = cx - MAP_W / 2, top = cy - MAP_H / 2;
+-    if (left > PD_MAP_W - MAP_W)
+-      left = PD_MAP_W - MAP_W;
+-    if (top > PD_MAP_H - MAP_H)
+-      top = PD_MAP_H - MAP_H;
++    int left = cx - mw / 2, top = cy - mh / 2;
++    if (left > PD_MAP_W - mw)
++      left = PD_MAP_W - mw;
++    if (top > PD_MAP_H - mh)
++      top = PD_MAP_H - mh;
+     if (left < 0)
+       left = 0;
+     if (top < 0)
+       top = 0;
+-    const uint32_t *px = art->page[page];
+-    for (int yy = 0; yy < MAP_H; yy++)
+-      for (int xx = 0; xx < MAP_W; xx++) {
++    const uint32_t *px = a->page[page];
++    for (int yy = 0; yy < mh && top + yy < PD_MAP_H; yy++)
++      for (int xx = 0; xx < mw && left + xx < PD_MAP_W; xx++) {
+         uint32_t p = px[(top + yy) * PD_MAP_W + left + xx];
+         if (p != PD_MAP_CLEAR)
+-          pd_fill(c, mx + xx, my + yy, 1, 1, p & 0xFFFFFF);
++          pd_fill(u->c, mx + xx, my + yy, 1, 1, p & 0xFFFFFF);
+       }
+-    int gender = s->gender == 1 ? 1 : 0;
+-    if (art->hasHead[gender])
++    int gender = u->s->gender == 1 ? 1 : 0;
++    if (a->hasHead[gender])
+       for (int yy = 0; yy < 16; yy++)
+         for (int xx = 0; xx < 16; xx++) {
+-          uint32_t p = art->head[gender][yy * 16 + xx];
++          uint32_t p = a->head[gender][yy * 16 + xx];
+           int dx = cx - 8 - left + xx, dy = cy - 8 - top + yy;
+-          if (p != PD_MAP_CLEAR && dx >= 0 && dx < MAP_W && dy >= 0 && dy < MAP_H)
+-            pd_fill(c, mx + dx, my + dy, 1, 1, p & 0xFFFFFF);
++          if (p != PD_MAP_CLEAR && dx >= 0 && dx < mw && dy >= 0 && dy < mh)
++            pd_fill(u->c, mx + dx, my + dy, 1, 1, p & 0xFFFFFF);
+         }
+   }
+   if (name && *name) {
+-    pd_clip(c, mx, my + MAP_H + 1, MAP_W, LINE + 4);
+-    pd_text(c, mx, my + MAP_H + 1, name, INK, INK_SHADOW);
+-    pd_unclip(c);
++    pd_clip(u->c, mx, my + mh + 1, mw, lines * LINE + 4);
++    if (lines > 1)
++      pd_text_wrap(u->c, mx, my + mh + 1, mw, LINE, lines, name, u->L->text, u->L->shadow);
++    else
++      text(u, mx, my + mh + 1, name, u->L->text);
++    pd_unclip(u->c);
+   }
+-  return true;
+ }
+ 
+-// The bag's Poké Balls, most first, three at most (HudBalls): each one's icon and how many.
++// ---- Balls, REPEL STEPS -------------------------------------------------------------------------
++
++// The bag's Poké Balls, most first, three at most (HudBalls).
+ static int balls(const struct pd_snapshot *s, struct pd_item out[3]) {
+   int n = 0;
+   if (!s->bagOk)
+@@ -158,110 +259,387 @@ static int balls(const struct pd_snapshot *s, struct pd_item out[3]) {
+   return n;
+ }
+ 
+-static int balls_width(const struct pd_item *b, int n) {
+-  int w = 2 * PAD + 4;
+-  for (int i = 0; i < n; i++) {
+-    char t[12];
+-    snprintf(t, sizeof t, "%d", b[i].quantity);
+-    w += PD_ITEM_ICON + 1 + pd_text_width(t) + (i ? 4 : 0);
+-  }
++static int count_w(const struct pd_item *b) {
++  char t[12];
++  snprintf(t, sizeof t, "x%d", b->quantity);
++  return pd_text_width(t);
++}
++
++// One ball and its count (BallCount); Ruby / Sapphire keep no item icons: a drawn ball in its place.
++static int ball_count(struct hud *u, const struct pd_item *b, int x, int y) {
++  if (!pd_draw_item_icon(u->c, u->g, b->id, x, y, false))
++    pd_draw_party_ball(u->c, x + (PD_ITEM_ICON - 20) / 2, y + (PD_ITEM_ICON - 20) / 2);
++  char t[12];
++  snprintf(t, sizeof t, "x%d", b->quantity);
++  return PD_ITEM_ICON + 1 + text(u, x + PD_ITEM_ICON + 1, pd_text_y(y, PD_ITEM_ICON), t, u->L->text);
++}
++
++static int balls_inline_w(const struct hud *u) {
++  int w = 0;
++  for (int i = 0; i < u->balls; i++)
++    w += PD_ITEM_ICON + 1 + count_w(&u->ball[i]) + (i ? 4 : 0);
+   return w;
+ }
+-#define BALLS_H (2 * PAD + PD_ITEM_ICON)
+ 
+-static void balls_panel(struct pd_canvas *c, const struct pd_game *g, const struct pd_item *b, int n, int x, int y) {
+-  panel(c, x, y, balls_width(b, n), BALLS_H);
+-  int bx = x + PAD + 2;
+-  for (int i = 0; i < n; i++) {
+-    char t[12];
+-    snprintf(t, sizeof t, "%d", b[i].quantity);
+-    pd_draw_item_icon(c, g, b[i].id, bx, y + PAD, false);
+-    bx += PD_ITEM_ICON + 1;
+-    bx += pd_text(c, bx, pd_text_y(y, BALLS_H), t, INK, INK_SHADOW) + 4;
++static void balls_inline(struct hud *u, int x, int y) {
++  hit(u, x - 2, y - 2, balls_inline_w(u) + 4, PD_ITEM_ICON + 4, HUD_BALLS);
++  for (int i = 0; i < u->balls; i++)
++    x += ball_count(u, &u->ball[i], x, y) + 4;
++}
++
++static int balls_w(const struct hud *u, bool vertical) {
++  if (!vertical)
++    return 2 * PAD + 4 + balls_inline_w(u);
++  int w = 0;
++  for (int i = 0; i < u->balls; i++)
++    if (count_w(&u->ball[i]) > w)
++      w = count_w(&u->ball[i]);
++  return 2 * PAD + 2 + PD_ITEM_ICON + 1 + w;
++}
++static int balls_h(const struct hud *u, bool vertical) { return 2 * PAD + (vertical ? u->balls : 1) * PD_ITEM_ICON; }
++
++static void balls_panel(struct hud *u, int x, int y, bool vertical) {
++  panel(u, x, y, balls_w(u, vertical), balls_h(u, vertical));
++  hit(u, x, y, balls_w(u, vertical), balls_h(u, vertical), HUD_BALLS);
++  int bx = x + PAD + 2, by = y + PAD;
++  for (int i = 0; i < u->balls; i++) {
++    int w = ball_count(u, &u->ball[i], bx, by);
++    if (vertical)
++      by += PD_ITEM_ICON;
++    else
++      bx += w + 4;
+   }
+ }
+ 
+-// As wide as the count and "steps" need, at least the bar's 46.
+-static int repel_width(int steps) {
++// RAILS' narrow one: the count over a shorter bar, no "steps".
++static int repel_inner_w(const struct hud *u, bool narrow) {
+   char t[12];
+-  snprintf(t, sizeof t, "%d", steps);
+-  int text = pd_text_width(t) + 3 + pd_text_width("steps");
+-  return 2 * PAD + PD_ITEM_ICON + 3 + (text > 46 ? text : 46) + 2;
++  snprintf(t, sizeof t, "%d", u->h->repel);
++  int words = pd_text_width(t) + (narrow ? 0 : 3 + pd_text_width("steps")), bar = narrow ? 30 : 46;
++  return PD_ITEM_ICON + 3 + (words > bar ? words : bar);
+ }
+-#define REPEL_H (2 * PAD + PD_ITEM_ICON + 2)
++#define REPEL_INNER_H (PD_ITEM_ICON + 2)
++static int repel_w(const struct hud *u, bool narrow) { return 2 * PAD + repel_inner_w(u, narrow) + 2; }
++#define REPEL_H (2 * PAD + REPEL_INNER_H)
+ 
+ // REPEL's steps left while one works (RepelSteps): the spray, the count (gold for the last 20) over a bar
+ // draining green / yellow / red against the steps it started from.
+-static void repel_panel(struct pd_canvas *c, const struct pd_game *g, const struct hud_state *h, int x, int y) {
+-  panel(c, x, y, repel_width(h->repel), REPEL_H);
+-  pd_draw_item_icon(c, g, 86, x + PAD, y + PAD + 1, false); // the plain REPEL's (the game doesn't keep which)
+-  int tx = x + PAD + PD_ITEM_ICON + 3;
++static void repel_inner(struct hud *u, int x, int y, bool narrow) {
++  const struct hud_state *h = u->h;
++  pd_draw_item_icon(u->c, u->g, 86, x, y + 1, false); // the plain REPEL's (the game doesn't keep which)
++  int tx = x + PD_ITEM_ICON + 3, bar = narrow ? 30 : 46;
+   char t[12];
+   snprintf(t, sizeof t, "%d", h->repel);
+-  bool low = h->repel <= 20;
+-  int w = pd_text(c, tx, y + PAD - 2, t, low ? ACCENT : INK, INK_SHADOW);
+-  pd_text(c, tx + w + 3, y + PAD - 2, "steps", MUTED, INK_SHADOW);
++  int w = text(u, tx, y - 2, t, h->repel <= 20 ? u->L->accent : u->L->text);
++  if (!narrow)
++    text(u, tx + w + 3, y - 2, "steps", u->L->muted);
+   int full = h->repelFull > 0 ? h->repelFull : 100;
+-  int left = h->repel * 44 / full;
+-  if (left > 44)
+-    left = 44;
++  int left = h->repel * (bar - 2) / full;
++  if (left > bar - 2)
++    left = bar - 2;
+   uint32_t fill = h->repel * 2 > full ? 0x58D080 : h->repel * 5 > full ? 0xF8C030 : 0xE84838;
+-  pd_round_rect(c, tx, y + REPEL_H - PAD - 6, 46, 5, 1, 0x00405060);
+-  pd_fill(c, tx + 1, y + REPEL_H - PAD - 5, left, 3, fill);
++  pd_round_rect(u->c, tx, y + REPEL_INNER_H - 6, bar, 5, 1, 0x00405060);
++  pd_fill(u->c, tx + 1, y + REPEL_INNER_H - 5, left, 3, fill);
+ }
+ 
+-bool hud_draw(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s,
+-              const struct hud_state *h, int hidden) {
+-  for (int i = 0; i < c->w * c->h; i++)
+-    c->px[i] = QUICK_CLEAR;
+-  if (!s || !s->valid)
+-    return false;
+-  bool any = false;
+-  int mapBottom = EDGE;
+-  if (!(hidden & 1 << PD_HUD_MAP) && minimap(c, g, s, c->w - EDGE - MINIMAP_W, EDGE)) {
+-    any = true;
+-    mapBottom = EDGE + MINIMAP_H + 4;
++static void repel_panel(struct hud *u, int x, int y, bool narrow) {
++  panel(u, x, y, repel_w(u, narrow), REPEL_H);
++  hit(u, x, y, repel_w(u, narrow), REPEL_H, HUD_REPEL);
++  repel_inner(u, x + PAD, y + PAD, narrow);
++}
++
++// ---- Buttons ------------------------------------------------------------------------------------
++
++/* A satchel / a region map (FieldHud.kt's BAG_ICON / MAP_ICON). */
++static const char *const BAG_ICON[] = {
++    ".....KKKKKK.....", "....KK....KK....", "....K......K....", "..KKKKKKKKKKKK..", ".KBLLLLLLLLLLBK.",
++    ".KBBBBBBBBBBBBK.", ".KBBBBBBBBBBBBK.", ".KKKKKKYYKKKKKK.", ".KBBBBKYYKBBBBK.", ".KBBBBBKKBBBBBK.",
++    ".KBBBBBBBBBBBBK.", ".KBBBBBBBBBBBBK.", ".KLBBBBBBBBBBLK.", ".KLLBBBBBBBBLLK.", "..KKKKKKKKKKKK..",
++    "................", NULL,
++};
++static const char *const MAP_ICON[] = {
++    "................", ".KKKKKKKKKKKKKK.", ".KBBBBBGGGGGGGK.", ".KBBBBGGGGRRGGK.", ".KBBBGGGGRWRRGK.",
++    ".KBBGGGGGRRRRGK.", ".KBGGGGGGGRRGGK.", ".KGGGGYYYYYRGGK.", ".KGGGYGGGGGGGGK.", ".KGGYGGGGGGGGGK.",
++    ".KGGYGGGGGBBBBK.", ".KYYGGGGGBBBBBK.", ".KGGGGGGBBBBBBK.", ".KGGGGGBBBBBBBK.", ".KKKKKKKKKKKKKK.",
++    "................", NULL,
++};
++
++static const char *button_label(int id) {
++  switch (id) {
++  case HUD_PC: return "PC";
++  case HUD_BAG: return "BAG";
++  case HUD_WILD: return "WILD";
++  case HUD_MAP_BUTTON: return "MAP";
++  default: return "COMPANION";
+   }
+-  int partyRight = 0;
+-  if (!(hidden & 1 << PD_HUD_PARTY) && s->partyCount > 0) {
+-    party_row(c, g, s, EDGE, c->h - EDGE - PARTY_H);
+-    partyRight = EDGE + party_width(s);
+-    any = true;
++}
++
++static int button_w(int id) {
++  int w = pd_text_width(button_label(id)) + 6;
++  return w > 34 ? w : 34;
++}
++
++static int buttons_w(const struct hud *u, bool vertical) {
++  int w = 0;
++  for (int i = 0; i < u->buttons; i++) {
++    int b = button_w(u->button[i]);
++    w = vertical ? (b > w ? b : w) : w + b + (i ? 3 : 0);
+   }
+-  // The right column, from the bottom up: the balls, then REPEL STEPS over them. Where the party row reaches
+-  // under it, it goes under the minimap instead.
+-  struct pd_item b[3];
+-  int nb = hidden & 1 << PD_HUD_BALLS ? 0 : balls(s, b);
+-  bool repel = !(hidden & 1 << PD_HUD_REPEL) && h->repel > 0;
+-  int colW = 0, colH = 0;
+-  if (nb) {
+-    colW = balls_width(b, nb);
+-    colH += BALLS_H;
++  return w;
++}
++static int buttons_h(const struct hud *u, bool vertical) {
++  return u->buttons ? (vertical ? u->buttons * BUTTON_H + (u->buttons - 1) * 3 : BUTTON_H) : 0;
++}
++
++// A square button (HudButton): pixel art over a small label, WILD's red count on its corner.
++static void button(struct hud *u, int id, int x, int y, int w, bool framed) {
++  if (framed)
++    panel(u, x, y, w, BUTTON_H);
++  hit(u, x, y, w, BUTTON_H, id);
++  int ax = x + (w - 16) / 2, ay = y + 3;
++  if (id == HUD_PC)
++    art(u->c, quick_icon_pc, ax, ay, "KLDSHG", (const uint32_t[]){0x202838, 0xD8D8E0, 0x9098A8, 0x3070C8, 0x90C8F8, 0x40D040}, 0);
++  else if (id == HUD_BAG)
++    art(u->c, BAG_ICON, ax, ay, "KBLY", (const uint32_t[]){0x3A2414, 0xC0783A, 0xE8A868, 0xF8D030}, 0);
++  else if (id == HUD_WILD)
++    art(u->c, quick_icon_grass, ax, ay, "KGL", (const uint32_t[]){0x183818, 0x389838, 0x78D058}, 0);
++  else if (id == HUD_MAP_BUTTON)
++    art(u->c, MAP_ICON, ax, ay, "KGBYRW", (const uint32_t[]){0x202838, 0x58B048, 0x4890E0, 0xF0D060, 0xE83028, 0xFFFFFF}, 0);
++  else // the companion's open arrow, 8 x 13
++    art(u->c, quick_icon_companion, ax + 4, ay + 1, "", NULL, u->L->text);
++  const char *label = button_label(id);
++  text(u, x + (w - pd_text_width(label)) / 2, ay + 16 + 1 - 2, label, u->L->text);
++  if (id == HUD_WILD && u->h->wild > 0) {
++    char t[8];
++    snprintf(t, sizeof t, "%d", u->h->wild);
++    int bw = pd_text_width(t) + 6;
++    pd_round_rect(u->c, x + w - bw, y - 3, bw, 13, 3, 0xE83028);
++    pd_text(u->c, x + w - bw + 3, y - 5, t, 0xFFFFFF, PD_NO_SHADOW);
+   }
+-  if (repel) {
+-    colW = colW > repel_width(h->repel) ? colW : repel_width(h->repel);
+-    colH += (colH ? 4 : 0) + REPEL_H;
++}
++
++static void buttons(struct hud *u, int x, int y, bool vertical, bool framed) {
++  int w = vertical ? buttons_w(u, true) : 0;
++  for (int i = 0; i < u->buttons; i++) {
++    int bw = vertical ? w : button_w(u->button[i]);
++    button(u, u->button[i], x, y, bw, framed);
++    if (vertical)
++      y += BUTTON_H + 3;
++    else
++      x += bw + 3;
+   }
+-  if (colH) {
+-    bool top = partyRight && c->w - EDGE - colW < partyRight + 4;
+-    int y = top ? mapBottom : c->h - EDGE - colH;
+-    if (repel) {
+-      repel_panel(c, g, h, c->w - EDGE - repel_width(h->repel), y);
+-      y += REPEL_H + 4;
++}
++
++// ---- A column of windows: REPEL STEPS, the balls, the buttons -----------------------------------
++
++enum piece { P_REPEL, P_BALLS, P_BUTTONS };
++
++static bool piece_on(const struct hud *u, enum piece p) {
++  return p == P_REPEL ? u->repel : p == P_BALLS ? u->balls > 0 : u->buttons > 0;
++}
++static int piece_w(const struct hud *u, enum piece p, bool vertical) {
++  return !piece_on(u, p) ? 0 : p == P_REPEL ? repel_w(u, vertical) : p == P_BALLS ? balls_w(u, vertical)
++                                                                    : buttons_w(u, vertical);
++}
++static int piece_h(const struct hud *u, enum piece p, bool vertical) {
++  return !piece_on(u, p) ? 0 : p == P_REPEL ? REPEL_H : p == P_BALLS ? balls_h(u, vertical) : buttons_h(u, vertical);
++}
++
++static int column_w(const struct hud *u, const enum piece *p, int n, bool vertical) {
++  int w = 0;
++  for (int i = 0; i < n; i++)
++    if (piece_w(u, p[i], vertical) > w)
++      w = piece_w(u, p[i], vertical);
++  return w;
++}
++
++/* The pieces top to bottom from y (or ending at y when [up]), each aligned in [x, x + w): -1 left, 0 centre,
++ * 1 right. */
++static void column(struct hud *u, const enum piece *p, int n, bool vertical, int x, int w, int align, int y, bool up) {
++  if (up) {
++    for (int i = 0; i < n; i++)
++      if (piece_on(u, p[i]))
++        y -= piece_h(u, p[i], vertical) + GAP;
++    y += GAP;
++  }
++  for (int i = 0; i < n; i++) {
++    if (!piece_on(u, p[i]))
++      continue;
++    int pw = piece_w(u, p[i], vertical);
++    int px = align < 0 ? x : align > 0 ? x + w - pw : x + (w - pw) / 2;
++    if (p[i] == P_REPEL)
++      repel_panel(u, px, y, vertical);
++    else if (p[i] == P_BALLS)
++      balls_panel(u, px, y, vertical);
++    else
++      buttons(u, px, y, vertical, true);
++    y += piece_h(u, p[i], vertical) + GAP;
++  }
++}
++
++// ---- Layouts ------------------------------------------------------------------------------------
++
++static const enum piece BOTTOM_UP[] = {P_REPEL, P_BALLS, P_BUTTONS}; // buttons toward the screen's edge
++static const enum piece TOP_DOWN[] = {P_BUTTONS, P_BALLS, P_REPEL};
++
++// The compact HUD (CompactLayout): no party or minimap - the balls over the buttons and a MAP button, bottom left.
++static void compact(struct hud *u) {
++  int mapBtn = u->map ? 1 : 0;
++  if (mapBtn) { // MAP right of WILD, before COMPANION
++    int at = u->buttons && u->button[u->buttons - 1] == HUD_COMPANION ? u->buttons - 1 : u->buttons;
++    for (int i = u->buttons; i > at; i--)
++      u->button[i] = u->button[i - 1];
++    u->button[at] = HUD_MAP_BUTTON;
++    u->buttons++;
++  }
++  column(u, BOTTOM_UP, 3, false, EDGE, column_w(u, BOTTOM_UP, 3, false), -1, u->c->h - EDGE, true);
++}
++
++static bool tight(const struct hud *u) {
++  return u->partyN && party_width(u) + column_w(u, BOTTOM_UP, 3, false) + 3 * EDGE > u->c->w;
++}
++
++// CORNERS / CORNERS 2 ([swapped]: the minimap bottom right, the buttons top right).
++static void corners(struct hud *u, bool swapped) {
++  if (tight(u)) {
++    compact(u);
++    return;
++  }
++  int W = u->c->w, H = u->c->h;
++  if (u->map)
++    minimap(u, W - EDGE - minimap_w(104), swapped ? H - EDGE - minimap_h(64, 1) : EDGE, 104, 64, 1);
++  if (u->partyN)
++    party_row(u, EDGE, H - EDGE - PARTY_H);
++  int cw = column_w(u, BOTTOM_UP, 3, false);
++  if (swapped)
++    column(u, TOP_DOWN, 3, false, W - EDGE - cw, cw, 1, EDGE, false);
++  else
++    column(u, BOTTOM_UP, 3, false, W - EDGE - cw, cw, 1, H - EDGE, true);
++}
++
++// RAILS: the party down the left, the minimap and the rest down the right, beside the GBA's 3:2.
++static void rails(struct hud *u) {
++  int W = u->c->w, H = u->c->h;
++  int middle = W < H * 3 / 2 ? W : H * 3 / 2, side = (W - middle) / 2;
++  if (side < RAIL_MIN)
++    side = RAIL_MIN;
++  int x = W - side + 2, w = side - 4, inner = w - 2 * PAD, colH = 0;
++  for (int i = 0; i < 3; i++)
++    colH += piece_on(u, BOTTOM_UP[i]) ? piece_h(u, BOTTOM_UP[i], true) + GAP : 0;
++  if (party_column_h(u) + 4 > H || (u->map ? minimap_h(inner, 2) + GAP : 0) + colH + 4 > H) {
++    compact(u); // a picture too small for the rails (LARGE)
++    return;
++  }
++  if (u->partyN) {
++    int pw = 2 * PAD + 2 + MON_ROW_W, want = side - 4;
++    pw = pw > want ? pw : want;
++    party_column(u, 2, (H - party_column_h(u)) / 2, pw);
++  }
++  if (u->map)
++    minimap(u, x, 2, inner, inner, 2);
++  column(u, BOTTOM_UP, 3, true, x, w, 0, H - 2, true);
++}
++
++// DOCK: the party, balls, REPEL and buttons in one bar along the bottom, the minimap top right; CORNERS where
++// the bar is wider than the screen.
++static void dock(struct hud *u) {
++  int W = u->c->w, H = u->c->h;
++  int parts[4] = {tiles_width(u), u->balls ? balls_inline_w(u) : 0, u->repel ? repel_inner_w(u, false) : 0,
++                  buttons_w(u, false)};
++  int inner = 0, shown = 0;
++  for (int i = 0; i < 4; i++)
++    if (parts[i])
++      inner += parts[i] + (shown++ ? 2 * 3 + 1 : 0); // a divider between, 3 each side
++  if (!shown) {
++    if (u->map)
++      minimap(u, W - EDGE - minimap_w(80), EDGE, 80, 52, 1);
++    return;
++  }
++  int barW = 2 * 5 + inner, barH = 2 * PAD + 2 + (u->partyN ? TILE_H : BUTTON_H);
++  if (barW + 2 * EDGE > W) {
++    corners(u, false);
++    return;
++  }
++  if (u->map)
++    minimap(u, W - EDGE - minimap_w(80), EDGE, 80, 52, 1);
++  int x = (W - barW) / 2, y = H - EDGE - barH, mid = y + barH / 2;
++  panel(u, x, y, barW, barH);
++  x += 5;
++  shown = 0;
++  for (int i = 0; i < 4; i++) {
++    if (!parts[i])
++      continue;
++    if (shown++) { // DockDivider
++      pd_fill(u->c, x + 3, mid - 15, 1, 30, u->L->window ? PD_MUTED : u->L->edge);
++      x += 7;
+     }
+-    if (nb)
+-      balls_panel(c, g, b, nb, c->w - EDGE - balls_width(b, nb), y);
+-    any = true;
++    if (i == 0)
++      party_tiles(u, x, y + PAD + 1);
++    else if (i == 1)
++      balls_inline(u, x, mid - PD_ITEM_ICON / 2);
++    else if (i == 2) {
++      hit(u, x - 2, mid - REPEL_INNER_H / 2 - 2, parts[i] + 4, REPEL_INNER_H + 4, HUD_REPEL);
++      repel_inner(u, x, mid - REPEL_INNER_H / 2, false);
++    } else
++      buttons(u, x, mid - BUTTON_H / 2, false, false);
++    x += parts[i];
+   }
+-  return any;
+ }
+ 
+-uint32_t hud_key(const struct pd_snapshot *s, const struct hud_state *h, int hidden) {
++bool hud_draw(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s, const struct hud_state *h,
++              const struct pd_settings *st, struct hud_hits *out) {
++  for (int i = 0; i < c->w * c->h; i++)
++    c->px[i] = QUICK_CLEAR;
++  if (out)
++    out->n = 0;
++  if (!s || !s->valid)
++    return false;
++  struct hud u = {.c = c, .g = g, .s = s, .h = h, .st = st, .out = out,
++                  .L = &LOOKS[st->hudLook >= 0 && st->hudLook < PD_HUD_LOOKS ? st->hudLook : 0]};
++  u.partyN = shows(&u, PD_HUD_PARTY) ? (s->partyCount < PD_PARTY_SIZE ? s->partyCount : PD_PARTY_SIZE) : 0;
++  u.balls = shows(&u, PD_HUD_BALLS) ? balls(s, u.ball) : 0;
++  u.repel = shows(&u, PD_HUD_REPEL) && h->repel > 0;
++  u.map = shows(&u, PD_HUD_MAP) && has_minimap(&u);
++  bool bag = false;
++  for (int p = 0; s->bagOk && p < PD_POCKET_COUNT; p++)
++    bag |= s->bag[p].count > 0;
++  // HudButtons' order: PC, BAG, WILD, then COMPANION (one screen: the side panel's button).
++  if (h->pc && shows(&u, PD_HUD_PC))
++    u.button[u.buttons++] = HUD_PC;
++  if (bag && shows(&u, PD_HUD_BAG))
++    u.button[u.buttons++] = HUD_BAG;
++  if (h->wild >= 0 && shows(&u, PD_HUD_WILD))
++    u.button[u.buttons++] = HUD_WILD;
++  u.button[u.buttons++] = HUD_COMPANION;
++  switch (st->hudLayout) {
++  case PD_HUD_CORNERS_2: corners(&u, true); break;
++  case PD_HUD_RAILS: rails(&u); break;
++  case PD_HUD_DOCK: dock(&u); break;
++  default: corners(&u, false); break;
++  }
++  // The HUD hotkey's cursor: the quick menu's focus ring round the focused target.
++  for (int i = 0; out && i < out->n; i++)
++    if (out->at[i].id == h->focus) {
++      int x = out->at[i].x - 3, y = out->at[i].y - 3, w = out->at[i].w + 6, hh = out->at[i].h + 6;
++      pd_fill(c, x, y, w, 2, u.L->accent);
++      pd_fill(c, x, y + hh - 2, w, 2, u.L->accent);
++      pd_fill(c, x, y, 2, hh, u.L->accent);
++      pd_fill(c, x + w - 2, y, 2, hh, u.L->accent);
++    }
++  return true;
++}
++
++uint32_t hud_key(const struct pd_snapshot *s, const struct hud_state *h, const struct pd_settings *st) {
+   uint32_t k = 2166136261u;
+ #define MIX(v) (k = (k ^ (uint32_t)(v)) * 16777619u)
+-  MIX(hidden);
++  MIX(st->hudHidden);
++  MIX(st->hudLayout);
++  MIX(st->hudLook);
+   MIX(h->repel);
+   MIX(h->repelFull);
++  MIX(h->pc);
++  MIX(h->wild);
++  MIX(h->focus);
+   if (s && s->valid) {
+     MIX(s->partyCount);
+     for (int i = 0; i < s->partyCount && i < PD_PARTY_SIZE; i++) {
+@@ -276,6 +654,8 @@ uint32_t hud_key(const struct pd_snapshot *s, const struct hud_state *h, int hid
+     MIX(s->posOk ? s->y : 0);
+     MIX(s->gender);
+     MIX(s->bagOk);
++    for (int p = 0; s->bagOk && p < PD_POCKET_COUNT; p++)
++      MIX(s->bag[p].count);
+     for (int i = 0; s->bagOk && i < s->bag[PD_POCKET_BALLS].count && i < PD_POCKET_SLOTS; i++) {
+       MIX(s->bag[PD_POCKET_BALLS].items[i].id);
+       MIX(s->bag[PD_POCKET_BALLS].items[i].quantity);
+diff --git a/linux/hud.h b/linux/hud.h
+index 70bd66b..60b2882 100644
+--- a/linux/hud.h
++++ b/linux/hud.h
+@@ -1,25 +1,51 @@
+-/* The HUD over the overworld: the app's FieldHud.kt in its default CORNERS layout and GLASS look, the parts a
+- * player reads (PARTY, MINIMAP, POKé BALLS, REPEL STEPS). Its buttons (BAG, PC, WILD, COMPANION) are left out:
+- * without a touch screen they're the QUICK MENU's. Drawn into a canvas whose see-through pixels carry their alpha,
+- * like the quick menu's. GPL-3.0, see ../NOTICE. */
++/* The HUD over the overworld: the app's FieldHud.kt - its four layouts (CORNERS, CORNERS 2, RAILS, DOCK, and the
++ * compact one when the party doesn't fit beside the buttons), three looks (GLASS, WHITE GLASS, WINDOW) and every part
++ * (PARTY, MINIMAP, POKé BALLS, REPEL STEPS and the PC / BAG / WILD / COMPANION buttons). SIZE is the host's: the
++ * canvas scale one step smaller or bigger. Without a touch screen the buttons, party and minimap are reached with
++ * the HUD hotkey: hud_draw lists where each one is (struct hud_hits) and rings the focused one. Drawn into a canvas
++ * whose see-through pixels carry their alpha, like the quick menu's. GPL-3.0, see ../NOTICE. */
+ #ifndef POCKET_HUD_H
+ #define POCKET_HUD_H
+ #include "pd_canvas.h"
+ #include "pd_game.h"
+ #include "pd_snapshot.h"
++#include "pd_ui.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+ struct hud_state {
+   int repel;     // the Repel's steps left (0 = none working)
+   int repelFull; // the steps it started from (the smallest of 100 / 200 / 250 covering the first count seen)
++  bool pc;       // the game's PC can open from here (pc_supported): the PC button
++  int wild;      // this map's wild species not caught yet (WILD's badge); -1 = no wild data, no WILD button
++  int focus;     // the focused target (enum hud_target), -1 = none: the HUD hotkey's cursor
+ };
+ 
+-/* Draws the HUD's shown parts ([hidden]: a bit per enum pd_hud_part) over QUICK_CLEAR; false if nothing shows. */
+-bool hud_draw(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s,
+-              const struct hud_state *h, int hidden);
++/* What a press on the HUD can reach: a party slot, the minimap, the balls, REPEL STEPS, a button. */
++enum hud_target {
++  HUD_SLOT = 0, // + party slot (0-5)
++  HUD_MAP = 6,
++  HUD_BALLS,
++  HUD_REPEL,
++  HUD_PC,
++  HUD_BAG,
++  HUD_WILD,
++  HUD_MAP_BUTTON, // the compact HUD's MAP (no minimap there)
++  HUD_COMPANION,
++  HUD_TARGETS
++};
++#define HUD_MAX_HITS 16
++struct hud_hits {
++  int n;
++  struct { int x, y, w, h, id; } at[HUD_MAX_HITS];
++};
++
++/* Draws the HUD's shown parts in the settings' layout and look over QUICK_CLEAR; false if nothing shows. [out]
++ * (nullable): where each target landed. */
++bool hud_draw(struct pd_canvas *c, const struct pd_game *g, const struct pd_snapshot *s, const struct hud_state *h,
++              const struct pd_settings *st, struct hud_hits *out);
+ /* A number that changes whenever what the HUD shows does (so the host redraws it only then). */
+-uint32_t hud_key(const struct pd_snapshot *s, const struct hud_state *h, int hidden);
++uint32_t hud_key(const struct pd_snapshot *s, const struct hud_state *h, const struct pd_settings *st);
+ /* REPEL STEPS' full bar for a count first seen as [steps] (FieldHud's repelFull). */
+ int hud_repel_full(int steps);
+ 
 diff --git a/linux/main.c b/linux/main.c
-index a1c2e59..4a0ad41 100644
+index a1c2e59..4998cd7 100644
 --- a/linux/main.c
 +++ b/linux/main.c
-@@ -13,10 +13,12 @@
+@@ -9,14 +9,18 @@
+ #include "field_items.h"
+ #include "fly.h"
+ #include "hud.h"
++#include "pd_dex.h"
++#include "pd_guide.h"
+ #include "../app/src/main/cpp/pk_call.h"
  #include "quick_menu.h"
  #include "wild.h"
  #include "../app/src/main/cpp/pk_wide.h"
@@ -7190,7 +8162,7 @@ index a1c2e59..4a0ad41 100644
  #include <mgba-util/vfs.h>
  #include <mgba/core/blip_buf.h>
  #include <mgba/core/core.h>
-@@ -60,6 +62,9 @@ static int appError;
+@@ -60,6 +64,9 @@ static int appError;
  static unsigned audioNonzero;
  #endif
  static const char *root = ".";
@@ -7200,7 +8172,7 @@ index a1c2e59..4a0ad41 100644
  static char message[128];
  static unsigned messageUntil;
  enum {
-@@ -78,6 +83,13 @@ enum {
+@@ -78,6 +85,13 @@ enum {
    L2,
    R2,
    MENU,
@@ -7214,7 +8186,7 @@ index a1c2e59..4a0ad41 100644
    NKEYS
  };
  static SDL_GameController *controller;
-@@ -215,6 +227,7 @@ static int controller_button(int button) {
+@@ -215,6 +229,7 @@ static int controller_button(int button) {
      case SDL_CONTROLLER_BUTTON_BACK:return SELECT;
      case SDL_CONTROLLER_BUTTON_START:return START;
      case SDL_CONTROLLER_BUTTON_GUIDE:return MENU;
@@ -7222,7 +8194,7 @@ index a1c2e59..4a0ad41 100644
      case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:return L;
      case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:return R;
      case SDL_CONTROLLER_BUTTON_DPAD_UP:return UP;
-@@ -272,6 +285,23 @@ static void controller_removed(SDL_JoystickID id) {
+@@ -272,6 +287,23 @@ static void controller_removed(SDL_JoystickID id) {
      if (SDL_IsGameController(i))
        controller_added(i);
  }
@@ -7246,7 +8218,7 @@ index a1c2e59..4a0ad41 100644
  static void events(void) {
    pressed = 0;
    SDL_Event e;
-@@ -296,8 +326,10 @@ static void events(void) {
+@@ -296,8 +328,10 @@ static void events(void) {
      if(e.type == SDL_CONTROLLERAXISMOTION) {
        if(e.caxis.axis==SDL_CONTROLLER_AXIS_TRIGGERLEFT)key(L2,e.caxis.value>16000);
        if(e.caxis.axis==SDL_CONTROLLER_AXIS_TRIGGERRIGHT)key(R2,e.caxis.value>16000);
@@ -7259,7 +8231,7 @@ index a1c2e59..4a0ad41 100644
      }
      if (!controller && rawTrimui && (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP))
        key(joy(e.jbutton.button), e.type == SDL_JOYBUTTONDOWN);
-@@ -317,6 +349,7 @@ static void events(void) {
+@@ -317,6 +351,7 @@ static void events(void) {
          e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
        held = 0;
    }
@@ -7267,7 +8239,7 @@ index a1c2e59..4a0ad41 100644
  }
  static void repeat_directions(void) {
    for (int k = RIGHT; k <= DOWN; k++)
-@@ -326,6 +359,103 @@ static void repeat_directions(void) {
+@@ -326,6 +361,103 @@ static void repeat_directions(void) {
      }
  }
  static bool down(int k) { return (pressed & (1u << k)) != 0; }
@@ -7371,7 +8343,7 @@ index a1c2e59..4a0ad41 100644
  /* The companion's canvas for an ow x oh screen: the largest whole scale that
   * keeps it at least 320x240 (the 3DS's, which every tab is laid out for), so
   * its pixel text is about as big on every panel: 320x240 at 2x on 640x480,
-@@ -460,6 +590,7 @@ static void wide_tick(struct mCore *c, bool skip, const struct pd_settings *s) {
+@@ -460,6 +592,7 @@ static void wide_tick(struct mCore *c, bool skip, const struct pd_settings *s) {
  }
  // Gameplay scales in physical panel pixels; the companion keeps its 512x384
  // grid.
@@ -7379,7 +8351,7 @@ index a1c2e59..4a0ad41 100644
  static bool render_game(unsigned gw, unsigned gh) {
    int ow, oh;
    if (SDL_GetRendererOutputSize(renderer, &ow, &oh) < 0 || ow <= 0 || oh <= 0)
-@@ -474,6 +605,16 @@ static bool render_game(unsigned gw, unsigned gh) {
+@@ -474,6 +607,16 @@ static bool render_game(unsigned gw, unsigned gh) {
    lastGameRect =
        (SDL_Rect){(ow - (int)gw * scale) / 2, (oh - (int)gh * scale) / 2,
                   (int)gw * scale, (int)gh * scale};
@@ -7396,7 +8368,70 @@ index a1c2e59..4a0ad41 100644
    // The textures take mGBA's pixels as they are (XBGR: SDL's BGR888).
    if (SDL_UpdateTexture(gameTexture, &(SDL_Rect){0, 0, (int)gw, (int)gh}, video, 256 * 4) < 0) {
      notice(SDL_GetError());
-@@ -693,6 +834,14 @@ static bool focusable(int id) {
+@@ -508,6 +651,26 @@ static void present_game(unsigned gw, unsigned gh) {
+   if (render_game(gw, gh))
+     timed_present();
+ }
++/* WILD's badge: this map's wild species not caught yet (FieldHud's hudWild); -1 = the game has no wild tables. */
++static int hud_wild_uncaught(const struct pd_game *g, const struct pd_snapshot *s) {
++  struct pd_wild_set w;
++  if (!g->cfg || !g->cfg->wildHeaders)
++    return -1;
++  if (!pd_wild_here(g, s, &w))
++    return 0;
++  int seen[PD_WILD_METHODS * PD_WILD_MAX], n = 0, left = 0;
++  for (int m = 0; m < PD_WILD_METHODS; m++)
++    for (int i = 0; i < w.count[m]; i++) {
++      int sp = w.mons[m][i].species, k = 0;
++      while (k < n && seen[k] != sp)
++        k++;
++      if (k < n)
++        continue;
++      seen[n++] = sp;
++      left += !pd_dex_caught(s, pd_dex_national(g, sp));
++    }
++  return left;
++}
+ /* The HUD over the overworld (hud.c): the screen with EXPAND (its corners), else the game's own picture, at the
+  * companion's canvas scale. Its texture is redrawn only when what it shows changed (hud_key). */
+ static uint32_t hudPixels[CANVAS_MAX_W * CANVAS_MAX_H];
+@@ -515,15 +678,20 @@ static SDL_Texture *hudTexture;
+ static uint32_t hudDrawnKey;
+ static int hudW, hudH;
+ static bool hudShown;
++static struct hud_hits hudHits; // where hud_draw put each target, in HUD canvas pixels
++static int hudScale = 1;
+ static void present_hud_game(const struct pd_game *g, const struct pd_snapshot *s, const struct hud_state *h,
+-                             int hidden, unsigned gw, unsigned gh) {
++                             const struct pd_settings *st, unsigned gw, unsigned gh) {
+   if (!render_game(gw, gh))
+     return;
+   int ow, oh;
+   SDL_GetRendererOutputSize(renderer, &ow, &oh);
+   int scale = ow / canvasW < oh / canvasH ? ow / canvasW : oh / canvasH;
++  // SIZE: the companion's scale a whole pixel smaller or bigger (FieldHudSize's step).
++  scale += st->hudSize - PD_HUD_NORMAL;
+   if (scale < 1)
+     scale = 1;
++  hudScale = scale;
+   SDL_Rect area = wideReady ? (SDL_Rect){0, 0, ow, oh} : lastGameRect;
+   int w = area.w / scale, hh = area.h / scale;
+   if (w > CANVAS_MAX_W)
+@@ -536,11 +704,11 @@ static void present_hud_game(const struct pd_game *g, const struct pd_snapshot *
+     if (hudTexture)
+       SDL_SetTextureBlendMode(hudTexture, SDL_BLENDMODE_BLEND);
+   }
+-  uint32_t key = hud_key(s, h, hidden) ^ (uint32_t)(w * 65599 + hh);
++  uint32_t key = hud_key(s, h, st) ^ (uint32_t)(w * 65599 + hh);
+   if (hudTexture && (key != hudDrawnKey || w != hudW || hh != hudH)) {
+     struct pd_canvas hc;
+     pd_canvas_init(&hc, w, hh, hudPixels);
+-    hudShown = hud_draw(&hc, g, s, h, hidden);
++    hudShown = hud_draw(&hc, g, s, h, st, &hudHits);
+     quick_finish(&hc);
+     SDL_UpdateTexture(hudTexture, &(SDL_Rect){0, 0, w, hh}, hudPixels, w * 4);
+     hudDrawnKey = key;
+@@ -693,6 +861,14 @@ static bool focusable(int id) {
    return !(id >= HIT_TAB && id < HIT_TAB + PD_TAB_COUNT) && id != HIT_FF && id != HIT_SCRIM &&
           id != HIT_BAG_LIST && id != HIT_DEX_LIST && id != HIT_GUIDE_LIST && id != HIT_SETTINGS_LIST;
  }
@@ -7411,7 +8446,7 @@ index a1c2e59..4a0ad41 100644
  static int focus_index(const struct pd_ui *u, int id) {
    for (int i = 0; i < u->hitCount; i++)
      if (u->hits[i].id == id)
-@@ -704,10 +853,13 @@ static int focus_resolve(struct pd_ui *u) {
+@@ -704,10 +880,13 @@ static int focus_resolve(struct pd_ui *u) {
    struct screen now = screen_of(u);
    bool changed = memcmp(&now, &lastScreen, sizeof now) != 0;
    lastScreen = now;
@@ -7426,7 +8461,7 @@ index a1c2e59..4a0ad41 100644
        const struct pd_hit *h = &u->hits[j];
        int dx = h->x + h->w / 2 - (focusAt.x + focusAt.w / 2),
            dy = h->y + h->h / 2 - (focusAt.y + focusAt.h / 2);
-@@ -717,7 +869,9 @@ static int focus_resolve(struct pd_ui *u) {
+@@ -717,7 +896,9 @@ static int focus_resolve(struct pd_ui *u) {
    }
    if (i < 0 && u->startId >= 0)
      i = focus_index(u, u->startId);
@@ -7437,7 +8472,7 @@ index a1c2e59..4a0ad41 100644
      if (focusable(u->hits[j].id))
        i = j;
    if (i < 0 && u->hitCount)
-@@ -735,7 +889,7 @@ static void focus_move(struct pd_ui *u, int direction) {
+@@ -735,7 +916,7 @@ static void focus_move(struct pd_ui *u, int direction) {
    }
    const struct pd_hit *h = &u->hits[cur];
    int best = -1, score = 1000000;
@@ -7446,7 +8481,7 @@ index a1c2e59..4a0ad41 100644
      if (i == cur)
        continue;
      struct pd_hit *t = &u->hits[i];
-@@ -748,7 +902,11 @@ static void focus_move(struct pd_ui *u, int direction) {
+@@ -748,7 +929,11 @@ static void focus_move(struct pd_ui *u, int direction) {
                  : direction == RIGHT ? dx
                  : direction == UP    ? -dy
                                       : dy;
@@ -7459,7 +8494,7 @@ index a1c2e59..4a0ad41 100644
      if (along > 0 && along + across * 4 < score) {
        best = i;
        score = along + across * 4;
-@@ -816,7 +974,8 @@ static void pacing_check(double frameMs) {
+@@ -816,7 +1001,8 @@ static void pacing_check(double frameMs) {
    avg = 0;
    count = 0;
  }
@@ -7469,7 +8504,7 @@ index a1c2e59..4a0ad41 100644
    double rate = 32768;
    if (vsyncPaced && audio && screenHz > 0) {
      double queued = SDL_GetQueuedAudioSize(audio) / 4.0, target = 32768 * 0.06;
-@@ -824,6 +983,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
+@@ -824,6 +1010,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
      d = d > 1 ? 1 : d < -1 ? -1 : d;
      rate = 32768 * gameHz / screenHz * (1 + 0.005 * d);
    }
@@ -7477,7 +8512,7 @@ index a1c2e59..4a0ad41 100644
    for (int i = 0; i < 2; i++)
      blip_set_rates(c->getAudioChannel(c, i), c->frequency(c), rate);
  }
-@@ -878,6 +1038,28 @@ static void perf_frame(uint64_t start, double hz) {
+@@ -878,6 +1065,28 @@ static void perf_frame(uint64_t start, double hz) {
  static void test_frame(struct mCore *, bool, int, struct pd_ui *,
                         struct pd_snapshot *);
  #endif
@@ -7506,7 +8541,7 @@ index a1c2e59..4a0ad41 100644
  static void run_game(const char *path, int maxFrames, const char *shot) {
    FILE *f = fopen(path, "rb");
    if (!f) {
-@@ -933,7 +1115,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -933,7 +1142,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    char sav[1024], ss[1024];
    const char *name = strrchr(path, '/');
    name = name ? name + 1 : path;
@@ -7518,7 +8553,7 @@ index a1c2e59..4a0ad41 100644
    snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
    struct pocket_save_status saveStatus = {0};
    if (!pocket_save_backup(sav, time(NULL))) {
-@@ -970,6 +1155,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -970,6 +1182,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    pd_game_detect(&game, romdata, (size_t)len);
    game.rom = romdata;
    game.romSize = (size_t)len;
@@ -7528,7 +8563,15 @@ index a1c2e59..4a0ad41 100644
    if (c->platform(c) == mPLATFORM_GBA)
      pd_romart_scan(&game);
    char config[1024];
-@@ -1009,6 +1197,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1002,13 +1217,17 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+   unsigned gameKeys = 0;
+   int gameKeyFrames = 0;
+   // The HUD: on after 20 frames of the plain field (FieldHud's rule), off at once.
+-  struct hud_state hudState = {0, 0};
++  struct hud_state hudState = {0, 0, false, -1, -1};
+   int hudFieldFrames = 0;
+   hudDrawnKey = 0;
+   char repelRows[REPEL_KINDS][48];
    const char *repelNames[REPEL_KINDS];
    struct pd_ui ui;
    pd_ui_init(&ui, &settings);
@@ -7539,7 +8582,7 @@ index a1c2e59..4a0ad41 100644
    struct pd_snapshot snap = {0};
    struct pd_host_info host = {.hideScreenMode = true, .hasExpand = true, .hasHud = c->platform(c) == mPLATFORM_GBA,
                                .expandGame = wideSupported, .count = 1, .labels = {"HOST"}};
-@@ -1036,9 +1228,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1036,9 +1255,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    while (running && !leave) {
      uint64_t frameStart = SDL_GetPerformanceCounter();
      if(saveStatus.failed) { appError=1; notice("Save I/O failed; stopping game"); break; }
@@ -7574,7 +8617,7 @@ index a1c2e59..4a0ad41 100644
      if (down(X)) {
        menuOpen = 0;
        companion = !companion;
-@@ -1046,7 +1263,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1046,7 +1290,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
        if (audio)
          SDL_ClearQueuedAudio(audio);
      }
@@ -7583,7 +8626,7 @@ index a1c2e59..4a0ad41 100644
                         (held & (1u << START)) && (held & (1u << SELECT)))) {
        menuOpen = menuOpen ? 0 : 1;
        companion = true;
-@@ -1309,24 +1526,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1309,24 +1553,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
          confirmMenu.selected = 0;
        }
      } else {
@@ -7625,7 +8668,19 @@ index a1c2e59..4a0ad41 100644
      }
      // The companion's data: fresh when it opens (it pauses the game), else twice a
      // second - read through the bus byte by byte, every frame cost frame time.
-@@ -1502,6 +1730,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1463,8 +1718,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+         else if (!hudState.repelFull || steps > hudState.repelFull)
+           hudState.repelFull = hud_repel_full(steps);
+         hudState.repel = steps > 0 ? steps : 0;
++        hudState.pc = pcOk;
++        hudState.wild = hud_wild_uncaught(&game, &snap);
+         companion_canvas();
+-        present_hud_game(&game, &snap, &hudState, settings.hudHidden, gw, gh);
++        present_hud_game(&game, &snap, &hudState, &settings, gw, gh);
+       } else {
+         present_game(gw, gh);
+       }
+@@ -1502,6 +1759,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    if (audio)
      SDL_ClearQueuedAudio(audio);
  cleanup:
@@ -7633,7 +8688,7 @@ index a1c2e59..4a0ad41 100644
    pk_wide_configure(0);
    wideSupported = wideReady = false;
    c->unloadROM(c);
-@@ -1520,6 +1749,8 @@ int main(int argc, char **argv) {
+@@ -1520,6 +1778,8 @@ int main(int argc, char **argv) {
    for (int i = 1; i < argc; i++) {
      if (!strcmp(argv[i], "--data") && i + 1 < argc)
        root = argv[++i];
@@ -7642,7 +8697,7 @@ index a1c2e59..4a0ad41 100644
      else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
        frames = atoi(argv[++i]);
      else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
-@@ -1532,6 +1763,11 @@ int main(int argc, char **argv) {
+@@ -1532,6 +1792,11 @@ int main(int argc, char **argv) {
    signal(SIGTERM, stop);
    mkdir(root, 0755);
    char path[1024];
@@ -7655,13 +8710,30 @@ index a1c2e59..4a0ad41 100644
    for (int i = 0; i < 3; i++) {
      snprintf(path, sizeof path, "%s/%s", root, dirs[i]);
 diff --git a/linux/quick_menu.c b/linux/quick_menu.c
-index 3fa24bd..9d3e55e 100644
+index 3fa24bd..4441577 100644
 --- a/linux/quick_menu.c
 +++ b/linux/quick_menu.c
-@@ -45,6 +45,16 @@ static const char *const PC[] = {
+@@ -20,7 +20,7 @@
+ #define ACCENT 0x00E83838u
+ 
+ // QuickMenu.kt's icons: one character a pixel, '.' clear.
+-static const char *const GRASS[] = {
++const char *const quick_icon_grass[] = {
+     "................", "...K......K.....", "..KGK....KGK..K.", "..KGK...KGGK.KGK", ".KGLGK..KGLGKKGK",
+     ".KGLGK.KGLLGKGLK", "KGLLGKKGLLGKGLLK", "KGLLGGKGLLGGGLLK", "KGLLLGGGLLLGGLLK", "KGLLLGGGLLLLGLLK",
+     "KGGLLLGGLLLLGLGK", "KGGLLLLGLLLLLLGK", "KGGGLLLLLLLLLGGK", "KGGGGGLLLLLGGGGK", "KKKKKKKKKKKKKKKK",
+@@ -39,13 +39,23 @@ static const char *const FF[] = {
+     "11111.11111.", "1111..1111..", "111...111...", "11....11....", "1.....1.....", NULL,
+ };
+ // FieldHud.kt's PC_ICON.
+-static const char *const PC[] = {
++const char *const quick_icon_pc[] = {
+     "................", ".KKKKKKKKKKKKKK.", ".KLLLLLLLLLLLLK.", ".KLKKKKKKKKKKLK.", ".KLKSSSSSSHHKLK.",
+     ".KLKSSSSSHHSKLK.", ".KLKSSSSHHSSKLK.", ".KLKSSSSSSSSKLK.", ".KLKKKKKKKKKKLK.", ".KLLLLLLLLLLGLK.",
      ".KDDDDDDDDDDDDK.", ".KKKKKKKKKKKKKK.", "......KDDK......", "....KKKKKKKK....", "...KLLLLLLLLK...",
      "...KKKKKKKKKK...", NULL,
  };
+-static const char *const COMPANION[] = {
 +// REPEL and BIKE where the game has no item icons to draw (Ruby / Sapphire; the app has its bundled item sprites).
 +static const char *const REPEL[] = {
 +    "....KKK.....", "...KLLLK.K..", "...KKKKK..K.", "..KGGGGGK.K.", "..KGLGGGK...", "..KGLGGGK...",
@@ -7672,9 +8744,10 @@ index 3fa24bd..9d3e55e 100644
 +    ".K...KK.K.K...K.", "K...K.KK.K.K...K", "K...K..KK..K...K", "K.....K..K.....K", ".K...K....K...K.",
 +    "..KKK......KKK..", NULL,
 +};
- static const char *const COMPANION[] = {
++const char *const quick_icon_companion[] = {
      "......11", ".....11.", "....11..", "...11...", "..11....", ".11.....", "11......",
      ".11.....", "..11....", "...11...", "....11..", ".....11.", "......11", NULL,
+ };
 @@ -71,6 +81,8 @@ static uint32_t icon_color(enum quick_action a, char ch) {
    if (a == QUICK_PC)
      return ch == 'K' ? 0x202838 : ch == 'L' ? 0xD8D8E0 : ch == 'D' ? 0x9098A8 : ch == 'S' ? 0x3070C8
@@ -7684,16 +8757,31 @@ index 3fa24bd..9d3e55e 100644
    if (a == QUICK_SAVE_STATE || a == QUICK_LOAD_STATE)
      return ch == 'K' ? 0x202838 : ch == 'D' ? 0x4870C0 : ch == 'L' ? 0xE8ECF4 : 0xF8C030;
    return INK;
-@@ -79,7 +91,8 @@ static uint32_t icon_color(enum quick_action a, char ch) {
+@@ -78,8 +90,9 @@ static uint32_t icon_color(enum quick_action a, char ch) {
+ 
  // An icon centred at (cx, cy), `scale` canvas pixels a pixel; dim: at half strength over the glass.
  static void icon(struct pd_canvas *c, enum quick_action a, int cx, int cy, int scale, bool dim) {
-   const char *const *rows = a == QUICK_PC ? PC : a == QUICK_WILD ? GRASS : a == QUICK_SAVE_STATE ? SAVE_STATE
+-  const char *const *rows = a == QUICK_PC ? PC : a == QUICK_WILD ? GRASS : a == QUICK_SAVE_STATE ? SAVE_STATE
 -                          : a == QUICK_LOAD_STATE ? LOAD_STATE : a == QUICK_FF ? FF : COMPANION;
++  const char *const *rows = a == QUICK_PC ? quick_icon_pc : a == QUICK_WILD ? quick_icon_grass : a == QUICK_SAVE_STATE ? SAVE_STATE
 +                          : a == QUICK_LOAD_STATE ? LOAD_STATE : a == QUICK_FF ? FF : a == QUICK_REPEL ? REPEL
-+                          : a == QUICK_BIKE ? BIKE : COMPANION;
++                          : a == QUICK_BIKE ? BIKE : quick_icon_companion;
    int h = 0, w = (int)strlen(rows[0]);
    while (rows[h])
      h++;
+diff --git a/linux/quick_menu.h b/linux/quick_menu.h
+index e2fd974..3cd2e1e 100644
+--- a/linux/quick_menu.h
++++ b/linux/quick_menu.h
+@@ -30,6 +30,8 @@ void quick_list_draw(struct pd_canvas *c, const char *title, const char *const *
+ /* The tile a D-pad press (dx, dy: -1 / 0 / 1) moves to from sel: the nearest one that way round the ring. */
+ int quick_step(int n, int sel, int dx, int dy, int w, int h);
+ const char *quick_label(enum quick_action a);
++/* Pixel art shared with the HUD's buttons, a character a pixel ('.' clear), NULL-terminated. */
++extern const char *const quick_icon_pc[], *const quick_icon_grass[], *const quick_icon_companion[];
+ /* After drawing: every pixel opaque but the clear ones and the glass's own alpha. */
+ void quick_finish(struct pd_canvas *c);
+ #endif
 diff --git a/scripts/gen_gamedata.py b/scripts/gen_gamedata.py
 index 9a2348a..f7b4a75 100644
 --- a/scripts/gen_gamedata.py

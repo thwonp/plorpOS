@@ -18,11 +18,15 @@ typedef struct {
 	/* rewind: no row - a Rewind hotkey keeps PokeDaisy's history on, as
 	 * in plorpOS's games (plorpos-wjw.7); kept, as the file has it. */
 	bool autozoom, ffaudio, rewind, runindoors, wildoff, hud;
+	/* hudlayout / hudlook / hudsize: the HUD's LAYOUT (Corners, Corners 2,
+	 * Rails, Dock), LOOK (Glass, White Glass, Window) and SIZE (Small,
+	 * Normal, Large) - PokeDaisy's SETTINGS > HUD (plorpos-l22.3). */
+	int  hudlayout, hudlook, hudsize;
 } daisy_opts;
 
 typedef enum {
 	DO_ASPECT, DO_AUTOZOOM, DO_FF, DO_FFSOUND, DO_RUNINDOORS,
-	DO_WILD, DO_HUD, DO_ROWS
+	DO_WILD, DO_HUD, DO_HUDLAYOUT, DO_HUDLOOK, DO_HUDSIZE, DO_ROWS
 } daisy_row;
 
 /* PokeDaisy's defaults, then what the file says. */

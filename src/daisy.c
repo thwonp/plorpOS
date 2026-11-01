@@ -13,6 +13,9 @@ static const char *const FF_LABEL[NFF] = { "2x", "3x", "4x", "5x", "6x", "8x", "
 /* Aspect and scaling as one row: Original's three, then Expand and Zoom Out. */
 static const char *const ASPECT[] = { "Integer", "Fit", "Stretch", "Expand", "Zoom Out" };
 #define NASPECT 5
+static const char *const HUD_LAYOUT[] = { "Corners", "Corners 2", "Rails", "Dock" };
+static const char *const HUD_LOOK[] = { "Glass", "White Glass", "Window" };
+static const char *const HUD_SIZE[] = { "Small", "Normal", "Large" };
 
 static int ff_index(int ff)
 {
@@ -33,7 +36,7 @@ void daisy_load(const char *path, daisy_opts *o)
 	FILE *f = fopen(path, "r");
 	char line[128];
 
-	*o = (daisy_opts){ .ff = 2, .autozoom = true, .hud = true };
+	*o = (daisy_opts){ .ff = 2, .autozoom = true, .hud = true, .hudsize = 1 };
 	if (!f) return;
 	while (fgets(line, sizeof line, f)) {
 		char *eq = strchr(line, '=');
@@ -51,6 +54,9 @@ void daisy_load(const char *path, daisy_opts *o)
 		else if (!strcmp(line, "runindoors")) o->runindoors = v != 0;
 		else if (!strcmp(line, "wildoff"))    o->wildoff = v != 0;
 		else if (!strcmp(line, "hud"))        o->hud = v != 0;
+		else if (!strcmp(line, "hudlayout") && v >= 0 && v <= 3) o->hudlayout = v;
+		else if (!strcmp(line, "hudlook") && v >= 0 && v <= 2)   o->hudlook = v;
+		else if (!strcmp(line, "hudsize") && v >= 0 && v <= 2)   o->hudsize = v;
 	}
 	fclose(f);
 }
@@ -62,6 +68,7 @@ bool daisy_save(const char *path, const daisy_opts *o)
 		{ "autozoom", o->autozoom }, { "ffaudio", o->ffaudio },
 		{ "rewind", o->rewind }, { "runindoors", o->runindoors },
 		{ "wildoff", o->wildoff }, { "hud", o->hud },
+		{ "hudlayout", o->hudlayout }, { "hudlook", o->hudlook }, { "hudsize", o->hudsize },
 	};
 	enum { N = sizeof mine / sizeof mine[0] };
 	char tmp[1100], line[128];
@@ -105,6 +112,9 @@ int daisy_rows(const daisy_opts *o, menu_row *out)
 	out[DO_RUNINDOORS] = (menu_row){ "Run Indoors", on_off(o->runindoors), true };
 	out[DO_WILD]       = (menu_row){ "Wild Encounters", on_off(!o->wildoff), true };
 	out[DO_HUD]        = (menu_row){ "HUD", on_off(o->hud), true };
+	out[DO_HUDLAYOUT]  = (menu_row){ "HUD Layout", HUD_LAYOUT[o->hudlayout], o->hud };
+	out[DO_HUDLOOK]    = (menu_row){ "HUD Look", HUD_LOOK[o->hudlook], o->hud };
+	out[DO_HUDSIZE]    = (menu_row){ "HUD Size", HUD_SIZE[o->hudsize], o->hud };
 	out[DO_ROWS]       = MENU_RULE;
 	out[DO_ROWS + 1]   = MENU_NOTE("More in PokeDaisy: X, then Settings");
 	return DO_ROWS + 2;
@@ -126,5 +136,8 @@ void daisy_step(daisy_opts *o, int row, int dir)
 	case DO_RUNINDOORS: o->runindoors = !o->runindoors; break;
 	case DO_WILD:       o->wildoff = !o->wildoff; break;
 	case DO_HUD:        o->hud = !o->hud; break;
+	case DO_HUDLAYOUT:  o->hudlayout = (o->hudlayout + 4 + dir) % 4; break;
+	case DO_HUDLOOK:    o->hudlook = (o->hudlook + 3 + dir) % 3; break;
+	case DO_HUDSIZE:    o->hudsize = (o->hudsize + 3 + dir) % 3; break;
 	}
 }
