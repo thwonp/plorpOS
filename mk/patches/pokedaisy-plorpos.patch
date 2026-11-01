@@ -1269,6 +1269,18 @@ index ba318a1..f7db5a9 100644
      uint8_t w[4], idx;
      if (!pd_rom_read(g, cfg->monIconTable + (uint32_t) species * 4, w, 4)) return false;
      const uint8_t* tiles = pd_rom_at(g, u32le(w), 16 * 32);
+diff --git a/3ds/core/pd_icon.h b/3ds/core/pd_icon.h
+index 7eb88af..5f89902 100644
+--- a/3ds/core/pd_icon.h
++++ b/3ds/core/pd_icon.h
+@@ -23,5 +23,7 @@ bool pd_draw_mon_icon_scaled(struct pd_canvas* c, const struct pd_game* g, int s
+ // An item's bag icon (24x24, from the ROM's item icon table) with its top-left at (x, y); faded = dimmed (45%).
+ #define PD_ITEM_ICON 24
+ bool pd_draw_item_icon(struct pd_canvas* c, const struct pd_game* g, int item, int x, int y, bool faded);
++// A plain Poke Ball, 20x20 (pd_ui_party.c), for a game without item icons.
++void pd_draw_party_ball(struct pd_canvas* c, int x, int y);
+ 
+ #endif
 diff --git a/3ds/core/pd_settings.c b/3ds/core/pd_settings.c
 index a122806..2a8ca87 100644
 --- a/3ds/core/pd_settings.c
@@ -1634,6 +1646,21 @@ index dbfe826..611f4e4 100644
      HIT_OPEN_CARD = 3100,
      HIT_CARD = 3101,
  };
+diff --git a/3ds/core/pd_ui_party.c b/3ds/core/pd_ui_party.c
+index d53bb2b..833554a 100644
+--- a/3ds/core/pd_ui_party.c
++++ b/3ds/core/pd_ui_party.c
+@@ -300,3 +300,10 @@ void ui_party_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game* g
+         party_slot(ui, c, g, x, y, cw, ch, m, i, m && i == selected);
+     }
+ }
++
++// The party's Poke Ball, 20x20 at 1x: what the HUD draws where a game has no item icons (Ruby / Sapphire; the
++// app's PixelIcons.pokeBall in FieldHud).
++void pd_draw_party_ball(struct pd_canvas* c, int x, int y) {
++    static const uint32_t RED_WHITE[4] = { 0x383840, 0xE04838, 0xA83028, 0xF8F8F8 };
++    char_bitmap(c, BALL, 20, x, y, 1, "KRHW", RED_WHITE);
++}
 diff --git a/3ds/core/pd_ui_settings.c b/3ds/core/pd_ui_settings.c
 index 3a67218..0c58c76 100644
 --- a/3ds/core/pd_ui_settings.c
@@ -4873,6 +4900,21 @@ index 179833a..ae36a40 100644
 +extern const char *pocket_backup_dir;
  bool pocket_save_backup(const char *savePath, time_t now);
  #endif
+diff --git a/linux/hud.c b/linux/hud.c
+index 662762a..68ed719 100644
+--- a/linux/hud.c
++++ b/linux/hud.c
+@@ -175,7 +175,9 @@ static void balls_panel(struct pd_canvas *c, const struct pd_game *g, const stru
+   for (int i = 0; i < n; i++) {
+     char t[12];
+     snprintf(t, sizeof t, "%d", b[i].quantity);
+-    pd_draw_item_icon(c, g, b[i].id, bx, y + PAD, false);
++    // Ruby / Sapphire keep no item icons: a drawn ball in the icon's place, as the app does.
++    if (!pd_draw_item_icon(c, g, b[i].id, bx, y + PAD, false))
++      pd_draw_party_ball(c, bx + (PD_ITEM_ICON - 20) / 2, y + PAD + (PD_ITEM_ICON - 20) / 2);
+     bx += PD_ITEM_ICON + 1;
+     bx += pd_text(c, bx, pd_text_y(y, BALLS_H), t, INK, INK_SHADOW) + 4;
+   }
 diff --git a/linux/main.c b/linux/main.c
 index a1c2e59..6c14390 100644
 --- a/linux/main.c
