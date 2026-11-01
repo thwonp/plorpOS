@@ -107,10 +107,22 @@ index 2c8ed15..830d12d 100644
      if (c->female) palette(a.d[b->femalePal], 16, pal + 16);
      palette(a.d[b->badgesPal], 16, pal + 48);
 diff --git a/3ds/core/pd_configs_gen.h b/3ds/core/pd_configs_gen.h
-index ded2491..1651687 100644
+index ded2491..ae1a9b0 100644
 --- a/3ds/core/pd_configs_gen.h
 +++ b/3ds/core/pd_configs_gen.h
-@@ -24,6 +24,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+@@ -8,8 +8,9 @@
+ // The configs, each with the parts the port reads for it so far (`name` is the C's: PD_CONFIG_<name>) and the
+ // records `@name.` paths start from (`records`).
+ // FireRed rev 0 and LeafGreen: the tabs that read RAM (and the MAP, whose art is found by fingerprint)
+-// and the party icons; their POKéDEX and GUIDE tables aren't ported yet. The FOE TEAM's addresses
+-// are known for rev 1 only.
++// and the party icons. The FOE TEAM's addresses are known for rev 1 only. Retail FireRed rev 0 as the app
++// reads it: no POKéDEX / GUIDE tables (none on file for rev 0), its trainer card set in code (Poller.kt), the
++// quick menu from FIELD_ITEMS_PORTS["BPRE0"] (fieldItemsFor).
+ // gamedata/gen3/retail/firered.toml: firered_rev1 (ram, foes, icons, dex, guide, card, fly, field)
+ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .playerParty = 0x02024284,
+@@ -24,6 +25,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -118,7 +130,7 @@ index ded2491..1651687 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -36,7 +37,10 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+@@ -36,7 +38,10 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
      .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
@@ -129,7 +141,7 @@ index ded2491..1651687 100644
      .monIconTable = 0x083D3810,
      .monIconPaletteIndices = 0x083D3EF0,
      .monIconPaletteTable = 0x083D40A8,
-@@ -52,6 +56,11 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+@@ -52,6 +57,11 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
      .regionalOrder = 0,
      .regionalCount = 151,
      .regionName = "KANTO",
@@ -141,7 +153,7 @@ index ded2491..1651687 100644
      .trainers = 0x0823EB38,
      .learnsets = 0x0825D824,
      .wildHeaders = 0x083C9D28,
-@@ -66,6 +75,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+@@ -66,6 +76,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
      .nationalFlag = 0x840,
      .stickerVar = 0x4049,
      .frontierSymbolFlag = 0,
@@ -149,7 +161,25 @@ index ded2491..1651687 100644
      .museumWinnersOff = 0,
      .frontierBpOff = 0,
      .flyFlagGet = 0x0806E6E4,
-@@ -124,6 +134,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -91,6 +102,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .flyGenderMapsec = 0,
+     .flyMaleHeal = 0,
+     .flyFemaleHeal = 0,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
+     .fieldVarGet = 0x0806E57C,
+     .fieldVarSet = 0x0806E598,
+     .fieldCheckBag = 0x08099F54,
+@@ -110,7 +123,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .pcScript = 0x0203FFF4,
+ };
+ 
+-// gamedata/gen3/retail/firered.toml: firered_rev0 (ram, icons)
++// gamedata/gen3/retail/firered.toml: firered_rev0 (ram, icons, card, fly, field)
+ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+     .playerParty = 0x02024284,
+     .playerPartyCount = 0x02024029,
+@@ -124,6 +137,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -157,7 +187,7 @@ index ded2491..1651687 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -133,6 +144,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -133,14 +147,70 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -166,7 +196,70 @@ index ded2491..1651687 100644
      .monIconTable = 0x083D37A0,
      .monIconPaletteIndices = 0x083D3E80,
      .monIconPaletteTable = 0x083D4038,
-@@ -154,6 +167,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .itemIconTable = 0x083D4294,
+     .itemIconStride = 8,
++    .cardStyle = PD_CARD_KANTO,
++    .gameStatsOff = 0x1200,
++    .badgeFlag = 0x820,
++    .pokedexFlag = 0x829,
++    .nationalVar = 0x404E,
++    .nationalVarValue = 0x6258,
++    .nationalFlag = 0x840,
++    .stickerVar = 0x4049,
++    .frontierSymbolFlag = 0,
++    .extraStarFlag = 0,
++    .museumWinnersOff = 0,
++    .frontierBpOff = 0,
++    .flyFlagGet = 0x0806E6D0,
++    .flySetUp = 0x08124A8C,
++    .flyGetMapsecType = 0x080C35DC,
++    .flyFade = 0x0807A818,
++    .flyLock = 0x08069940,
++    .flyUnlock = 0x0806994C,
++    .flyWarp = 0x080C527C,
++    .flyBadgeFlag = 0x822,
++    .flyPartySlot = 0x0203B0A9,
++    .flyDestinations = 0x083F2EE0,
++    .flyFirstMapsec = 0x58,
++    .flyCount = 108,
++    .flyCrcs = { 0x07BEBC3A, 0x950F2C97, 0x9A186C79, 0xF9959006, 0x0111A86E, 0xBAB654BA, 0x70EA1DFC },
++    .flyTypes = { 2 },
++    .flyExtra = { 0 },
++    .flyHealTo = 0,
++    .flyMapWarp = 0,
++    .flyReturn = 0,
++    .flySaveBlock2Ptr = 0,
++    .flySpecial = { { 0 } },
++    .flyGenderMapsec = 0,
++    .flyMaleHeal = 0,
++    .flyFemaleHeal = 0,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
++    .fieldVarGet = 0x0806E568,
++    .fieldVarSet = 0x0806E584,
++    .fieldCheckBag = 0x08099F40,
++    .fieldRemoveBag = 0x0809A1D8,
++    .fieldLocked = 0x08069958,
++    .fieldCrcs = { 0xE6DE47BA, 0x6E7CC2BE, 0xD30D656E, 0xC40BF208, 0x9C26CCA4 },
++    .repelVar = 0x4020,
++    .repelItems = { 86, 83, 84 },
++    .gItems = 0x083DB028,
++    .itemNameLen = 14,
++    .itemParamOffset = 0,
++    .pcSetupScript = 0x08069AE4,
++    .pcSpecial = 60,
++    .pcSpecials = 0x0815FD60,
++    .pcFn = 0x0808C6A9,
++    .pcCrcs = { 0xAAC00946, 0x9662F022 },
++    .pcScript = 0x0203FFF4,
+ };
+ 
+-// gamedata/gen3/retail/leafgreen.toml: leafgreen_rev0 (ram, icons, card, fly, field)
++// gamedata/gen3/retail/leafgreen.toml: leafgreen_rev0 (ram, icons, dex, guide, card, fly, field)
+ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .playerParty = 0x02024284,
+     .playerPartyCount = 0x02024029,
+@@ -154,6 +224,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -174,7 +267,7 @@ index ded2491..1651687 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -163,6 +177,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -163,11 +234,33 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -183,7 +276,32 @@ index ded2491..1651687 100644
      .monIconTable = 0x083D35DC,
      .monIconPaletteIndices = 0x083D3CBC,
      .monIconPaletteTable = 0x083D3E74,
-@@ -177,6 +193,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .itemIconTable = 0x083D40D0,
+     .itemIconStride = 8,
++    .dexEntries = 0x0844E270,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x08254760,
++    .speciesToNational = 0x08251FCA,
++    .abilityNames = 0x0824FC1C,
++    .frontPics = 0x08235088,
++    .palettes = 0x082372E8,
++    .regionalOrder = 0,
++    .regionalCount = 151,
++    .regionName = "KANTO",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
++    .trainers = 0x0823EAA4,
++    .learnsets = 0x0825D794,
++    .wildHeaders = 0x083C9AF4,
++    .probeTrainer = 414,
++    .probeName = "BROCK",
+     .cardStyle = PD_CARD_KANTO,
+     .gameStatsOff = 0x1200,
+     .badgeFlag = 0x820,
+@@ -177,6 +270,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .nationalFlag = 0x840,
      .stickerVar = 0x4049,
      .frontierSymbolFlag = 0,
@@ -191,7 +309,25 @@ index ded2491..1651687 100644
      .museumWinnersOff = 0,
      .frontierBpOff = 0,
      .flyFlagGet = 0x0806E6D0,
-@@ -235,6 +252,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -202,6 +296,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .flyGenderMapsec = 0,
+     .flyMaleHeal = 0,
+     .flyFemaleHeal = 0,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
+     .fieldVarGet = 0x0806E568,
+     .fieldVarSet = 0x0806E584,
+     .fieldCheckBag = 0x08099F14,
+@@ -221,7 +317,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .pcScript = 0x0203FFF4,
+ };
+ 
+-// gamedata/gen3/retail/leafgreen.toml: leafgreen_rev1 (ram, foes, icons, card, fly, field)
++// gamedata/gen3/retail/leafgreen.toml: leafgreen_rev1 (ram, foes, icons, dex, guide, card, fly, field)
+ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .playerParty = 0x02024284,
+     .playerPartyCount = 0x02024029,
+@@ -235,6 +331,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -199,7 +335,7 @@ index ded2491..1651687 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -247,7 +265,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -247,12 +344,35 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
@@ -210,7 +346,32 @@ index ded2491..1651687 100644
      .monIconTable = 0x083D364C,
      .monIconPaletteIndices = 0x083D3D2C,
      .monIconPaletteTable = 0x083D3EE4,
-@@ -262,6 +283,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .itemIconTable = 0x083D4140,
+     .itemIconStride = 8,
++    .dexEntries = 0x0844E2E0,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x082547D0,
++    .speciesToNational = 0x0825203A,
++    .abilityNames = 0x0824FC8C,
++    .frontPics = 0x082350F8,
++    .palettes = 0x08237358,
++    .regionalOrder = 0,
++    .regionalCount = 151,
++    .regionName = "KANTO",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
++    .trainers = 0x0823EB14,
++    .learnsets = 0x0825D804,
++    .wildHeaders = 0x083C9B64,
++    .probeTrainer = 414,
++    .probeName = "BROCK",
+     .cardStyle = PD_CARD_KANTO,
+     .gameStatsOff = 0x1200,
+     .badgeFlag = 0x820,
+@@ -262,6 +382,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .nationalFlag = 0x840,
      .stickerVar = 0x4049,
      .frontierSymbolFlag = 0,
@@ -218,7 +379,16 @@ index ded2491..1651687 100644
      .museumWinnersOff = 0,
      .frontierBpOff = 0,
      .flyFlagGet = 0x0806E6E4,
-@@ -320,6 +342,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -287,6 +408,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .flyGenderMapsec = 0,
+     .flyMaleHeal = 0,
+     .flyFemaleHeal = 0,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
+     .fieldVarGet = 0x0806E57C,
+     .fieldVarSet = 0x0806E598,
+     .fieldCheckBag = 0x08099F28,
+@@ -320,6 +443,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .mapHeader = 0x02037318,
      .encryptionKeyOff = 0xAC,
      .moneyOff = 0x490,
@@ -226,7 +396,7 @@ index ded2491..1651687 100644
      .bagPockets = 0x02039DD8,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
      .dexSeenCopy1 = 0x988,
-@@ -332,7 +355,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -332,7 +456,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .enemyParty = 0x02024744,
      .battlerPartyIndexes = 0x0202406E,
      .battleStructPtr = 0x0202449C,
@@ -237,7 +407,7 @@ index ded2491..1651687 100644
      .monIconTable = 0x0857BCA8,
      .monIconPaletteIndices = 0x0857C388,
      .monIconPaletteTable = 0x0857C540,
-@@ -348,6 +374,11 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -348,6 +475,11 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .regionalOrder = 0x0831DFB8,
      .regionalCount = 202,
      .regionName = "HOENN",
@@ -249,7 +419,7 @@ index ded2491..1651687 100644
      .trainers = 0x08310030,
      .learnsets = 0x0832937C,
      .wildHeaders = 0x08552D48,
-@@ -362,6 +393,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -362,6 +494,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .nationalFlag = 0x896,
      .stickerVar = 0,
      .frontierSymbolFlag = 0x8C4,
@@ -257,7 +427,16 @@ index ded2491..1651687 100644
      .museumWinnersOff = 0x2F90,
      .frontierBpOff = 0xEBA,
      .flyFlagGet = 0x0809D790,
-@@ -406,4 +438,350 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -387,6 +520,8 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+     .flyGenderMapsec = 0,
+     .flyMaleHeal = 12,
+     .flyFemaleHeal = 13,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
+     .fieldVarGet = 0x0809D694,
+     .fieldVarSet = 0x0809D6B0,
+     .fieldCheckBag = 0x080D6724,
+@@ -406,4 +541,520 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .pcScript = 0x0203FFF4,
  };
  
@@ -354,6 +533,8 @@ index ded2491..1651687 100644
 +    .flyGenderMapsec = 0,
 +    .flyMaleHeal = 12,
 +    .flyFemaleHeal = 13,
++    .flySaveBlock2Static = false,
++    .flyMapHeader = 0,
 +    .fieldVarGet = 0x0809EB00,
 +    .fieldVarSet = 0x0809EB1C,
 +    .fieldCheckBag = 0x080D9EB8,
@@ -375,7 +556,7 @@ index ded2491..1651687 100644
 +
 +// Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
 +// (RETAIL_PORTS' AXVE0 / AXPE0). Read like Emerald (the same species / item / map-section ids); no trainer card.
-+// gamedata/gen3/retail/ruby_sapphire.toml: ruby (ram, foes, icons, dex, guide)
++// gamedata/gen3/retail/ruby_sapphire.toml: ruby (ram, foes, icons, dex, guide, fly, field)
 +static const struct pd_config PD_CONFIG_RUBY = {
 +    .playerParty = 0x03004360,
 +    .playerPartyCount = 0x03004350,
@@ -431,9 +612,51 @@ index ded2491..1651687 100644
 +    .wildHeaders = 0x0839D46C,
 +    .probeTrainer = 265,
 +    .probeName = "ROXANNE",
++    .flyFlagGet = 0x08069360,
++    .flySetUp = 0x08054244,
++    .flyGetMapsecType = 0x080FB778,
++    .flyFade = 0x0807D664,
++    .flyLock = 0x08065550,
++    .flyUnlock = 0x0806555C,
++    .flyWarp = 0,
++    .flyBadgeFlag = 0x80C,
++    .flyPartySlot = 0x03005CE0,
++    .flyDestinations = 0x083E793C,
++    .flyFirstMapsec = 0,
++    .flyCount = 50,
++    .flyCrcs = { 0xAC4D17B2, 0x6F375BAA, 0x0190971B, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xB2A1E0F7 },
++    .flyTypes = { 2, 4 },
++    .flyExtra = { 58 },
++    .flyHealTo = 0x08053558,
++    .flyMapWarp = 0x080534B0,
++    .flyReturn = 0x080865DC,
++    .flySaveBlock2Ptr = 0x02024EA4,
++    .flySpecial = { { 15, 11 }, { 58, 21 } },
++    .flyGenderMapsec = 0,
++    .flyMaleHeal = 12,
++    .flyFemaleHeal = 13,
++    .flySaveBlock2Static = true,
++    .flyMapHeader = 0x0202E828,
++    .fieldVarGet = 0x08069274,
++    .fieldVarSet = 0x08069290,
++    .fieldCheckBag = 0x080A92F4,
++    .fieldRemoveBag = 0x080A9558,
++    .fieldLocked = 0x08065568,
++    .fieldCrcs = { 0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D },
++    .repelVar = 0x4021,
++    .repelItems = { 86, 83, 84 },
++    .gItems = 0x083C5580,
++    .itemNameLen = 14,
++    .itemParamOffset = 0,
++    .pcSetupScript = 0x080655D8,
++    .pcSpecial = 60,
++    .pcSpecials = 0x0814B1B4,
++    .pcFn = 0x08096121,
++    .pcCrcs = { 0xBC36478C, 0x62C153A4 },
++    .pcScript = 0x0203FFF4,
 +};
 +
-+// gamedata/gen3/retail/ruby_sapphire.toml: sapphire (ram, foes, icons, dex, guide)
++// gamedata/gen3/retail/ruby_sapphire.toml: sapphire (ram, foes, icons, dex, guide, fly, field)
 +static const struct pd_config PD_CONFIG_SAPPHIRE = {
 +    .playerParty = 0x03004360,
 +    .playerPartyCount = 0x03004350,
@@ -489,9 +712,51 @@ index ded2491..1651687 100644
 +    .wildHeaders = 0x0839D2B4,
 +    .probeTrainer = 265,
 +    .probeName = "ROXANNE",
++    .flyFlagGet = 0x08069364,
++    .flySetUp = 0x08054248,
++    .flyGetMapsecType = 0x080FB778,
++    .flyFade = 0x0807D664,
++    .flyLock = 0x08065554,
++    .flyUnlock = 0x08065560,
++    .flyWarp = 0,
++    .flyBadgeFlag = 0x80C,
++    .flyPartySlot = 0x03005CE0,
++    .flyDestinations = 0x083E7998,
++    .flyFirstMapsec = 0,
++    .flyCount = 50,
++    .flyCrcs = { 0xAC4D17B2, 0x6F375BAA, 0x0190971B, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xB7ABAD76 },
++    .flyTypes = { 2, 4 },
++    .flyExtra = { 58 },
++    .flyHealTo = 0x08053558,
++    .flyMapWarp = 0x080534B0,
++    .flyReturn = 0x080865DC,
++    .flySaveBlock2Ptr = 0x02024EA4,
++    .flySpecial = { { 15, 11 }, { 58, 21 } },
++    .flyGenderMapsec = 0,
++    .flyMaleHeal = 12,
++    .flyFemaleHeal = 13,
++    .flySaveBlock2Static = true,
++    .flyMapHeader = 0x0202E828,
++    .fieldVarGet = 0x08069278,
++    .fieldVarSet = 0x08069294,
++    .fieldCheckBag = 0x080A92F4,
++    .fieldRemoveBag = 0x080A9558,
++    .fieldLocked = 0x0806556C,
++    .fieldCrcs = { 0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D },
++    .repelVar = 0x4021,
++    .repelItems = { 86, 83, 84 },
++    .gItems = 0x083C55DC,
++    .itemNameLen = 14,
++    .itemParamOffset = 0,
++    .pcSetupScript = 0x080655DC,
++    .pcSpecial = 60,
++    .pcSpecials = 0x0814B1B4,
++    .pcFn = 0x08096121,
++    .pcCrcs = { 0xBC36478C, 0xA79046B8 },
++    .pcScript = 0x0203FFF4,
 +};
 +
-+// gamedata/gen3/ports/ruby.toml: port_axve0 (ram, foes, icons, dex, guide)
++// gamedata/gen3/ports/ruby.toml: port_axve0 (ram, foes, icons, dex, guide, fly, field)
 +static const struct pd_config PD_CONFIG_RUBY_REV0 = {
 +    .playerParty = 0x03004360,
 +    .playerPartyCount = 0x03004350,
@@ -547,9 +812,51 @@ index ded2491..1651687 100644
 +    .wildHeaders = 0x0839D454,
 +    .probeTrainer = 265,
 +    .probeName = "ROXANNE",
++    .flyFlagGet = 0x08069340,
++    .flySetUp = 0x08054224,
++    .flyGetMapsecType = 0x080FB758,
++    .flyFade = 0x0807D644,
++    .flyLock = 0x08065530,
++    .flyUnlock = 0x0806553C,
++    .flyWarp = 0,
++    .flyBadgeFlag = 0x80C,
++    .flyPartySlot = 0x03005CE0,
++    .flyDestinations = 0x083E7920,
++    .flyFirstMapsec = 0,
++    .flyCount = 50,
++    .flyCrcs = { 0xAC4D17B2, 0x6F375BAA, 0x22721D44, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xD5F7FEC3 },
++    .flyTypes = { 2, 4 },
++    .flyExtra = { 58 },
++    .flyHealTo = 0x08053538,
++    .flyMapWarp = 0x08053490,
++    .flyReturn = 0x080865BC,
++    .flySaveBlock2Ptr = 0x02024EA4,
++    .flySpecial = { { 15, 11 }, { 58, 21 } },
++    .flyGenderMapsec = 0,
++    .flyMaleHeal = 12,
++    .flyFemaleHeal = 13,
++    .flySaveBlock2Static = true,
++    .flyMapHeader = 0x0202E828,
++    .fieldVarGet = 0x08069254,
++    .fieldVarSet = 0x08069270,
++    .fieldCheckBag = 0x080A92D4,
++    .fieldRemoveBag = 0x080A9538,
++    .fieldLocked = 0x08065548,
++    .fieldCrcs = { 0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D },
++    .repelVar = 0x4021,
++    .repelItems = { 86, 83, 84 },
++    .gItems = 0x083C5564,
++    .itemNameLen = 14,
++    .itemParamOffset = 0,
++    .pcSetupScript = 0x080655B8,
++    .pcSpecial = 60,
++    .pcSpecials = 0x0814B194,
++    .pcFn = 0x08096101,
++    .pcCrcs = { 0xBC36478C, 0x62C153A4 },
++    .pcScript = 0x0203FFF4,
 +};
 +
-+// gamedata/gen3/ports/sapphire.toml: port_axpe0 (ram, foes, icons, dex, guide)
++// gamedata/gen3/ports/sapphire.toml: port_axpe0 (ram, foes, icons, dex, guide, fly, field)
 +static const struct pd_config PD_CONFIG_SAPPHIRE_REV0 = {
 +    .playerParty = 0x03004360,
 +    .playerPartyCount = 0x03004350,
@@ -605,6 +912,48 @@ index ded2491..1651687 100644
 +    .wildHeaders = 0x0839D29C,
 +    .probeTrainer = 265,
 +    .probeName = "ROXANNE",
++    .flyFlagGet = 0x08069344,
++    .flySetUp = 0x08054228,
++    .flyGetMapsecType = 0x080FB758,
++    .flyFade = 0x0807D644,
++    .flyLock = 0x08065534,
++    .flyUnlock = 0x08065540,
++    .flyWarp = 0,
++    .flyBadgeFlag = 0x80C,
++    .flyPartySlot = 0x03005CE0,
++    .flyDestinations = 0x083E7978,
++    .flyFirstMapsec = 0,
++    .flyCount = 50,
++    .flyCrcs = { 0xAC4D17B2, 0x6F375BAA, 0x22721D44, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xD0FDB342 },
++    .flyTypes = { 2, 4 },
++    .flyExtra = { 58 },
++    .flyHealTo = 0x08053538,
++    .flyMapWarp = 0x08053490,
++    .flyReturn = 0x080865BC,
++    .flySaveBlock2Ptr = 0x02024EA4,
++    .flySpecial = { { 15, 11 }, { 58, 21 } },
++    .flyGenderMapsec = 0,
++    .flyMaleHeal = 12,
++    .flyFemaleHeal = 13,
++    .flySaveBlock2Static = true,
++    .flyMapHeader = 0x0202E828,
++    .fieldVarGet = 0x08069258,
++    .fieldVarSet = 0x08069274,
++    .fieldCheckBag = 0x080A92D4,
++    .fieldRemoveBag = 0x080A9538,
++    .fieldLocked = 0x0806554C,
++    .fieldCrcs = { 0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D },
++    .repelVar = 0x4021,
++    .repelItems = { 86, 83, 84 },
++    .gItems = 0x083C55BC,
++    .itemNameLen = 14,
++    .itemParamOffset = 0,
++    .pcSetupScript = 0x080655BC,
++    .pcSpecial = 60,
++    .pcSpecials = 0x0814B194,
++    .pcFn = 0x08096101,
++    .pcCrcs = { 0xBC36478C, 0xA79046B8 },
++    .pcScript = 0x0203FFF4,
 +};
 +
  #endif
@@ -757,7 +1106,7 @@ index dafc939..92df1ba 100644
 +    g->unsupported = "Not a version the companion knows";
 +}
 diff --git a/3ds/core/pd_game.h b/3ds/core/pd_game.h
-index d8dff14..9d16c13 100644
+index d8dff14..1be0d37 100644
 --- a/3ds/core/pd_game.h
 +++ b/3ds/core/pd_game.h
 @@ -15,6 +15,17 @@ enum pd_game_kind {
@@ -815,7 +1164,16 @@ index d8dff14..9d16c13 100644
      uint32_t museumWinnersOff, frontierBpOff; // in SaveBlock1 / SaveBlock2
  
      // FLY (the app's FlyFns / HealWarp, Fly.kt): the game's own functions, called between frames (the Linux host's
-@@ -116,7 +134,8 @@ struct pd_config {
+@@ -100,6 +118,8 @@ struct pd_config {
+     uint32_t flyHealTo, flyMapWarp, flyReturn, flySaveBlock2Ptr; // gSaveBlock2Ptr: playerGender at +8
+     int flySpecial[4][2]; // {map section, heal location} taken before the table's
+     int flyGenderMapsec, flyMaleHeal, flyFemaleHeal; // the home town: by the player's gender
++    bool flySaveBlock2Static; // flySaveBlock2Ptr is gSaveBlock2 itself (Ruby / Sapphire)
++    uint32_t flyMapHeader; // set: SetUpFieldMove_Fly takes gMapHeader.mapType (+0x17) as its argument (Ruby / Sapphire)
+ 
+     // REPEL and PC anywhere (the app's FieldItemFns / PcFns, FieldItems.kt / Pc.kt): VarGet, VarSet,
+     // CheckBagHasItem, RemoveBagItem and ArePlayerFieldControlsLocked (fieldCrcs, in that order), VAR_REPEL_STEP_COUNT
+@@ -116,7 +136,8 @@ struct pd_config {
      uint32_t pcSpecials, pcFn, pcCrcs[2], pcScript;
  };
  
@@ -825,7 +1183,7 @@ index d8dff14..9d16c13 100644
  
  // The bag's pockets, in a fixed order of our own (the app's POCKET_* ids).
  enum pd_pocket {
-@@ -133,6 +152,7 @@ struct pd_game {
+@@ -133,6 +154,7 @@ struct pd_game {
      char code[5];       // ROM header game code, e.g. "BPRE"
      int revision;       // ROM header 0xBC
      const char* title;  // "Pokémon FireRed"
@@ -833,7 +1191,7 @@ index d8dff14..9d16c13 100644
      const struct pd_config* cfg; // NULL = detected but not supported
      const char* unsupported;     // why, when cfg is NULL
      // The ROM's bytes (0x08000000 on the bus), for the tabs that read its
-@@ -140,6 +160,7 @@ struct pd_game {
+@@ -140,6 +162,7 @@ struct pd_game {
      const uint8_t* rom;
      size_t romSize;
      unsigned loadId; // new on every pd_game_detect (see pd_rom_id)
@@ -841,7 +1199,7 @@ index d8dff14..9d16c13 100644
  };
  
  // Which ROM the tabs' caches were built from: 0 = none, else new for every
-@@ -155,4 +176,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
+@@ -155,4 +178,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
  // Reads the ROM header (the first 0xC0 bytes of the ROM) and its size.
  void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize);
  
@@ -2508,6 +2866,35 @@ index 00f7935..9554109 100644
  #define PD_VAR_COUNT 0x100
  #define PD_GAME_STATS 52 // up to GAME_STAT_BERRY_CRUSH_POINTS
  
+diff --git a/3ds/core/pd_tables.c b/3ds/core/pd_tables.c
+index 8fb53e9..fb93d6c 100644
+--- a/3ds/core/pd_tables.c
++++ b/3ds/core/pd_tables.c
+@@ -14,9 +14,16 @@ static const char* game_case(const char* src, char* buf, size_t len) {
+     return buf;
+ }
+ 
++// Emerald Legacy numbers DEOXYS's other forms 412-414 (its egg 415): named and typed as DEOXYS (the game's own
++// names, EmeraldTextLegacyGen.kt). No retail game has a species there (an egg is PD_SPECIES_EGG by its flag).
++static int form_base(int species) {
++    return species >= 412 && species <= 414 ? 410 : species;
++}
++
+ const char* pd_species_name(int species, char* buf, size_t len) {
+     if (species == 0) return "-";
+     if (species == PD_SPECIES_EGG) return "EGG";
++    species = form_base(species);
+     if (species > 0 && species < pd_species_names_count && pd_species_names[species]) {
+         return game_case(pd_species_names[species], buf, len);
+     }
+@@ -61,6 +68,7 @@ int pd_type_multiplier_pct(int atk, int def1, int def2) {
+ 
+ void pd_species_type_pair(int species, int* t1, int* t2) {
+     *t1 = *t2 = PD_TYPE_NONE;
++    species = form_base(species);
+     if (species <= 0 || species >= pd_species_type_table_count) return;
+     *t1 = pd_species_type_table[species][0];
+     *t2 = pd_species_type_table[species][1];
 diff --git a/3ds/core/pd_tables.h b/3ds/core/pd_tables.h
 index 30cb2c1..fffb5d4 100644
 --- a/3ds/core/pd_tables.h
@@ -2905,10 +3292,10 @@ index 55e4d77..a0fc76f 100644
  
 diff --git a/gamedata/gen3/records/ported.toml b/gamedata/gen3/records/ported.toml
 new file mode 100644
-index 0000000..adfc746
+index 0000000..9fe803c
 --- /dev/null
 +++ b/gamedata/gen3/records/ported.toml
-@@ -0,0 +1,3251 @@
+@@ -0,0 +1,3595 @@
 +# Generated by scripts/port_records.py from the app's Kotlin vals (plorpOS's Linux port) - rerun it,
 +# don't edit: the records the Gen 3 configs name, for the 3DS / Linux target. `kotlin = false`: the app
 +# keeps each val itself (gen_gamedata.py writes no Kotlin for these).
@@ -3298,7 +3685,7 @@ index 0000000..adfc746
 +schema = 'gen3_dexflags'
 +base = 'POKEDEX_QUETZAL_FLAGS'
 +kotlin = false
-+caughtRegions = { kotlin = 'emptyList()' }
++caughtRegions = []
 +caughtFromLevel = true
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Pokedex.kt.
@@ -3455,6 +3842,175 @@ index 0000000..adfc746
 +fly = 'FLY_EMERALD_LEGACY'
 +pc = 'PC_EMERALD_LEGACY'
 +
++# Pokemon - Sapphire Version (USA, Europe).gba (SHA1 3ccbbd45...), from AXPE0.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXPE0]
++schema = 'gen3_field_items'
++kotlin = false
++varGet = 0x08069258
++varSet = 0x08069274
++checkBagHasItem = 0x080A92D4
++removeBagItem = 0x080A9538
++fieldControlsLocked = 0x0806554C
++repelVar = 0x4021
++items = 0x083C55BC
++codeCrcs = [0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D]
++itemNameLen = 14
++party = 'FIELD_ITEMS_PORTS_AXPE0_PARTY'
++pc = 'FIELD_ITEMS_PORTS_AXPE0_PC'
++fly = 'FIELD_ITEMS_PORTS_AXPE0_FLY'
++
++# Pokemon - Ruby Version (USA, Europe).gba (SHA1 f28b6ffc...), from AXVE0.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXVE0]
++schema = 'gen3_field_items'
++kotlin = false
++varGet = 0x08069254
++varSet = 0x08069270
++checkBagHasItem = 0x080A92D4
++removeBagItem = 0x080A9538
++fieldControlsLocked = 0x08065548
++repelVar = 0x4021
++items = 0x083C5564
++codeCrcs = [0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D]
++itemNameLen = 14
++party = 'FIELD_ITEMS_PORTS_AXVE0_PARTY'
++pc = 'FIELD_ITEMS_PORTS_AXVE0_PC'
++fly = 'FIELD_ITEMS_PORTS_AXVE0_FLY'
++
++# Pokemon - FireRed Version (USA, Europe).gba (SHA1 41cb23d8...), from BPRE0.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_BPRE0]
++schema = 'gen3_field_items'
++kotlin = false
++varGet = 0x0806E568
++varSet = 0x0806E584
++checkBagHasItem = 0x08099F40
++removeBagItem = 0x0809A1D8
++fieldControlsLocked = 0x08069958
++repelVar = 0x4020
++items = 0x083DB028
++codeCrcs = [0xE6DE47BA, 0x6E7CC2BE, 0xD30D656E, 0xC40BF208, 0x9C26CCA4]
++itemNameLen = 14
++party = 'FIELD_ITEMS_PORTS_BPRE0_PARTY'
++pc = 'FIELD_ITEMS_PORTS_BPRE0_PC'
++fly = 'FIELD_ITEMS_PORTS_BPRE0_FLY'
++
++# Retail Ruby rev 1 / rev 2 (AXVE; SHA1 610b96a9... / 5b64eacf...).
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItems.kt.
++[record.FIELD_ITEMS_RUBY]
++schema = 'gen3_field_items'
++kotlin = false
++varGet = 0x08069274
++varSet = 0x08069290
++checkBagHasItem = 0x080A92F4
++removeBagItem = 0x080A9558
++fieldControlsLocked = 0x08065568
++repelVar = 0x4021
++items = 0x083C5580
++codeCrcs = [0x98EFB2B6, 0x82AA042B, 0x87E0CA93, 0xD7C65886, 0xA306873D]
++party = 'RUBY_SAPPHIRE_PARTY'
++pc = 'PC_RUBY'
++fly = 'FLY_RUBY'
++
++# Retail Sapphire rev 1 / rev 2 (AXPE; SHA1 4722efb8... / 89b45fb1...): Ruby's code a few bytes on.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItems.kt.
++[record.FIELD_ITEMS_SAPPHIRE]
++schema = 'gen3_field_items'
++base = 'FIELD_ITEMS_RUBY'
++kotlin = false
++varGet = 0x08069278
++varSet = 0x08069294
++fieldControlsLocked = 0x0806556C
++items = 0x083C55DC
++pc = 'PC_SAPPHIRE'
++fly = 'FLY_SAPPHIRE'
++
++#
++# Retail Ruby rev 1 / rev 2 (pret's pokeruby built clean as ruby_rev1, byte for byte retail): Emerald's way - the heal
++# location (sub_8053538) or map warp (warp1_set_2), then sub_80865BC (CB2_ReturnToField + the Fly landing) - with its
++# own Fly map type per section (static sub_80FB758, 0x080FB778: VISITED towns 2, the Battle Tower 4), the cut-in's
++# Pokémon in gLastFieldPokeMenuOpened and gSaveBlock2 in place. FLAG_BADGE06_GET, its sMapHealLocations as Emerald's.
++#
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Fly.kt.
++[record.FLY_RUBY]
++schema = 'gen3_fly'
++kotlin = false
++flagGet = 0x08069360
++badgeFlag = 0x80C
++setUpFieldMoveFly = 0x08054244
++getMapsecType = 0x080FB778
++fadeScreen = 0x0807D664
++lockControls = 0x08065550
++unlockControls = 0x0806555C
++setFlyWarpDestination = 0
++partyMenuSlotId = 0x03005CE0
++destinations = 0x083E793C
++firstMapsec = 0
++count = 50
++codeCrcs = [0xAC4D17B2, 0x6F375BAA, 0x0190971B, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xB2A1E0F7]
++flyTypes = [2, 4]
++extraMapsecs = [58]
++mapHeader = 0x0202E828
++# MAPSEC_EVER_GRANDE_CITY, MAPSEC_BATTLE_TOWER (HEAL_LOCATION_EVER_GRANDE_CITY, _BATTLE_TOWER_OUTSIDE)
++healWarp = 'FLY_RUBY_HEAL_WARP'
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXPE0_FLY]
++schema = 'gen3_fly'
++base = 'FLY_RUBY'
++kotlin = false
++flagGet = 0x08069344
++setUpFieldMoveFly = 0x08054228
++getMapsecType = 0x080FB758
++fadeScreen = 0x0807D644
++lockControls = 0x08065534
++unlockControls = 0x08065540
++partyMenuSlotId = 0x03005CE0
++destinations = 0x083E7978
++mapHeader = 0x0202E828
++codeCrcs = [0xAC4D17B2, 0x6F375BAA, 0x22721D44, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xD0FDB342]
++healWarp = 'FIELD_ITEMS_PORTS_AXPE0_FLY_HEAL_WARP'
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXVE0_FLY]
++schema = 'gen3_fly'
++base = 'FLY_RUBY'
++kotlin = false
++flagGet = 0x08069340
++setUpFieldMoveFly = 0x08054224
++getMapsecType = 0x080FB758
++fadeScreen = 0x0807D644
++lockControls = 0x08065530
++unlockControls = 0x0806553C
++partyMenuSlotId = 0x03005CE0
++destinations = 0x083E7920
++mapHeader = 0x0202E828
++codeCrcs = [0xAC4D17B2, 0x6F375BAA, 0x22721D44, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xD5F7FEC3]
++healWarp = 'FIELD_ITEMS_PORTS_AXVE0_FLY_HEAL_WARP'
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_BPRE0_FLY]
++schema = 'gen3_fly'
++base = 'FLY_FIRERED_REV1'
++kotlin = false
++flagGet = 0x0806E6D0
++setUpFieldMoveFly = 0x08124A8C
++getMapsecType = 0x080C35DC
++fadeScreen = 0x0807A818
++lockControls = 0x08069940
++unlockControls = 0x0806994C
++partyMenuSlotId = 0x0203B0A9
++destinations = 0x083F2EE0
++setFlyWarpDestination = 0x080C527C
++codeCrcs = [0x07BEBC3A, 0x950F2C97, 0x9A186C79, 0xF9959006, 0x0111A86E, 0xBAB654BA, 0x70EA1DFC]
++
 +# FLY_FIRERED_REV1, FLY_LEAFGREEN_REV0 / _REV1 and FLY_EMERALD (+ HEAL_WARP_EMERALD) are records in
 +# gamedata/gen3/records/ (GameDataRecordsGen.kt), shared with the 3DS / Linux companion.
 +#
@@ -3481,6 +4037,20 @@ index 0000000..adfc746
 +destinations = 0x085D46F0
 +codeCrcs = [0xBCF97BF3, 0x26C08427, 0x4B625BC4, 0xF9959006, 0xB9FB85A7, 0xB037C8AF, 0xE35529C1, 0x2F1D18CA, 0x404426C9]
 +healWarp = 'FLY_EMERALD_LEGACY_HEAL_WARP'
++
++# Retail Sapphire rev 1 / rev 2: Ruby's code a few bytes on (mapped from Ruby's by scripts/port_field_items.py).
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Fly.kt.
++[record.FLY_SAPPHIRE]
++schema = 'gen3_fly'
++base = 'FLY_RUBY'
++kotlin = false
++flagGet = 0x08069364
++setUpFieldMoveFly = 0x08054248
++lockControls = 0x08065554
++unlockControls = 0x08065560
++destinations = 0x083E7998
++codeCrcs = [0xAC4D17B2, 0x6F375BAA, 0x0190971B, 0xF9959006, 0xA003C21A, 0x9807B468, 0x5BF43808, 0x2F1D18CA, 0xB7ABAD76]
 +
 +#
 +# Amethyst v1.3.0: its trainer loader (0x088B3A98) picks one of four tables by
@@ -4562,6 +5132,40 @@ index 0000000..adfc746
 +trainerIdVar = true
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Fly.kt.
++[record.FLY_RUBY_HEAL_WARP]
++schema = 'gen3_heal_warp'
++kotlin = false
++toHealLocation = 0x08053558
++toMapWarp = 0x080534B0
++returnToField = 0x080865DC
++saveBlock2Ptr = 0x02024EA4
++special = [[15, 11], [58, 21]]
++genderMapsec = 0
++maleHeal = 12
++femaleHeal = 13
++saveBlock2Static = true
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXPE0_FLY_HEAL_WARP]
++schema = 'gen3_heal_warp'
++base = 'FLY_RUBY_HEAL_WARP'
++kotlin = false
++toHealLocation = 0x08053538
++toMapWarp = 0x08053490
++returnToField = 0x080865BC
++saveBlock2Ptr = 0x02024EA4
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXVE0_FLY_HEAL_WARP]
++schema = 'gen3_heal_warp'
++base = 'FLY_RUBY_HEAL_WARP'
++kotlin = false
++toHealLocation = 0x08053538
++toMapWarp = 0x08053490
++returnToField = 0x080865BC
++saveBlock2Ptr = 0x02024EA4
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Fly.kt.
 +[record.FLY_EMERALD_LEGACY_HEAL_WARP]
 +schema = 'gen3_heal_warp'
 +base = 'HEAL_WARP_EMERALD'
@@ -4581,7 +5185,109 @@ index 0000000..adfc746
 +itemEffect = 0x0806CA48
 +addBagItem = 0x080DA0BC
 +codeCrcs = [0xA0496642, 0xC8B48F7B, 0xEADAC6C9, 0x3510B884]
-+useFuncs = { kotlin = 'setOf(0x08101740L, 0x08101794L, 0x081017B0L, 0x0810195CL)' }
++useFuncs = [135272256, 135272340, 135272368, 135272796]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXPE0_PARTY]
++schema = 'gen3_party_items'
++kotlin = false
++getMonData = 0x0803CB60
++setMonData = 0x0803D1FC
++itemNoEffect = 'none'
++itemEffect = 0x0803E18C
++addBagItem = 0x080A9424
++party = 0x03004360
++partyCount = 0x03004350
++scratch = 0x0203FFF0
++itemCount = 349
++unholdablePockets = [5, 3]
++codeCrcs = [0x7D459654, 0x59B8ECA4, 0xEADAC6C9, 0x891E35D5]
++useFuncs = [135044528, 135044668, 135044696, 135045140]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXVE0_PARTY]
++schema = 'gen3_party_items'
++kotlin = false
++getMonData = 0x0803CB60
++setMonData = 0x0803D1FC
++itemNoEffect = 'none'
++itemEffect = 0x0803E18C
++addBagItem = 0x080A9424
++party = 0x03004360
++partyCount = 0x03004350
++scratch = 0x0203FFF0
++itemCount = 349
++unholdablePockets = [5, 3]
++codeCrcs = [0x7D459654, 0x59B8ECA4, 0xEADAC6C9, 0x891E35D5]
++useFuncs = [135044528, 135044668, 135044696, 135045140]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_BPRE0_PARTY]
++schema = 'gen3_party_items'
++kotlin = false
++getMonData = 0x0803FBE8
++setMonData = 0x0804037C
++itemNoEffect = 0x08042414
++itemEffect = 0x080413C0
++addBagItem = 0x0809A084
++party = 0x02024284
++partyCount = 0x02024029
++scratch = 0x0203FFF0
++itemCount = 375
++unholdablePockets = [2, 4]
++codeCrcs = [0x7841F205, 0x9B11B0A6, 0x788AB547, 0xEADAC6C9, 0xC316CD20]
++useFuncs = [134878944, 134878972, 134879000, 134879640]
++
++# Ruby / Sapphire's party side, revs 1 and 2 alike (pret's pokeruby built clean as each, byte for byte retail): the
++# party in IWRAM, 349 items, no PokemonItemUseNoEffect (its party menu runs the effect, like Emerald's). EWRAM's
++# last symbol ends at 0x0203A3D5 and gSharedMem's offsets stop at 0x1FFF0, so the scratch word is free here too.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItems.kt.
++[record.RUBY_SAPPHIRE_PARTY]
++schema = 'gen3_party_items'
++kotlin = false
++getMonData = 0x0803CB60
++setMonData = 0x0803D1FC
++itemNoEffect = 'none'
++itemEffect = 0x0803E18C
++addBagItem = 0x080A9444
++party = 0x03004360
++partyCount = 0x03004350
++scratch = 0x0203FFF0
++itemCount = 349
++unholdablePockets = [5, 3]  # POCKET_KEY_ITEMS, POCKET_TM_HM
++codeCrcs = [0x7D459654, 0x59B8ECA4, 0xEADAC6C9, 0x891E35D5]
++useFuncs = [135044560, 135044700, 135044728, 135045172]  # the same in both, revs 1 and 2
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXPE0_PC]
++schema = 'gen3_pc'
++kotlin = false
++setupScript = 0x080655BC
++special = 60
++specials = 0x0814B194
++pcFn = 0x08096101
++codeCrcs = [0xBC36478C, 0xA79046B8]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_AXVE0_PC]
++schema = 'gen3_pc'
++kotlin = false
++setupScript = 0x080655B8
++special = 60
++specials = 0x0814B194
++pcFn = 0x08096101
++codeCrcs = [0xBC36478C, 0x62C153A4]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/FieldItemsPortsGen.kt.
++[record.FIELD_ITEMS_PORTS_BPRE0_PC]
++schema = 'gen3_pc'
++kotlin = false
++setupScript = 0x08069AE4
++special = 60
++specials = 0x0815FD60
++pcFn = 0x0808C6A9
++codeCrcs = [0xAAC00946, 0x9662F022]
 +
 +# Emerald Legacy v1.1.4 (its own build's ELF): ShowPokemonStorageSystemPC is still special 63 in its gSpecials.
 +#
@@ -4594,6 +5300,31 @@ index 0000000..adfc746
 +specials = 0x081E1168
 +pcFn = 0x080CACA1
 +codeCrcs = [0xEF3698BA, 0x3BE7A304]
++
++# PC_FIRERED_REV1 / _LEAFGREEN_REV0 / _REV1 / _EMERALD are records in gamedata/gen3/records/ (GameDataRecordsGen.kt).
++#
++# Ruby / Sapphire rev 1 and 2 (the same in both revisions): ShowPokemonStorageSystem, special 60, the same five
++# commands (pokeruby's opcodes are Emerald's). The other languages' come with FieldItemsPortsGen.kt.
++#
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Pc.kt.
++[record.PC_RUBY]
++schema = 'gen3_pc'
++kotlin = false
++setupScript = 0x080655D8
++special = 60
++specials = 0x0814B1B4
++pcFn = 0x08096121
++codeCrcs = [0xBC36478C, 0x62C153A4]
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/Pc.kt.
++[record.PC_SAPPHIRE]
++schema = 'gen3_pc'
++kotlin = false
++setupScript = 0x080655DC
++special = 60
++specials = 0x0814B1B4
++pcFn = 0x08096121
++codeCrcs = [0xBC36478C, 0xA79046B8]
 +
 +#
 +# Pokémon Amethyst v1.3.0 (CFRU): numbers its dex its own way - No. 1-390 is
@@ -6206,7 +6937,7 @@ index 0000000..1a04668
 +kotlin = 'Int'
 +type = 'int'
 diff --git a/gamedata/targets/3ds.toml b/gamedata/targets/3ds.toml
-index 54b8f29..073ed95 100644
+index 54b8f29..f433e07 100644
 --- a/gamedata/targets/3ds.toml
 +++ b/gamedata/targets/3ds.toml
 @@ -17,6 +17,7 @@ POCKET_KEY_ITEMS = 'PD_POCKET_KEY'
@@ -6259,7 +6990,49 @@ index 54b8f29..073ed95 100644
  museumWinnersOff = { path = 'trainerCard.museumWinnersOff', none = -1 }
  frontierBpOff = { path = 'trainerCard.frontierBpOff', none = -1 }
  
-@@ -173,3 +184,28 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
+@@ -122,6 +133,8 @@ flySpecial = '@items.fly.healWarp.special'
+ flyGenderMapsec = '@items.fly.healWarp.genderMapsec'
+ flyMaleHeal = '@items.fly.healWarp.maleHeal'
+ flyFemaleHeal = '@items.fly.healWarp.femaleHeal'
++flySaveBlock2Static = '@items.fly.healWarp.saveBlock2Static'
++flyMapHeader = '@items.fly.mapHeader'
+ 
+ # The Repels and PC anywhere: the same record's VarGet / VarSet / CheckBagHasItem / RemoveBagItem /
+ # ArePlayerFieldControlsLocked (fieldCrcs: their first 32 bytes' CRC32, in that order), VAR_REPEL_STEP_COUNT,
+@@ -148,8 +161,9 @@ pcScript = '@items.pc.script'
+ # The configs, each with the parts the port reads for it so far (`name` is the C's: PD_CONFIG_<name>) and the
+ # records `@name.` paths start from (`records`).
+ # FireRed rev 0 and LeafGreen: the tabs that read RAM (and the MAP, whose art is found by fingerprint)
+-# and the party icons; their POKéDEX and GUIDE tables aren't ported yet. The FOE TEAM's addresses
+-# are known for rev 1 only.
++# and the party icons. The FOE TEAM's addresses are known for rev 1 only. Retail FireRed rev 0 as the app
++# reads it: no POKéDEX / GUIDE tables (none on file for rev 0), its trainer card set in code (Poller.kt), the
++# quick menu from FIELD_ITEMS_PORTS["BPRE0"] (fieldItemsFor).
+ [config.firered_rev1]
+ name = 'FIRERED_REV1'
+ parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
+@@ -157,19 +171,50 @@ records = { items = 'FIELD_ITEMS_FIRERED_REV1' }
+ 
+ [config.firered_rev0]
+ name = 'FIRERED_REV0'
+-parts = ['ram', 'icons']
++parts = ['ram', 'icons', 'card', 'fly', 'field']
++records = { items = 'FIELD_ITEMS_PORTS_BPRE0' }
++set = { trainerCard = 'TRAINER_CARD_FIRERED' }
+ 
+ [config.leafgreen_rev0]
+ name = 'LEAFGREEN_REV0'
+-parts = ['ram', 'icons', 'card', 'fly', 'field']
++parts = ['ram', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
+ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV0' }
+ 
+ [config.leafgreen_rev1]
+ name = 'LEAFGREEN_REV1'
+-parts = ['ram', 'foes', 'icons', 'card', 'fly', 'field']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
+ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
+ 
+ [config.emerald_retail]
  name = 'EMERALD'
  parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
  records = { items = 'FIELD_ITEMS_EMERALD' }
@@ -6275,19 +7048,23 @@ index 54b8f29..073ed95 100644
 +# (RETAIL_PORTS' AXVE0 / AXPE0). Read like Emerald (the same species / item / map-section ids); no trainer card.
 +[config.ruby]
 +name = 'RUBY'
-+parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'fly', 'field']
++records = { items = 'FIELD_ITEMS_RUBY' }
 +
 +[config.sapphire]
 +name = 'SAPPHIRE'
-+parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'fly', 'field']
++records = { items = 'FIELD_ITEMS_SAPPHIRE' }
 +
 +[config.port_axve0]
 +name = 'RUBY_REV0'
-+parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'fly', 'field']
++records = { items = 'FIELD_ITEMS_PORTS_AXVE0' }
 +
 +[config.port_axpe0]
 +name = 'SAPPHIRE_REV0'
-+parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'fly', 'field']
++records = { items = 'FIELD_ITEMS_PORTS_AXPE0' }
 diff --git a/linux/CMakeLists.txt b/linux/CMakeLists.txt
 index 8f64735..93480eb 100644
 --- a/linux/CMakeLists.txt
@@ -6319,6 +7096,30 @@ index 41c0260..e7fd141 100644
    return sb1 >= 0x02000000u && sb1 < 0x02040000u ? sb1 : 0;
  }
  
+diff --git a/linux/fly.c b/linux/fly.c
+index 43877c1..1ca3f7a 100644
+--- a/linux/fly.c
++++ b/linux/fly.c
+@@ -97,7 +97,9 @@ static enum fly_result gate(struct mCore *core, const struct pd_config *cfg, con
+     return FLY_FAILED;
+   if (r != 1)
+     return FLY_NO_BADGE;
+-  if (!call(core, cfg->flySetUp, 0, 0, 0, &r))
++  // Ruby / Sapphire's SetUpFieldMove_Fly takes the map type (Fly.kt's mayFlyHere).
++  uint32_t type = cfg->flyMapHeader ? core->busRead8(core, cfg->flyMapHeader + 0x17) : 0;
++  if (!call(core, cfg->flySetUp, type, 0, 0, &r))
+     return FLY_FAILED;
+   return r == 1 ? FLY_OK : FLY_CANT_FLY_HERE;
+ }
+@@ -177,7 +179,7 @@ static bool warp(struct mCore *core, const struct pd_config *cfg, const uint8_t
+     if (cfg->flySpecial[k][1] && cfg->flySpecial[k][0] == mapsec)
+       heal = cfg->flySpecial[k][1];
+   if (heal < 0 && mapsec == cfg->flyGenderMapsec) {
+-    uint32_t block = core->busRead32(core, cfg->flySaveBlock2Ptr);
++    uint32_t block = cfg->flySaveBlock2Static ? cfg->flySaveBlock2Ptr : core->busRead32(core, cfg->flySaveBlock2Ptr);
+     heal = core->busRead8(core, block + 8) == 0 ? cfg->flyMaleHeal : cfg->flyFemaleHeal;
+   }
+   if (heal < 0)
 diff --git a/linux/host_io.c b/linux/host_io.c
 index 63033cd..7fb88ac 100644
 --- a/linux/host_io.c
@@ -6373,7 +7174,7 @@ index 662762a..68ed719 100644
      bx += pd_text(c, bx, pd_text_y(y, BALLS_H), t, INK, INK_SHADOW) + 4;
    }
 diff --git a/linux/main.c b/linux/main.c
-index a1c2e59..6c14390 100644
+index a1c2e59..754d91f 100644
 --- a/linux/main.c
 +++ b/linux/main.c
 @@ -13,10 +13,12 @@
@@ -6595,7 +7396,57 @@ index a1c2e59..6c14390 100644
    // The textures take mGBA's pixels as they are (XBGR: SDL's BGR888).
    if (SDL_UpdateTexture(gameTexture, &(SDL_Rect){0, 0, (int)gw, (int)gh}, video, 256 * 4) < 0) {
      notice(SDL_GetError());
-@@ -816,7 +957,8 @@ static void pacing_check(double frameMs) {
+@@ -693,6 +834,14 @@ static bool focusable(int id) {
+   return !(id >= HIT_TAB && id < HIT_TAB + PD_TAB_COUNT) && id != HIT_FF && id != HIT_SCRIM &&
+          id != HIT_BAG_LIST && id != HIT_DEX_LIST && id != HIT_GUIDE_LIST && id != HIT_SETTINGS_LIST;
+ }
++// A window over the screen (the guide's notice, a picker, PLACES) starts with its scrim: the cursor stays on what
++// comes after it - the screen under the window can't be reached (or pressed) while it's open.
++static int modal_floor(const struct pd_ui *u) {
++  for (int i = 0; i < u->hitCount; i++)
++    if (u->hits[i].id == HIT_SCRIM)
++      return i;
++  return 0;
++}
+ static int focus_index(const struct pd_ui *u, int id) {
+   for (int i = 0; i < u->hitCount; i++)
+     if (u->hits[i].id == id)
+@@ -704,10 +853,13 @@ static int focus_resolve(struct pd_ui *u) {
+   struct screen now = screen_of(u);
+   bool changed = memcmp(&now, &lastScreen, sizeof now) != 0;
+   lastScreen = now;
++  int floor = modal_floor(u);
+   int i = changed ? -1 : focus_index(u, focusId);
++  if (i >= 0 && i < floor)
++    i = -1;
+   if (i < 0 && !changed && focusId >= 0) { // gone: the nearest item to where it was
+     int best = 1 << 30;
+-    for (int j = 0; j < u->hitCount; j++) {
++    for (int j = floor; j < u->hitCount; j++) {
+       const struct pd_hit *h = &u->hits[j];
+       int dx = h->x + h->w / 2 - (focusAt.x + focusAt.w / 2),
+           dy = h->y + h->h / 2 - (focusAt.y + focusAt.h / 2);
+@@ -717,7 +869,9 @@ static int focus_resolve(struct pd_ui *u) {
+   }
+   if (i < 0 && u->startId >= 0)
+     i = focus_index(u, u->startId);
+-  for (int j = 0; i < 0 && j < u->hitCount; j++)
++  if (i >= 0 && i < floor)
++    i = -1;
++  for (int j = floor; i < 0 && j < u->hitCount; j++)
+     if (focusable(u->hits[j].id))
+       i = j;
+   if (i < 0 && u->hitCount)
+@@ -735,7 +889,7 @@ static void focus_move(struct pd_ui *u, int direction) {
+   }
+   const struct pd_hit *h = &u->hits[cur];
+   int best = -1, score = 1000000;
+-  for (int i = 0; i < u->hitCount; i++) {
++  for (int i = modal_floor(u); i < u->hitCount; i++) {
+     if (i == cur)
+       continue;
+     struct pd_hit *t = &u->hits[i];
+@@ -816,7 +970,8 @@ static void pacing_check(double frameMs) {
    avg = 0;
    count = 0;
  }
@@ -6605,7 +7456,7 @@ index a1c2e59..6c14390 100644
    double rate = 32768;
    if (vsyncPaced && audio && screenHz > 0) {
      double queued = SDL_GetQueuedAudioSize(audio) / 4.0, target = 32768 * 0.06;
-@@ -824,6 +966,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
+@@ -824,6 +979,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
      d = d > 1 ? 1 : d < -1 ? -1 : d;
      rate = 32768 * gameHz / screenHz * (1 + 0.005 * d);
    }
@@ -6613,7 +7464,7 @@ index a1c2e59..6c14390 100644
    for (int i = 0; i < 2; i++)
      blip_set_rates(c->getAudioChannel(c, i), c->frequency(c), rate);
  }
-@@ -878,6 +1021,28 @@ static void perf_frame(uint64_t start, double hz) {
+@@ -878,6 +1034,28 @@ static void perf_frame(uint64_t start, double hz) {
  static void test_frame(struct mCore *, bool, int, struct pd_ui *,
                         struct pd_snapshot *);
  #endif
@@ -6642,7 +7493,7 @@ index a1c2e59..6c14390 100644
  static void run_game(const char *path, int maxFrames, const char *shot) {
    FILE *f = fopen(path, "rb");
    if (!f) {
-@@ -933,7 +1098,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -933,7 +1111,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    char sav[1024], ss[1024];
    const char *name = strrchr(path, '/');
    name = name ? name + 1 : path;
@@ -6654,7 +7505,7 @@ index a1c2e59..6c14390 100644
    snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
    struct pocket_save_status saveStatus = {0};
    if (!pocket_save_backup(sav, time(NULL))) {
-@@ -970,6 +1138,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -970,6 +1151,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    pd_game_detect(&game, romdata, (size_t)len);
    game.rom = romdata;
    game.romSize = (size_t)len;
@@ -6664,7 +7515,7 @@ index a1c2e59..6c14390 100644
    if (c->platform(c) == mPLATFORM_GBA)
      pd_romart_scan(&game);
    char config[1024];
-@@ -1009,6 +1180,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1009,6 +1193,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    const char *repelNames[REPEL_KINDS];
    struct pd_ui ui;
    pd_ui_init(&ui, &settings);
@@ -6675,7 +7526,7 @@ index a1c2e59..6c14390 100644
    struct pd_snapshot snap = {0};
    struct pd_host_info host = {.hideScreenMode = true, .hasExpand = true, .hasHud = c->platform(c) == mPLATFORM_GBA,
                                .expandGame = wideSupported, .count = 1, .labels = {"HOST"}};
-@@ -1036,9 +1211,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1036,9 +1224,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    while (running && !leave) {
      uint64_t frameStart = SDL_GetPerformanceCounter();
      if(saveStatus.failed) { appError=1; notice("Save I/O failed; stopping game"); break; }
@@ -6710,7 +7561,7 @@ index a1c2e59..6c14390 100644
      if (down(X)) {
        menuOpen = 0;
        companion = !companion;
-@@ -1046,7 +1246,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1046,7 +1259,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
        if (audio)
          SDL_ClearQueuedAudio(audio);
      }
@@ -6719,7 +7570,7 @@ index a1c2e59..6c14390 100644
                         (held & (1u << START)) && (held & (1u << SELECT)))) {
        menuOpen = menuOpen ? 0 : 1;
        companion = true;
-@@ -1309,24 +1509,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1309,24 +1522,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
          confirmMenu.selected = 0;
        }
      } else {
@@ -6761,7 +7612,7 @@ index a1c2e59..6c14390 100644
      }
      // The companion's data: fresh when it opens (it pauses the game), else twice a
      // second - read through the bus byte by byte, every frame cost frame time.
-@@ -1502,6 +1713,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1502,6 +1726,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    if (audio)
      SDL_ClearQueuedAudio(audio);
  cleanup:
@@ -6769,7 +7620,7 @@ index a1c2e59..6c14390 100644
    pk_wide_configure(0);
    wideSupported = wideReady = false;
    c->unloadROM(c);
-@@ -1520,6 +1732,8 @@ int main(int argc, char **argv) {
+@@ -1520,6 +1745,8 @@ int main(int argc, char **argv) {
    for (int i = 1; i < argc; i++) {
      if (!strcmp(argv[i], "--data") && i + 1 < argc)
        root = argv[++i];
@@ -6778,7 +7629,7 @@ index a1c2e59..6c14390 100644
      else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
        frames = atoi(argv[++i]);
      else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
-@@ -1532,6 +1746,11 @@ int main(int argc, char **argv) {
+@@ -1532,6 +1759,11 @@ int main(int argc, char **argv) {
    signal(SIGTERM, stop);
    mkdir(root, 0755);
    char path[1024];
@@ -6790,8 +7641,48 @@ index a1c2e59..6c14390 100644
    const char *dirs[] = {"roms", "saves", "states"};
    for (int i = 0; i < 3; i++) {
      snprintf(path, sizeof path, "%s/%s", root, dirs[i]);
+diff --git a/linux/quick_menu.c b/linux/quick_menu.c
+index 3fa24bd..9d3e55e 100644
+--- a/linux/quick_menu.c
++++ b/linux/quick_menu.c
+@@ -45,6 +45,16 @@ static const char *const PC[] = {
+     ".KDDDDDDDDDDDDK.", ".KKKKKKKKKKKKKK.", "......KDDK......", "....KKKKKKKK....", "...KLLLLLLLLK...",
+     "...KKKKKKKKKK...", NULL,
+ };
++// REPEL and BIKE where the game has no item icons to draw (Ruby / Sapphire; the app has its bundled item sprites).
++static const char *const REPEL[] = {
++    "....KKK.....", "...KLLLK.K..", "...KKKKK..K.", "..KGGGGGK.K.", "..KGLGGGK...", "..KGLGGGK...",
++    "..KGGGGGK...", "..KGGGGGK...", "..KGGGGGK...", "..KKKKKKK...", NULL,
++};
++static const char *const BIKE[] = {
++    "...........KK...", "...KKK.....K....", "....K.....K.....", "....KKKKKKK.....", "..KKK.K..K.KKK..",
++    ".K...KK.K.K...K.", "K...K.KK.K.K...K", "K...K..KK..K...K", "K.....K..K.....K", ".K...K....K...K.",
++    "..KKK......KKK..", NULL,
++};
+ static const char *const COMPANION[] = {
+     "......11", ".....11.", "....11..", "...11...", "..11....", ".11.....", "11......",
+     ".11.....", "..11....", "...11...", "....11..", ".....11.", "......11", NULL,
+@@ -71,6 +81,8 @@ static uint32_t icon_color(enum quick_action a, char ch) {
+   if (a == QUICK_PC)
+     return ch == 'K' ? 0x202838 : ch == 'L' ? 0xD8D8E0 : ch == 'D' ? 0x9098A8 : ch == 'S' ? 0x3070C8
+          : ch == 'H' ? 0x90C8F8 : 0x40D040;
++  if (a == QUICK_REPEL)
++    return ch == 'K' ? 0x202838 : ch == 'L' ? 0xE8ECF4 : 0x48A848;
+   if (a == QUICK_SAVE_STATE || a == QUICK_LOAD_STATE)
+     return ch == 'K' ? 0x202838 : ch == 'D' ? 0x4870C0 : ch == 'L' ? 0xE8ECF4 : 0xF8C030;
+   return INK;
+@@ -79,7 +91,8 @@ static uint32_t icon_color(enum quick_action a, char ch) {
+ // An icon centred at (cx, cy), `scale` canvas pixels a pixel; dim: at half strength over the glass.
+ static void icon(struct pd_canvas *c, enum quick_action a, int cx, int cy, int scale, bool dim) {
+   const char *const *rows = a == QUICK_PC ? PC : a == QUICK_WILD ? GRASS : a == QUICK_SAVE_STATE ? SAVE_STATE
+-                          : a == QUICK_LOAD_STATE ? LOAD_STATE : a == QUICK_FF ? FF : COMPANION;
++                          : a == QUICK_LOAD_STATE ? LOAD_STATE : a == QUICK_FF ? FF : a == QUICK_REPEL ? REPEL
++                          : a == QUICK_BIKE ? BIKE : COMPANION;
+   int h = 0, w = (int)strlen(rows[0]);
+   while (rows[h])
+     h++;
 diff --git a/scripts/gen_gamedata.py b/scripts/gen_gamedata.py
-index 9a2348a..71c74a8 100644
+index 9a2348a..f7b4a75 100644
 --- a/scripts/gen_gamedata.py
 +++ b/scripts/gen_gamedata.py
 @@ -216,6 +216,7 @@ def kotlin_class_fields(kt_file, cls):
@@ -6828,12 +7719,60 @@ index 9a2348a..71c74a8 100644
          if r["file"] != last_file:
              out += ["", f"// ---- {r['file']} ----"]
              last_file = r["file"]
+@@ -708,6 +714,7 @@ class Resolver:
+     def __init__(self, configs, records, schema):
+         self.configs, self.records, self.schema = configs, records, schema
+         self.attached = {}  # {config: {name: record}}: a target's `records`, which `@name.` paths start from
++        self.overrides = {}  # {config: {field: value}}: a target's `set`, on that config only (not what's built on it)
+ 
+     def config_fields(self, key):
+         c = self.configs[key]
+@@ -737,7 +744,8 @@ class Resolver:
+         return v, f
+ 
+     def walk(self, key, path, where):
+-        fields, schema = self.config_fields(key), self.schema
++        fields, schema = dict(self.config_fields(key)), self.schema
++        fields.update(self.overrides.get(key, {}))
+         parts = path.split(".")
+         if parts[0].startswith("@"):
+             record = self.attached.get(key, {}).get(parts[0][1:])
+@@ -832,12 +840,19 @@ def c_target(path, configs, records, schema):
+             for name in attached.values():
+                 if records.get(name, {}).get("kind") != "record":
+                     fail(where, f"{name} isn't a record in gamedata/gen3/records/")
+-            wanted.append((key, entries["name"][0], entries["parts"][0], tab["lead"], where, attached))
++            # `set = { field = value }`: config fields the target sets itself, as the app's code does with a .copy(...)
++            # (retail FireRed rev 0's trainer card: Poller.kt's NATIVE_FIRERED_REV0.copy(trainerCard = ...)).
++            for f in entries.get("set", ({}, 0))[0]:
++                if f not in schema["fields"]:
++                    fail(where, f"set: `{f}` isn't a config field")
++            wanted.append((key, entries["name"][0], entries["parts"][0], tab["lead"], where, attached,
++                           entries.get("set", ({}, 0))[0]))
+         else:
+             fail(where, f"unexpected [{tab['name']}]")
+     lists = {n: r for n, r in records.items() if r["kind"] == "list"}
+     res = Resolver(configs, records, schema)
+     res.attached = {w[0]: w[5] for w in wanted}
++    res.overrides = {w[0]: w[6] for w in wanted}
+     out = [
+         f"// Generated by scripts/gen_gamedata.py from gamedata/ ({rel}) - don't edit by hand: change",
+         "// the TOML there and run `make gamedata` (gamedata/README.md). Included by pd_game.c only.",
+@@ -846,7 +861,7 @@ def c_target(path, configs, records, schema):
+         "",
+         f'#include "pd_game.h"',
+     ]
+-    for key, cname, want, lead, where, _ in wanted:
++    for key, cname, want, lead, where, *_ in wanted:
+         c = configs[key]
+         out.append("")
+         out += kt_comments(lead, "")
 diff --git a/scripts/port_records.py b/scripts/port_records.py
 new file mode 100644
-index 0000000..b1400f3
+index 0000000..cfa330f
 --- /dev/null
 +++ b/scripts/port_records.py
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,345 @@
 +#!/usr/bin/env python3
 +"""plorpOS's Linux port: moves the records the Gen 3 configs name (PokedexTables, GuideTables, TrainerCardSave,
 +DexFlags, FieldItemFns, FlyFns, PcFns, PartyItemFns, HealWarp) from the app's Kotlin vals into
@@ -6917,9 +7856,14 @@ index 0000000..b1400f3
 +
 +
 +def find_val(name, sources):
-+    """(file, rhs code, the comment lines above it) of `val NAME = ...`, or None."""
++    """(file, rhs code, the comment lines above it) of `val NAME = ...`, or None. FIELD_ITEMS_PORTS_<KEY>: the
++    `"<KEY>" to FieldItemFns(...)` entry of the app's FIELD_ITEMS_PORTS map (English FireRed / Ruby / Sapphire rev 0)."""
++    pm = re.fullmatch(r"FIELD_ITEMS_PORTS_([A-Z0-9]{5})", name)
++    pat = (r'^\s*"%s"\s+to\s+' % pm.group(1)) if pm else VAL.format(name=re.escape(name))
 +    for path, src in sources.items():
-+        m = re.search(VAL.format(name=re.escape(name)), src, re.M)
++        if pm and "val FIELD_ITEMS_PORTS" not in src:
++            continue
++        m = re.search(pat, src, re.M)
 +        if not m:
 +            continue
 +        start = m.end()
@@ -6988,6 +7932,21 @@ index 0000000..b1400f3
 +                return "[" + ", ".join(cv.toml_int(l) if re.fullmatch(r"-?(0x[0-9A-Fa-f_]+|\d+)L?", l)
 +                                       else str(i) for l, i in zip(lits, items)) + "]", None
 +    plain = " ".join(rhs.split())
++    # setOf(2, 4) / mapOf(15 to 11) / emptyList(): TOML lists (as the hand-written records have them) - left as
++    # Kotlin, the C target would get { 0 } for them.
++    if ftype in ("int_set", "long_set", "int_list", "long_list") and re.fullmatch(r"empty(List|Set)\(\)", plain):
++        return "[]", None
++    m = re.fullmatch(r"setOf\((.*)\)", plain)
++    if m and ftype in ("int_set", "long_set"):
++        items = [num(a) for a in cv.split_args(m.group(1)) if a.strip()]
++        if all(i is not None for i in items):
++            return "[" + ", ".join(str(i) for i in items) + "]", None
++    m = re.fullmatch(r"mapOf\((.*)\)", plain)
++    if m and ftype == "int_map":
++        pairs = [re.fullmatch(r"\s*(.+?)\s+to\s+(.+?)\s*", a) for a in cv.split_args(m.group(1)) if a.strip()]
++        kv = [(num(p.group(1)), num(p.group(2))) if p else (None, None) for p in pairs]
++        if all(k is not None and v is not None for k, v in kv):
++            return "[" + ", ".join(f"[{k}, {v}]" for k, v in kv) + "]", None
 +    if ftype == "ref" and re.fullmatch(r"[A-Za-z_]\w*\.[A-Z_][A-Z0-9_]*", plain):  # an enum value: CardStyle.LEGACY
 +        return cv.toml_str(plain), None
 +    return cv.to_toml(field, rhs, ftype, {})
