@@ -1,5 +1,5 @@
 diff --git a/3ds/core/pd_configs_gen.h b/3ds/core/pd_configs_gen.h
-index ded2491..0327b2e 100644
+index ded2491..9deaa9c 100644
 --- a/3ds/core/pd_configs_gen.h
 +++ b/3ds/core/pd_configs_gen.h
 @@ -24,6 +24,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
@@ -21,7 +21,19 @@ index ded2491..0327b2e 100644
      .monIconTable = 0x083D3810,
      .monIconPaletteIndices = 0x083D3EF0,
      .monIconPaletteTable = 0x083D40A8,
-@@ -124,6 +128,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -52,6 +56,11 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .regionalOrder = 0,
+     .regionalCount = 151,
+     .regionName = "KANTO",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
+     .trainers = 0x0823EB38,
+     .learnsets = 0x0825D824,
+     .wildHeaders = 0x083C9D28,
+@@ -124,6 +133,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -29,7 +41,7 @@ index ded2491..0327b2e 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -133,6 +138,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -133,6 +143,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -38,7 +50,7 @@ index ded2491..0327b2e 100644
      .monIconTable = 0x083D37A0,
      .monIconPaletteIndices = 0x083D3E80,
      .monIconPaletteTable = 0x083D4038,
-@@ -154,6 +161,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -154,6 +166,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -46,7 +58,7 @@ index ded2491..0327b2e 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -163,6 +171,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -163,6 +176,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -55,7 +67,7 @@ index ded2491..0327b2e 100644
      .monIconTable = 0x083D35DC,
      .monIconPaletteIndices = 0x083D3CBC,
      .monIconPaletteTable = 0x083D3E74,
-@@ -235,6 +245,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -235,6 +250,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .mapHeader = 0x02036DFC,
      .encryptionKeyOff = 0xF20,
      .moneyOff = 0x290,
@@ -63,7 +75,7 @@ index ded2491..0327b2e 100644
      .bagPockets = 0x0203988C,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
      .dexSeenCopy1 = 0x5F8,
-@@ -247,7 +258,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -247,7 +263,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
      .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
@@ -74,7 +86,7 @@ index ded2491..0327b2e 100644
      .monIconTable = 0x083D364C,
      .monIconPaletteIndices = 0x083D3D2C,
      .monIconPaletteTable = 0x083D3EE4,
-@@ -320,6 +334,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -320,6 +339,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .mapHeader = 0x02037318,
      .encryptionKeyOff = 0xAC,
      .moneyOff = 0x490,
@@ -82,7 +94,7 @@ index ded2491..0327b2e 100644
      .bagPockets = 0x02039DD8,
      .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
      .dexSeenCopy1 = 0x988,
-@@ -332,7 +347,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -332,7 +352,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .enemyParty = 0x02024744,
      .battlerPartyIndexes = 0x0202406E,
      .battleStructPtr = 0x0202449C,
@@ -93,13 +105,25 @@ index ded2491..0327b2e 100644
      .monIconTable = 0x0857BCA8,
      .monIconPaletteIndices = 0x0857C388,
      .monIconPaletteTable = 0x0857C540,
-@@ -406,4 +424,268 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -348,6 +371,11 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+     .regionalOrder = 0x0831DFB8,
+     .regionalCount = 202,
+     .regionName = "HOENN",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
+     .trainers = 0x08310030,
+     .learnsets = 0x0832937C,
+     .wildHeaders = 0x08552D48,
+@@ -406,4 +434,298 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .pcScript = 0x0203FFF4,
  };
  
 +// plorpOS's Linux port: the hacks, as their records reach gen3/records/c_hacks.toml. Emerald Legacy v1.1.4: retail's
-+// structs with its own addresses (its guide's trainer parties and its card style need C first).
-+// gamedata/gen3/hacks/emerald_legacy.toml: emerald_legacy (ram, foes, icons, dex)
++// structs with its own addresses, its own TrainerMon (guideTables.trainerMon).
++// gamedata/gen3/hacks/emerald_legacy.toml: emerald_legacy (ram, foes, icons, dex, guide)
 +static const struct pd_config PD_CONFIG_EMERALD_LEGACY = {
 +    .playerParty = 0x020244EC,
 +    .playerPartyCount = 0x020244E9,
@@ -145,6 +169,16 @@ index ded2491..0327b2e 100644
 +    .regionalOrder = 0x083465CC,
 +    .regionalCount = 210,
 +    .regionName = "HOENN",
++    .trainerMonStride = 0x2C,
++    .trainerMonMovesOff = 0x1E,
++    .trainerMonSpeciesOff = 0x1A,
++    .trainerMonItemOff = 0x1C,
++    .trainerMonLevelOff = 0x19,
++    .trainers = 0x083380E8,
++    .learnsets = 0x083522A8,
++    .wildHeaders = 0x08585028,
++    .probeTrainer = 265,
++    .probeName = "ROXANNE",
 +};
 +
 +// Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
@@ -195,6 +229,11 @@ index ded2491..0327b2e 100644
 +    .regionalOrder = 0x081FC864,
 +    .regionalCount = 202,
 +    .regionName = "HOENN",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
 +    .trainers = 0x081F0514,
 +    .learnsets = 0x08207BE0,
 +    .wildHeaders = 0x0839D46C,
@@ -248,6 +287,11 @@ index ded2491..0327b2e 100644
 +    .regionalOrder = 0x081FC7F4,
 +    .regionalCount = 202,
 +    .regionName = "HOENN",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
 +    .trainers = 0x081F04A4,
 +    .learnsets = 0x08207B70,
 +    .wildHeaders = 0x0839D2B4,
@@ -301,6 +345,11 @@ index ded2491..0327b2e 100644
 +    .regionalOrder = 0x081FC84C,
 +    .regionalCount = 202,
 +    .regionName = "HOENN",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
 +    .trainers = 0x081F04FC,
 +    .learnsets = 0x08207BC8,
 +    .wildHeaders = 0x0839D454,
@@ -354,6 +403,11 @@ index ded2491..0327b2e 100644
 +    .regionalOrder = 0x081FC7DC,
 +    .regionalCount = 202,
 +    .regionName = "HOENN",
++    .trainerMonStride = 0,
++    .trainerMonMovesOff = 0,
++    .trainerMonSpeciesOff = 0,
++    .trainerMonItemOff = 0,
++    .trainerMonLevelOff = 0,
 +    .trainers = 0x081F048C,
 +    .learnsets = 0x08207B58,
 +    .wildHeaders = 0x0839D29C,
@@ -363,7 +417,7 @@ index ded2491..0327b2e 100644
 +
  #endif
 diff --git a/3ds/core/pd_game.c b/3ds/core/pd_game.c
-index dafc939..58de845 100644
+index dafc939..92df1ba 100644
 --- a/3ds/core/pd_game.c
 +++ b/3ds/core/pd_game.c
 @@ -1,7 +1,10 @@
@@ -454,7 +508,7 @@ index dafc939..58de845 100644
 +};
 +static const struct known_rom KNOWN_ROMS[] = {
 +    {"cbd71af65ee3dcd53280a6a12014bfb11e8f626a", &PD_CONFIG_EMERALD_LEGACY, PD_GAME_EMERALD, "Pokémon Emerald Legacy",
-+     PD_GUIDE_NONE},
++     PD_GUIDE_EMERALD_LEGACY},
 +    {NULL, NULL, PD_GAME_NONE, NULL, PD_GUIDE_NONE},
 +};
 +
@@ -511,10 +565,10 @@ index dafc939..58de845 100644
 +    g->unsupported = "Not a version the companion knows";
 +}
 diff --git a/3ds/core/pd_game.h b/3ds/core/pd_game.h
-index d8dff14..f820242 100644
+index d8dff14..e5e0c17 100644
 --- a/3ds/core/pd_game.h
 +++ b/3ds/core/pd_game.h
-@@ -15,6 +15,16 @@ enum pd_game_kind {
+@@ -15,6 +15,17 @@ enum pd_game_kind {
      PD_GAME_EMERALD,
  };
  
@@ -526,12 +580,13 @@ index d8dff14..f820242 100644
 +    PD_GUIDE_EMERALD,
 +    PD_GUIDE_RUBY,
 +    PD_GUIDE_SAPPHIRE,
++    PD_GUIDE_EMERALD_LEGACY,
 +};
 +
  struct pd_config {
      uint32_t playerParty;
      uint32_t playerPartyCount;
-@@ -26,7 +36,9 @@ struct pd_config {
+@@ -26,7 +37,9 @@ struct pd_config {
      uint32_t saveBlock1Ptr;
      uint32_t saveBlock2Ptr;
      uint32_t mapHeader;
@@ -542,7 +597,7 @@ index d8dff14..f820242 100644
      uint32_t moneyOff;         // in SaveBlock1
      // The battle's FOE TEAM: gEnemyParty (6 struct Pokemon), gBattlerPartyIndexes
      // (u16 per battler: which one is out) and gBattleStruct (a pointer) ->
-@@ -42,6 +54,8 @@ struct pd_config {
+@@ -42,6 +55,8 @@ struct pd_config {
      // The bag's icons: sItemIconTable, {tiles, palette} (both LZ77) every itemIconStride bytes. 0 = none.
      uint32_t itemIconTable;
      int itemIconStride;
@@ -551,7 +606,16 @@ index d8dff14..f820242 100644
      // gBagPockets: five {slots pointer, capacity} pairs, 8 bytes apart;
      // bagOrder[i] is the pocket (PD_POCKET_*) the game keeps at index i.
      uint32_t bagPockets;
-@@ -133,6 +147,7 @@ struct pd_game {
+@@ -68,6 +83,8 @@ struct pd_config {
+     uint32_t learnsets;   // gLevelUpLearnsets, a pointer per species
+     uint32_t wildHeaders; // gWildMonHeaders, 20 bytes each
+     uint32_t flagsOff, varsOff, flagBytes; // in SaveBlock1
++    // A hack's own struct TrainerMon (GuideTables.trainerMon), every field at a fixed offset; stride 0 = retail's.
++    int trainerMonStride, trainerMonMovesOff, trainerMonSpeciesOff, trainerMonItemOff, trainerMonLevelOff;
+     int probeTrainer;     // checks the tables match the ROM ...
+     const char* probeName; // ... by this trainer's name
+ 
+@@ -133,6 +150,7 @@ struct pd_game {
      char code[5];       // ROM header game code, e.g. "BPRE"
      int revision;       // ROM header 0xBC
      const char* title;  // "Pokémon FireRed"
@@ -559,7 +623,7 @@ index d8dff14..f820242 100644
      const struct pd_config* cfg; // NULL = detected but not supported
      const char* unsupported;     // why, when cfg is NULL
      // The ROM's bytes (0x08000000 on the bus), for the tabs that read its
-@@ -140,6 +155,7 @@ struct pd_game {
+@@ -140,6 +158,7 @@ struct pd_game {
      const uint8_t* rom;
      size_t romSize;
      unsigned loadId; // new on every pd_game_detect (see pd_rom_id)
@@ -567,7 +631,7 @@ index d8dff14..f820242 100644
  };
  
  // Which ROM the tabs' caches were built from: 0 = none, else new for every
-@@ -155,4 +171,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
+@@ -155,4 +174,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
  // Reads the ROM header (the first 0xC0 bytes of the ROM) and its size.
  void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize);
  
@@ -579,10 +643,10 @@ index d8dff14..f820242 100644
 +
  #endif
 diff --git a/3ds/core/pd_guide.c b/3ds/core/pd_guide.c
-index f8287c1..8cc3d77 100644
+index f8287c1..48cad44 100644
 --- a/3ds/core/pd_guide.c
 +++ b/3ds/core/pd_guide.c
-@@ -19,23 +19,25 @@ static uint32_t u32(const uint8_t* p) {
+@@ -19,23 +19,27 @@ static uint32_t u32(const uint8_t* p) {
  }
  
  const struct pd_guide* pd_guide_for(const struct pd_game* g) {
@@ -595,6 +659,7 @@ index f8287c1..8cc3d77 100644
 +    case PD_GUIDE_EMERALD: return &pd_guide_emerald;
 +    case PD_GUIDE_RUBY: return &pd_guide_ruby;
 +    case PD_GUIDE_SAPPHIRE: return &pd_guide_sapphire;
++    case PD_GUIDE_EMERALD_LEGACY: return &pd_guide_emerald_legacy;
 +    default: return NULL;
 +    }
  }
@@ -614,6 +679,7 @@ index f8287c1..8cc3d77 100644
 +    case PD_GUIDE_EMERALD: *count = pd_areas_emerald_count; return pd_areas_emerald;
 +    case PD_GUIDE_RUBY:
 +    case PD_GUIDE_SAPPHIRE: *count = pd_areas_ruby_sapphire_count; return pd_areas_ruby_sapphire;
++    case PD_GUIDE_EMERALD_LEGACY: *count = pd_areas_emerald_legacy_count; return pd_areas_emerald_legacy;
 +    default: *count = 0; return NULL;
      }
 -    *count = 0;
@@ -621,43 +687,195 @@ index f8287c1..8cc3d77 100644
  }
  
  static bool caught_species(const struct pd_game* g, const struct pd_snapshot* s, int species) {
+@@ -103,6 +107,11 @@ bool pd_guide_rom_ok(const struct pd_game* g) {
+ }
+ 
+ int pd_boss_trainer(const struct pd_guide* gd, const struct pd_boss* b, const struct pd_snapshot* s) {
++    if (b->kind == PD_BOSS_BY_FLAGS) {
++        for (const uint16_t* p = b->alts; p && p[0]; p += 2)
++            if (pd_flag(s, p[0])) return p[1];
++        return b->a;
++    }
+     int id = b->kind == PD_BOSS_FIXED ? b->a : pd_flag(s, gd->leagueRematchFlag) ? b->b : b->a;
+     if (b->kind == PD_BOSS_CHAMPION) {
+         // The rival answers the starter: CHARMANDER (2) -> +0, SQUIRTLE (1) -> +1, else +2.
+@@ -143,6 +152,23 @@ int pd_trainer_team(const struct pd_game* g, int trainer, struct pd_team_mon* ou
+     if (!t) return 0;
+     int flags = t[0], size = t[0x20];
+     if (size < 1 || size > PD_TEAM_MAX) return 0;
++    const struct pd_config* cfg = g->cfg;
++    if (cfg->trainerMonStride) {  // a hack's own TrainerMon (Emerald Legacy's 0x2C), whatever the flags
++        const uint8_t* party = pd_rom_at(g, u32(t + 0x24), (size_t) (size * cfg->trainerMonStride));
++        if (!party) return 0;
++        for (int i = 0; i < size; i++) {
++            const uint8_t* m = party + i * cfg->trainerMonStride;
++            struct pd_team_mon* o = &out[i];
++            memset(o, 0, sizeof(*o));
++            o->level = m[cfg->trainerMonLevelOff];
++            o->species = u16(m + cfg->trainerMonSpeciesOff);
++            o->item = u16(m + cfg->trainerMonItemOff);
++            bool any = false;
++            for (int k = 0; k < 4; k++) any |= (o->moves[k] = u16(m + cfg->trainerMonMovesOff + k * 2)) != 0;
++            if (!any) default_moves(g, o->species, o->level, o->moves);  // none = the level-up moves
++        }
++        return size;
++    }
+     bool customMoves = flags & 1, heldItem = flags & 2;
+     int stride = customMoves ? 16 : 8;
+     const uint8_t* party = pd_rom_at(g, u32(t + 0x24), (size_t) (size * stride));
 diff --git a/3ds/core/pd_guide.h b/3ds/core/pd_guide.h
-index a1aa81a..8d00d27 100644
+index a1aa81a..0ca83fc 100644
 --- a/3ds/core/pd_guide.h
 +++ b/3ds/core/pd_guide.h
-@@ -60,7 +60,7 @@ struct pd_guide {
+@@ -40,6 +40,7 @@ enum pd_boss_kind {
+     PD_BOSS_FIXED,    // trainer a
+     PD_BOSS_LEAGUE,   // a, or rematch b once the League has its rematch teams
+     PD_BOSS_CHAMPION, // the rival: league(a, b) + an offset by the starter
++    PD_BOSS_BY_FLAGS, // alts' first {flag, trainer} whose flag is set, else a (Emerald Legacy's BRAWLY)
+ };
+ 
+ struct pd_boss {
+@@ -48,6 +49,7 @@ struct pd_boss {
+     uint16_t doneFlag;
+     uint8_t kind;
+     uint16_t a, b;
++    const uint16_t* alts; // PD_BOSS_BY_FLAGS: {flag, trainer} pairs, 0-terminated
+ };
+ 
+ struct pd_guide {
+@@ -60,7 +62,8 @@ struct pd_guide {
      uint16_t starterVar;        // FireRed's VAR_STARTER_MON
  };
  
 -extern const struct pd_guide pd_guide_firered, pd_guide_leafgreen, pd_guide_emerald;
-+extern const struct pd_guide pd_guide_firered, pd_guide_leafgreen, pd_guide_emerald, pd_guide_ruby, pd_guide_sapphire;
++extern const struct pd_guide pd_guide_firered, pd_guide_leafgreen, pd_guide_emerald, pd_guide_ruby, pd_guide_sapphire,
++    pd_guide_emerald_legacy;
  
  enum pd_area_kind { PD_AREA_ITEM, PD_AREA_HIDDEN, PD_AREA_GIFT, PD_AREA_KEY, PD_AREA_MON, PD_AREA_EGG, PD_AREA_TRADE };
  
-@@ -74,8 +74,8 @@ struct pd_area_thing {
+@@ -74,8 +77,10 @@ struct pd_area_thing {
      const char* where; // the sub-map ("" = the area's main map)
  };
  
 -extern const struct pd_area_thing pd_areas_firered[], pd_areas_leafgreen[], pd_areas_emerald[];
 -extern const int pd_areas_firered_count, pd_areas_leafgreen_count, pd_areas_emerald_count;
-+extern const struct pd_area_thing pd_areas_firered[], pd_areas_leafgreen[], pd_areas_emerald[], pd_areas_ruby_sapphire[];
-+extern const int pd_areas_firered_count, pd_areas_leafgreen_count, pd_areas_emerald_count, pd_areas_ruby_sapphire_count;
++extern const struct pd_area_thing pd_areas_firered[], pd_areas_leafgreen[], pd_areas_emerald[], pd_areas_ruby_sapphire[],
++    pd_areas_emerald_legacy[];
++extern const int pd_areas_firered_count, pd_areas_leafgreen_count, pd_areas_emerald_count, pd_areas_ruby_sapphire_count,
++    pd_areas_emerald_legacy_count;
  
  // The guide and area data for g (NULL / 0 if none).
  const struct pd_guide* pd_guide_for(const struct pd_game* g);
 diff --git a/3ds/core/pd_guide_gen.c b/3ds/core/pd_guide_gen.c
-index a90e1b5..ef3eced 100644
+index a90e1b5..4930cbb 100644
 --- a/3ds/core/pd_guide_gen.c
 +++ b/3ds/core/pd_guide_gen.c
 @@ -1,5 +1,5 @@
 -// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt
 -// and GuideAreas{FireRed,LeafGreen,Emerald}Gen.kt - do not hand-edit.
-+// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt
-+// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire}Gen.kt - do not hand-edit.
++// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt, GuideEmeraldLegacy.kt
++// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire,EmeraldLegacy}Gen.kt - do not hand-edit.
  #include "pd_guide.h"
  
  static const struct pd_guide_entry pd_guide_firered_p0_s0[] = {
-@@ -363,6 +363,596 @@ const struct pd_guide pd_guide_emerald = {
+@@ -105,19 +105,19 @@ static const struct pd_guide_page pd_guide_firered_pages[] = {
+     { "STUCK?", pd_guide_firered_p2, 4 },
+ };
+ static const struct pd_boss pd_guide_firered_bosses[] = {
+-    { "LEADER BROCK", "PEWTER CITY GYM", 0x820, PD_BOSS_FIXED, 414, 0 },
+-    { "LEADER MISTY", "CERULEAN CITY GYM", 0x821, PD_BOSS_FIXED, 415, 0 },
+-    { "LEADER LT. SURGE", "VERMILION CITY GYM", 0x822, PD_BOSS_FIXED, 416, 0 },
+-    { "LEADER ERIKA", "CELADON CITY GYM", 0x823, PD_BOSS_FIXED, 417, 0 },
+-    { "LEADER KOGA", "FUCHSIA CITY GYM", 0x824, PD_BOSS_FIXED, 418, 0 },
+-    { "LEADER SABRINA", "SAFFRON CITY GYM", 0x825, PD_BOSS_FIXED, 420, 0 },
+-    { "LEADER BLAINE", "CINNABAR ISLAND GYM", 0x826, PD_BOSS_FIXED, 419, 0 },
+-    { "LEADER GIOVANNI", "VIRIDIAN CITY GYM", 0x827, PD_BOSS_FIXED, 350, 0 },
+-    { "ELITE FOUR LORELEI", "POKéMON LEAGUE", 0x4B8, PD_BOSS_LEAGUE, 410, 735 },
+-    { "ELITE FOUR BRUNO", "POKéMON LEAGUE", 0x4B9, PD_BOSS_LEAGUE, 411, 736 },
+-    { "ELITE FOUR AGATHA", "POKéMON LEAGUE", 0x4BA, PD_BOSS_LEAGUE, 412, 737 },
+-    { "ELITE FOUR LANCE", "POKéMON LEAGUE", 0x4BB, PD_BOSS_LEAGUE, 413, 738 },
+-    { "CHAMPION (YOUR RIVAL)", "POKéMON LEAGUE", 0x4BC, PD_BOSS_CHAMPION, 438, 739 },
++    { "LEADER BROCK", "PEWTER CITY GYM", 0x820, PD_BOSS_FIXED, 414, 0, NULL },
++    { "LEADER MISTY", "CERULEAN CITY GYM", 0x821, PD_BOSS_FIXED, 415, 0, NULL },
++    { "LEADER LT. SURGE", "VERMILION CITY GYM", 0x822, PD_BOSS_FIXED, 416, 0, NULL },
++    { "LEADER ERIKA", "CELADON CITY GYM", 0x823, PD_BOSS_FIXED, 417, 0, NULL },
++    { "LEADER KOGA", "FUCHSIA CITY GYM", 0x824, PD_BOSS_FIXED, 418, 0, NULL },
++    { "LEADER SABRINA", "SAFFRON CITY GYM", 0x825, PD_BOSS_FIXED, 420, 0, NULL },
++    { "LEADER BLAINE", "CINNABAR ISLAND GYM", 0x826, PD_BOSS_FIXED, 419, 0, NULL },
++    { "LEADER GIOVANNI", "VIRIDIAN CITY GYM", 0x827, PD_BOSS_FIXED, 350, 0, NULL },
++    { "ELITE FOUR LORELEI", "POKéMON LEAGUE", 0x4B8, PD_BOSS_LEAGUE, 410, 735, NULL },
++    { "ELITE FOUR BRUNO", "POKéMON LEAGUE", 0x4B9, PD_BOSS_LEAGUE, 411, 736, NULL },
++    { "ELITE FOUR AGATHA", "POKéMON LEAGUE", 0x4BA, PD_BOSS_LEAGUE, 412, 737, NULL },
++    { "ELITE FOUR LANCE", "POKéMON LEAGUE", 0x4BB, PD_BOSS_LEAGUE, 413, 738, NULL },
++    { "CHAMPION (YOUR RIVAL)", "POKéMON LEAGUE", 0x4BC, PD_BOSS_CHAMPION, 438, 739, NULL },
+ };
+ const struct pd_guide pd_guide_firered = {
+     pd_guide_firered_pages, 3, pd_guide_firered_bosses, 13, true, 0x844, 0x4031,
+@@ -226,19 +226,19 @@ static const struct pd_guide_page pd_guide_leafgreen_pages[] = {
+     { "STUCK?", pd_guide_leafgreen_p2, 4 },
+ };
+ static const struct pd_boss pd_guide_leafgreen_bosses[] = {
+-    { "LEADER BROCK", "PEWTER CITY GYM", 0x820, PD_BOSS_FIXED, 414, 0 },
+-    { "LEADER MISTY", "CERULEAN CITY GYM", 0x821, PD_BOSS_FIXED, 415, 0 },
+-    { "LEADER LT. SURGE", "VERMILION CITY GYM", 0x822, PD_BOSS_FIXED, 416, 0 },
+-    { "LEADER ERIKA", "CELADON CITY GYM", 0x823, PD_BOSS_FIXED, 417, 0 },
+-    { "LEADER KOGA", "FUCHSIA CITY GYM", 0x824, PD_BOSS_FIXED, 418, 0 },
+-    { "LEADER SABRINA", "SAFFRON CITY GYM", 0x825, PD_BOSS_FIXED, 420, 0 },
+-    { "LEADER BLAINE", "CINNABAR ISLAND GYM", 0x826, PD_BOSS_FIXED, 419, 0 },
+-    { "LEADER GIOVANNI", "VIRIDIAN CITY GYM", 0x827, PD_BOSS_FIXED, 350, 0 },
+-    { "ELITE FOUR LORELEI", "POKéMON LEAGUE", 0x4B8, PD_BOSS_LEAGUE, 410, 735 },
+-    { "ELITE FOUR BRUNO", "POKéMON LEAGUE", 0x4B9, PD_BOSS_LEAGUE, 411, 736 },
+-    { "ELITE FOUR AGATHA", "POKéMON LEAGUE", 0x4BA, PD_BOSS_LEAGUE, 412, 737 },
+-    { "ELITE FOUR LANCE", "POKéMON LEAGUE", 0x4BB, PD_BOSS_LEAGUE, 413, 738 },
+-    { "CHAMPION (YOUR RIVAL)", "POKéMON LEAGUE", 0x4BC, PD_BOSS_CHAMPION, 438, 739 },
++    { "LEADER BROCK", "PEWTER CITY GYM", 0x820, PD_BOSS_FIXED, 414, 0, NULL },
++    { "LEADER MISTY", "CERULEAN CITY GYM", 0x821, PD_BOSS_FIXED, 415, 0, NULL },
++    { "LEADER LT. SURGE", "VERMILION CITY GYM", 0x822, PD_BOSS_FIXED, 416, 0, NULL },
++    { "LEADER ERIKA", "CELADON CITY GYM", 0x823, PD_BOSS_FIXED, 417, 0, NULL },
++    { "LEADER KOGA", "FUCHSIA CITY GYM", 0x824, PD_BOSS_FIXED, 418, 0, NULL },
++    { "LEADER SABRINA", "SAFFRON CITY GYM", 0x825, PD_BOSS_FIXED, 420, 0, NULL },
++    { "LEADER BLAINE", "CINNABAR ISLAND GYM", 0x826, PD_BOSS_FIXED, 419, 0, NULL },
++    { "LEADER GIOVANNI", "VIRIDIAN CITY GYM", 0x827, PD_BOSS_FIXED, 350, 0, NULL },
++    { "ELITE FOUR LORELEI", "POKéMON LEAGUE", 0x4B8, PD_BOSS_LEAGUE, 410, 735, NULL },
++    { "ELITE FOUR BRUNO", "POKéMON LEAGUE", 0x4B9, PD_BOSS_LEAGUE, 411, 736, NULL },
++    { "ELITE FOUR AGATHA", "POKéMON LEAGUE", 0x4BA, PD_BOSS_LEAGUE, 412, 737, NULL },
++    { "ELITE FOUR LANCE", "POKéMON LEAGUE", 0x4BB, PD_BOSS_LEAGUE, 413, 738, NULL },
++    { "CHAMPION (YOUR RIVAL)", "POKéMON LEAGUE", 0x4BC, PD_BOSS_CHAMPION, 438, 739, NULL },
+ };
+ const struct pd_guide pd_guide_leafgreen = {
+     pd_guide_leafgreen_pages, 3, pd_guide_leafgreen_bosses, 13, true, 0x844, 0x4031,
+@@ -345,24 +345,1113 @@ static const struct pd_guide_page pd_guide_emerald_pages[] = {
+     { "STUCK?", pd_guide_emerald_p2, 3 },
+ };
+ static const struct pd_boss pd_guide_emerald_bosses[] = {
+-    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x867, PD_BOSS_FIXED, 265, 0 },
+-    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x868, PD_BOSS_FIXED, 266, 0 },
+-    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x869, PD_BOSS_FIXED, 267, 0 },
+-    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x86A, PD_BOSS_FIXED, 268, 0 },
+-    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x86B, PD_BOSS_FIXED, 269, 0 },
+-    { "LEADER WINONA", "FORTREE CITY GYM", 0x86C, PD_BOSS_FIXED, 270, 0 },
+-    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x86D, PD_BOSS_FIXED, 271, 0 },
+-    { "LEADER JUAN", "SOOTOPOLIS CITY GYM", 0x86E, PD_BOSS_FIXED, 272, 0 },
+-    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4FB, PD_BOSS_FIXED, 261, 0 },
+-    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4FC, PD_BOSS_FIXED, 262, 0 },
+-    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4FD, PD_BOSS_FIXED, 263, 0 },
+-    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4FE, PD_BOSS_FIXED, 264, 0 },
+-    { "CHAMPION WALLACE", "POKéMON LEAGUE", 0x864, PD_BOSS_FIXED, 335, 0 },
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x867, PD_BOSS_FIXED, 265, 0, NULL },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x868, PD_BOSS_FIXED, 266, 0, NULL },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x869, PD_BOSS_FIXED, 267, 0, NULL },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x86A, PD_BOSS_FIXED, 268, 0, NULL },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x86B, PD_BOSS_FIXED, 269, 0, NULL },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x86C, PD_BOSS_FIXED, 270, 0, NULL },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x86D, PD_BOSS_FIXED, 271, 0, NULL },
++    { "LEADER JUAN", "SOOTOPOLIS CITY GYM", 0x86E, PD_BOSS_FIXED, 272, 0, NULL },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4FB, PD_BOSS_FIXED, 261, 0, NULL },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4FC, PD_BOSS_FIXED, 262, 0, NULL },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4FD, PD_BOSS_FIXED, 263, 0, NULL },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4FE, PD_BOSS_FIXED, 264, 0, NULL },
++    { "CHAMPION WALLACE", "POKéMON LEAGUE", 0x864, PD_BOSS_FIXED, 335, 0, NULL },
+ };
+ const struct pd_guide pd_guide_emerald = {
      pd_guide_emerald_pages, 3, pd_guide_emerald_bosses, 13, false, 0, 0,
  };
  
@@ -761,19 +979,19 @@ index a90e1b5..ef3eced 100644
 +    { "STUCK?", pd_guide_ruby_p2, 3 },
 +};
 +static const struct pd_boss pd_guide_ruby_bosses[] = {
-+    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0 },
-+    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0 },
-+    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0 },
-+    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0 },
-+    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0 },
-+    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0 },
-+    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0 },
-+    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0 },
-+    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0 },
-+    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0 },
-+    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0 },
-+    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0 },
-+    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0 },
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0, NULL },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0, NULL },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0, NULL },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0, NULL },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0, NULL },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0, NULL },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0, NULL },
++    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0, NULL },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0, NULL },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0, NULL },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0, NULL },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0, NULL },
++    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0, NULL },
 +};
 +const struct pd_guide pd_guide_ruby = {
 +    pd_guide_ruby_pages, 3, pd_guide_ruby_bosses, 13, false, 0, 0,
@@ -879,23 +1097,522 @@ index a90e1b5..ef3eced 100644
 +    { "STUCK?", pd_guide_sapphire_p2, 3 },
 +};
 +static const struct pd_boss pd_guide_sapphire_bosses[] = {
-+    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0 },
-+    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0 },
-+    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0 },
-+    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0 },
-+    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0 },
-+    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0 },
-+    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0 },
-+    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0 },
-+    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0 },
-+    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0 },
-+    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0 },
-+    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0 },
-+    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0 },
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0, NULL },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0, NULL },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0, NULL },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0, NULL },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0, NULL },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0, NULL },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0, NULL },
++    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0, NULL },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0, NULL },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0, NULL },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0, NULL },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0, NULL },
++    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0, NULL },
 +};
 +const struct pd_guide pd_guide_sapphire = {
 +    pd_guide_sapphire_pages, 3, pd_guide_sapphire_bosses, 13, false, 0, 0,
 +};
++
++static const struct pd_guide_entry pd_guide_emerald_legacy_p0_s0[] = {
++    { "Physical or special?", "Still decided by the move's TYPE, as in the original. FIRE, WATER, GRASS, ELECTRIC, ICE, PSYCHIC, DRAGON and DARK moves are special; the other types are physical.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Why is BRAWLY tougher than I remember?", "He picks his team by how far you've got: a stronger one if you've already beaten WATTSON, stronger again after FLANNERY.", "It depends on your other badges.", PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Who leads the last gym?", "WALLACE, in SOOTOPOLIS CITY. JUAN takes over the gym once you're in the HALL OF FAME, and the champion waiting at the end is STEVEN.", "Not the one from the original.", PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_emerald_legacy_p0_s1[] = {
++    { "No trades needed", "The POKéMON that evolved by trading level up instead (KADABRA and HAUNTER at Lv42, MACHOKE and GRAVELER at Lv38) or use their item like a stone (ONIX and SCYTHER a METAL COAT, SEADRA a DRAGON SCALE, PORYGON an UP-GRADE, CLAMPERL a DEEPSEATOOTH or DEEPSEASCALE, POLIWHIRL and SLOWPOKE a KING'S ROCK).", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "HITMONTOP", "TYROGUE becomes HITMONTOP with a BRICK PIECE, or at Lv20 when its ATTACK equals its DEFENSE.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_emerald_legacy_p0_s2[] = {
++    { "New POKéMON after the story", "After the HALL OF FAME, PROF. BIRCH's visit to MOSSDEEP CITY changes the wild POKéMON in many areas. HERE always lists the ones out there now.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_section pd_guide_emerald_legacy_p0[] = {
++    { "BATTLES", NULL, pd_guide_emerald_legacy_p0_s0, 3 },
++    { "EVOLUTION", NULL, pd_guide_emerald_legacy_p0_s1, 2 },
++    { "WILD POKéMON", NULL, pd_guide_emerald_legacy_p0_s2, 1 },
++};
++static const struct pd_guide_page pd_guide_emerald_legacy_pages[] = {
++    { "TIPS", pd_guide_emerald_legacy_p0, 3 },
++};
++static const uint16_t pd_guide_emerald_legacy_alts1[] = { 0x4F3, 861, 0x4F2, 860, 0 };
++static const struct pd_boss pd_guide_emerald_legacy_bosses[] = {
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x8C7, PD_BOSS_FIXED, 265, 0, NULL },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x8C8, PD_BOSS_BY_FLAGS, 266, 0, pd_guide_emerald_legacy_alts1 },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x8C9, PD_BOSS_FIXED, 267, 0, NULL },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x8CA, PD_BOSS_FIXED, 268, 0, NULL },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x8CB, PD_BOSS_FIXED, 269, 0, NULL },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x8CC, PD_BOSS_FIXED, 270, 0, NULL },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x8CD, PD_BOSS_FIXED, 271, 0, NULL },
++    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x8CE, PD_BOSS_FIXED, 335, 0, NULL },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4FB, PD_BOSS_FIXED, 261, 0, NULL },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4FC, PD_BOSS_FIXED, 262, 0, NULL },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4FD, PD_BOSS_FIXED, 263, 0, NULL },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4FE, PD_BOSS_FIXED, 264, 0, NULL },
++    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x8C4, PD_BOSS_FIXED, 804, 0, NULL },
++};
++const struct pd_guide pd_guide_emerald_legacy = {
++    pd_guide_emerald_legacy_pages, 1, pd_guide_emerald_legacy_bosses, 13, false, 0, 0,
++};
++
++const struct pd_area_thing pd_areas_emerald_legacy[] = {
++    { 0, PD_AREA_GIFT, 4, 0, 5, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 1, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 4, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 7, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 152, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 155, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_MON, 158, 0, 1, 0, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_TRADE, 277, 0, 1, 280, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_TRADE, 280, 0, 1, 277, "PROFESSOR BIRCHS LAB" },
++    { 0, PD_AREA_TRADE, 283, 0, 1, 277, "PROFESSOR BIRCHS LAB" },
++    { 1, PD_AREA_GIFT, 13, 132, 1, 0, "" },
++    { 2, PD_AREA_GIFT, 217, 289, 1, 0, "HOUSE 2" },
++    { 2, PD_AREA_GIFT, 226, 1190, 1, 0, "GYM" },
++    { 2, PD_AREA_GIFT, 296, 166, 1, 0, "GYM" },
++    { 2, PD_AREA_GIFT, 324, 230, 1, 0, "HALL" },
++    { 2, PD_AREA_KEY, 262, 257, 1, 0, "" },
++    { 3, PD_AREA_EGG, 360, 266, 1, 0, "" },
++    { 3, PD_AREA_GIFT, 45, 1192, 5, 0, "GYM 1F" },
++    { 3, PD_AREA_GIFT, 215, 254, 1, 0, "HERB SHOP" },
++    { 3, PD_AREA_GIFT, 338, 168, 1, 0, "GYM 1F" },
++    { 3, PD_AREA_HIDDEN, 16, 500, 1, 0, "" },
++    { 3, PD_AREA_KEY, 279, 221, 1, 0, "" },
++    { 4, PD_AREA_GIFT, 315, 229, 1, 0, "COZMOS HOUSE" },
++    { 4, PD_AREA_HIDDEN, 110, 528, 1, 0, "" },
++    { 4, PD_AREA_KEY, 371, 314, 1, 0, "COZMOS HOUSE" },
++    { 5, PD_AREA_GIFT, 333, 235, 1, 0, "BATTLE TENT LOBBY" },
++    { 6, PD_AREA_GIFT, 4, 0, 5, 0, "" },
++    { 6, PD_AREA_GIFT, 309, 299, 1, 0, "HOUSE 2" },
++    { 6, PD_AREA_GIFT, 315, 299, 1, 0, "HOUSE 2" },
++    { 6, PD_AREA_KEY, 262, 257, 1, 0, "" },
++    { 6, PD_AREA_TRADE, 395, 154, 1, 381, "HOUSE 3" },
++    { 7, PD_AREA_GIFT, 175, 0, 1, 0, "GYM" },
++    { 7, PD_AREA_GIFT, 197, 1193, 1, 0, "GYM" },
++    { 7, PD_AREA_GIFT, 330, 169, 1, 0, "GYM" },
++    { 7, PD_AREA_GIFT, 341, 122, 1, 0, "WALLYS HOUSE" },
++    { 7, PD_AREA_HIDDEN, 68, 595, 1, 0, "" },
++    { 7, PD_AREA_ITEM, 34, 1040, 1, 0, "" },
++    { 7, PD_AREA_ITEM, 97, 1039, 1, 0, "" },
++    { 8, PD_AREA_GIFT, 184, 278, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 192, 0, 1, 0, "HARBOR" },
++    { 8, PD_AREA_GIFT, 193, 0, 1, 0, "HARBOR" },
++    { 8, PD_AREA_GIFT, 254, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 255, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 256, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 257, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 258, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 329, 265, 1, 0, "BATTLE TENT LOBBY" },
++    { 8, PD_AREA_GIFT, 334, 269, 1, 0, "OCEANIC MUSEUM 1F" },
++    { 8, PD_AREA_KEY, 372, 337, 1, 0, "" },
++    { 9, PD_AREA_GIFT, 218, 0, 1, 0, "GAME CORNER" },
++    { 9, PD_AREA_GIFT, 218, 1191, 1, 0, "GYM" },
++    { 9, PD_AREA_GIFT, 312, 209, 1, 0, "" },
++    { 9, PD_AREA_GIFT, 322, 167, 1, 0, "GYM" },
++    { 9, PD_AREA_GIFT, 344, 107, 1, 0, "HOUSE 1" },
++    { 9, PD_AREA_ITEM, 77, 1116, 1, 0, "" },
++    { 9, PD_AREA_KEY, 259, 0, 1, 0, "BIKE SHOP" },
++    { 9, PD_AREA_KEY, 260, 258, 1, 0, "HOUSE 2" },
++    { 9, PD_AREA_KEY, 271, 208, 1, 0, "" },
++    { 9, PD_AREA_KEY, 272, 0, 1, 0, "BIKE SHOP" },
++    { 9, PD_AREA_MON, 137, 0, 1, 0, "GAME CORNER" },
++    { 9, PD_AREA_TRADE, 346, 104, 1, 370, "POKéMON CENTER 1F" },
++    { 10, PD_AREA_GIFT, 3, 144, 1, 0, "" },
++    { 10, PD_AREA_GIFT, 12, 213, 1, 0, "FLAT 2 2F" },
++    { 10, PD_AREA_GIFT, 182, 272, 1, 0, "DEVON CORP 3F" },
++    { 10, PD_AREA_GIFT, 183, 275, 1, 0, "POKéMON SCHOOL" },
++    { 10, PD_AREA_GIFT, 327, 165, 1, 0, "GYM" },
++    { 10, PD_AREA_GIFT, 339, 137, 1, 0, "CUTTERS HOUSE" },
++    { 10, PD_AREA_ITEM, 76, 1041, 1, 0, "" },
++    { 10, PD_AREA_KEY, 274, 2242, 1, 0, "DEVON CORP 3F" },
++    { 10, PD_AREA_KEY, 354, 1189, 1, 0, "GYM" },
++    { 10, PD_AREA_MON, 138, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_MON, 140, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_MON, 142, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_MON, 388, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_MON, 390, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_TRADE, 339, 153, 1, 306, "HOUSE 1" },
++    { 11, PD_AREA_EGG, 175, 1194, 1, 0, "GYM" },
++    { 11, PD_AREA_GIFT, 185, 223, 1, 0, "HOUSE 4" },
++    { 11, PD_AREA_GIFT, 298, 264, 1, 0, "HOUSE 2" },
++    { 11, PD_AREA_GIFT, 328, 170, 1, 0, "GYM" },
++    { 11, PD_AREA_TRADE, 371, 155, 1, 317, "HOUSE 1" },
++    { 12, PD_AREA_GIFT, 332, 234, 1, 0, "HOUSE 2" },
++    { 12, PD_AREA_HIDDEN, 4, 575, 1, 0, "" },
++    { 12, PD_AREA_HIDDEN, 69, 543, 1, 0, "" },
++    { 12, PD_AREA_HIDDEN, 111, 527, 1, 0, "" },
++    { 12, PD_AREA_ITEM, 84, 1042, 1, 0, "" },
++    { 12, PD_AREA_KEY, 370, 315, 1, 0, "LILYCOVE MUSEUM 2F" },
++    { 12, PD_AREA_MON, 316, 0, 1, 0, "CONTEST LOBBY" },
++    { 12, PD_AREA_MON, 329, 0, 1, 0, "CONTEST LOBBY" },
++    { 12, PD_AREA_MON, 366, 0, 1, 0, "CONTEST LOBBY" },
++    { 12, PD_AREA_MON, 384, 0, 1, 0, "CONTEST LOBBY" },
++    { 12, PD_AREA_MON, 394, 0, 1, 0, "CONTEST LOBBY" },
++    { 13, PD_AREA_GIFT, 93, 192, 1, 0, "SPACE CENTER 1F" },
++    { 13, PD_AREA_GIFT, 187, 276, 1, 0, "" },
++    { 13, PD_AREA_GIFT, 187, 1195, 1, 0, "GYM" },
++    { 13, PD_AREA_GIFT, 292, 171, 1, 0, "GYM" },
++    { 13, PD_AREA_GIFT, 346, 123, 1, 0, "STEVENS HOUSE" },
++    { 13, PD_AREA_ITEM, 6, 1043, 1, 0, "" },
++    { 13, PD_AREA_KEY, 264, 152, 1, 0, "HOUSE 3" },
++    { 13, PD_AREA_MON, 398, 0, 1, 0, "STEVENS HOUSE" },
++    { 14, PD_AREA_GIFT, 36, 0, 1, 0, "LOTAD AND SEEDOT HOUSE" },
++    { 14, PD_AREA_GIFT, 143, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 144, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 145, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 146, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 147, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 201, 1196, 1, 0, "GYM 1F" },
++    { 14, PD_AREA_GIFT, 291, 172, 1, 0, "GYM 1F" },
++    { 14, PD_AREA_GIFT, 319, 121, 1, 0, "HOUSE 1" },
++    { 14, PD_AREA_GIFT, 345, 312, 1, 0, "" },
++    { 17, PD_AREA_ITEM, 13, 1000, 1, 0, "" },
++    { 18, PD_AREA_ITEM, 69, 1137, 1, 0, "" },
++    { 18, PD_AREA_ITEM, 73, 1114, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 134, 246, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 180, 279, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 297, 262, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 4, 562, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 13, 537, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 14, 585, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 22, 544, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 111, 588, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 4, 1057, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 13, 1135, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 69, 1002, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 78, 1115, 1, 0, "" },
++    { 19, PD_AREA_KEY, 268, 94, 1, 0, "PRETTY PETAL FLOWER SHOP" },
++    { 20, PD_AREA_HIDDEN, 107, 611, 1, 0, "" },
++    { 20, PD_AREA_HIDDEN, 111, 589, 1, 0, "" },
++    { 20, PD_AREA_ITEM, 65, 1003, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 68, 563, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 108, 546, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 111, 547, 1, 0, "" },
++    { 21, PD_AREA_ITEM, 64, 1004, 1, 0, "" },
++    { 23, PD_AREA_HIDDEN, 68, 586, 1, 0, "" },
++    { 23, PD_AREA_ITEM, 49, 1128, 1, 0, "" },
++    { 23, PD_AREA_ITEM, 109, 1139, 1, 0, "" },
++    { 24, PD_AREA_GIFT, 27, 0, 1, 0, "SEASHORE HOUSE" },
++    { 24, PD_AREA_GIFT, 203, 280, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 3, 551, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 24, 550, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 34, 564, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 552, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 590, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 591, 1, 0, "" },
++    { 24, PD_AREA_ITEM, 13, 1140, 1, 0, "" },
++    { 24, PD_AREA_ITEM, 69, 1005, 1, 0, "" },
++    { 25, PD_AREA_GIFT, 10, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 10, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 68, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 68, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 71, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 71, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 194, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 194, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 204, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 204, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 208, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 208, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 300, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 300, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_HIDDEN, 3, 553, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 4, 565, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 23, 555, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 24, 554, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 110, 501, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_ITEM, 36, 1141, 1, 0, "" },
++    { 25, PD_AREA_ITEM, 68, 1006, 1, 0, "" },
++    { 25, PD_AREA_ITEM, 74, 1007, 1, 0, "" },
++    { 25, PD_AREA_ITEM, 121, 1060, 1, 0, "TRICK HOUSE PUZZLE 1" },
++    { 25, PD_AREA_ITEM, 122, 1061, 1, 0, "TRICK HOUSE PUZZLE 2" },
++    { 25, PD_AREA_ITEM, 123, 1067, 1, 0, "TRICK HOUSE PUZZLE 6" },
++    { 25, PD_AREA_ITEM, 124, 1065, 1, 0, "TRICK HOUSE PUZZLE 4" },
++    { 25, PD_AREA_ITEM, 125, 1064, 1, 0, "TRICK HOUSE PUZZLE 3" },
++    { 25, PD_AREA_ITEM, 126, 1062, 1, 0, "TRICK HOUSE PUZZLE 2" },
++    { 25, PD_AREA_ITEM, 127, 1069, 1, 0, "TRICK HOUSE PUZZLE 8" },
++    { 25, PD_AREA_ITEM, 128, 1063, 1, 0, "TRICK HOUSE PUZZLE 3" },
++    { 25, PD_AREA_ITEM, 129, 1068, 1, 0, "TRICK HOUSE PUZZLE 7" },
++    { 25, PD_AREA_KEY, 261, 0, 1, 0, "" },
++    { 25, PD_AREA_MON, 133, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_MON, 133, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 26, PD_AREA_GIFT, 148, 0, 1, 0, "" },
++    { 26, PD_AREA_GIFT, 181, 277, 1, 0, "WINSTRATE FAMILYS HOUSE" },
++    { 26, PD_AREA_HIDDEN, 64, 556, 1, 0, "" },
++    { 26, PD_AREA_HIDDEN, 68, 557, 1, 0, "" },
++    { 26, PD_AREA_HIDDEN, 108, 502, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 36, 1142, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 63, 1010, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 108, 1009, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 325, 1008, 1, 0, "" },
++    { 27, PD_AREA_ITEM, 110, 1011, 1, 0, "" },
++    { 28, PD_AREA_HIDDEN, 34, 503, 1, 0, "" },
++    { 28, PD_AREA_HIDDEN, 110, 598, 1, 0, "" },
++    { 28, PD_AREA_HIDDEN, 320, 530, 1, 0, "" },
++    { 28, PD_AREA_ITEM, 21, 1143, 1, 0, "" },
++    { 28, PD_AREA_ITEM, 35, 1012, 1, 0, "" },
++    { 28, PD_AREA_ITEM, 83, 1013, 1, 0, "" },
++    { 28, PD_AREA_KEY, 270, 0, 1, 0, "GLASS WORKSHOP" },
++    { 29, PD_AREA_GIFT, 293, 231, 1, 0, "" },
++    { 29, PD_AREA_GIFT, 316, 261, 1, 0, "FOSSIL MANIACS HOUSE" },
++    { 29, PD_AREA_HIDDEN, 24, 542, 1, 0, "" },
++    { 29, PD_AREA_HIDDEN, 66, 504, 1, 0, "" },
++    { 29, PD_AREA_ITEM, 30, 1160, 1, 0, "" },
++    { 29, PD_AREA_ITEM, 64, 1015, 1, 0, "" },
++    { 29, PD_AREA_ITEM, 68, 1014, 1, 0, "" },
++    { 30, PD_AREA_HIDDEN, 111, 597, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 3, 1118, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 22, 1016, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 32, 1144, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 65, 1018, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 69, 1161, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 289, 1017, 1, 0, "" },
++    { 31, PD_AREA_GIFT, 9, 256, 1, 0, "" },
++    { 31, PD_AREA_HIDDEN, 22, 545, 1, 0, "" },
++    { 31, PD_AREA_HIDDEN, 206, 596, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 13, 1146, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 34, 1019, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 63, 1021, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 79, 1001, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 86, 1020, 1, 0, "" },
++    { 32, PD_AREA_HIDDEN, 86, 572, 1, 0, "" },
++    { 32, PD_AREA_ITEM, 3, 1022, 1, 0, "" },
++    { 32, PD_AREA_ITEM, 24, 1023, 1, 0, "" },
++    { 33, PD_AREA_HIDDEN, 65, 567, 1, 0, "" },
++    { 33, PD_AREA_HIDDEN, 111, 566, 1, 0, "" },
++    { 33, PD_AREA_ITEM, 21, 1121, 1, 0, "" },
++    { 33, PD_AREA_KEY, 263, 227, 1, 0, "" },
++    { 34, PD_AREA_GIFT, 340, 110, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 2, 506, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 23, 568, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 35, 587, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 67, 505, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 21, 1029, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 21, 1106, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 36, 1026, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 36, 1147, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 68, 1028, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 70, 1025, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 83, 1024, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 98, 1027, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 110, 1134, 1, 0, "" },
++    { 34, PD_AREA_MON, 385, 0, 1, 0, "WEATHER INSTITUTE 2F" },
++    { 35, PD_AREA_HIDDEN, 24, 584, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 68, 569, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 68, 571, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 70, 570, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 8, 1108, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 21, 1107, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 23, 1031, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 24, 1148, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 110, 1030, 1, 0, "" },
++    { 35, PD_AREA_KEY, 288, 285, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 23, 573, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 25, 600, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 63, 539, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 110, 540, 1, 0, "" },
++    { 36, PD_AREA_ITEM, 24, 1149, 1, 0, "" },
++    { 36, PD_AREA_ITEM, 66, 1103, 1, 0, "" },
++    { 36, PD_AREA_ITEM, 70, 1150, 1, 0, "" },
++    { 38, PD_AREA_GIFT, 163, 248, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 164, 249, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 165, 250, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 166, 251, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 167, 252, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 307, 232, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 21, 574, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 24, 541, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 68, 610, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 69, 599, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 83, 507, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 2, 1104, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 33, 1153, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 36, 1109, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 67, 1032, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 69, 1152, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 48, 1092, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 48, 1136, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 49, 1093, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 50, 1066, 1, 0, "" },
++    { 39, PD_AREA_KEY, 357, 0, 1, 0, "" },
++    { 40, PD_AREA_ITEM, 50, 1133, 1, 0, "" },
++    { 40, PD_AREA_ITEM, 107, 1154, 1, 0, "" },
++    { 41, PD_AREA_ITEM, 51, 1105, 1, 0, "" },
++    { 42, PD_AREA_ITEM, 66, 1035, 1, 0, "" },
++    { 42, PD_AREA_ITEM, 68, 1155, 1, 0, "" },
++    { 42, PD_AREA_ITEM, 70, 1034, 1, 0, "" },
++    { 42, PD_AREA_KEY, 358, 0, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 592, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 593, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 594, 1, 0, "" },
++    { 43, PD_AREA_ITEM, 50, 1145, 1, 0, "" },
++    { 47, PD_AREA_ITEM, 51, 1138, 1, 0, "" },
++    { 47, PD_AREA_ITEM, 64, 1156, 1, 0, "" },
++    { 47, PD_AREA_ITEM, 68, 1036, 1, 0, "" },
++    { 48, PD_AREA_ITEM, 25, 1157, 1, 0, "" },
++    { 48, PD_AREA_ITEM, 107, 1037, 1, 0, "" },
++    { 48, PD_AREA_ITEM, 109, 1038, 1, 0, "" },
++    { 49, PD_AREA_ITEM, 49, 1033, 1, 0, "" },
++    { 49, PD_AREA_ITEM, 66, 1158, 1, 0, "" },
++    { 49, PD_AREA_ITEM, 109, 1159, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 51, 509, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 66, 508, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 67, 536, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 106, 510, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 107, 511, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 111, 513, 1, 0, "ROUTE 124" },
++    { 50, PD_AREA_HIDDEN, 111, 538, 1, 0, "ROUTE 124" },
++    { 51, PD_AREA_HIDDEN, 2, 515, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 49, 512, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 50, 518, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 65, 519, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 106, 517, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 107, 520, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 108, 516, 1, 0, "ROUTE 126" },
++    { 51, PD_AREA_HIDDEN, 111, 514, 1, 0, "ROUTE 126" },
++    { 52, PD_AREA_HIDDEN, 48, 524, 1, 0, "ROUTE 127" },
++    { 52, PD_AREA_HIDDEN, 63, 522, 1, 0, "ROUTE 127" },
++    { 52, PD_AREA_HIDDEN, 109, 521, 1, 0, "ROUTE 127" },
++    { 52, PD_AREA_HIDDEN, 111, 523, 1, 0, "ROUTE 127" },
++    { 53, PD_AREA_HIDDEN, 64, 525, 1, 0, "ROUTE 128" },
++    { 53, PD_AREA_HIDDEN, 106, 526, 1, 0, "ROUTE 128" },
++    { 55, PD_AREA_GIFT, 335, 305, 1, 0, "STEVENS ROOM" },
++    { 55, PD_AREA_GIFT, 343, 109, 1, 0, "1F" },
++    { 55, PD_AREA_HIDDEN, 195, 548, 1, 0, "B2F" },
++    { 55, PD_AREA_HIDDEN, 195, 549, 1, 0, "B2F" },
++    { 55, PD_AREA_ITEM, 4, 1051, 1, 0, "B1F" },
++    { 55, PD_AREA_ITEM, 68, 1054, 1, 0, "B2F" },
++    { 55, PD_AREA_ITEM, 85, 1050, 1, 0, "1F" },
++    { 55, PD_AREA_ITEM, 86, 1053, 1, 0, "B2F" },
++    { 56, PD_AREA_GIFT, 38, 0, 1, 0, "" },
++    { 56, PD_AREA_KEY, 280, 115, 1, 0, "" },
++    { 57, PD_AREA_HIDDEN, 19, 605, 1, 0, "SOUTHEAST" },
++    { 57, PD_AREA_HIDDEN, 68, 606, 1, 0, "NORTHEAST" },
++    { 57, PD_AREA_HIDDEN, 69, 608, 1, 0, "SOUTHEAST" },
++    { 57, PD_AREA_HIDDEN, 70, 607, 1, 0, "NORTHEAST" },
++    { 57, PD_AREA_ITEM, 25, 1131, 1, 0, "SOUTHWEST" },
++    { 57, PD_AREA_ITEM, 67, 1119, 1, 0, "NORTH" },
++    { 57, PD_AREA_ITEM, 107, 1170, 1, 0, "SOUTHEAST" },
++    { 57, PD_AREA_ITEM, 110, 1169, 1, 0, "NORTHEAST" },
++    { 57, PD_AREA_ITEM, 310, 1094, 1, 0, "NORTHWEST" },
++    { 58, PD_AREA_GIFT, 63, 1221, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 64, 1222, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 65, 1223, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 66, 1226, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 67, 1224, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 69, 92, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 70, 1225, 5, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 173, 1220, 1, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_GIFT, 174, 1219, 1, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_MON, 398, 0, 1, 0, "SCOTTS HOUSE" },
++    { 58, PD_AREA_TRADE, 52, 156, 1, 315, "LOUNGE 6" },
++    { 58, PD_AREA_TRADE, 298, 651, 1, 392, "POKéMON CENTER 1F" },
++    { 58, PD_AREA_TRADE, 353, 652, 1, 386, "LOUNGE 8" },
++    { 59, PD_AREA_GIFT, 3, 0, 1, 0, "" },
++    { 59, PD_AREA_GIFT, 205, 297, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 4, 561, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 13, 558, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 103, 559, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 103, 560, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 3, 1056, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 18, 1117, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 34, 1058, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 75, 1055, 1, 0, "" },
++    { 60, PD_AREA_GIFT, 342, 106, 1, 0, "" },
++    { 60, PD_AREA_ITEM, 4, 1048, 1, 0, "" },
++    { 60, PD_AREA_ITEM, 35, 1049, 1, 0, "" },
++    { 60, PD_AREA_KEY, 269, 143, 1, 0, "" },
++    { 61, PD_AREA_HIDDEN, 281, 531, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 282, 532, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 283, 533, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 284, 534, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 7, 1097, 1, 0, "ROOMS 2 B1F" },
++    { 61, PD_AREA_ITEM, 11, 1077, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 24, 1099, 1, 0, "ROOMS 2 1F" },
++    { 61, PD_AREA_ITEM, 85, 1096, 1, 0, "ROOMS B1F" },
++    { 61, PD_AREA_ITEM, 97, 1101, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 122, 1095, 1, 0, "ROOMS 1F" },
++    { 61, PD_AREA_ITEM, 278, 1078, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 285, 1100, 1, 0, "CAPTAINS OFFICE" },
++    { 61, PD_AREA_ITEM, 301, 1098, 1, 0, "ROOM B1F" },
++    { 61, PD_AREA_ITEM, 306, 1102, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 62, PD_AREA_ITEM, 2, 1075, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 18, 1123, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 23, 1122, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 85, 1076, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 96, 1110, 1, 0, "INSIDE" },
++    { 63, PD_AREA_ITEM, 69, 1047, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 93, 1045, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 94, 1046, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 290, 1080, 1, 0, "B1F 2R" },
++    { 63, PD_AREA_ITEM, 311, 1044, 1, 0, "1F 1R" },
++    { 63, PD_AREA_KEY, 275, 474, 1, 0, "STEVENS CAVE" },
++    { 65, PD_AREA_GIFT, 190, 282, 1, 0, "1F" },
++    { 65, PD_AREA_HIDDEN, 2, 529, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_HIDDEN, 35, 578, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_HIDDEN, 68, 580, 1, 0, "SUMMIT" },
++    { 65, PD_AREA_HIDDEN, 70, 579, 1, 0, "SUMMIT" },
++    { 65, PD_AREA_ITEM, 2, 1129, 1, 0, "2F" },
++    { 65, PD_AREA_ITEM, 20, 1073, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_ITEM, 83, 1120, 1, 0, "3F" },
++    { 65, PD_AREA_ITEM, 220, 1130, 1, 0, "4F" },
++    { 65, PD_AREA_ITEM, 221, 1052, 1, 0, "5F" },
++    { 65, PD_AREA_ITEM, 318, 1089, 1, 0, "6F" },
++    { 65, PD_AREA_ITEM, 336, 1074, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_KEY, 375, 212, 1, 0, "SUMMIT" },
++    { 67, PD_AREA_GIFT, 46, 952, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_GIFT, 46, 954, 1, 0, "LOW TIDE STAIRS ROOM" },
++    { 67, PD_AREA_GIFT, 46, 955, 1, 0, "LOW TIDE LOWER ROOM" },
++    { 67, PD_AREA_GIFT, 47, 956, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_GIFT, 196, 283, 1, 0, "LOW TIDE LOWER ROOM" },
++    { 67, PD_AREA_GIFT, 219, 0, 1, 0, "LOW TIDE ENTRANCE ROOM" },
++    { 67, PD_AREA_ITEM, 16, 1083, 1, 0, "LOW TIDE STAIRS ROOM" },
++    { 67, PD_AREA_ITEM, 68, 1082, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_ITEM, 107, 1081, 1, 0, "LOW TIDE ENTRANCE ROOM" },
++    { 67, PD_AREA_ITEM, 212, 1113, 1, 0, "LOW TIDE ICE ROOM" },
++    { 67, PD_AREA_ITEM, 295, 1112, 1, 0, "LOW TIDE ICE ROOM" },
++    { 68, PD_AREA_ITEM, 314, 1090, 1, 0, "ROOM 9" },
++    { 70, PD_AREA_HIDDEN, 2, 581, 1, 0, "1F" },
++    { 70, PD_AREA_HIDDEN, 36, 582, 1, 0, "B2F" },
++    { 70, PD_AREA_HIDDEN, 84, 583, 1, 0, "B2F" },
++    { 70, PD_AREA_ITEM, 23, 1088, 1, 0, "B2F" },
++    { 70, PD_AREA_ITEM, 37, 1084, 1, 0, "1F" },
++    { 70, PD_AREA_ITEM, 68, 1087, 1, 0, "B1F" },
++    { 70, PD_AREA_ITEM, 69, 1085, 1, 0, "1F" },
++    { 70, PD_AREA_ITEM, 317, 1086, 1, 0, "B1F" },
++    { 74, PD_AREA_ITEM, 95, 1111, 1, 0, "" },
++    { 74, PD_AREA_ITEM, 294, 1091, 1, 0, "" },
++    { 76, PD_AREA_HIDDEN, 3, 576, 1, 0, "" },
++    { 76, PD_AREA_HIDDEN, 23, 577, 1, 0, "" },
++    { 76, PD_AREA_ITEM, 15, 1070, 1, 0, "" },
++    { 80, PD_AREA_ITEM, 299, 1079, 1, 0, "" },
++    { 87, PD_AREA_GIFT, 337, 260, 1, 0, "" },
++    { 87, PD_AREA_HIDDEN, 200, 535, 1, 0, "" },
++    { 197, PD_AREA_ITEM, 1, 1124, 1, 0, "B1F" },
++    { 197, PD_AREA_ITEM, 8, 1072, 1, 0, "B2F" },
++    { 197, PD_AREA_ITEM, 37, 1071, 1, 0, "B1F" },
++    { 197, PD_AREA_ITEM, 110, 1132, 1, 0, "B1F" },
++    { 198, PD_AREA_ITEM, 19, 1165, 1, 0, "2F 2R" },
++    { 198, PD_AREA_ITEM, 25, 1168, 1, 0, "4F" },
++    { 198, PD_AREA_ITEM, 37, 1164, 1, 0, "2F 2R" },
++    { 198, PD_AREA_ITEM, 68, 1166, 1, 0, "3F 1R" },
++    { 198, PD_AREA_ITEM, 71, 1167, 1, 0, "3F 2R" },
++    { 198, PD_AREA_ITEM, 85, 1059, 1, 0, "3F 3R" },
++    { 198, PD_AREA_ITEM, 323, 1151, 1, 0, "1F" },
++    { 199, PD_AREA_KEY, 286, 335, 1, 0, "4F" },
++    { 199, PD_AREA_KEY, 287, 336, 1, 0, "4F" },
++    { 202, PD_AREA_HIDDEN, 64, 603, 1, 0, "B1F" },
++    { 202, PD_AREA_HIDDEN, 65, 604, 1, 0, "B1F" },
++    { 202, PD_AREA_HIDDEN, 67, 601, 1, 0, "B1F" },
++    { 202, PD_AREA_HIDDEN, 70, 602, 1, 0, "B1F" },
++    { 202, PD_AREA_ITEM, 63, 1162, 1, 0, "B1F" },
++    { 202, PD_AREA_ITEM, 66, 1163, 1, 0, "1F" },
++    { 209, PD_AREA_KEY, 286, 0, 1, 0, "" },
++    { 209, PD_AREA_KEY, 287, 0, 1, 0, "" },
++    { 211, PD_AREA_HIDDEN, 45, 609, 1, 0, "TOP" },
++    { 212, PD_AREA_MON, 143, 0, 1, 0, "ROOF" },
++};
++const int pd_areas_emerald_legacy_count = 455;
 +
 +const struct pd_area_thing pd_areas_ruby_sapphire[] = {
 +    { 0, PD_AREA_GIFT, 4, 0, 5, 0, "PROFESSOR BIRCHS LAB" },
@@ -1541,10 +2258,10 @@ index 70817ec..c4440fd 100644
          next != s->foeActive && s->foes[next].hp > 0 && s->foes[s->foeActive].hp == 0) {
          s->foeNext = next;
 diff --git a/3ds/core/pd_snapshot.h b/3ds/core/pd_snapshot.h
-index 00f7935..2a486b9 100644
+index 00f7935..9554109 100644
 --- a/3ds/core/pd_snapshot.h
 +++ b/3ds/core/pd_snapshot.h
-@@ -46,7 +46,7 @@ struct pd_battle_mon {
+@@ -46,10 +46,10 @@ struct pd_battle_mon {
  #define PD_POS_OPPONENT_LEFT 1
  
  // A pocket's slots: every pocket of FireRed's and Emerald's bag holds at most 64.
@@ -1552,7 +2269,11 @@ index 00f7935..2a486b9 100644
 +#define PD_POCKET_SLOTS 256 // Emerald Legacy's ITEMS pocket holds 120
  #define PD_NATIONAL_COUNT 386
  #define PD_DEX_BYTES 52
- #define PD_FLAG_BYTES 0x12C // Emerald's; FireRed's 0x120 fit
+-#define PD_FLAG_BYTES 0x12C // Emerald's; FireRed's 0x120 fit
++#define PD_FLAG_BYTES 0x300 // the most any game has (a hack's 767); Emerald 0x12C, Emerald Legacy 0x138
+ #define PD_VAR_COUNT 0x100
+ #define PD_GAME_STATS 52 // up to GAME_STAT_BERRY_CRUSH_POINTS
+ 
 diff --git a/3ds/core/pd_tables.h b/3ds/core/pd_tables.h
 index 30cb2c1..fffb5d4 100644
 --- a/3ds/core/pd_tables.h
@@ -1613,10 +2334,104 @@ index 95b593d..03e703d 100644
  
  // TAB BAR: at most this many tabs beside the gear (the app's MAX_BAR_TABS).
 diff --git a/3ds/core/pd_ui_guide.c b/3ds/core/pd_ui_guide.c
-index ed5ddc8..03258fd 100644
+index ed5ddc8..504b538 100644
 --- a/3ds/core/pd_ui_guide.c
 +++ b/3ds/core/pd_ui_guide.c
-@@ -386,7 +386,8 @@ void ui_guide_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game* g
+@@ -4,6 +4,7 @@
+ // answer; one entry open at a time. The first visit per game shows the app's
+ // "written with AI" notice.
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ #include "pd_dex.h"
+@@ -34,7 +35,7 @@ struct view_section {
+     int first, count;
+ };
+ 
+-enum page_kind { PAGE_HERE, PAGE_BOSS, PAGE_STATIC };
++enum page_kind { PAGE_HERE, PAGE_BOSS, PAGE_STATIC, PAGE_WHERE };
+ struct page_ref {
+     enum page_kind kind;
+     int index; // the guide's page, for PAGE_STATIC
+@@ -83,9 +84,13 @@ static void build_pages(const struct pd_game* g, const struct pd_snapshot* s, co
+     bool rom = pd_guide_rom_ok(g);
+     if (areaCount || rom) pages[pageCount++] = (struct page_ref) { PAGE_HERE, 0, "HERE" };
+     if (rom && s->flagsOk && gd->bossCount) pages[pageCount++] = (struct page_ref) { PAGE_BOSS, 0, "NEXT BOSS" };
++    bool whereIs = false;
+     for (int i = 0; i < gd->pageCount && pageCount < MAX_PAGES; i++) {
+         pages[pageCount++] = (struct page_ref) { PAGE_STATIC, i, page_label(gd->pages[i].title) };
++        whereIs |= !strcmp(gd->pages[i].title, "WHERE IS");
+     }
++    // No hand-written WHERE IS (the ROM hacks): one built from the area data, as the app's GuideScreen does.
++    if (!whereIs && areaCount && pageCount < MAX_PAGES) pages[pageCount++] = (struct page_ref) { PAGE_WHERE, 0, "WHERE IS" };
+ }
+ 
+ // --- the pages ---
+@@ -253,6 +258,62 @@ static void build_here(const struct pd_game* g, const struct pd_snapshot* s, con
+     }
+ }
+ 
++// WHERE IS from the area data (GuideAreas.kt generatedWhereIs): every HM, key item and gift POKéMON someone hands
++// out, the area it's in as the hint and where in it as the answer; each named once (its first area), by name.
++static bool is_hm(const char* name) {
++    return !strncmp(name, "HM", 2) && name[2] >= '0' && name[2] <= '9';
++}
++
++static int by_title(const void* a, const void* b) {
++    return strcmp(((const struct view_entry*) a)->title, ((const struct view_entry*) b)->title);
++}
++
++static void build_where(const struct pd_game* g, const struct pd_snapshot* s) {
++    int n;
++    const struct pd_area_thing* things = pd_areas_for(g, &n);
++    static const char* const HEADINGS[3] = { "HMs", "KEY ITEMS", "GIFT POKéMON" };
++    for (int sec = 0; sec < 3; sec++) {
++        add_section(HEADINGS[sec], NULL);
++        int first = entryCount;
++        for (int i = 0; i < n; i++) {
++            const struct pd_area_thing* t = &things[i];
++            bool gift = t->kind == PD_AREA_GIFT || t->kind == PD_AREA_KEY, mon = t->kind == PD_AREA_MON || t->kind == PD_AREA_EGG;
++            char name[48], sp[40];
++            if (mon) {
++                if (sec != 2) continue;
++                snprintf(name, sizeof(name), "%s%s", pd_species_name(t->id, sp, sizeof(sp)),
++                         t->kind == PD_AREA_EGG ? " (egg)" : "");
++            } else {
++                if (!gift && t->kind != PD_AREA_ITEM) continue;
++                const char* item = pd_item_name(g, t->id);
++                bool hm = is_hm(item);
++                if (sec == 2 || (sec == 0 && !hm) || (sec == 1 && (hm || t->kind != PD_AREA_KEY))) continue;
++                snprintf(name, sizeof(name), "%s", item);
++            }
++            if (name[0] == '#' || !strncmp(name, "Item#", 5)) continue;  // no name to show
++            bool dup = false;
++            for (int k = first; k < entryCount && !dup; k++) dup = !strcmp(entries[k].title, name);
++            if (dup) continue;
++            struct view_entry* e = add_entry();
++            if (!e) break;
++            const char* area = pd_mapsec_name(g, t->mapsec);
++            snprintf(e->title, sizeof(e->title), "%s", name);
++            snprintf(e->hintBuf, sizeof(e->hintBuf), "In %s.", area);
++            e->hint = e->hintBuf;
++            if (t->kind == PD_AREA_ITEM)
++                snprintf(e->answerBuf, sizeof(e->answerBuf), t->where[0] ? "Lying in the %s (%s)." : "Lying around %s.",
++                         t->where[0] ? t->where : area, area);
++            else
++                snprintf(e->answerBuf, sizeof(e->answerBuf), t->where[0] ? "Someone in the %s (%s)." : "Someone around %s.",
++                         t->where[0] ? t->where : area, area);
++            e->answer = e->answerBuf;
++            e->owned = pd_area_done(g, s, t);
++        }
++        qsort(entries + first, (size_t) (entryCount - first), sizeof(*entries), by_title);
++        if (!sections[sectionCount - 1].count) sectionCount--;
++    }
++}
++
+ static void build_bosses(const struct pd_game* g, const struct pd_snapshot* s, const struct pd_guide* gd) {
+     int best = 0;
+     for (int i = 0; i < s->partyCount; i++) {
+@@ -386,7 +447,8 @@ void ui_guide_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game* g
          return;
      }
      // The first visit per game: the notice first.
@@ -1626,6 +2441,14 @@ index ed5ddc8..03258fd 100644
      if (!(ui->settings->guideNotice & lastKindBit) && ui->overlay == PD_OVERLAY_NONE) {
          ui->overlay = PD_OVERLAY_GUIDE_NOTICE;
      }
+@@ -418,6 +480,7 @@ void ui_guide_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game* g
+     const struct page_ref* p = &pages[ui->guidePage];
+     if (p->kind == PAGE_HERE) build_here(g, s, gd);
+     else if (p->kind == PAGE_BOSS) build_bosses(g, s, gd);
++    else if (p->kind == PAGE_WHERE) build_where(g, s);
+     else build_static(g, s, &gd->pages[p->index]);
+     if (ui->guideOpen >= entryCount) ui->guideOpen = -1;
+ 
 diff --git a/3ds/core/pd_ui_internal.h b/3ds/core/pd_ui_internal.h
 index dbfe826..611f4e4 100644
 --- a/3ds/core/pd_ui_internal.h
@@ -1696,7 +2519,7 @@ index 3a67218..0c58c76 100644
      case PD_OVERLAY_TAB_BAR:
          tab_bar_page(ui, c);
 diff --git a/3ds/tools/gen_guide.py b/3ds/tools/gen_guide.py
-index 8139044..be8b1f8 100644
+index 8139044..26c6544 100644
 --- a/3ds/tools/gen_guide.py
 +++ b/3ds/tools/gen_guide.py
 @@ -67,6 +67,12 @@ def read_string(text, pos):
@@ -1721,7 +2544,64 @@ index 8139044..be8b1f8 100644
              if name in ("true", "false"):
                  return name == "true"
              return ("name", name)
-@@ -304,6 +312,23 @@ def main():
+@@ -207,20 +215,35 @@ def bosses_of(text, decl, env):
+     body = text[text.index(f"val {decl} = listOf("):]
+     body = body[:matching_paren(body, body.index("(")) + 1]
+     out = []
++    named = list(re.finditer(r'Boss\(("[^"]*"), ("[^"]*"), ([^,){]+?), trainer = ([a-z]\w*)\)', body))
++    for m in named:
++        # trainer = brawly: `private val brawly: (SaveProgress) -> Int = { p -> when { p.flag(F) -> N ... else -> M } }`
++        lam = text[text.index(f"val {m.group(4)}:"):]
++        lam = lam[:lam.index("\n}\n") + 2]
++        alts = [(Parser(tokenize(f), env).expr(), int(n)) for f, n in re.findall(r"p\.flag\(([^)]+)\) -> (\d+)", lam)]
++        default = int(re.search(r"else -> (\d+)", lam).group(1))
++        title = Parser(tokenize(m.group(1)), env).expr()
++        where = Parser(tokenize(m.group(2)), env).expr()
++        flag = Parser(tokenize(m.group(3)), env).expr()
++        out.append((m.start(), (title, where, flag, "BY_FLAGS", default, 0, alts)))
++    plain = []
+     for m in re.finditer(r'Boss\(("[^"]*"), ("[^"]*"), ([^,){]+?)(?:, trainer = league\((\d+), (\d+)\))?\)\s*(\{[^}]*\})?', body):
+         title = Parser(tokenize(m.group(1)), env).expr()
+         where = Parser(tokenize(m.group(2)), env).expr()
+         flag = Parser(tokenize(m.group(3)), env).expr()
+         if m.group(4):
+-            out.append((title, where, flag, "LEAGUE", int(m.group(4)), int(m.group(5))))
++            plain.append((m.start(), (title, where, flag, "LEAGUE", int(m.group(4)), int(m.group(5)))))
+         else:
+             lam = m.group(6) or ""
+             champ = re.search(r"league\((\d+), (\d+)\)\(p\) \+ rivalOffset", body[m.end():m.end() + 300])
+             if "rivalOffset" in lam or (champ and "val rivalOffset" in body[m.end():m.end() + 200]):
+-                out.append((title, where, flag, "CHAMPION", int(champ.group(1)), int(champ.group(2))))
++                plain.append((m.start(), (title, where, flag, "CHAMPION", int(champ.group(1)), int(champ.group(2)))))
+             else:
+-                out.append((title, where, flag, "FIXED", int(re.search(r"\d+", lam).group()), 0))
+-    return out
++                plain.append((m.start(), (title, where, flag, "FIXED", int(re.search(r"\d+", lam).group()), 0)))
++    # In the list's order; every Boss( read, or the guide would quietly skip one.
++    bosses = [b for _, b in sorted(out + plain, key=lambda e: e[0])]
++    assert len(bosses) == body.count("Boss("), f"gen_guide: {decl}: read {len(bosses)} of {body.count('Boss(')} bosses"
++    return [b if len(b) == 7 else b + ([],) for b in bosses]
+ 
+ 
+ def areas_of(name, decl):
+@@ -264,9 +287,14 @@ def emit_guide(out, prefix, pages, bosses, verified, extra):
+     for pi, (title, sections) in enumerate(pages):
+         out.append(f"    {{ {c_str(title)}, {prefix}_p{pi}, {len(sections)} }},")
+     out.append("};")
++    for bi, (title, where, flag, kind, a, b, alts) in enumerate(bosses):
++        if alts:
++            pairs = ", ".join(f"0x{f:X}, {t}" for f, t in alts)
++            out.append(f"static const uint16_t {prefix}_alts{bi}[] = {{ {pairs}, 0 }};")
+     out.append(f"static const struct pd_boss {prefix}_bosses[] = {{")
+-    for title, where, flag, kind, a, b in bosses:
+-        out.append(f"    {{ {c_str(title)}, {c_str(where)}, 0x{flag:X}, PD_BOSS_{kind}, {a}, {b} }},")
++    for bi, (title, where, flag, kind, a, b, alts) in enumerate(bosses):
++        alt = f"{prefix}_alts{bi}" if alts else "NULL"
++        out.append(f"    {{ {c_str(title)}, {c_str(where)}, 0x{flag:X}, PD_BOSS_{kind}, {a}, {b}, {alt} }},")
+     out.append("};")
+     out.append(f"const struct pd_guide {prefix} = {{")
+     out.append(f"    {prefix}_pages, {len(pages)}, {prefix}_bosses, {len(bosses)}, {str(verified).lower()}, {extra},")
+@@ -304,6 +332,28 @@ def main():
  
      em_env = {"consts": em_consts, "template": no_template}
  
@@ -1742,21 +2622,26 @@ index 8139044..be8b1f8 100644
 +
 +    rs_bosses = bosses_of(rs_text, "BOSSES_RUBY_SAPPHIRE", rs_env(True))
 +
++    # Emerald Legacy: its own bosses (BRAWLY by flags), no hand-written WHERE IS (built from its areas at run time).
++    el_text = read("GuideEmeraldLegacy.kt")
++    el_env = {"consts": consts(el_text), "template": no_template}
++    el_bosses = bosses_of(el_text, "BOSSES_EMERALD_LEGACY", el_env)
++
      # The League's rematch flag and the starter var (the champion's team).
      league_flag = fr_consts["FLAG_SYS_CAN_LINK_WITH_RS"]
      starter_var = fr_consts["VAR_STARTER_MON"]
-@@ -312,8 +337,8 @@ def main():
+@@ -312,8 +362,8 @@ def main():
      em_verified = "verified = false" not in em_text
  
      out = [
 -        "// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt",
 -        "// and GuideAreas{FireRed,LeafGreen,Emerald}Gen.kt - do not hand-edit.",
-+        "// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt",
-+        "// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire}Gen.kt - do not hand-edit.",
++        "// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt, GuideEmeraldLegacy.kt",
++        "// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire,EmeraldLegacy}Gen.kt - do not hand-edit.",
          '#include "pd_guide.h"',
          "",
      ]
-@@ -322,6 +347,11 @@ def main():
+@@ -322,6 +372,14 @@ def main():
      emit_guide(out, "pd_guide_leafgreen", pages_of(fr_text, fr_env(True)), fr_bosses, True,
                 f"0x{league_flag:X}, 0x{starter_var:X}")
      emit_guide(out, "pd_guide_emerald", pages_of(em_text, em_env), em_bosses, em_verified, "0, 0")
@@ -1764,16 +2649,19 @@ index 8139044..be8b1f8 100644
 +               "verified = false" not in rs_text, "0, 0")
 +    emit_guide(out, "pd_guide_sapphire", pages_of(rs_text, rs_env(False)), rs_bosses,
 +               "verified = false" not in rs_text, "0, 0")
++    emit_guide(out, "pd_guide_emerald_legacy", pages_of(el_text, el_env), el_bosses,
++               "verified = false" not in el_text, "0, 0")
++    emit_areas(out, "pd_areas_emerald_legacy", areas_of("GuideAreasEmeraldLegacyGen.kt", "GUIDE_AREAS_EMERALD_LEGACY_RAW"))
 +    emit_areas(out, "pd_areas_ruby_sapphire", areas_of("GuideAreasRubySapphireGen.kt", "GUIDE_AREAS_RUBY_SAPPHIRE_RAW"))
      emit_areas(out, "pd_areas_firered", areas_of("GuideAreasFireRedGen.kt", "GUIDE_AREAS_FIRERED_RAW"))
      emit_areas(out, "pd_areas_leafgreen", areas_of("GuideAreasLeafGreenGen.kt", "GUIDE_AREAS_LEAFGREEN_RAW"))
      emit_areas(out, "pd_areas_emerald", areas_of("GuideAreasEmeraldGen.kt", "GUIDE_AREAS_EMERALD_RAW"))
 diff --git a/gamedata/gen3/records/ported.toml b/gamedata/gen3/records/ported.toml
 new file mode 100644
-index 0000000..c09737f
+index 0000000..bda6db5
 --- /dev/null
 +++ b/gamedata/gen3/records/ported.toml
-@@ -0,0 +1,3003 @@
+@@ -0,0 +1,3163 @@
 +# Generated by scripts/port_records.py from the app's Kotlin vals (plorpOS's Linux port) - rerun it,
 +# don't edit: the records the Gen 3 configs name, for the 3DS / Linux target. `kotlin = false`: the app
 +# keeps each val itself (gen_gamedata.py writes no Kotlin for these).
@@ -2310,7 +3198,7 @@ index 0000000..c09737f
 +probeTrainer = 14
 +probeName = 'Terrence'
 +guide = { kotlin = 'GuideId.AMETHYST' }
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 18, movesOff = 8, speciesOff = 4, itemOff = 6, levelOff = 2)' }
++trainerMon = 'GUIDE_TABLES_AMETHYST_TRAINER_MON'
 +learnsetCfru = true
 +altTrainers = { kotlin = 'listOf(0x089CECCCL, 0x089B8A34L, 0x089C63B8L)' }  # HARD, DIVERGENT, DIVERGENT + HARD
 +mapGroups = 0x083526A8
@@ -2396,7 +3284,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x20
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_DREAMSTONE_TRAINER_MON'
 +altTrainers = { kotlin = 'listOf(0x085837E4L)' }
 +wildLayout = { kotlin = 'WildLayout(stride = 24)' }
 +mapGroups = 0x09186E6C
@@ -2426,7 +3314,7 @@ index 0000000..c09737f
 +trainerNamePtr = true
 +trainerSizeOff = 0x18
 +trainerPartyOff = 0x1C
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 28, movesOff = 8, speciesOff = 2, itemOff = 4, levelOff = 0)' }
++trainerMon = 'GUIDE_TABLES_ELITE_REDUX_V2_65_4_1B_TRAINER_MON'
 +wildLayout = { kotlin = 'WildLayout(stride = 28, land = 0, water = 1, rockSmash = 2, fishing = 4)' }
 +mapGroups = 0x091F54A0
 +
@@ -2541,7 +3429,7 @@ index 0000000..c09737f
 +varCount = 0x101
 +# One struct TrainerMon for every party (its "trainer control"): nickname, IVs / EVs, lvl +0x19, species +0x1A,
 +# heldItem +0x1C, moves +0x1E (none = the level-up moves, as CreateNPCTrainerParty does), 0x2C bytes.
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x2C, movesOff = 0x1E, speciesOff = 0x1A, itemOff = 0x1C, levelOff = 0x19)' }
++trainerMon = 'GUIDE_TABLES_EMERALD_LEGACY_TRAINER_MON'
 +guide = { kotlin = 'GuideId.EMERALD_LEGACY' }
 +mapGroups = 0x084AF90C
 +# ROUTE 101-104
@@ -2647,7 +3535,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x2B
 +trainerPartyOff = 8
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_HEART_AND_SOUL_TRAINER_MON'
 +wildSets = 4
 +wildSet = 1
 +mapGroups = 0x092DF5A4
@@ -2680,7 +3568,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x20
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_IMPERIUM_TRAINER_MON'
 +wildLayout = { kotlin = 'WildLayout(stride = 24)' }
 +mapGroups = 0x08FC2F74
 +
@@ -2713,7 +3601,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x20
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_LAZARUS_TRAINER_MON'
 +wildLayout = { kotlin = 'WildLayout(stride = 24, fishing = 4)' }
 +mapGroups = 0x08FAF098
 +wildSetVars = { kotlin = 'mapOf((24 shl 8 or 106) to 0x403E)' }
@@ -2748,7 +3636,7 @@ index 0000000..c09737f
 +trainerNameLen = 12
 +trainerSizeOff = 0x1F
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x20, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_MARIOMON_V1_5_1_TRAINER_MON'
 +mapGroups = 0x0869821C
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
@@ -2853,7 +3741,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x1F
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 28, movesOff = 0x12, speciesOff = 0x0A, itemOff = 0x0E, levelOff = 8)' }
++trainerMon = 'GUIDE_TABLES_QUETZAL_TRAINER_MON'
 +altTrainers = { kotlin = 'listOf(0x09985F94L, 0x099914E8L)' }
 +wildLayout = { kotlin = 'WildLayout(stride = 28, rockSmash = 3, fishing = 4)' }
 +flagBanks = { kotlin = 'listOf(SaveBank(firstId = 0x1000, sb1Off = 0x2F2C, count = 0x2000))' }
@@ -2990,7 +3878,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x1F
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x20, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_RECHARGED_EMERALD_TRAINER_MON'
 +trainerHardPartyOff = 0x20
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
@@ -3056,7 +3944,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x1F
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x20, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_RECHARGED_YELLOW_TRAINER_MON'
 +trainerHardPartyOff = 0x20
 +
 +# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
@@ -3170,7 +4058,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x20
 +trainerPartyOff = 4
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x20, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_SEAGLASS_TRAINER_MON'
 +wildLayout = { kotlin = 'WildLayout(stride = 24, fishing = 4)' }
 +mapGroups = 0x08B45148
 +
@@ -3198,7 +4086,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x2B
 +trainerPartyOff = 8
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x28, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1C)' }
++trainerMon = 'GUIDE_TABLES_SOULGOLD_TRAINER_MON'
 +wildSets = 4
 +wildSet = 0
 +altTrainers = { kotlin = 'listOf(0x084B394CL)' }  # HARD
@@ -3277,7 +4165,7 @@ index 0000000..c09737f
 +probeName = 'BROCK'
 +guide = { kotlin = 'GuideId.TEAM_ROCKET' }
 +# 24-byte TrainerMons: iv, level (u16), species, held item, six EVs, a nature, moves +0x10.
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 24, movesOff = 16, speciesOff = 4, itemOff = 6, levelOff = 2)' }
++trainerMon = 'GUIDE_TABLES_TEAM_ROCKET_TRAINER_MON'
 +
 +# Too Many Types 2 v1.5.2: gTrainers[EASY][NORMAL][HARD][943] at 0x0853C758 (EASY / HARD empty), so its
 +# NORMAL array 0x0854696C (0x2C-byte records); 0x24-byte TrainerMons; gWildMonHeaders 0x08F3C590 (14 refs,
@@ -3301,7 +4189,7 @@ index 0000000..c09737f
 +trainerNameLen = 11
 +trainerSizeOff = 0x24
 +trainerPartyOff = 8
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_TMT2_TRAINER_MON'
 +wildSets = 4
 +wildSet = 0
 +mapGroups = 0x09047730
@@ -3366,7 +4254,7 @@ index 0000000..c09737f
 +trainerNameLen = 13
 +trainerSizeOff = 0x2D
 +trainerPartyOff = 8
-+trainerMon = { kotlin = 'TrainerMonLayout(stride = 0x24, movesOff = 0x0C, speciesOff = 0x14, itemOff = 0x16, levelOff = 0x1A)' }
++trainerMon = 'GUIDE_TABLES_WISHES_TRAINER_MON'
 +wildSets = 4
 +wildSet = 0
 +mapGroups = 0x08F90738
@@ -4777,8 +5665,213 @@ index 0000000..c09737f
 +flags = 'POKEDEX_WISHES_FLAGS'
 +nationalMagicOff = 2
 +nationalMagic = 0xDA
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_AMETHYST_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 18
++movesOff = 8
++speciesOff = 4
++itemOff = 6
++levelOff = 2
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_DREAMSTONE_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_ELITE_REDUX_V2_65_4_1B_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 28
++movesOff = 8
++speciesOff = 2
++itemOff = 4
++levelOff = 0
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_EMERALD_LEGACY_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x2C
++movesOff = 0x1E
++speciesOff = 0x1A
++itemOff = 0x1C
++levelOff = 0x19
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_HEART_AND_SOUL_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_IMPERIUM_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_LAZARUS_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_MARIOMON_V1_5_1_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x20
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_QUETZAL_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 28
++movesOff = 0x12
++speciesOff = 0x0A
++itemOff = 0x0E
++levelOff = 8
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_RECHARGED_EMERALD_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x20
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_RECHARGED_YELLOW_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x20
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_SEAGLASS_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x20
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_SOULGOLD_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x28
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1C
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_TEAM_ROCKET_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 24
++movesOff = 16
++speciesOff = 4
++itemOff = 6
++levelOff = 2
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_TMT2_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
++
++# From app/src/main/kotlin/com/pokedaisy/app/companion/data/GuideRom.kt.
++[record.GUIDE_TABLES_WISHES_TRAINER_MON]
++schema = 'gen3_trainer_mon'
++kotlin = false
++stride = 0x24
++movesOff = 0x0C
++speciesOff = 0x14
++itemOff = 0x16
++levelOff = 0x1A
+diff --git a/gamedata/schema/gen3_guide.toml b/gamedata/schema/gen3_guide.toml
+index d39983c..25498c6 100644
+--- a/gamedata/schema/gen3_guide.toml
++++ b/gamedata/schema/gen3_guide.toml
+@@ -97,6 +97,7 @@ default = 0x24
+ [field.trainerMon]
+ kotlin = 'TrainerMonLayout?'
+ type = 'ref'
++record = 'gen3_trainer_mon'
+ default = 'none'
+ 
+ # WildPokemonHeader: expansion keeps one set of four tables per time of day.
+diff --git a/gamedata/schema/gen3_trainer_mon.toml b/gamedata/schema/gen3_trainer_mon.toml
+new file mode 100644
+index 0000000..1a04668
+--- /dev/null
++++ b/gamedata/schema/gen3_trainer_mon.toml
+@@ -0,0 +1,27 @@
++# TrainerMonLayout's fields (GuideRom.kt), checked against it by scripts/gen_gamedata.py: a hack's own struct
++# TrainerMon in its trainers' parties (every field at a fixed offset, whatever the party's flags say).
++# plorpOS's Linux port added this schema so the 3DS / Linux target can read GuideTables.trainerMon.
++
++version = 1
++kotlin_class = 'TrainerMonLayout'
++kotlin_file = 'GuideRom.kt'
++
++[field.stride]
++kotlin = 'Int'
++type = 'int'
++
++[field.movesOff]
++kotlin = 'Int'
++type = 'int'
++
++[field.speciesOff]
++kotlin = 'Int'
++type = 'int'
++
++[field.itemOff]
++kotlin = 'Int'
++type = 'int'
++
++[field.levelOff]
++kotlin = 'Int'
++type = 'int'
 diff --git a/gamedata/targets/3ds.toml b/gamedata/targets/3ds.toml
-index 54b8f29..faf4f56 100644
+index 54b8f29..0f81852 100644
 --- a/gamedata/targets/3ds.toml
 +++ b/gamedata/targets/3ds.toml
 @@ -37,6 +37,7 @@ saveBlock2Ptr = 'saveBlock2Ptr'
@@ -4803,16 +5896,28 @@ index 54b8f29..faf4f56 100644
  monIconTable = 'monIconTable'
  monIconPaletteIndices = 'monIconPaletteIndices'
  monIconPaletteTable = 'monIconPaletteTable'
-@@ -173,3 +177,27 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
+@@ -77,6 +81,11 @@ regionName = 'pokedex.regionName'
+ 
+ # GUIDE's live pages.
+ [part.guide]
++trainerMonStride = 'guideTables.trainerMon.stride'
++trainerMonMovesOff = 'guideTables.trainerMon.movesOff'
++trainerMonSpeciesOff = 'guideTables.trainerMon.speciesOff'
++trainerMonItemOff = 'guideTables.trainerMon.itemOff'
++trainerMonLevelOff = 'guideTables.trainerMon.levelOff'
+ trainers = 'guideTables.trainers'
+ learnsets = 'guideTables.learnsets'
+ wildHeaders = 'guideTables.wildHeaders'
+@@ -173,3 +182,27 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
  name = 'EMERALD'
  parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
  records = { items = 'FIELD_ITEMS_EMERALD' }
 +
 +# plorpOS's Linux port: the hacks, as their records reach gen3/records/c_hacks.toml. Emerald Legacy v1.1.4: retail's
-+# structs with its own addresses (its guide's trainer parties and its card style need C first).
++# structs with its own addresses, its own TrainerMon (guideTables.trainerMon).
 +[config.emerald_legacy]
 +name = 'EMERALD_LEGACY'
-+parts = ['ram', 'foes', 'icons', 'dex']
++parts = ['ram', 'foes', 'icons', 'dex', 'guide']
 +
 +# Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
 +# (RETAIL_PORTS' AXVE0 / AXPE0). Read like Emerald (the same species / item / map-section ids); no trainer card.
@@ -5334,10 +6439,18 @@ index a1c2e59..6c14390 100644
    for (int i = 0; i < 3; i++) {
      snprintf(path, sizeof path, "%s/%s", root, dirs[i]);
 diff --git a/scripts/gen_gamedata.py b/scripts/gen_gamedata.py
-index 9a2348a..08ecd34 100644
+index 9a2348a..71c74a8 100644
 --- a/scripts/gen_gamedata.py
 +++ b/scripts/gen_gamedata.py
-@@ -629,11 +629,12 @@ def load_records():
+@@ -216,6 +216,7 @@ def kotlin_class_fields(kt_file, cls):
+     if not m:
+         raise GameDataError(f"no `data class {cls}(` in {kt_file}")
+     body = src[m.end():match_paren(src, m.end() - 1) - 1]
++    body = re.sub(r",[ \t]*val ", ",\nval ", body)  # one line, several fields (data class TrainerMonLayout(...))
+     fields, comments, in_doc = [], [], False
+     for line in body.split("\n"):
+         t = line.strip()
+@@ -629,11 +630,12 @@ def load_records():
              if name in records:
                  fail(where, f"{name} is also in {records[name]['file']}")
              # `of` / `items` are a list's own keys; a record's `items` is a field (FieldItemFns.items).
@@ -5352,7 +6465,7 @@ index 9a2348a..08ecd34 100644
              if kind == "list":
                  if entries or meta.get("of") not in LIST_TYPES or not isinstance(meta.get("items"), list):
                      fail(where, "a list has `of` (Int or Long) and `items`, nothing else")
-@@ -677,6 +678,10 @@ def record_kotlin(records):
+@@ -677,6 +679,10 @@ def record_kotlin(records):
      ]
      last_file = None
      for r in sorted(records.values(), key=lambda r: r["rank"]):
