@@ -2,7 +2,7 @@
 /* PokeDaisy's options in the in-game menu (plorpos-wjw): the rows, and
  * PokeDaisy's own DATA/settings.ini they read and write - one file, so these
  * and the companion's SETTINGS can never disagree. PokeDaisy reads it again
- * when it comes back from a pause (mk/patches/pokedaisy-plorpos.patch), which
+ * when it comes back from a pause (the thwonp/pokedaisy-plorp fork), which
  * the menu is. No SDL, so tools/menu-check.c drives the real thing. */
 #ifndef TORTOS_DAISY_H
 #define TORTOS_DAISY_H
