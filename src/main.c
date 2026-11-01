@@ -11431,14 +11431,15 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
-	 * Blow Into Mic on every device (plorpos-6ei.3): the last five action rows.
+	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
-	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
+	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
-		bool shown = i < R_SWAP && (!daisy || i <= 3);   /* ff rewind save load */
+		bool shown = (i < R_SWAP && (!daisy || i <= 3))   /* ff rewind save load */
+			|| (daisy && i == R_HUD);                  /* HUD Focus: PokeDaisy's only */
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
