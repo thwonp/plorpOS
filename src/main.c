@@ -13153,8 +13153,7 @@ static int run_port(app *a, const system_cfg *s, const char *file)
  * resident. It plays the game's own Saves/<folder>/<rom>.srm (the patch's
  * --save), the raw save Diatom's mGBA keeps, so either can carry on the game.
  * Its states, settings and save backups are its own, in shared/pokedaisy.
- * Only .gba: the companion is Gen 3's, and its host opens .gb/.gbc/.gba but
- * no zip. The choice is per game, in the library db: playwith.<TAG>/<file>,
+ * .gba, .gb and .gbc (no zip): the companion reads Gen 3 now, Gen 1/2 as plorpos-l22.10 lands. The choice is per game, in the library db: playwith.<TAG>/<file>,
  * present only for PokeDaisy. */
 static void daisy_bin(char *out, size_t n)
 {
@@ -13171,7 +13170,12 @@ static bool daisy_can(const system_cfg *s, const char *file)
 	const char *dot = strrchr(file, '.');
 	char bin[LIB_PATH];
 
-	if (strcmp(s->tag, "GBA") || !dot || strcasecmp(dot, ".gba")) return false;
+	/* The GB and GBC shelves too (plorpos-l22.9): Diatom plays them on the same mGBA, so the raw .srm is shared
+	 * the same way, and the host opens .gb / .gbc as it does .gba. */
+	if (!dot || !((!strcmp(s->tag, "GBA") && !strcasecmp(dot, ".gba")) ||
+	              (!strcmp(s->tag, "GB") && !strcasecmp(dot, ".gb")) ||
+	              (!strcmp(s->tag, "GBC") && !strcasecmp(dot, ".gbc"))))
+		return false;
 	daisy_bin(bin, sizeof bin);
 	return access(bin, X_OK) == 0;
 }
