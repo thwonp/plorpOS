@@ -1,17 +1,35 @@
 diff --git a/3ds/core/pd_configs_gen.h b/3ds/core/pd_configs_gen.h
-index ded2491..aa69753 100644
+index ded2491..0327b2e 100644
 --- a/3ds/core/pd_configs_gen.h
 +++ b/3ds/core/pd_configs_gen.h
-@@ -37,6 +37,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+@@ -24,6 +24,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .mapHeader = 0x02036DFC,
+     .encryptionKeyOff = 0xF20,
+     .moneyOff = 0x290,
++    .staticSaveBlocks = false,
+     .bagPockets = 0x0203988C,
+     .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
+     .dexSeenCopy1 = 0x5F8,
+@@ -36,7 +37,10 @@ static const struct pd_config PD_CONFIG_FIRERED_REV1 = {
+     .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
++    .battleStructStatic = false,
      .monToSwitchIntoOff = 0x5C,
 +    .eggSpecies = 0,
 +    .speciesCount = 412,
      .monIconTable = 0x083D3810,
      .monIconPaletteIndices = 0x083D3EF0,
      .monIconPaletteTable = 0x083D40A8,
-@@ -133,6 +135,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+@@ -124,6 +128,7 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
+     .mapHeader = 0x02036DFC,
+     .encryptionKeyOff = 0xF20,
+     .moneyOff = 0x290,
++    .staticSaveBlocks = false,
+     .bagPockets = 0x0203988C,
+     .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
+     .dexSeenCopy1 = 0x5F8,
+@@ -133,6 +138,8 @@ static const struct pd_config PD_CONFIG_FIRERED_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -20,7 +38,15 @@ index ded2491..aa69753 100644
      .monIconTable = 0x083D37A0,
      .monIconPaletteIndices = 0x083D3E80,
      .monIconPaletteTable = 0x083D4038,
-@@ -163,6 +167,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+@@ -154,6 +161,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
+     .mapHeader = 0x02036DFC,
+     .encryptionKeyOff = 0xF20,
+     .moneyOff = 0x290,
++    .staticSaveBlocks = false,
+     .bagPockets = 0x0203988C,
+     .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
+     .dexSeenCopy1 = 0x5F8,
+@@ -163,6 +171,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV0 = {
      .flagsOff = 0xEE0,
      .varsOff = 0x1000,
      .flagBytes = 0x120,
@@ -29,25 +55,45 @@ index ded2491..aa69753 100644
      .monIconTable = 0x083D35DC,
      .monIconPaletteIndices = 0x083D3CBC,
      .monIconPaletteTable = 0x083D3E74,
-@@ -248,6 +254,8 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+@@ -235,6 +245,7 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .mapHeader = 0x02036DFC,
+     .encryptionKeyOff = 0xF20,
+     .moneyOff = 0x290,
++    .staticSaveBlocks = false,
+     .bagPockets = 0x0203988C,
+     .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_KEY, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES },
+     .dexSeenCopy1 = 0x5F8,
+@@ -247,7 +258,10 @@ static const struct pd_config PD_CONFIG_LEAFGREEN_REV1 = {
+     .enemyParty = 0x0202402C,
      .battlerPartyIndexes = 0x02023BCE,
      .battleStructPtr = 0x02023FE8,
++    .battleStructStatic = false,
      .monToSwitchIntoOff = 0x5C,
 +    .eggSpecies = 0,
 +    .speciesCount = 412,
      .monIconTable = 0x083D364C,
      .monIconPaletteIndices = 0x083D3D2C,
      .monIconPaletteTable = 0x083D3EE4,
-@@ -333,6 +341,8 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -320,6 +334,7 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+     .mapHeader = 0x02037318,
+     .encryptionKeyOff = 0xAC,
+     .moneyOff = 0x490,
++    .staticSaveBlocks = false,
+     .bagPockets = 0x02039DD8,
+     .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
+     .dexSeenCopy1 = 0x988,
+@@ -332,7 +347,10 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+     .enemyParty = 0x02024744,
      .battlerPartyIndexes = 0x0202406E,
      .battleStructPtr = 0x0202449C,
++    .battleStructStatic = false,
      .monToSwitchIntoOff = 0x5C,
 +    .eggSpecies = 0,
 +    .speciesCount = 412,
      .monIconTable = 0x0857BCA8,
      .monIconPaletteIndices = 0x0857C388,
      .monIconPaletteTable = 0x0857C540,
-@@ -406,4 +416,52 @@ static const struct pd_config PD_CONFIG_EMERALD = {
+@@ -406,4 +424,268 @@ static const struct pd_config PD_CONFIG_EMERALD = {
      .pcScript = 0x0203FFF4,
  };
  
@@ -67,6 +113,7 @@ index ded2491..aa69753 100644
 +    .mapHeader = 0x020374A4,
 +    .encryptionKeyOff = 0xAC,
 +    .moneyOff = 0x490,
++    .staticSaveBlocks = false,
 +    .bagPockets = 0x0203A100,
 +    .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
 +    .dexSeenCopy1 = 0xAF0,
@@ -79,6 +126,7 @@ index ded2491..aa69753 100644
 +    .enemyParty = 0x02024744,
 +    .battlerPartyIndexes = 0x0202406E,
 +    .battleStructPtr = 0x0202449C,
++    .battleStructStatic = false,
 +    .monToSwitchIntoOff = 0x5C,
 +    .eggSpecies = 415,
 +    .speciesCount = 415,
@@ -99,9 +147,223 @@ index ded2491..aa69753 100644
 +    .regionName = "HOENN",
 +};
 +
++// Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
++// (RETAIL_PORTS' AXVE0 / AXPE0). Read like Emerald (the same species / item / map-section ids); no trainer card.
++// gamedata/gen3/retail/ruby_sapphire.toml: ruby (ram, foes, icons, dex, guide)
++static const struct pd_config PD_CONFIG_RUBY = {
++    .playerParty = 0x03004360,
++    .playerPartyCount = 0x03004350,
++    .battleMons = 0x02024A80,
++    .battlerPositions = 0x02024A72,
++    .battlersCount = 0x02024A68,
++    .battleTypeFlags = 0x020239F8,
++    .gMain = 0x03001770,
++    .saveBlock1Ptr = 0x02025734,
++    .saveBlock2Ptr = 0x02024EA4,
++    .mapHeader = 0x0202E828,
++    .encryptionKeyOff = -1,
++    .moneyOff = 0x490,
++    .staticSaveBlocks = true,
++    .bagPockets = 0x083C1634,
++    .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
++    .dexSeenCopy1 = 0x938,
++    .dexSeenCopy2 = 0x3A8C,
++    .nationalMagicOff = 2,
++    .nationalMagic = 0xDA,
++    .flagsOff = 0x1220,
++    .varsOff = 0x1340,
++    .flagBytes = 0x120,
++    .enemyParty = 0x030045C0,
++    .battlerPartyIndexes = 0x02024A6A,
++    .battleStructPtr = 0x02000000,
++    .battleStructStatic = true,
++    .monToSwitchIntoOff = 0x16068,
++    .eggSpecies = 0,
++    .speciesCount = 412,
++    .monIconTable = 0x083BBD3C,
++    .monIconPaletteIndices = 0x083BC41C,
++    .monIconPaletteTable = 0x083BC5D4,
++    .itemIconTable = 0,
++    .itemIconStride = 8,
++    .dexEntries = 0x083B1874,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x081FEC30,
++    .speciesToNational = 0x081FC52E,
++    .abilityNames = 0x081FA260,
++    .frontPics = 0x081E836C,
++    .palettes = 0x081EA5CC,
++    .regionalOrder = 0x081FC864,
++    .regionalCount = 202,
++    .regionName = "HOENN",
++    .trainers = 0x081F0514,
++    .learnsets = 0x08207BE0,
++    .wildHeaders = 0x0839D46C,
++    .probeTrainer = 265,
++    .probeName = "ROXANNE",
++};
++
++// gamedata/gen3/retail/ruby_sapphire.toml: sapphire (ram, foes, icons, dex, guide)
++static const struct pd_config PD_CONFIG_SAPPHIRE = {
++    .playerParty = 0x03004360,
++    .playerPartyCount = 0x03004350,
++    .battleMons = 0x02024A80,
++    .battlerPositions = 0x02024A72,
++    .battlersCount = 0x02024A68,
++    .battleTypeFlags = 0x020239F8,
++    .gMain = 0x03001770,
++    .saveBlock1Ptr = 0x02025734,
++    .saveBlock2Ptr = 0x02024EA4,
++    .mapHeader = 0x0202E828,
++    .encryptionKeyOff = -1,
++    .moneyOff = 0x490,
++    .staticSaveBlocks = true,
++    .bagPockets = 0x083C1690,
++    .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
++    .dexSeenCopy1 = 0x938,
++    .dexSeenCopy2 = 0x3A8C,
++    .nationalMagicOff = 2,
++    .nationalMagic = 0xDA,
++    .flagsOff = 0x1220,
++    .varsOff = 0x1340,
++    .flagBytes = 0x120,
++    .enemyParty = 0x030045C0,
++    .battlerPartyIndexes = 0x02024A6A,
++    .battleStructPtr = 0x02000000,
++    .battleStructStatic = true,
++    .monToSwitchIntoOff = 0x16068,
++    .eggSpecies = 0,
++    .speciesCount = 412,
++    .monIconTable = 0x083BBD98,
++    .monIconPaletteIndices = 0x083BC478,
++    .monIconPaletteTable = 0x083BC630,
++    .itemIconTable = 0,
++    .itemIconStride = 8,
++    .dexEntries = 0x083B18D0,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x081FEBC0,
++    .speciesToNational = 0x081FC4BE,
++    .abilityNames = 0x081FA1F0,
++    .frontPics = 0x081E82FC,
++    .palettes = 0x081EA55C,
++    .regionalOrder = 0x081FC7F4,
++    .regionalCount = 202,
++    .regionName = "HOENN",
++    .trainers = 0x081F04A4,
++    .learnsets = 0x08207B70,
++    .wildHeaders = 0x0839D2B4,
++    .probeTrainer = 265,
++    .probeName = "ROXANNE",
++};
++
++// gamedata/gen3/ports/ruby.toml: port_axve0 (ram, foes, icons, dex, guide)
++static const struct pd_config PD_CONFIG_RUBY_REV0 = {
++    .playerParty = 0x03004360,
++    .playerPartyCount = 0x03004350,
++    .battleMons = 0x02024A80,
++    .battlerPositions = 0x02024A72,
++    .battlersCount = 0x02024A68,
++    .battleTypeFlags = 0x020239F8,
++    .gMain = 0x03001770,
++    .saveBlock1Ptr = 0x02025734,
++    .saveBlock2Ptr = 0x02024EA4,
++    .mapHeader = 0x0202E828,
++    .encryptionKeyOff = -1,
++    .moneyOff = 0x490,
++    .staticSaveBlocks = true,
++    .bagPockets = 0x083C1618,
++    .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
++    .dexSeenCopy1 = 0x938,
++    .dexSeenCopy2 = 0x3A8C,
++    .nationalMagicOff = 2,
++    .nationalMagic = 0xDA,
++    .flagsOff = 0x1220,
++    .varsOff = 0x1340,
++    .flagBytes = 0x120,
++    .enemyParty = 0x030045C0,
++    .battlerPartyIndexes = 0x02024A6A,
++    .battleStructPtr = 0x02000000,
++    .battleStructStatic = true,
++    .monToSwitchIntoOff = 0x16068,
++    .eggSpecies = 0,
++    .speciesCount = 412,
++    .monIconTable = 0x083BBD20,
++    .monIconPaletteIndices = 0x083BC400,
++    .monIconPaletteTable = 0x083BC5B8,
++    .itemIconTable = 0,
++    .itemIconStride = 8,
++    .dexEntries = 0x083B1858,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x081FEC18,
++    .speciesToNational = 0x081FC516,
++    .abilityNames = 0x081FA248,
++    .frontPics = 0x081E8354,
++    .palettes = 0x081EA5B4,
++    .regionalOrder = 0x081FC84C,
++    .regionalCount = 202,
++    .regionName = "HOENN",
++    .trainers = 0x081F04FC,
++    .learnsets = 0x08207BC8,
++    .wildHeaders = 0x0839D454,
++    .probeTrainer = 265,
++    .probeName = "ROXANNE",
++};
++
++// gamedata/gen3/ports/sapphire.toml: port_axpe0 (ram, foes, icons, dex, guide)
++static const struct pd_config PD_CONFIG_SAPPHIRE_REV0 = {
++    .playerParty = 0x03004360,
++    .playerPartyCount = 0x03004350,
++    .battleMons = 0x02024A80,
++    .battlerPositions = 0x02024A72,
++    .battlersCount = 0x02024A68,
++    .battleTypeFlags = 0x020239F8,
++    .gMain = 0x03001770,
++    .saveBlock1Ptr = 0x02025734,
++    .saveBlock2Ptr = 0x02024EA4,
++    .mapHeader = 0x0202E828,
++    .encryptionKeyOff = -1,
++    .moneyOff = 0x490,
++    .staticSaveBlocks = true,
++    .bagPockets = 0x083C1670,
++    .bagOrder = { PD_POCKET_ITEMS, PD_POCKET_BALLS, PD_POCKET_TMHM, PD_POCKET_BERRIES, PD_POCKET_KEY },
++    .dexSeenCopy1 = 0x938,
++    .dexSeenCopy2 = 0x3A8C,
++    .nationalMagicOff = 2,
++    .nationalMagic = 0xDA,
++    .flagsOff = 0x1220,
++    .varsOff = 0x1340,
++    .flagBytes = 0x120,
++    .enemyParty = 0x030045C0,
++    .battlerPartyIndexes = 0x02024A6A,
++    .battleStructPtr = 0x02000000,
++    .battleStructStatic = true,
++    .monToSwitchIntoOff = 0x16068,
++    .eggSpecies = 0,
++    .speciesCount = 412,
++    .monIconTable = 0x083BBD78,
++    .monIconPaletteIndices = 0x083BC458,
++    .monIconPaletteTable = 0x083BC610,
++    .itemIconTable = 0,
++    .itemIconStride = 8,
++    .dexEntries = 0x083B18B0,
++    .dexEntryStride = 0x24,
++    .speciesInfo = 0x081FEBA8,
++    .speciesToNational = 0x081FC4A6,
++    .abilityNames = 0x081FA1D8,
++    .frontPics = 0x081E82E4,
++    .palettes = 0x081EA544,
++    .regionalOrder = 0x081FC7DC,
++    .regionalCount = 202,
++    .regionName = "HOENN",
++    .trainers = 0x081F048C,
++    .learnsets = 0x08207B58,
++    .wildHeaders = 0x0839D29C,
++    .probeTrainer = 265,
++    .probeName = "ROXANNE",
++};
++
  #endif
 diff --git a/3ds/core/pd_game.c b/3ds/core/pd_game.c
-index dafc939..674f3f9 100644
+index dafc939..58de845 100644
 --- a/3ds/core/pd_game.c
 +++ b/3ds/core/pd_game.c
 @@ -1,7 +1,10 @@
@@ -115,7 +377,38 @@ index dafc939..674f3f9 100644
  // The configs come from gamedata/ (gamedata/targets/3ds.toml picks the fields
  // this port reads), generated with the app's: `make gamedata`.
  #include "pd_configs_gen.h"
-@@ -58,3 +61,94 @@ void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize) {
+@@ -36,11 +39,30 @@ void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize) {
+         g->kind = PD_GAME_FIRERED;
+         g->title = g->code[2] == 'R' ? "Pokémon FireRed" : "Pokémon LeafGreen";
+         bool rev1 = g->revision == 1;
++        g->guide = g->code[2] == 'R' ? PD_GUIDE_FIRERED : PD_GUIDE_LEAFGREEN;
+         if (g->code[2] == 'R') g->cfg = rev1 ? &PD_CONFIG_FIRERED_REV1 : &PD_CONFIG_FIRERED_REV0;
+         else g->cfg = rev1 ? &PD_CONFIG_LEAFGREEN_REV1 : &PD_CONFIG_LEAFGREEN_REV0;
++    } else if (!strcmp(g->code, "AXVE") || !strcmp(g->code, "AXPE")) {
++        // Ruby / Sapphire (USA), read like Emerald (Poller.otherRetailConfig): rev 0 has its own addresses.
++        bool ruby = g->code[2] == 'V';
++        g->kind = PD_GAME_EMERALD;
++        g->title = ruby ? "Pokémon Ruby" : "Pokémon Sapphire";
++        g->guide = ruby ? PD_GUIDE_RUBY : PD_GUIDE_SAPPHIRE;
++        if (g->revision == 0) g->cfg = ruby ? &PD_CONFIG_RUBY_REV0 : &PD_CONFIG_SAPPHIRE_REV0;
++        else g->cfg = ruby ? &PD_CONFIG_RUBY : &PD_CONFIG_SAPPHIRE;
++        if (g->revision > 2) {
++            g->cfg = NULL;
++            g->unsupported = "This revision isn't supported yet";
++        } else if (romSize > 0x1000000) {
++            g->cfg = NULL;
++            g->title = ruby ? "Ruby ROM hack" : "Sapphire ROM hack";
++            g->unsupported = "Not a version the companion knows";
++        }
++        return;
+     } else if (!strcmp(g->code, "BPEE")) {
+         g->kind = PD_GAME_EMERALD;
+         g->title = "Pokémon Emerald";
++        g->guide = PD_GUIDE_EMERALD;
+         g->cfg = &PD_CONFIG_EMERALD;
+     } else {
+         g->title = "Unknown game";
+@@ -58,3 +80,101 @@ void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize) {
          g->unsupported = "ROM hacks aren't supported on 3DS yet";
      }
  }
@@ -157,10 +450,12 @@ index dafc939..674f3f9 100644
 +    const struct pd_config* cfg;
 +    enum pd_game_kind kind;
 +    const char* title;
++    enum pd_guide_id guide;
 +};
 +static const struct known_rom KNOWN_ROMS[] = {
-+    {"cbd71af65ee3dcd53280a6a12014bfb11e8f626a", &PD_CONFIG_EMERALD_LEGACY, PD_GAME_EMERALD, "Pokémon Emerald Legacy"},
-+    {NULL, NULL, PD_GAME_NONE, NULL},
++    {"cbd71af65ee3dcd53280a6a12014bfb11e8f626a", &PD_CONFIG_EMERALD_LEGACY, PD_GAME_EMERALD, "Pokémon Emerald Legacy",
++     PD_GUIDE_NONE},
++    {NULL, NULL, PD_GAME_NONE, NULL, PD_GUIDE_NONE},
 +};
 +
 +static bool retail_dump(const struct pd_game* g) {
@@ -199,22 +494,55 @@ index dafc939..674f3f9 100644
 +        g->cfg = k->cfg;
 +        g->kind = k->kind;
 +        g->title = k->title;
++        g->guide = k->guide;
 +        g->unsupported = NULL;
 +        return;
 +    }
 +    if (!g->cfg) return; // detect's verdict (a revision past 1, a big hack) stands
++    // LeafGreen, Ruby and Sapphire are read by code and revision alone, like the app (OTHER_RETAIL_CODES):
++    // only FireRed and Emerald, which most hacks build on, need a retail hash.
++    if (strcmp(g->code, "BPRE") && strcmp(g->code, "BPEE")) return;
 +    for (size_t i = 0; i < sizeof RETAIL_SHA1S / sizeof *RETAIL_SHA1S; i++)
 +        if (!strcmp(RETAIL_SHA1S[i], g->sha1)) return;
 +    if (retail_dump(g)) return;
 +    g->cfg = NULL;
++    g->guide = PD_GUIDE_NONE;
 +    g->title = g->kind == PD_GAME_FIRERED ? "FireRed ROM hack" : "Emerald ROM hack";
 +    g->unsupported = "Not a version the companion knows";
 +}
 diff --git a/3ds/core/pd_game.h b/3ds/core/pd_game.h
-index d8dff14..f58d43c 100644
+index d8dff14..f820242 100644
 --- a/3ds/core/pd_game.h
 +++ b/3ds/core/pd_game.h
-@@ -42,6 +42,8 @@ struct pd_config {
+@@ -15,6 +15,16 @@ enum pd_game_kind {
+     PD_GAME_EMERALD,
+ };
+ 
++// Which GUIDE a game gets (pd_guide_for): its own, or none until it's ported.
++enum pd_guide_id {
++    PD_GUIDE_NONE = 0,
++    PD_GUIDE_FIRERED,
++    PD_GUIDE_LEAFGREEN,
++    PD_GUIDE_EMERALD,
++    PD_GUIDE_RUBY,
++    PD_GUIDE_SAPPHIRE,
++};
++
+ struct pd_config {
+     uint32_t playerParty;
+     uint32_t playerPartyCount;
+@@ -26,7 +36,9 @@ struct pd_config {
+     uint32_t saveBlock1Ptr;
+     uint32_t saveBlock2Ptr;
+     uint32_t mapHeader;
+-    uint32_t encryptionKeyOff; // in SaveBlock2
++    int32_t encryptionKeyOff;  // in SaveBlock2; -1 = no key (Ruby / Sapphire: money and bag counts plain)
++    // Ruby / Sapphire: saveBlock1Ptr / saveBlock2Ptr are the blocks themselves, gBattleStruct a fixed block.
++    bool staticSaveBlocks, battleStructStatic;
+     uint32_t moneyOff;         // in SaveBlock1
+     // The battle's FOE TEAM: gEnemyParty (6 struct Pokemon), gBattlerPartyIndexes
+     // (u16 per battler: which one is out) and gBattleStruct (a pointer) ->
+@@ -42,6 +54,8 @@ struct pd_config {
      // The bag's icons: sItemIconTable, {tiles, palette} (both LZ77) every itemIconStride bytes. 0 = none.
      uint32_t itemIconTable;
      int itemIconStride;
@@ -223,7 +551,15 @@ index d8dff14..f58d43c 100644
      // gBagPockets: five {slots pointer, capacity} pairs, 8 bytes apart;
      // bagOrder[i] is the pocket (PD_POCKET_*) the game keeps at index i.
      uint32_t bagPockets;
-@@ -140,6 +142,7 @@ struct pd_game {
+@@ -133,6 +147,7 @@ struct pd_game {
+     char code[5];       // ROM header game code, e.g. "BPRE"
+     int revision;       // ROM header 0xBC
+     const char* title;  // "Pokémon FireRed"
++    enum pd_guide_id guide;
+     const struct pd_config* cfg; // NULL = detected but not supported
+     const char* unsupported;     // why, when cfg is NULL
+     // The ROM's bytes (0x08000000 on the bus), for the tabs that read its
+@@ -140,6 +155,7 @@ struct pd_game {
      const uint8_t* rom;
      size_t romSize;
      unsigned loadId; // new on every pd_game_detect (see pd_rom_id)
@@ -231,7 +567,7 @@ index d8dff14..f58d43c 100644
  };
  
  // Which ROM the tabs' caches were built from: 0 = none, else new for every
-@@ -155,4 +158,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
+@@ -155,4 +171,10 @@ const uint8_t* pd_rom_at(const struct pd_game* g, uint32_t addr, size_t len);
  // Reads the ROM header (the first 0xC0 bytes of the ROM) and its size.
  void pd_game_detect(struct pd_game* g, const uint8_t* header, size_t romSize);
  
@@ -242,6 +578,682 @@ index d8dff14..f58d43c 100644
 +void pd_game_identify(struct pd_game* g);
 +
  #endif
+diff --git a/3ds/core/pd_guide.c b/3ds/core/pd_guide.c
+index f8287c1..8cc3d77 100644
+--- a/3ds/core/pd_guide.c
++++ b/3ds/core/pd_guide.c
+@@ -19,23 +19,25 @@ static uint32_t u32(const uint8_t* p) {
+ }
+ 
+ const struct pd_guide* pd_guide_for(const struct pd_game* g) {
+-    if (g->kind == PD_GAME_EMERALD) return &pd_guide_emerald;
+-    if (g->kind == PD_GAME_FIRERED) return !strcmp(g->code, "BPGE") ? &pd_guide_leafgreen : &pd_guide_firered;
+-    return NULL;
++    switch (g->guide) {
++    case PD_GUIDE_FIRERED: return &pd_guide_firered;
++    case PD_GUIDE_LEAFGREEN: return &pd_guide_leafgreen;
++    case PD_GUIDE_EMERALD: return &pd_guide_emerald;
++    case PD_GUIDE_RUBY: return &pd_guide_ruby;
++    case PD_GUIDE_SAPPHIRE: return &pd_guide_sapphire;
++    default: return NULL;
++    }
+ }
+ 
+ const struct pd_area_thing* pd_areas_for(const struct pd_game* g, int* count) {
+-    if (g->kind == PD_GAME_EMERALD) {
+-        *count = pd_areas_emerald_count;
+-        return pd_areas_emerald;
+-    }
+-    if (g->kind == PD_GAME_FIRERED) {
+-        bool lg = !strcmp(g->code, "BPGE");
+-        *count = lg ? pd_areas_leafgreen_count : pd_areas_firered_count;
+-        return lg ? pd_areas_leafgreen : pd_areas_firered;
++    switch (g->guide) {
++    case PD_GUIDE_FIRERED: *count = pd_areas_firered_count; return pd_areas_firered;
++    case PD_GUIDE_LEAFGREEN: *count = pd_areas_leafgreen_count; return pd_areas_leafgreen;
++    case PD_GUIDE_EMERALD: *count = pd_areas_emerald_count; return pd_areas_emerald;
++    case PD_GUIDE_RUBY:
++    case PD_GUIDE_SAPPHIRE: *count = pd_areas_ruby_sapphire_count; return pd_areas_ruby_sapphire;
++    default: *count = 0; return NULL;
+     }
+-    *count = 0;
+-    return NULL;
+ }
+ 
+ static bool caught_species(const struct pd_game* g, const struct pd_snapshot* s, int species) {
+diff --git a/3ds/core/pd_guide.h b/3ds/core/pd_guide.h
+index a1aa81a..8d00d27 100644
+--- a/3ds/core/pd_guide.h
++++ b/3ds/core/pd_guide.h
+@@ -60,7 +60,7 @@ struct pd_guide {
+     uint16_t starterVar;        // FireRed's VAR_STARTER_MON
+ };
+ 
+-extern const struct pd_guide pd_guide_firered, pd_guide_leafgreen, pd_guide_emerald;
++extern const struct pd_guide pd_guide_firered, pd_guide_leafgreen, pd_guide_emerald, pd_guide_ruby, pd_guide_sapphire;
+ 
+ enum pd_area_kind { PD_AREA_ITEM, PD_AREA_HIDDEN, PD_AREA_GIFT, PD_AREA_KEY, PD_AREA_MON, PD_AREA_EGG, PD_AREA_TRADE };
+ 
+@@ -74,8 +74,8 @@ struct pd_area_thing {
+     const char* where; // the sub-map ("" = the area's main map)
+ };
+ 
+-extern const struct pd_area_thing pd_areas_firered[], pd_areas_leafgreen[], pd_areas_emerald[];
+-extern const int pd_areas_firered_count, pd_areas_leafgreen_count, pd_areas_emerald_count;
++extern const struct pd_area_thing pd_areas_firered[], pd_areas_leafgreen[], pd_areas_emerald[], pd_areas_ruby_sapphire[];
++extern const int pd_areas_firered_count, pd_areas_leafgreen_count, pd_areas_emerald_count, pd_areas_ruby_sapphire_count;
+ 
+ // The guide and area data for g (NULL / 0 if none).
+ const struct pd_guide* pd_guide_for(const struct pd_game* g);
+diff --git a/3ds/core/pd_guide_gen.c b/3ds/core/pd_guide_gen.c
+index a90e1b5..ef3eced 100644
+--- a/3ds/core/pd_guide_gen.c
++++ b/3ds/core/pd_guide_gen.c
+@@ -1,5 +1,5 @@
+-// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt
+-// and GuideAreas{FireRed,LeafGreen,Emerald}Gen.kt - do not hand-edit.
++// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt
++// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire}Gen.kt - do not hand-edit.
+ #include "pd_guide.h"
+ 
+ static const struct pd_guide_entry pd_guide_firered_p0_s0[] = {
+@@ -363,6 +363,596 @@ const struct pd_guide pd_guide_emerald = {
+     pd_guide_emerald_pages, 3, pd_guide_emerald_bosses, 13, false, 0, 0,
+ };
+ 
++static const struct pd_guide_entry pd_guide_ruby_p0_s0[] = {
++    { "Running", "Hold B to run once you have the RUNNING SHOES.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Two bikes", "The MACH BIKE is the fast one - fast enough to cross cracked floors before they give way. The ACRO BIKE can hop and ride narrow rails. RYDEL in MAUVILLE CITY swaps one for the other.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Rematches", "Trainers you've beaten are listed in the POKéNAV's TRAINER'S EYES. Once you have five badges, walking around makes some of them want a rematch.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_ruby_p0_s1[] = {
++    { "Physical or special?", "In this generation it's decided by the move's TYPE, not the move. FIRE, WATER, GRASS, ELECTRIC, ICE, PSYCHIC, DRAGON and DARK moves are special; NORMAL, FIGHTING, FLYING, POISON, GROUND, ROCK, BUG, GHOST and STEEL are physical.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "A traded POKéMON won't listen", "Traded POKéMON obey up to Lv10 with no badges, Lv30 with the KNUCKLE BADGE, Lv50 with the HEAT BADGE, Lv70 with the FEATHER BADGE, and always with the RAIN BADGE.", "It's about badges.", PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Poison outside battle", "Poison keeps hurting while you walk and can make a POKéMON faint. Cure it or heal at a POKéMON CENTER.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_ruby_p0_s2[] = {
++    { "Which badge unlocks which HM?", "CUT: STONE. FLASH: KNUCKLE. ROCK SMASH: DYNAMO. STRENGTH: HEAT. SURF: BALANCE. FLY: FEATHER. DIVE: MIND. WATERFALL: RAIN. A POKéMON in the party must know the move too.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Getting rid of an HM move", "HM moves can't be forgotten normally. The MOVE DELETER in LILYCOVE CITY removes them.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Relearning moves", "The MOVE TUTOR in FALLARBOR TOWN teaches a forgotten move for one HEART SCALE.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_ruby_p0_s3[] = {
++    { "How long do I have?", "500 steps per visit. You can't use your own POKéMON - throw POKéBLOCKS, then SAFARI BALLS.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_section pd_guide_ruby_p0[] = {
++    { "CONTROLS", NULL, pd_guide_ruby_p0_s0, 3 },
++    { "BATTLES", NULL, pd_guide_ruby_p0_s1, 3 },
++    { "HMs", NULL, pd_guide_ruby_p0_s2, 3 },
++    { "SAFARI ZONE", NULL, pd_guide_ruby_p0_s3, 1 },
++};
++static const struct pd_guide_entry pd_guide_ruby_p1_s0[] = {
++    { "RUNNING SHOES", "MOM gives them to you in LITTLEROOT TOWN, on your way out after PROF. BIRCH hands you the POKéDEX.", "Someone at home.", PD_HAVE_FLAG, { 2144, 0, 0 }, "LITTLEROOTTOWN" },
++    { "POKéNAV", "MR. STONE on DEVON CORP. 3F in RUSTBORO CITY, after you bring back the stolen DEVON GOODS.", "The company in RUSTBORO CITY.", PD_HAVE_FLAG, { 188, 0, 0 }, "RUSTBOROCITY" },
++    { "BIKE", "RYDEL's bike shop in MAUVILLE CITY - pick the MACH or the ACRO BIKE.", "A shop in MAUVILLE CITY.", PD_HAVE_FLAG, { 90, 0, 0 }, "MAUVILLECITY" },
++    { "OLD ROD", "A fisherman in DEWFORD TOWN.", "An island town.", PD_HAVE_ITEM, { 262, 0, 0 }, "DEWFORDTOWN" },
++    { "GOOD ROD", "A fisherman on ROUTE 118.", "East of MAUVILLE CITY.", PD_HAVE_ITEM, { 263, 0, 0 }, "ROUTE118" },
++    { "SUPER ROD", "A fisherman's house in MOSSDEEP CITY.", "An island city in the east.", PD_HAVE_ITEM, { 264, 0, 0 }, "MOSSDEEPCITY" },
++    { "ITEMFINDER", "Your rival gives it to you after your battle on ROUTE 110.", "North of SLATEPORT CITY.", PD_HAVE_ITEM, { 261, 0, 0 }, "ROUTE110" },
++    { "EXP. SHARE", "MR. STONE at DEVON CORP. 3F, once you've delivered his letter to STEVEN in GRANITE CAVE.", "A reward for a delivery.", PD_HAVE_FLAG, { 272, 0, 0 }, "RUSTBOROCITY|GRANITECAVE" },
++    { "GO-GOGGLES", "Your rival gives them to you in LAVARIDGE TOWN after you beat FLANNERY. The ROUTE 111 desert is closed without them.", "After the fourth gym.", PD_HAVE_ITEM, { 279, 0, 0 }, "LAVARIDGETOWN|ROUTE111" },
++    { "DEVON SCOPE", "STEVEN on ROUTE 120, after the invisible POKéMON on the bridge.", "East of FORTREE CITY.", PD_HAVE_ITEM, { 288, 0, 0 }, "ROUTE120|FORTREECITY" },
++    { "WAILMER PAIL", "The PRETTY PETAL flower shop on ROUTE 104.", "A shop between PETALBURG CITY and RUSTBORO CITY.", PD_HAVE_ITEM, { 268, 0, 0 }, "ROUTE104" },
++    { "SOOT SACK", "The GLASS WORKSHOP on ROUTE 113. Walk through the falling ash to collect it.", "Where it rains ash.", PD_HAVE_ITEM, { 270, 0, 0 }, "ROUTE113" },
++    { "COIN CASE", "A woman in a MAUVILLE CITY house trades it for a HARBOR MAIL.", "A trade in MAUVILLE CITY.", PD_HAVE_ITEM, { 260, 0, 0 }, "MAUVILLECITY" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p1_s1[] = {
++    { "HM01 CUT", "The CUTTER's house in RUSTBORO CITY.", "RUSTBORO CITY.", PD_HAVE_ITEM, { 339, 0, 0 }, "RUSTBOROCITY" },
++    { "HM02 FLY", "Your rival, after your battle on ROUTE 119.", "North of FORTREE CITY's route.", PD_HAVE_ITEM, { 340, 0, 0 }, "ROUTE119" },
++    { "HM03 SURF", "WALLY's father in PETALBURG CITY, after you beat NORMAN.", "After the fifth gym.", PD_HAVE_ITEM, { 341, 0, 0 }, "PETALBURGCITY" },
++    { "HM04 STRENGTH", "WANDA's boyfriend in RUSTURF TUNNEL, once you break the boulder there with ROCK SMASH.", "The tunnel east of RUSTBORO CITY.", PD_HAVE_ITEM, { 342, 0, 0 }, "RUSTURFTUNNEL" },
++    { "HM05 FLASH", "A hiker just inside GRANITE CAVE on DEWFORD's island.", "A dark cave.", PD_HAVE_ITEM, { 343, 0, 0 }, "GRANITECAVE" },
++    { "HM06 ROCK SMASH", "The ROCK SMASH GUY in a MAUVILLE CITY house.", "MAUVILLE CITY.", PD_HAVE_ITEM, { 344, 0, 0 }, "MAUVILLECITY" },
++    { "HM07 WATERFALL", "An item ball on CAVE OF ORIGIN B3F, on your way down to GROUDON.", "Under SOOTOPOLIS CITY, late in the story.", PD_HAVE_ITEM, { 345, 0, 0 }, "CAVEOFORIGIN|SOOTOPOLISCITY" },
++    { "HM08 DIVE", "STEVEN hands it to you the first time you visit his house in MOSSDEEP CITY.", "MOSSDEEP CITY.", PD_HAVE_FLAG, { 123, 0, 0 }, "MOSSDEEPCITY" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p1_s2[] = {
++    { "Evolution stones", "The TREASURE HUNTER's house on ROUTE 124 swaps shards found by DIVING: RED for a FIRE STONE, YELLOW for THUNDER, BLUE for WATER, GREEN for LEAF.", "Diving treasure.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE124" },
++    { "MOVE DELETER", "A house in LILYCOVE CITY.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, "LILYCOVECITY" },
++    { "MOVE TUTOR", "A house in FALLARBOR TOWN. Bring a HEART SCALE.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, "FALLARBORTOWN" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p1_s3[] = {
++    { "CASTFORM", "The WEATHER INSTITUTE on ROUTE 119 gives it to you after you drive TEAM MAGMA out.", "A research building.", PD_HAVE_CAUGHT, { 351, 0, 0 }, "ROUTE119" },
++    { "WYNAUT (egg)", "An old woman in LAVARIDGE TOWN.", "A hot-spring town.", PD_HAVE_CAUGHT, { 360, 0, 0 }, "LAVARIDGETOWN" },
++    { "LILEEP / ANORITH", "In the ROUTE 111 desert, take the ROOT or the CLAW FOSSIL (the other sinks into the sand); DEVON CORP. 2F in RUSTBORO CITY revives it.", "Buried in the desert.", PD_HAVE_CAUGHT, { 345, 347, 0 }, "ROUTE111|RUSTBOROCITY" },
++    { "BELDUM", "STEVEN's house in MOSSDEEP CITY, after the HALL OF FAME.", "Post-game.", PD_HAVE_CAUGHT, { 374, 0, 0 }, "MOSSDEEPCITY" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p1_s4[] = {
++    { "GROUDON", "Lv45, at the bottom of the CAVE OF ORIGIN in SOOTOPOLIS CITY - the story takes you there.", "Its cave is under SOOTOPOLIS CITY.", PD_HAVE_CAUGHT, { 383, 0, 0 }, "CAVEOFORIGIN|SOOTOPOLISCITY" },
++    { "RAYQUAZA", "Lv70, at the top of the SKY PILLAR on ROUTE 131. Some floors crack: ride the MACH BIKE across them.", "A tower in the sea near PACIFIDLOG TOWN.", PD_HAVE_CAUGHT, { 384, 0, 0 }, "SKYPILLAR|ROUTE131" },
++    { "REGIROCK / REGICE / REGISTEEL", "First open the doors: in the SEALED CHAMBER (DIVE on ROUTE 134) use DIG on the outer room's braille, then read the inner room's with RELICANTH first and WAILORD last in your party. Then, after reading each ruin's braille: DESERT RUINS (ROUTE 111) - use STRENGTH; ANCIENT TOMB (ROUTE 120) - use FLY; ISLAND CAVE (ROUTE 105) - wait two minutes without pressing anything.", "It starts under the sea, with two particular POKéMON.", PD_HAVE_CAUGHT, { 377, 378, 379 }, "SEALEDCHAMBER|ROUTE134|DESERTRUINS|ANCIENTTOMB|ISLANDCAVE" },
++    { "LATIOS", "After the HALL OF FAME, go home and watch the TV news: LATIOS starts roaming HOENN.", "Post-game, at home.", PD_HAVE_CAUGHT, { 381, 0, 0 }, "LITTLEROOTTOWN" },
++    { "KECLEON", "Invisible ones sit on ROUTES 119 and 120 and in FORTREE CITY. The DEVON SCOPE reveals them.", "You can't see it.", PD_HAVE_CAUGHT, { 352, 0, 0 }, "ROUTE119|ROUTE120|FORTREECITY" },
++};
++static const struct pd_guide_section pd_guide_ruby_p1[] = {
++    { "KEY ITEMS", NULL, pd_guide_ruby_p1_s0, 13 },
++    { "HMs", NULL, pd_guide_ruby_p1_s1, 8 },
++    { "SHOPS & SERVICES", NULL, pd_guide_ruby_p1_s2, 3 },
++    { "GIFT POKéMON", NULL, pd_guide_ruby_p1_s3, 4 },
++    { "LEGENDARY POKéMON", NULL, pd_guide_ruby_p1_s4, 5 },
++};
++static const struct pd_guide_entry pd_guide_ruby_p2_s0[] = {
++    { "How do I get to DEWFORD TOWN?", "MR. BRINEY sails you from his cottage on ROUTE 104 once you've rescued his PEEKO from TEAM MAGMA in RUSTURF TUNNEL.", "An old sailor lost his pet.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE104|RUSTURFTUNNEL" },
++    { "Where are the stolen DEVON GOODS?", "A TEAM MAGMA grunt fled into RUSTURF TUNNEL, east of RUSTBORO CITY. Beat him there.", "Follow the thief east.", PD_HAVE_NONE, { 0, 0, 0 }, "RUSTBOROCITY|RUSTURFTUNNEL" },
++    { "PETALBURG CITY's gym won't let me in", "Your father NORMAN battles you once you have four badges.", "Come back with more badges.", PD_HAVE_NONE, { 0, 0, 0 }, "PETALBURGCITY" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p2_s1[] = {
++    { "TEAM MAGMA blocks the cable car on ROUTE 112", "They leave after the scene at METEOR FALLS - go north from MAUVILLE CITY on ROUTE 111, then west on ROUTE 113 to FALLARBOR TOWN and ROUTE 114.", "Go around the mountain.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE112|METEORFALLS|MTCHIMNEY" },
++    { "A sandstorm keeps pushing me back on ROUTE 111", "You need the GO-GOGGLES, from your rival in LAVARIDGE TOWN after the fourth badge.", "Protect your eyes.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE111" },
++    { "Something invisible blocks FORTREE CITY's gym", "It's a KECLEON. Get the DEVON SCOPE from STEVEN on ROUTE 120, then use it on the blocked spot.", "Look east of FORTREE CITY.", PD_HAVE_NONE, { 0, 0, 0 }, "FORTREECITY|ROUTE120" },
++};
++static const struct pd_guide_entry pd_guide_ruby_p2_s2[] = {
++    { "How do I get into SOOTOPOLIS CITY?", "It sits inside a crater: DIVE down on ROUTE 126 and surface inside.", "From below.", PD_HAVE_NONE, { 0, 0, 0 }, "SOOTOPOLISCITY|ROUTE126" },
++    { "SOOTOPOLIS CITY's gym is closed", "End the crisis first: go down through the CAVE OF ORIGIN and face GROUDON at the bottom. WALLACE opens the gym afterwards.", "The cave in SOOTOPOLIS CITY.", PD_HAVE_NONE, { 0, 0, 0 }, "SOOTOPOLISCITY|CAVEOFORIGIN" },
++    { "How do I reach EVER GRANDE CITY?", "It's up a waterfall: you need HM07 WATERFALL (in the CAVE OF ORIGIN) and the RAIN BADGE.", "Go up.", PD_HAVE_NONE, { 0, 0, 0 }, "EVERGRANDECITY|ROUTE128" },
++};
++static const struct pd_guide_section pd_guide_ruby_p2[] = {
++    { "EARLY GAME", NULL, pd_guide_ruby_p2_s0, 3 },
++    { "MID GAME", NULL, pd_guide_ruby_p2_s1, 3 },
++    { "LATE GAME", NULL, pd_guide_ruby_p2_s2, 3 },
++};
++static const struct pd_guide_page pd_guide_ruby_pages[] = {
++    { "TIPS", pd_guide_ruby_p0, 4 },
++    { "WHERE IS", pd_guide_ruby_p1, 5 },
++    { "STUCK?", pd_guide_ruby_p2, 3 },
++};
++static const struct pd_boss pd_guide_ruby_bosses[] = {
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0 },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0 },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0 },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0 },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0 },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0 },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0 },
++    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0 },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0 },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0 },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0 },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0 },
++    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0 },
++};
++const struct pd_guide pd_guide_ruby = {
++    pd_guide_ruby_pages, 3, pd_guide_ruby_bosses, 13, false, 0, 0,
++};
++
++static const struct pd_guide_entry pd_guide_sapphire_p0_s0[] = {
++    { "Running", "Hold B to run once you have the RUNNING SHOES.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Two bikes", "The MACH BIKE is the fast one - fast enough to cross cracked floors before they give way. The ACRO BIKE can hop and ride narrow rails. RYDEL in MAUVILLE CITY swaps one for the other.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Rematches", "Trainers you've beaten are listed in the POKéNAV's TRAINER'S EYES. Once you have five badges, walking around makes some of them want a rematch.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p0_s1[] = {
++    { "Physical or special?", "In this generation it's decided by the move's TYPE, not the move. FIRE, WATER, GRASS, ELECTRIC, ICE, PSYCHIC, DRAGON and DARK moves are special; NORMAL, FIGHTING, FLYING, POISON, GROUND, ROCK, BUG, GHOST and STEEL are physical.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "A traded POKéMON won't listen", "Traded POKéMON obey up to Lv10 with no badges, Lv30 with the KNUCKLE BADGE, Lv50 with the HEAT BADGE, Lv70 with the FEATHER BADGE, and always with the RAIN BADGE.", "It's about badges.", PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Poison outside battle", "Poison keeps hurting while you walk and can make a POKéMON faint. Cure it or heal at a POKéMON CENTER.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p0_s2[] = {
++    { "Which badge unlocks which HM?", "CUT: STONE. FLASH: KNUCKLE. ROCK SMASH: DYNAMO. STRENGTH: HEAT. SURF: BALANCE. FLY: FEATHER. DIVE: MIND. WATERFALL: RAIN. A POKéMON in the party must know the move too.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Getting rid of an HM move", "HM moves can't be forgotten normally. The MOVE DELETER in LILYCOVE CITY removes them.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++    { "Relearning moves", "The MOVE TUTOR in FALLARBOR TOWN teaches a forgotten move for one HEART SCALE.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p0_s3[] = {
++    { "How long do I have?", "500 steps per visit. You can't use your own POKéMON - throw POKéBLOCKS, then SAFARI BALLS.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, NULL },
++};
++static const struct pd_guide_section pd_guide_sapphire_p0[] = {
++    { "CONTROLS", NULL, pd_guide_sapphire_p0_s0, 3 },
++    { "BATTLES", NULL, pd_guide_sapphire_p0_s1, 3 },
++    { "HMs", NULL, pd_guide_sapphire_p0_s2, 3 },
++    { "SAFARI ZONE", NULL, pd_guide_sapphire_p0_s3, 1 },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p1_s0[] = {
++    { "RUNNING SHOES", "MOM gives them to you in LITTLEROOT TOWN, on your way out after PROF. BIRCH hands you the POKéDEX.", "Someone at home.", PD_HAVE_FLAG, { 2144, 0, 0 }, "LITTLEROOTTOWN" },
++    { "POKéNAV", "MR. STONE on DEVON CORP. 3F in RUSTBORO CITY, after you bring back the stolen DEVON GOODS.", "The company in RUSTBORO CITY.", PD_HAVE_FLAG, { 188, 0, 0 }, "RUSTBOROCITY" },
++    { "BIKE", "RYDEL's bike shop in MAUVILLE CITY - pick the MACH or the ACRO BIKE.", "A shop in MAUVILLE CITY.", PD_HAVE_FLAG, { 90, 0, 0 }, "MAUVILLECITY" },
++    { "OLD ROD", "A fisherman in DEWFORD TOWN.", "An island town.", PD_HAVE_ITEM, { 262, 0, 0 }, "DEWFORDTOWN" },
++    { "GOOD ROD", "A fisherman on ROUTE 118.", "East of MAUVILLE CITY.", PD_HAVE_ITEM, { 263, 0, 0 }, "ROUTE118" },
++    { "SUPER ROD", "A fisherman's house in MOSSDEEP CITY.", "An island city in the east.", PD_HAVE_ITEM, { 264, 0, 0 }, "MOSSDEEPCITY" },
++    { "ITEMFINDER", "Your rival gives it to you after your battle on ROUTE 110.", "North of SLATEPORT CITY.", PD_HAVE_ITEM, { 261, 0, 0 }, "ROUTE110" },
++    { "EXP. SHARE", "MR. STONE at DEVON CORP. 3F, once you've delivered his letter to STEVEN in GRANITE CAVE.", "A reward for a delivery.", PD_HAVE_FLAG, { 272, 0, 0 }, "RUSTBOROCITY|GRANITECAVE" },
++    { "GO-GOGGLES", "Your rival gives them to you in LAVARIDGE TOWN after you beat FLANNERY. The ROUTE 111 desert is closed without them.", "After the fourth gym.", PD_HAVE_ITEM, { 279, 0, 0 }, "LAVARIDGETOWN|ROUTE111" },
++    { "DEVON SCOPE", "STEVEN on ROUTE 120, after the invisible POKéMON on the bridge.", "East of FORTREE CITY.", PD_HAVE_ITEM, { 288, 0, 0 }, "ROUTE120|FORTREECITY" },
++    { "WAILMER PAIL", "The PRETTY PETAL flower shop on ROUTE 104.", "A shop between PETALBURG CITY and RUSTBORO CITY.", PD_HAVE_ITEM, { 268, 0, 0 }, "ROUTE104" },
++    { "SOOT SACK", "The GLASS WORKSHOP on ROUTE 113. Walk through the falling ash to collect it.", "Where it rains ash.", PD_HAVE_ITEM, { 270, 0, 0 }, "ROUTE113" },
++    { "COIN CASE", "A woman in a MAUVILLE CITY house trades it for a HARBOR MAIL.", "A trade in MAUVILLE CITY.", PD_HAVE_ITEM, { 260, 0, 0 }, "MAUVILLECITY" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p1_s1[] = {
++    { "HM01 CUT", "The CUTTER's house in RUSTBORO CITY.", "RUSTBORO CITY.", PD_HAVE_ITEM, { 339, 0, 0 }, "RUSTBOROCITY" },
++    { "HM02 FLY", "Your rival, after your battle on ROUTE 119.", "North of FORTREE CITY's route.", PD_HAVE_ITEM, { 340, 0, 0 }, "ROUTE119" },
++    { "HM03 SURF", "WALLY's father in PETALBURG CITY, after you beat NORMAN.", "After the fifth gym.", PD_HAVE_ITEM, { 341, 0, 0 }, "PETALBURGCITY" },
++    { "HM04 STRENGTH", "WANDA's boyfriend in RUSTURF TUNNEL, once you break the boulder there with ROCK SMASH.", "The tunnel east of RUSTBORO CITY.", PD_HAVE_ITEM, { 342, 0, 0 }, "RUSTURFTUNNEL" },
++    { "HM05 FLASH", "A hiker just inside GRANITE CAVE on DEWFORD's island.", "A dark cave.", PD_HAVE_ITEM, { 343, 0, 0 }, "GRANITECAVE" },
++    { "HM06 ROCK SMASH", "The ROCK SMASH GUY in a MAUVILLE CITY house.", "MAUVILLE CITY.", PD_HAVE_ITEM, { 344, 0, 0 }, "MAUVILLECITY" },
++    { "HM07 WATERFALL", "An item ball on CAVE OF ORIGIN B3F, on your way down to KYOGRE.", "Under SOOTOPOLIS CITY, late in the story.", PD_HAVE_ITEM, { 345, 0, 0 }, "CAVEOFORIGIN|SOOTOPOLISCITY" },
++    { "HM08 DIVE", "STEVEN hands it to you the first time you visit his house in MOSSDEEP CITY.", "MOSSDEEP CITY.", PD_HAVE_FLAG, { 123, 0, 0 }, "MOSSDEEPCITY" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p1_s2[] = {
++    { "Evolution stones", "The TREASURE HUNTER's house on ROUTE 124 swaps shards found by DIVING: RED for a FIRE STONE, YELLOW for THUNDER, BLUE for WATER, GREEN for LEAF.", "Diving treasure.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE124" },
++    { "MOVE DELETER", "A house in LILYCOVE CITY.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, "LILYCOVECITY" },
++    { "MOVE TUTOR", "A house in FALLARBOR TOWN. Bring a HEART SCALE.", NULL, PD_HAVE_NONE, { 0, 0, 0 }, "FALLARBORTOWN" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p1_s3[] = {
++    { "CASTFORM", "The WEATHER INSTITUTE on ROUTE 119 gives it to you after you drive TEAM AQUA out.", "A research building.", PD_HAVE_CAUGHT, { 351, 0, 0 }, "ROUTE119" },
++    { "WYNAUT (egg)", "An old woman in LAVARIDGE TOWN.", "A hot-spring town.", PD_HAVE_CAUGHT, { 360, 0, 0 }, "LAVARIDGETOWN" },
++    { "LILEEP / ANORITH", "In the ROUTE 111 desert, take the ROOT or the CLAW FOSSIL (the other sinks into the sand); DEVON CORP. 2F in RUSTBORO CITY revives it.", "Buried in the desert.", PD_HAVE_CAUGHT, { 345, 347, 0 }, "ROUTE111|RUSTBOROCITY" },
++    { "BELDUM", "STEVEN's house in MOSSDEEP CITY, after the HALL OF FAME.", "Post-game.", PD_HAVE_CAUGHT, { 374, 0, 0 }, "MOSSDEEPCITY" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p1_s4[] = {
++    { "KYOGRE", "Lv45, at the bottom of the CAVE OF ORIGIN in SOOTOPOLIS CITY - the story takes you there.", "Its cave is under SOOTOPOLIS CITY.", PD_HAVE_CAUGHT, { 382, 0, 0 }, "CAVEOFORIGIN|SOOTOPOLISCITY" },
++    { "RAYQUAZA", "Lv70, at the top of the SKY PILLAR on ROUTE 131. Some floors crack: ride the MACH BIKE across them.", "A tower in the sea near PACIFIDLOG TOWN.", PD_HAVE_CAUGHT, { 384, 0, 0 }, "SKYPILLAR|ROUTE131" },
++    { "REGIROCK / REGICE / REGISTEEL", "First open the doors: in the SEALED CHAMBER (DIVE on ROUTE 134) use DIG on the outer room's braille, then read the inner room's with RELICANTH first and WAILORD last in your party. Then, after reading each ruin's braille: DESERT RUINS (ROUTE 111) - use STRENGTH; ANCIENT TOMB (ROUTE 120) - use FLY; ISLAND CAVE (ROUTE 105) - wait two minutes without pressing anything.", "It starts under the sea, with two particular POKéMON.", PD_HAVE_CAUGHT, { 377, 378, 379 }, "SEALEDCHAMBER|ROUTE134|DESERTRUINS|ANCIENTTOMB|ISLANDCAVE" },
++    { "LATIAS", "After the HALL OF FAME, go home and watch the TV news: LATIAS starts roaming HOENN.", "Post-game, at home.", PD_HAVE_CAUGHT, { 380, 0, 0 }, "LITTLEROOTTOWN" },
++    { "KECLEON", "Invisible ones sit on ROUTES 119 and 120 and in FORTREE CITY. The DEVON SCOPE reveals them.", "You can't see it.", PD_HAVE_CAUGHT, { 352, 0, 0 }, "ROUTE119|ROUTE120|FORTREECITY" },
++};
++static const struct pd_guide_section pd_guide_sapphire_p1[] = {
++    { "KEY ITEMS", NULL, pd_guide_sapphire_p1_s0, 13 },
++    { "HMs", NULL, pd_guide_sapphire_p1_s1, 8 },
++    { "SHOPS & SERVICES", NULL, pd_guide_sapphire_p1_s2, 3 },
++    { "GIFT POKéMON", NULL, pd_guide_sapphire_p1_s3, 4 },
++    { "LEGENDARY POKéMON", NULL, pd_guide_sapphire_p1_s4, 5 },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p2_s0[] = {
++    { "How do I get to DEWFORD TOWN?", "MR. BRINEY sails you from his cottage on ROUTE 104 once you've rescued his PEEKO from TEAM AQUA in RUSTURF TUNNEL.", "An old sailor lost his pet.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE104|RUSTURFTUNNEL" },
++    { "Where are the stolen DEVON GOODS?", "A TEAM AQUA grunt fled into RUSTURF TUNNEL, east of RUSTBORO CITY. Beat him there.", "Follow the thief east.", PD_HAVE_NONE, { 0, 0, 0 }, "RUSTBOROCITY|RUSTURFTUNNEL" },
++    { "PETALBURG CITY's gym won't let me in", "Your father NORMAN battles you once you have four badges.", "Come back with more badges.", PD_HAVE_NONE, { 0, 0, 0 }, "PETALBURGCITY" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p2_s1[] = {
++    { "TEAM AQUA blocks the cable car on ROUTE 112", "They leave after the scene at METEOR FALLS - go north from MAUVILLE CITY on ROUTE 111, then west on ROUTE 113 to FALLARBOR TOWN and ROUTE 114.", "Go around the mountain.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE112|METEORFALLS|MTCHIMNEY" },
++    { "A sandstorm keeps pushing me back on ROUTE 111", "You need the GO-GOGGLES, from your rival in LAVARIDGE TOWN after the fourth badge.", "Protect your eyes.", PD_HAVE_NONE, { 0, 0, 0 }, "ROUTE111" },
++    { "Something invisible blocks FORTREE CITY's gym", "It's a KECLEON. Get the DEVON SCOPE from STEVEN on ROUTE 120, then use it on the blocked spot.", "Look east of FORTREE CITY.", PD_HAVE_NONE, { 0, 0, 0 }, "FORTREECITY|ROUTE120" },
++};
++static const struct pd_guide_entry pd_guide_sapphire_p2_s2[] = {
++    { "How do I get into SOOTOPOLIS CITY?", "It sits inside a crater: DIVE down on ROUTE 126 and surface inside.", "From below.", PD_HAVE_NONE, { 0, 0, 0 }, "SOOTOPOLISCITY|ROUTE126" },
++    { "SOOTOPOLIS CITY's gym is closed", "End the crisis first: go down through the CAVE OF ORIGIN and face KYOGRE at the bottom. WALLACE opens the gym afterwards.", "The cave in SOOTOPOLIS CITY.", PD_HAVE_NONE, { 0, 0, 0 }, "SOOTOPOLISCITY|CAVEOFORIGIN" },
++    { "How do I reach EVER GRANDE CITY?", "It's up a waterfall: you need HM07 WATERFALL (in the CAVE OF ORIGIN) and the RAIN BADGE.", "Go up.", PD_HAVE_NONE, { 0, 0, 0 }, "EVERGRANDECITY|ROUTE128" },
++};
++static const struct pd_guide_section pd_guide_sapphire_p2[] = {
++    { "EARLY GAME", NULL, pd_guide_sapphire_p2_s0, 3 },
++    { "MID GAME", NULL, pd_guide_sapphire_p2_s1, 3 },
++    { "LATE GAME", NULL, pd_guide_sapphire_p2_s2, 3 },
++};
++static const struct pd_guide_page pd_guide_sapphire_pages[] = {
++    { "TIPS", pd_guide_sapphire_p0, 4 },
++    { "WHERE IS", pd_guide_sapphire_p1, 5 },
++    { "STUCK?", pd_guide_sapphire_p2, 3 },
++};
++static const struct pd_boss pd_guide_sapphire_bosses[] = {
++    { "LEADER ROXANNE", "RUSTBORO CITY GYM", 0x807, PD_BOSS_FIXED, 265, 0 },
++    { "LEADER BRAWLY", "DEWFORD TOWN GYM", 0x808, PD_BOSS_FIXED, 266, 0 },
++    { "LEADER WATTSON", "MAUVILLE CITY GYM", 0x809, PD_BOSS_FIXED, 267, 0 },
++    { "LEADER FLANNERY", "LAVARIDGE TOWN GYM", 0x80A, PD_BOSS_FIXED, 268, 0 },
++    { "LEADER NORMAN", "PETALBURG CITY GYM", 0x80B, PD_BOSS_FIXED, 269, 0 },
++    { "LEADER WINONA", "FORTREE CITY GYM", 0x80C, PD_BOSS_FIXED, 270, 0 },
++    { "LEADERS TATE AND LIZA", "MOSSDEEP CITY GYM", 0x80D, PD_BOSS_FIXED, 271, 0 },
++    { "LEADER WALLACE", "SOOTOPOLIS CITY GYM", 0x80E, PD_BOSS_FIXED, 272, 0 },
++    { "ELITE FOUR SIDNEY", "POKéMON LEAGUE", 0x4DD, PD_BOSS_FIXED, 261, 0 },
++    { "ELITE FOUR PHOEBE", "POKéMON LEAGUE", 0x4DE, PD_BOSS_FIXED, 262, 0 },
++    { "ELITE FOUR GLACIA", "POKéMON LEAGUE", 0x4DF, PD_BOSS_FIXED, 263, 0 },
++    { "ELITE FOUR DRAKE", "POKéMON LEAGUE", 0x4E0, PD_BOSS_FIXED, 264, 0 },
++    { "CHAMPION STEVEN", "POKéMON LEAGUE", 0x804, PD_BOSS_FIXED, 335, 0 },
++};
++const struct pd_guide pd_guide_sapphire = {
++    pd_guide_sapphire_pages, 3, pd_guide_sapphire_bosses, 13, false, 0, 0,
++};
++
++const struct pd_area_thing pd_areas_ruby_sapphire[] = {
++    { 0, PD_AREA_GIFT, 4, 0, 5, 0, "PROFESSOR BIRCHS LAB" },
++    { 1, PD_AREA_GIFT, 13, 132, 1, 0, "" },
++    { 2, PD_AREA_GIFT, 217, 289, 1, 0, "HOUSE 2" },
++    { 2, PD_AREA_GIFT, 262, 257, 1, 0, "" },
++    { 2, PD_AREA_GIFT, 296, 166, 1, 0, "GYM" },
++    { 2, PD_AREA_GIFT, 324, 230, 1, 0, "HALL" },
++    { 3, PD_AREA_EGG, 360, 266, 1, 0, "" },
++    { 3, PD_AREA_GIFT, 215, 254, 1, 0, "HERB SHOP" },
++    { 3, PD_AREA_GIFT, 279, 221, 1, 0, "" },
++    { 3, PD_AREA_GIFT, 338, 168, 1, 0, "GYM 1F" },
++    { 3, PD_AREA_HIDDEN, 16, 600, 1, 0, "" },
++    { 4, PD_AREA_GIFT, 315, 229, 1, 0, "HOUSE 1" },
++    { 4, PD_AREA_HIDDEN, 110, 628, 1, 0, "" },
++    { 5, PD_AREA_GIFT, 333, 235, 1, 0, "CONTEST LOBBY" },
++    { 6, PD_AREA_GIFT, 309, 299, 1, 0, "HOUSE 2" },
++    { 6, PD_AREA_GIFT, 315, 299, 1, 0, "HOUSE 2" },
++    { 6, PD_AREA_TRADE, 222, 154, 1, 182, "HOUSE 3" },
++    { 7, PD_AREA_GIFT, 175, 0, 1, 0, "GYM" },
++    { 7, PD_AREA_GIFT, 330, 169, 1, 0, "GYM" },
++    { 7, PD_AREA_GIFT, 341, 122, 1, 0, "WALLYS HOUSE" },
++    { 7, PD_AREA_HIDDEN, 68, 695, 1, 0, "" },
++    { 7, PD_AREA_ITEM, 25, 1039, 1, 0, "" },
++    { 7, PD_AREA_ITEM, 34, 1040, 1, 0, "" },
++    { 8, PD_AREA_GIFT, 184, 278, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 192, 294, 1, 0, "HARBOR" },
++    { 8, PD_AREA_GIFT, 193, 294, 1, 0, "HARBOR" },
++    { 8, PD_AREA_GIFT, 254, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 255, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 256, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 257, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 258, 0, 1, 0, "POKéMON FAN CLUB" },
++    { 8, PD_AREA_GIFT, 273, 95, 1, 0, "CONTEST LOBBY" },
++    { 8, PD_AREA_GIFT, 329, 265, 1, 0, "CONTEST HALL" },
++    { 8, PD_AREA_GIFT, 334, 269, 1, 0, "OCEANIC MUSEUM 1F" },
++    { 9, PD_AREA_GIFT, 259, 0, 1, 0, "BIKE SHOP" },
++    { 9, PD_AREA_GIFT, 260, 258, 1, 0, "HOUSE 2" },
++    { 9, PD_AREA_GIFT, 271, 208, 1, 0, "" },
++    { 9, PD_AREA_GIFT, 272, 0, 1, 0, "BIKE SHOP" },
++    { 9, PD_AREA_GIFT, 312, 209, 1, 0, "" },
++    { 9, PD_AREA_GIFT, 322, 167, 1, 0, "GYM" },
++    { 9, PD_AREA_GIFT, 344, 107, 1, 0, "HOUSE 1" },
++    { 9, PD_AREA_ITEM, 77, 1116, 1, 0, "" },
++    { 10, PD_AREA_GIFT, 3, 144, 1, 0, "" },
++    { 10, PD_AREA_GIFT, 12, 213, 1, 0, "FLAT 2 2F" },
++    { 10, PD_AREA_GIFT, 182, 272, 1, 0, "DEVON CORP 3F" },
++    { 10, PD_AREA_GIFT, 183, 275, 1, 0, "POKéMON SCHOOL" },
++    { 10, PD_AREA_GIFT, 274, 2050, 1, 0, "DEVON CORP 3F" },
++    { 10, PD_AREA_GIFT, 327, 165, 1, 0, "GYM" },
++    { 10, PD_AREA_GIFT, 339, 137, 1, 0, "CUTTERS HOUSE" },
++    { 10, PD_AREA_ITEM, 76, 1041, 1, 0, "" },
++    { 10, PD_AREA_MON, 388, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_MON, 390, 0, 1, 0, "DEVON CORP 2F" },
++    { 10, PD_AREA_TRADE, 335, 153, 1, 364, "HOUSE 1" },
++    { 11, PD_AREA_GIFT, 185, 223, 1, 0, "HOUSE 4" },
++    { 11, PD_AREA_GIFT, 298, 264, 1, 0, "HOUSE 2" },
++    { 11, PD_AREA_GIFT, 328, 170, 1, 0, "GYM" },
++    { 11, PD_AREA_TRADE, 315, 155, 1, 25, "HOUSE 1" },
++    { 12, PD_AREA_GIFT, 332, 234, 1, 0, "HOUSE 2" },
++    { 12, PD_AREA_HIDDEN, 4, 675, 1, 0, "" },
++    { 12, PD_AREA_HIDDEN, 69, 643, 1, 0, "" },
++    { 12, PD_AREA_HIDDEN, 111, 627, 1, 0, "" },
++    { 12, PD_AREA_ITEM, 84, 1042, 1, 0, "" },
++    { 13, PD_AREA_GIFT, 93, 192, 1, 0, "SPACE CENTER 1F" },
++    { 13, PD_AREA_GIFT, 187, 276, 1, 0, "" },
++    { 13, PD_AREA_GIFT, 264, 152, 1, 0, "HOUSE 3" },
++    { 13, PD_AREA_GIFT, 292, 171, 1, 0, "GYM" },
++    { 13, PD_AREA_GIFT, 346, 123, 1, 0, "STEVENS HOUSE" },
++    { 13, PD_AREA_ITEM, 6, 1043, 1, 0, "" },
++    { 13, PD_AREA_ITEM, 346, 1133, 1, 0, "STEVENS HOUSE" },
++    { 13, PD_AREA_MON, 398, 298, 1, 0, "STEVENS HOUSE" },
++    { 14, PD_AREA_GIFT, 36, 0, 1, 0, "HOUSE 8" },
++    { 14, PD_AREA_GIFT, 143, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 147, 0, 1, 0, "" },
++    { 14, PD_AREA_GIFT, 291, 172, 1, 0, "GYM 1F" },
++    { 14, PD_AREA_GIFT, 319, 121, 1, 0, "HOUSE 1" },
++    { 17, PD_AREA_ITEM, 13, 1000, 1, 0, "" },
++    { 18, PD_AREA_ITEM, 73, 1114, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 134, 246, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 180, 279, 1, 0, "" },
++    { 19, PD_AREA_GIFT, 268, 94, 1, 0, "PRETTY PETAL FLOWER SHOP" },
++    { 19, PD_AREA_GIFT, 297, 262, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 4, 662, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 13, 637, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 14, 685, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 22, 644, 1, 0, "" },
++    { 19, PD_AREA_HIDDEN, 111, 688, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 4, 1057, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 13, 1135, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 69, 1002, 1, 0, "" },
++    { 19, PD_AREA_ITEM, 78, 1115, 1, 0, "" },
++    { 20, PD_AREA_HIDDEN, 111, 689, 1, 0, "" },
++    { 20, PD_AREA_ITEM, 65, 1003, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 4, 663, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 108, 646, 1, 0, "" },
++    { 21, PD_AREA_HIDDEN, 111, 647, 1, 0, "" },
++    { 21, PD_AREA_ITEM, 64, 1004, 1, 0, "" },
++    { 23, PD_AREA_HIDDEN, 68, 686, 1, 0, "" },
++    { 24, PD_AREA_GIFT, 27, 0, 1, 0, "SEASHORE HOUSE" },
++    { 24, PD_AREA_GIFT, 203, 280, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 3, 651, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 24, 650, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 34, 664, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 652, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 690, 1, 0, "" },
++    { 24, PD_AREA_HIDDEN, 111, 691, 1, 0, "" },
++    { 24, PD_AREA_ITEM, 69, 1005, 1, 0, "" },
++    { 25, PD_AREA_GIFT, 10, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 10, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 68, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 68, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 71, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 71, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 194, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 194, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 204, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 204, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 208, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 208, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_GIFT, 261, 0, 1, 0, "" },
++    { 25, PD_AREA_GIFT, 300, 0, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_GIFT, 300, 0, 1, 0, "TRICK HOUSE ENTRANCE" },
++    { 25, PD_AREA_HIDDEN, 3, 653, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 4, 665, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 23, 655, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 24, 654, 1, 0, "" },
++    { 25, PD_AREA_HIDDEN, 110, 601, 1, 0, "TRICK HOUSE END" },
++    { 25, PD_AREA_ITEM, 68, 1006, 1, 0, "" },
++    { 25, PD_AREA_ITEM, 74, 1007, 1, 0, "" },
++    { 25, PD_AREA_ITEM, 121, 1060, 1, 0, "TRICK HOUSE PUZZLE 1" },
++    { 25, PD_AREA_ITEM, 122, 1061, 1, 0, "TRICK HOUSE PUZZLE 2" },
++    { 25, PD_AREA_ITEM, 123, 1067, 1, 0, "TRICK HOUSE PUZZLE 6" },
++    { 25, PD_AREA_ITEM, 124, 1065, 1, 0, "TRICK HOUSE PUZZLE 4" },
++    { 25, PD_AREA_ITEM, 125, 1064, 1, 0, "TRICK HOUSE PUZZLE 3" },
++    { 25, PD_AREA_ITEM, 126, 1062, 1, 0, "TRICK HOUSE PUZZLE 2" },
++    { 25, PD_AREA_ITEM, 127, 1069, 1, 0, "TRICK HOUSE PUZZLE 8" },
++    { 25, PD_AREA_ITEM, 128, 1063, 1, 0, "TRICK HOUSE PUZZLE 3" },
++    { 25, PD_AREA_ITEM, 129, 1068, 1, 0, "TRICK HOUSE PUZZLE 7" },
++    { 26, PD_AREA_GIFT, 148, 2252, 1, 0, "" },
++    { 26, PD_AREA_GIFT, 181, 277, 1, 0, "WINSTRATE FAMILYS HOUSE" },
++    { 26, PD_AREA_GIFT, 286, 0, 1, 0, "" },
++    { 26, PD_AREA_GIFT, 287, 0, 1, 0, "" },
++    { 26, PD_AREA_HIDDEN, 64, 656, 1, 0, "" },
++    { 26, PD_AREA_HIDDEN, 68, 657, 1, 0, "" },
++    { 26, PD_AREA_HIDDEN, 108, 602, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 63, 1010, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 108, 1009, 1, 0, "" },
++    { 26, PD_AREA_ITEM, 325, 1008, 1, 0, "" },
++    { 27, PD_AREA_ITEM, 110, 1011, 1, 0, "" },
++    { 28, PD_AREA_GIFT, 270, 0, 1, 0, "GLASS WORKSHOP" },
++    { 28, PD_AREA_HIDDEN, 34, 603, 1, 0, "" },
++    { 28, PD_AREA_HIDDEN, 320, 630, 1, 0, "" },
++    { 28, PD_AREA_ITEM, 35, 1012, 1, 0, "" },
++    { 28, PD_AREA_ITEM, 83, 1013, 1, 0, "" },
++    { 29, PD_AREA_GIFT, 293, 231, 1, 0, "" },
++    { 29, PD_AREA_GIFT, 316, 261, 1, 0, "FOSSIL MANIACS HOUSE" },
++    { 29, PD_AREA_HIDDEN, 24, 642, 1, 0, "" },
++    { 29, PD_AREA_HIDDEN, 66, 604, 1, 0, "" },
++    { 29, PD_AREA_ITEM, 64, 1015, 1, 0, "" },
++    { 29, PD_AREA_ITEM, 68, 1014, 1, 0, "" },
++    { 30, PD_AREA_HIDDEN, 111, 697, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 3, 1118, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 22, 1016, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 65, 1018, 1, 0, "" },
++    { 30, PD_AREA_ITEM, 289, 1017, 1, 0, "" },
++    { 31, PD_AREA_GIFT, 9, 256, 1, 0, "" },
++    { 31, PD_AREA_HIDDEN, 22, 645, 1, 0, "" },
++    { 31, PD_AREA_HIDDEN, 206, 696, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 34, 1019, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 63, 1021, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 79, 1001, 1, 0, "" },
++    { 31, PD_AREA_ITEM, 86, 1020, 1, 0, "" },
++    { 32, PD_AREA_HIDDEN, 86, 672, 1, 0, "" },
++    { 32, PD_AREA_ITEM, 3, 1022, 1, 0, "" },
++    { 32, PD_AREA_ITEM, 24, 1023, 1, 0, "" },
++    { 33, PD_AREA_GIFT, 263, 227, 1, 0, "" },
++    { 33, PD_AREA_HIDDEN, 65, 667, 1, 0, "" },
++    { 33, PD_AREA_HIDDEN, 111, 666, 1, 0, "" },
++    { 33, PD_AREA_ITEM, 21, 1121, 1, 0, "" },
++    { 34, PD_AREA_GIFT, 340, 110, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 2, 606, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 23, 668, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 35, 687, 1, 0, "" },
++    { 34, PD_AREA_HIDDEN, 67, 605, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 21, 1029, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 21, 1106, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 36, 1026, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 68, 1028, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 70, 1025, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 83, 1024, 1, 0, "" },
++    { 34, PD_AREA_ITEM, 98, 1027, 1, 0, "" },
++    { 34, PD_AREA_MON, 385, 151, 1, 0, "WEATHER INSTITUTE 2F" },
++    { 35, PD_AREA_GIFT, 288, 285, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 24, 684, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 68, 669, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 68, 671, 1, 0, "" },
++    { 35, PD_AREA_HIDDEN, 70, 670, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 8, 1108, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 21, 1107, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 23, 1031, 1, 0, "" },
++    { 35, PD_AREA_ITEM, 110, 1030, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 23, 673, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 63, 639, 1, 0, "" },
++    { 36, PD_AREA_HIDDEN, 110, 640, 1, 0, "" },
++    { 36, PD_AREA_ITEM, 66, 1103, 1, 0, "" },
++    { 38, PD_AREA_GIFT, 163, 248, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 164, 249, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 165, 250, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 166, 251, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 167, 252, 1, 0, "BERRY MASTERS HOUSE" },
++    { 38, PD_AREA_GIFT, 307, 232, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 21, 674, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 24, 641, 1, 0, "" },
++    { 38, PD_AREA_HIDDEN, 83, 607, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 2, 1104, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 36, 1109, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 67, 1032, 1, 0, "" },
++    { 38, PD_AREA_ITEM, 68, 1033, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 48, 1092, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 49, 1093, 1, 0, "" },
++    { 39, PD_AREA_ITEM, 50, 1066, 1, 0, "" },
++    { 41, PD_AREA_ITEM, 51, 1105, 1, 0, "" },
++    { 42, PD_AREA_ITEM, 66, 1035, 1, 0, "" },
++    { 42, PD_AREA_ITEM, 70, 1034, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 692, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 693, 1, 0, "" },
++    { 43, PD_AREA_HIDDEN, 111, 694, 1, 0, "" },
++    { 47, PD_AREA_ITEM, 68, 1036, 1, 0, "" },
++    { 48, PD_AREA_ITEM, 107, 1037, 1, 0, "" },
++    { 48, PD_AREA_ITEM, 109, 1038, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 51, 609, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 66, 608, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 67, 636, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 106, 610, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 107, 611, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 111, 613, 1, 0, "" },
++    { 50, PD_AREA_HIDDEN, 111, 638, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 2, 615, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 49, 612, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 50, 618, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 65, 619, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 106, 617, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 107, 620, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 108, 616, 1, 0, "" },
++    { 51, PD_AREA_HIDDEN, 111, 614, 1, 0, "" },
++    { 52, PD_AREA_HIDDEN, 48, 624, 1, 0, "" },
++    { 52, PD_AREA_HIDDEN, 63, 622, 1, 0, "" },
++    { 52, PD_AREA_HIDDEN, 109, 621, 1, 0, "" },
++    { 52, PD_AREA_HIDDEN, 111, 623, 1, 0, "" },
++    { 53, PD_AREA_HIDDEN, 64, 625, 1, 0, "" },
++    { 53, PD_AREA_HIDDEN, 106, 626, 1, 0, "" },
++    { 55, PD_AREA_GIFT, 335, 0, 1, 0, "STEVENS ROOM" },
++    { 55, PD_AREA_GIFT, 343, 109, 1, 0, "1F" },
++    { 55, PD_AREA_HIDDEN, 195, 648, 1, 0, "B2F" },
++    { 55, PD_AREA_HIDDEN, 195, 649, 1, 0, "B2F" },
++    { 55, PD_AREA_ITEM, 4, 1051, 1, 0, "B1F" },
++    { 55, PD_AREA_ITEM, 68, 1054, 1, 0, "B2F" },
++    { 55, PD_AREA_ITEM, 85, 1050, 1, 0, "1F" },
++    { 55, PD_AREA_ITEM, 86, 1053, 1, 0, "B2F" },
++    { 56, PD_AREA_GIFT, 38, 0, 1, 0, "" },
++    { 56, PD_AREA_GIFT, 280, 115, 1, 0, "" },
++    { 57, PD_AREA_ITEM, 25, 1131, 1, 0, "SOUTHWEST" },
++    { 57, PD_AREA_ITEM, 67, 1119, 1, 0, "NORTHEAST" },
++    { 57, PD_AREA_ITEM, 310, 1094, 1, 0, "NORTHWEST" },
++    { 59, PD_AREA_GIFT, 3, 0, 1, 0, "" },
++    { 59, PD_AREA_GIFT, 205, 297, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 4, 661, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 13, 658, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 103, 659, 1, 0, "" },
++    { 59, PD_AREA_HIDDEN, 103, 660, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 3, 1056, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 18, 1117, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 34, 1058, 1, 0, "" },
++    { 59, PD_AREA_ITEM, 75, 1055, 1, 0, "" },
++    { 60, PD_AREA_GIFT, 269, 143, 1, 0, "" },
++    { 60, PD_AREA_GIFT, 342, 106, 1, 0, "" },
++    { 60, PD_AREA_ITEM, 4, 1048, 1, 0, "" },
++    { 60, PD_AREA_ITEM, 35, 1049, 1, 0, "" },
++    { 61, PD_AREA_HIDDEN, 281, 631, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 282, 632, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 283, 633, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_HIDDEN, 284, 634, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 7, 1097, 1, 0, "ROOMS 2 B1F" },
++    { 61, PD_AREA_ITEM, 11, 1077, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 24, 1099, 1, 0, "ROOMS 2 1F" },
++    { 61, PD_AREA_ITEM, 85, 1096, 1, 0, "ROOMS B1F" },
++    { 61, PD_AREA_ITEM, 97, 1101, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 122, 1095, 1, 0, "ROOMS 1F" },
++    { 61, PD_AREA_ITEM, 278, 1078, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 61, PD_AREA_ITEM, 285, 1100, 1, 0, "CAPTAINS OFFICE" },
++    { 61, PD_AREA_ITEM, 301, 1098, 1, 0, "ROOM B1F" },
++    { 61, PD_AREA_ITEM, 306, 1102, 1, 0, "HIDDEN FLOOR ROOMS" },
++    { 62, PD_AREA_ITEM, 2, 1075, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 18, 1123, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 23, 1122, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 85, 1076, 1, 0, "INSIDE" },
++    { 62, PD_AREA_ITEM, 96, 1110, 1, 0, "INSIDE" },
++    { 63, PD_AREA_ITEM, 23, 1045, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 69, 1047, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 94, 1046, 1, 0, "1F 1R" },
++    { 63, PD_AREA_ITEM, 290, 1080, 1, 0, "B1F 2R" },
++    { 63, PD_AREA_ITEM, 311, 1044, 1, 0, "1F 1R" },
++    { 65, PD_AREA_GIFT, 190, 282, 1, 0, "1F" },
++    { 65, PD_AREA_HIDDEN, 2, 629, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_HIDDEN, 35, 678, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_HIDDEN, 68, 680, 1, 0, "SUMMIT" },
++    { 65, PD_AREA_HIDDEN, 70, 679, 1, 0, "SUMMIT" },
++    { 65, PD_AREA_ITEM, 2, 1129, 1, 0, "2F" },
++    { 65, PD_AREA_ITEM, 20, 1073, 1, 0, "EXTERIOR" },
++    { 65, PD_AREA_ITEM, 83, 1120, 1, 0, "3F" },
++    { 65, PD_AREA_ITEM, 220, 1130, 1, 0, "4F" },
++    { 65, PD_AREA_ITEM, 221, 1052, 1, 0, "5F" },
++    { 65, PD_AREA_ITEM, 318, 1089, 1, 0, "6F" },
++    { 65, PD_AREA_ITEM, 336, 1074, 1, 0, "EXTERIOR" },
++    { 66, PD_AREA_ITEM, 1, 1124, 1, 0, "B1F" },
++    { 66, PD_AREA_ITEM, 1, 1125, 1, 0, "B1F" },
++    { 66, PD_AREA_ITEM, 8, 1072, 1, 0, "B2F" },
++    { 66, PD_AREA_ITEM, 8, 1127, 1, 0, "B2F" },
++    { 66, PD_AREA_ITEM, 37, 1071, 1, 0, "B1F" },
++    { 66, PD_AREA_ITEM, 37, 1126, 1, 0, "B1F" },
++    { 66, PD_AREA_ITEM, 110, 1132, 1, 0, "B1F" },
++    { 66, PD_AREA_ITEM, 110, 1134, 1, 0, "B1F" },
++    { 67, PD_AREA_GIFT, 46, 0, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_GIFT, 46, 0, 1, 0, "LOW TIDE LOWER ROOM" },
++    { 67, PD_AREA_GIFT, 46, 0, 1, 0, "LOW TIDE STAIRS ROOM" },
++    { 67, PD_AREA_GIFT, 47, 0, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_GIFT, 196, 283, 1, 0, "LOW TIDE LOWER ROOM" },
++    { 67, PD_AREA_GIFT, 219, 0, 1, 0, "LOW TIDE ENTRANCE ROOM" },
++    { 67, PD_AREA_ITEM, 16, 1083, 1, 0, "LOW TIDE STAIRS ROOM" },
++    { 67, PD_AREA_ITEM, 68, 1082, 1, 0, "LOW TIDE INNER ROOM" },
++    { 67, PD_AREA_ITEM, 107, 1081, 1, 0, "LOW TIDE ENTRANCE ROOM" },
++    { 67, PD_AREA_ITEM, 212, 1113, 1, 0, "LOW TIDE ICE ROOM" },
++    { 67, PD_AREA_ITEM, 295, 1112, 1, 0, "LOW TIDE ICE ROOM" },
++    { 68, PD_AREA_ITEM, 314, 1090, 1, 0, "ROOM 9" },
++    { 70, PD_AREA_HIDDEN, 2, 681, 1, 0, "1F" },
++    { 70, PD_AREA_HIDDEN, 36, 682, 1, 0, "B2F" },
++    { 70, PD_AREA_HIDDEN, 84, 683, 1, 0, "B2F" },
++    { 70, PD_AREA_ITEM, 19, 1087, 1, 0, "B1F" },
++    { 70, PD_AREA_ITEM, 23, 1088, 1, 0, "B2F" },
++    { 70, PD_AREA_ITEM, 37, 1084, 1, 0, "1F" },
++    { 70, PD_AREA_ITEM, 69, 1085, 1, 0, "1F" },
++    { 70, PD_AREA_ITEM, 317, 1086, 1, 0, "B1F" },
++    { 72, PD_AREA_ITEM, 345, 1059, 1, 0, "B3F" },
++    { 74, PD_AREA_ITEM, 95, 1111, 1, 0, "" },
++    { 74, PD_AREA_ITEM, 294, 1091, 1, 0, "" },
++    { 76, PD_AREA_HIDDEN, 3, 676, 1, 0, "" },
++    { 76, PD_AREA_HIDDEN, 23, 677, 1, 0, "" },
++    { 76, PD_AREA_ITEM, 15, 1070, 1, 0, "" },
++    { 80, PD_AREA_ITEM, 299, 1079, 1, 0, "" },
++    { 87, PD_AREA_GIFT, 337, 260, 1, 0, "" },
++    { 87, PD_AREA_HIDDEN, 200, 635, 1, 0, "" },
++};
++const int pd_areas_ruby_sapphire_count = 350;
++
+ const struct pd_area_thing pd_areas_firered[] = {
+     { 88, PD_AREA_GIFT, 4, 0, 5, 0, "PROFESSOR OAKS LAB" },
+     { 88, PD_AREA_GIFT, 361, 0, 1, 0, "RIVALS HOUSE" },
 diff --git a/3ds/core/pd_icon.c b/3ds/core/pd_icon.c
 index ba318a1..f7db5a9 100644
 --- a/3ds/core/pd_icon.c
@@ -461,6 +1473,61 @@ index 0000000..f7572dd
 +void pd_sha1_hex(struct pd_sha1* s, char out[41]);
 +
 +#endif
+diff --git a/3ds/core/pd_snapshot.c b/3ds/core/pd_snapshot.c
+index 70817ec..c4440fd 100644
+--- a/3ds/core/pd_snapshot.c
++++ b/3ds/core/pd_snapshot.c
+@@ -180,6 +180,19 @@ static bool read_u32(pd_read_fn read, void* ctx, uint32_t addr, uint32_t* out) {
+     return true;
+ }
+ 
++// A save block: where the pointer says, or (Ruby / Sapphire) the address itself.
++static bool save_block(const struct pd_config* cfg, pd_read_fn read, void* ctx, uint32_t at, uint32_t* out) {
++    if (cfg->staticSaveBlocks) *out = at;
++    else if (!read_u32(read, ctx, at, out)) return false;
++    return in_ram(*out);
++}
++
++// SaveBlock2's encryption key, or 0 where the game has none (encryptionKeyOff -1).
++static bool save_key(const struct pd_config* cfg, pd_read_fn read, void* ctx, uint32_t sb2, uint32_t* key) {
++    *key = 0;
++    return cfg->encryptionKeyOff < 0 || read_u32(read, ctx, sb2 + (uint32_t) cfg->encryptionKeyOff, key);
++}
++
+ void pd_snapshot_read(struct pd_snapshot* s, const struct pd_game* g, pd_read_fn read, void* ctx) {
+     memset(s, 0, sizeof(*s));
+     s->money = -1;
+@@ -232,9 +245,8 @@ void pd_snapshot_read(struct pd_snapshot* s, const struct pd_game* g, pd_read_fn
+ 
+     // --- money: SaveBlock1.money XOR SaveBlock2.encryptionKey ---
+     uint32_t sb1 = 0, sb2 = 0, money = 0, key = 0;
+-    bool haveKey = read_u32(read, ctx, cfg->saveBlock2Ptr, &sb2) && in_ram(sb2) &&
+-        read_u32(read, ctx, sb2 + cfg->encryptionKeyOff, &key);
+-    if (haveKey && read_u32(read, ctx, cfg->saveBlock1Ptr, &sb1) && in_ram(sb1) &&
++    bool haveKey = save_block(cfg, read, ctx, cfg->saveBlock2Ptr, &sb2) && save_key(cfg, read, ctx, sb2, &key);
++    if (haveKey && save_block(cfg, read, ctx, cfg->saveBlock1Ptr, &sb1) &&
+         read_u32(read, ctx, sb1 + cfg->moneyOff, &money)) {
+         uint32_t v = money ^ key;
+         if (v <= MAX_MONEY) s->money = (long) v;
+@@ -288,7 +300,7 @@ static void read_card_fields(struct pd_snapshot* s, const struct pd_config* cfg,
+     uint8_t head[0x12];
+     uint32_t key;
+     uint8_t stats[PD_GAME_STATS * 4];
+-    if (!read(ctx, sb2, head, sizeof(head)) || !read_u32(read, ctx, sb2 + cfg->encryptionKeyOff, &key) ||
++    if (!read(ctx, sb2, head, sizeof(head)) || !save_key(cfg, read, ctx, sb2, &key) ||
+         !read(ctx, sb1 + cfg->gameStatsOff, stats, sizeof(stats))) {
+         return;
+     }
+@@ -440,7 +452,8 @@ static void read_foes(struct pd_snapshot* s, const struct pd_config* cfg, pd_rea
+     }
+     uint32_t bs = 0;
+     uint8_t next = 0xFF;
+-    if (s->foeActive >= 0 && read_u32(read, ctx, cfg->battleStructPtr, &bs) && in_ram(bs) &&
++    if (s->foeActive >= 0 && (cfg->battleStructStatic ? (bs = cfg->battleStructPtr, true)
++                                                     : read_u32(read, ctx, cfg->battleStructPtr, &bs)) && in_ram(bs) &&
+         read(ctx, bs + cfg->monToSwitchIntoOff + (uint32_t) foeBattler, &next, 1) && next < s->foeCount &&
+         next != s->foeActive && s->foes[next].hp > 0 && s->foes[s->foeActive].hp == 0) {
+         s->foeNext = next;
 diff --git a/3ds/core/pd_snapshot.h b/3ds/core/pd_snapshot.h
 index 00f7935..2a486b9 100644
 --- a/3ds/core/pd_snapshot.h
@@ -533,6 +1600,20 @@ index 95b593d..03e703d 100644
  };
  
  // TAB BAR: at most this many tabs beside the gear (the app's MAX_BAR_TABS).
+diff --git a/3ds/core/pd_ui_guide.c b/3ds/core/pd_ui_guide.c
+index ed5ddc8..03258fd 100644
+--- a/3ds/core/pd_ui_guide.c
++++ b/3ds/core/pd_ui_guide.c
+@@ -386,7 +386,8 @@ void ui_guide_tab(struct pd_ui* ui, struct pd_canvas* c, const struct pd_game* g
+         return;
+     }
+     // The first visit per game: the notice first.
+-    lastKindBit = 1 << g->kind;
++    // (A bit per game kind, as saved settings have it; the guides past Emerald's get their own.)
++    lastKindBit = g->guide >= PD_GUIDE_RUBY ? 1 << (8 + g->guide) : 1 << g->kind;
+     if (!(ui->settings->guideNotice & lastKindBit) && ui->overlay == PD_OVERLAY_NONE) {
+         ui->overlay = PD_OVERLAY_GUIDE_NOTICE;
+     }
 diff --git a/3ds/core/pd_ui_internal.h b/3ds/core/pd_ui_internal.h
 index dbfe826..611f4e4 100644
 --- a/3ds/core/pd_ui_internal.h
@@ -587,6 +1668,79 @@ index 3a67218..0c58c76 100644
          break;
      case PD_OVERLAY_TAB_BAR:
          tab_bar_page(ui, c);
+diff --git a/3ds/tools/gen_guide.py b/3ds/tools/gen_guide.py
+index 8139044..be8b1f8 100644
+--- a/3ds/tools/gen_guide.py
++++ b/3ds/tools/gen_guide.py
+@@ -67,6 +67,12 @@ def read_string(text, pos):
+         elif c == '"':
+             parts.append(buf)
+             return parts, pos + 1
++        elif c == "$" and re.match(r"[A-Za-z_]", text[pos + 1]):  # $name, a bare template
++            name = re.match(r"[A-Za-z_]\w*", text[pos + 1:]).group(0)
++            parts.append(buf)
++            buf = ""
++            parts.append(("tmpl", name))
++            pos += 1 + len(name)
+         elif text.startswith("${", pos):
+             depth, j = 1, pos + 2
+             while depth:
+@@ -124,6 +130,8 @@ class Parser:
+                 return self.call(name)
+             if name in self.env["consts"]:
+                 return self.env["consts"][name]
++            if name in self.env.get("strings", {}):  # a guide's own string locals (Ruby / Sapphire's legend)
++                return self.env["strings"][name]
+             if name in ("true", "false"):
+                 return name == "true"
+             return ("name", name)
+@@ -304,6 +312,23 @@ def main():
+ 
+     em_env = {"consts": em_consts, "template": no_template}
+ 
++    # Ruby and Sapphire: one text built per version (rubySapphireGuide(ruby)), its locals by version.
++    rs_text = read("GuideRubySapphire.kt")
++    rs_consts = consts(rs_text)
++
++    def rs_env(ruby):
++        local = {"team": "TEAM MAGMA" if ruby else "TEAM AQUA", "legend": "GROUDON" if ruby else "KYOGRE",
++                 "roamer": "LATIOS" if ruby else "LATIAS"}
++        nums = dict(rs_consts, legendNo=383 if ruby else 382, roamerNo=381 if ruby else 380)
++
++        def template(expr):
++            if expr.strip() in local:
++                return local[expr.strip()]
++            raise SyntaxError(f"gen_guide: unknown template {expr}")
++        return {"consts": nums, "template": template, "strings": local}
++
++    rs_bosses = bosses_of(rs_text, "BOSSES_RUBY_SAPPHIRE", rs_env(True))
++
+     # The League's rematch flag and the starter var (the champion's team).
+     league_flag = fr_consts["FLAG_SYS_CAN_LINK_WITH_RS"]
+     starter_var = fr_consts["VAR_STARTER_MON"]
+@@ -312,8 +337,8 @@ def main():
+     em_verified = "verified = false" not in em_text
+ 
+     out = [
+-        "// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt",
+-        "// and GuideAreas{FireRed,LeafGreen,Emerald}Gen.kt - do not hand-edit.",
++        "// Generated by 3ds/tools/gen_guide.py from the app's GuideFireRed.kt, GuideEmerald.kt, GuideRubySapphire.kt",
++        "// and GuideAreas{FireRed,LeafGreen,Emerald,RubySapphire}Gen.kt - do not hand-edit.",
+         '#include "pd_guide.h"',
+         "",
+     ]
+@@ -322,6 +347,11 @@ def main():
+     emit_guide(out, "pd_guide_leafgreen", pages_of(fr_text, fr_env(True)), fr_bosses, True,
+                f"0x{league_flag:X}, 0x{starter_var:X}")
+     emit_guide(out, "pd_guide_emerald", pages_of(em_text, em_env), em_bosses, em_verified, "0, 0")
++    emit_guide(out, "pd_guide_ruby", pages_of(rs_text, rs_env(True)), rs_bosses,
++               "verified = false" not in rs_text, "0, 0")
++    emit_guide(out, "pd_guide_sapphire", pages_of(rs_text, rs_env(False)), rs_bosses,
++               "verified = false" not in rs_text, "0, 0")
++    emit_areas(out, "pd_areas_ruby_sapphire", areas_of("GuideAreasRubySapphireGen.kt", "GUIDE_AREAS_RUBY_SAPPHIRE_RAW"))
+     emit_areas(out, "pd_areas_firered", areas_of("GuideAreasFireRedGen.kt", "GUIDE_AREAS_FIRERED_RAW"))
+     emit_areas(out, "pd_areas_leafgreen", areas_of("GuideAreasLeafGreenGen.kt", "GUIDE_AREAS_LEAFGREEN_RAW"))
+     emit_areas(out, "pd_areas_emerald", areas_of("GuideAreasEmeraldGen.kt", "GUIDE_AREAS_EMERALD_RAW"))
 diff --git a/gamedata/gen3/records/ported.toml b/gamedata/gen3/records/ported.toml
 new file mode 100644
 index 0000000..c09737f
@@ -3597,10 +4751,23 @@ index 0000000..c09737f
 +nationalMagicOff = 2
 +nationalMagic = 0xDA
 diff --git a/gamedata/targets/3ds.toml b/gamedata/targets/3ds.toml
-index 54b8f29..17199d7 100644
+index 54b8f29..faf4f56 100644
 --- a/gamedata/targets/3ds.toml
 +++ b/gamedata/targets/3ds.toml
-@@ -56,6 +56,8 @@ monToSwitchIntoOff = 'monToSwitchIntoOff'
+@@ -37,6 +37,7 @@ saveBlock2Ptr = 'saveBlock2Ptr'
+ mapHeader = 'mapHeader'
+ encryptionKeyOff = 'encryptionKeyOff'
+ moneyOff = 'moneyOff'
++staticSaveBlocks = 'staticSaveBlocks'
+ bagPockets = 'bagPockets'
+ bagOrder = 'bagPocketOrder'
+ dexSeenCopy1 = 'pokedex.flags.seenCopies.0'
+@@ -52,10 +53,13 @@ flagBytes = 'guideTables.flagBytes'
+ enemyParty = 'enemyParty'
+ battlerPartyIndexes = 'battlerPartyIndexes'
+ battleStructPtr = 'battleStructPtr'
++battleStructStatic = 'battleStructStatic'
+ monToSwitchIntoOff = 'monToSwitchIntoOff'
  
  # The party menu's icons and the bag's.
  [part.icons]
@@ -3609,7 +4776,7 @@ index 54b8f29..17199d7 100644
  monIconTable = 'monIconTable'
  monIconPaletteIndices = 'monIconPaletteIndices'
  monIconPaletteTable = 'monIconPaletteTable'
-@@ -173,3 +175,9 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
+@@ -173,3 +177,27 @@ records = { items = 'FIELD_ITEMS_LEAFGREEN_REV1' }
  name = 'EMERALD'
  parts = ['ram', 'foes', 'icons', 'dex', 'guide', 'card', 'fly', 'field']
  records = { items = 'FIELD_ITEMS_EMERALD' }
@@ -3619,6 +4786,24 @@ index 54b8f29..17199d7 100644
 +[config.emerald_legacy]
 +name = 'EMERALD_LEGACY'
 +parts = ['ram', 'foes', 'icons', 'dex']
++
++# Ruby / Sapphire (USA): rev 1 and 2 share every address (the app's NATIVE_RUBY / _SAPPHIRE), rev 0 is its own
++# (RETAIL_PORTS' AXVE0 / AXPE0). Read like Emerald (the same species / item / map-section ids); no trainer card.
++[config.ruby]
++name = 'RUBY'
++parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++
++[config.sapphire]
++name = 'SAPPHIRE'
++parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++
++[config.port_axve0]
++name = 'RUBY_REV0'
++parts = ['ram', 'foes', 'icons', 'dex', 'guide']
++
++[config.port_axpe0]
++name = 'SAPPHIRE_REV0'
++parts = ['ram', 'foes', 'icons', 'dex', 'guide']
 diff --git a/linux/CMakeLists.txt b/linux/CMakeLists.txt
 index 8f64735..93480eb 100644
 --- a/linux/CMakeLists.txt
@@ -3637,6 +4822,19 @@ index 8f64735..93480eb 100644
  target_compile_options(pd_linux_common PRIVATE -Wall -Wextra)
  # The app's EXPAND sources, built as they are.
  set_source_files_properties(../app/src/main/cpp/pk_wide.c ../app/src/main/cpp/pk_wide_gb.c PROPERTIES COMPILE_OPTIONS -Wno-unused-parameter)
+diff --git a/linux/field_items.c b/linux/field_items.c
+index 41c0260..e7fd141 100644
+--- a/linux/field_items.c
++++ b/linux/field_items.c
+@@ -49,7 +49,7 @@ bool bike_supported(const struct pd_config *cfg) {
+ }
+ 
+ static uint32_t save_block1(struct mCore *core, const struct pd_config *cfg) {
+-  uint32_t sb1 = core->busRead32(core, cfg->saveBlock1Ptr);
++  uint32_t sb1 = cfg->staticSaveBlocks ? cfg->saveBlock1Ptr : core->busRead32(core, cfg->saveBlock1Ptr);
+   return sb1 >= 0x02000000u && sb1 < 0x02040000u ? sb1 : 0;
+ }
+ 
 diff --git a/linux/host_io.c b/linux/host_io.c
 index 63033cd..7fb88ac 100644
 --- a/linux/host_io.c
