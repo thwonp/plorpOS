@@ -7174,7 +7174,7 @@ index 662762a..68ed719 100644
      bx += pd_text(c, bx, pd_text_y(y, BALLS_H), t, INK, INK_SHADOW) + 4;
    }
 diff --git a/linux/main.c b/linux/main.c
-index a1c2e59..754d91f 100644
+index a1c2e59..4a0ad41 100644
 --- a/linux/main.c
 +++ b/linux/main.c
 @@ -13,10 +13,12 @@
@@ -7446,7 +7446,20 @@ index a1c2e59..754d91f 100644
      if (i == cur)
        continue;
      struct pd_hit *t = &u->hits[i];
-@@ -816,7 +970,8 @@ static void pacing_check(double frameMs) {
+@@ -748,7 +902,11 @@ static void focus_move(struct pd_ui *u, int direction) {
+                 : direction == RIGHT ? dx
+                 : direction == UP    ? -dy
+                                      : dy;
+-    int across = direction == LEFT || direction == RIGHT ? abs(dy) : abs(dx);
++    // Across: the gap between the two along the other axis, 0 where they overlap (a full-width row right
++    // under a button beats a chip far off to the side).
++    int across = direction == LEFT || direction == RIGHT
++                     ? (t->y + t->h <= h->y ? h->y - (t->y + t->h) : t->y >= h->y + h->h ? t->y - (h->y + h->h) : 0)
++                     : (t->x + t->w <= h->x ? h->x - (t->x + t->w) : t->x >= h->x + h->w ? t->x - (h->x + h->w) : 0);
+     if (along > 0 && along + across * 4 < score) {
+       best = i;
+       score = along + across * 4;
+@@ -816,7 +974,8 @@ static void pacing_check(double frameMs) {
    avg = 0;
    count = 0;
  }
@@ -7456,7 +7469,7 @@ index a1c2e59..754d91f 100644
    double rate = 32768;
    if (vsyncPaced && audio && screenHz > 0) {
      double queued = SDL_GetQueuedAudioSize(audio) / 4.0, target = 32768 * 0.06;
-@@ -824,6 +979,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
+@@ -824,6 +983,7 @@ static void audio_rate(struct mCore *c, double gameHz) {
      d = d > 1 ? 1 : d < -1 ? -1 : d;
      rate = 32768 * gameHz / screenHz * (1 + 0.005 * d);
    }
@@ -7464,7 +7477,7 @@ index a1c2e59..754d91f 100644
    for (int i = 0; i < 2; i++)
      blip_set_rates(c->getAudioChannel(c, i), c->frequency(c), rate);
  }
-@@ -878,6 +1034,28 @@ static void perf_frame(uint64_t start, double hz) {
+@@ -878,6 +1038,28 @@ static void perf_frame(uint64_t start, double hz) {
  static void test_frame(struct mCore *, bool, int, struct pd_ui *,
                         struct pd_snapshot *);
  #endif
@@ -7493,7 +7506,7 @@ index a1c2e59..754d91f 100644
  static void run_game(const char *path, int maxFrames, const char *shot) {
    FILE *f = fopen(path, "rb");
    if (!f) {
-@@ -933,7 +1111,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -933,7 +1115,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    char sav[1024], ss[1024];
    const char *name = strrchr(path, '/');
    name = name ? name + 1 : path;
@@ -7505,7 +7518,7 @@ index a1c2e59..754d91f 100644
    snprintf(ss, sizeof ss, "%s/states/%s.ss", root, name);
    struct pocket_save_status saveStatus = {0};
    if (!pocket_save_backup(sav, time(NULL))) {
-@@ -970,6 +1151,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -970,6 +1155,9 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    pd_game_detect(&game, romdata, (size_t)len);
    game.rom = romdata;
    game.romSize = (size_t)len;
@@ -7515,7 +7528,7 @@ index a1c2e59..754d91f 100644
    if (c->platform(c) == mPLATFORM_GBA)
      pd_romart_scan(&game);
    char config[1024];
-@@ -1009,6 +1193,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1009,6 +1197,10 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    const char *repelNames[REPEL_KINDS];
    struct pd_ui ui;
    pd_ui_init(&ui, &settings);
@@ -7526,7 +7539,7 @@ index a1c2e59..754d91f 100644
    struct pd_snapshot snap = {0};
    struct pd_host_info host = {.hideScreenMode = true, .hasExpand = true, .hasHud = c->platform(c) == mPLATFORM_GBA,
                                .expandGame = wideSupported, .count = 1, .labels = {"HOST"}};
-@@ -1036,9 +1224,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1036,9 +1228,34 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    while (running && !leave) {
      uint64_t frameStart = SDL_GetPerformanceCounter();
      if(saveStatus.failed) { appError=1; notice("Save I/O failed; stopping game"); break; }
@@ -7561,7 +7574,7 @@ index a1c2e59..754d91f 100644
      if (down(X)) {
        menuOpen = 0;
        companion = !companion;
-@@ -1046,7 +1259,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1046,7 +1263,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
        if (audio)
          SDL_ClearQueuedAudio(audio);
      }
@@ -7570,7 +7583,7 @@ index a1c2e59..754d91f 100644
                         (held & (1u << START)) && (held & (1u << SELECT)))) {
        menuOpen = menuOpen ? 0 : 1;
        companion = true;
-@@ -1309,24 +1522,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1309,24 +1526,35 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
          confirmMenu.selected = 0;
        }
      } else {
@@ -7612,7 +7625,7 @@ index a1c2e59..754d91f 100644
      }
      // The companion's data: fresh when it opens (it pauses the game), else twice a
      // second - read through the bus byte by byte, every frame cost frame time.
-@@ -1502,6 +1726,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
+@@ -1502,6 +1730,7 @@ static void run_game(const char *path, int maxFrames, const char *shot) {
    if (audio)
      SDL_ClearQueuedAudio(audio);
  cleanup:
@@ -7620,7 +7633,7 @@ index a1c2e59..754d91f 100644
    pk_wide_configure(0);
    wideSupported = wideReady = false;
    c->unloadROM(c);
-@@ -1520,6 +1745,8 @@ int main(int argc, char **argv) {
+@@ -1520,6 +1749,8 @@ int main(int argc, char **argv) {
    for (int i = 1; i < argc; i++) {
      if (!strcmp(argv[i], "--data") && i + 1 < argc)
        root = argv[++i];
@@ -7629,7 +7642,7 @@ index a1c2e59..754d91f 100644
      else if (!strcmp(argv[i], "--frames") && i + 1 < argc)
        frames = atoi(argv[++i]);
      else if (!strcmp(argv[i], "--shot") && i + 1 < argc)
-@@ -1532,6 +1759,11 @@ int main(int argc, char **argv) {
+@@ -1532,6 +1763,11 @@ int main(int argc, char **argv) {
    signal(SIGTERM, stop);
    mkdir(root, 0755);
    char path[1024];
