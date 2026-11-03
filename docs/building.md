@@ -42,7 +42,7 @@ make PLATFORM=h700 && make PLATFORM=h700 payload
 mk/fetch-rotate-sysroot.sh     # Anbernic RG Rotate (base618)  -> sysroot-rotate/
 make PLATFORM=rotate
 ROTATE_STAGE=out/rotate mk/rotate-deploy.sh stage   # the plorpOS/ folder (update zip)
-mk/rotate-image.sh             # the card image, read from a set-up Rotate over ssh
+mk/rotate-image.sh             # the card image, from the saved base in work/ (READ_DEVICE=1 refreshes it from a Rotate over ssh)
 ```
 
 BaseOS has no SDL2 or FFmpeg of its own, so `mk/fetch-h700-sysroot.sh` builds

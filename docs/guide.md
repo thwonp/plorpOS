@@ -141,11 +141,23 @@ restart. Over The Hare already does it for you on the way out of the transfer
 screen; this is the same thing by hand, for a card written some other way.
 
 **Turbo is a hotkey, Turbo Assign,** bound under Hotkeys like the others. In a
-game, press it and then a button, and that button presses itself about ten
-times a second for as long as you hold it; the same again turns it back. Hold
+game, press it, then the button to turbo, then the button to put it on:
+Turbo Assign + A + X makes X a turbo A, pressing A about ten times a second
+for as long as you hold it; Turbo Assign + A + A makes A its own turbo. The
+same again turns it back. Hold
 Turbo Assign two seconds to clear every turbo button. It lasts until the game
 quits, unless **Persistent Turbo Assignments** is on in Game Settings: then each game keeps
 its own turbo buttons for next time. How it works is in [turbo.md](turbo.md).
+
+**Button Mapping** (in-game menu > Hotkeys > Button Mapping) moves the game's
+buttons, for the whole console. Each row is a button as that console's pad
+names it - A, B, C, X, Y, Z on the Genesis, A to D on the Neo Geo, I and II on the
+TurboGrafx-16 -
+and holds the button that sends it: press A on a row, then the button. A
+button moved to a row leaves its old one, and a button on no row sends the
+game nothing. X clears a row; Reset to Default puts them back. Two-button
+consoles have two rows. Directions, START and SELECT never move, and the
+menus and hotkeys always read the real buttons.
 
 The other hotkeys are in the README's [FAQ](../README.md#faq). Nintendo DS
 layouts, the stylus and Ports differ by device; each install guide has them.
