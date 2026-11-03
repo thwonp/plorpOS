@@ -124,6 +124,14 @@ mdir -i "$W/p2-out.img" -/ -b ::/ | grep -E \
 	'^::/(Image-plorpos(\.uimg\..+)?|initrd-fw\.cpio\.gz\..+|plorpos-fw\..+|initrd\.img-.+|uInitrd|dtb/sprd/.+\.dtb\..+|extlinux/extlinux\.conf\..+)$' |
 	xargs -r mdel -i "$W/p2-out.img"
 KBUILD=${KBUILD:-$HOME/projects/git/build-ums512}
+# gen_init_cpio is one C file in the kernel tree: built here when the kernel
+# build dir has none (plorpos-gq0).
+if [ ! -x "$KBUILD/usr/gen_init_cpio" ]; then
+	KSRC=${KSRC:-$HOME/projects/git/linux-plorpos-fixes}
+	mkdir -p "$W/kb/usr"
+	cc -O1 -o "$W/kb/usr/gen_init_cpio" "$KSRC/usr/gen_init_cpio.c"
+	KBUILD=$W/kb
+fi
 sh "$ROOT/mk/rotate-pm-bootcode.sh" "$W/pm_bootcode.bin" > /dev/null
 printf '%s\n' 'dir /dev 0755 0 0' 'nod /dev/console 0600 0 0 c 5 1' 'dir /lib 0755 0 0' \
 	'dir /lib/firmware 0755 0 0' 'dir /lib/firmware/sprd 0755 0 0' \
