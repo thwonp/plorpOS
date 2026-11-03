@@ -245,9 +245,10 @@ void plat_resident_on_unlock(void (*fn)(int id));
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path));
 
 /* The same, when the player uses Turbo Assign (Diatom's TURBO, plorpos-tkh):
- * what happened and, for on/off, the button ("A", "L2"); "" otherwise. The
- * map is already sent; this is for the notice. */
-typedef enum { PLAT_TURBO_ARMED, PLAT_TURBO_CANCEL, PLAT_TURBO_ON,
+ * what happened and, for on/off, the button ("A", "L2", "A on X" for a turbo
+ * on another button), for picked the turbo button waiting for its host; ""
+ * otherwise. The map is already sent; this is for the notice. */
+typedef enum { PLAT_TURBO_ARMED, PLAT_TURBO_PICKED, PLAT_TURBO_CANCEL, PLAT_TURBO_ON,
                PLAT_TURBO_OFF, PLAT_TURBO_CLEARED } plat_turbo_event;
 void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
 
@@ -299,6 +300,11 @@ const char *plat_coreopt(const char *tag, int i);
  * cache in the same call, for the settings screen that edits it live. */
 const char *plat_hotkey_map(const char *tag);
 void        plat_hotkey_set(const char *tag, const char *spec);
+
+/* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its
+ * defaults. Setting it persists it and, mid-game, resends the map at once. */
+const char *plat_btnmap(const char *tag);
+void        plat_btnmap_set(const char *tag, const char *spec);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the

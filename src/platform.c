@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0 */
 #include "atomic.h"
+#include "btnmap.h"
 #include "db.h"
 #include "platform.h"
 #include "audioout.h"
@@ -1093,9 +1094,13 @@ void plat_resident_on_shot(void (*fn)(bool ok, const char *path)) { d_on_shot = 
 
 static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
 void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
-static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
+/* Per host button (BM_SRC index), the turbo it fires plus one; 0 is none.
+ * This game only (plorpos-c4l: any turbo on any button). */
+static int  d_turbo[BM_SRC_N];
 static bool d_turbo_gba;
-static char d_turbo_key[600];     /* "turbo.<TAG>/<rom file>": this game's saved bits */
+static char d_tag[16];            /* the running game's system, for its Button Mapping */
+static char d_turbo_key[600];     /* "turbomap.<TAG>/<rom file>": this game's saved turbo */
+static char d_turbo_old[600];     /* "turbo.<TAG>/<rom file>": the bits it replaced */
 
 /* Persistent Turbo Assignments (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
  * the session - one row per game in the library db, beside its hotkeys, saved
@@ -1103,11 +1108,47 @@ static char d_turbo_key[600];     /* "turbo.<TAG>/<rom file>": this game's saved
  * leaves saved rows alone, so turning it back On brings them back. */
 static bool d_turbo_persist(void) { return db_get_int(db_dev(), "persistturbo", 0) != 0; }
 
+/* "x:a,a:a" - host:turbo - the same names SETMAP uses. */
 static void d_turbo_save(void)
 {
+	char v[64];
+	int i, n = 0;
+
 	if (!d_turbo_persist() || !d_turbo_key[0]) return;
-	if (d_turbo) db_set_int(db_lib(), d_turbo_key, (int)d_turbo);
-	else         db_del(db_lib(), d_turbo_key);
+	v[0] = '\0';
+	for (i = 0; i < BM_SRC_N; i++)
+		if (d_turbo[i])
+			n += snprintf(v + n, sizeof v - (size_t)n, "%s%s:%s", n ? "," : "",
+			              BM_SRC[i], BM_SRC[d_turbo[i] - 1]);
+	if (n) db_set_str(db_lib(), d_turbo_key, v);
+	else   db_del(db_lib(), d_turbo_key);
+	db_del(db_lib(), d_turbo_old);   /* converted; never read back again */
+}
+
+/* At RUN: the saved turbo, or the bits a launcher before plorpos-c4l kept
+ * (bit i: button i turbos itself), converted. */
+static void d_turbo_load(void)
+{
+	char v[64], *save = NULL, *tok;
+	int i, bits;
+
+	memset(d_turbo, 0, sizeof d_turbo);
+	if (!d_turbo_persist()) return;
+	if (db_get_str(db_lib(), d_turbo_key, v, sizeof v, NULL)) {
+		for (tok = strtok_r(v, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
+			char *c = strchr(tok, ':');
+			int h, t;
+			if (!c) continue;
+			*c = '\0';
+			h = bm_src_index(tok);
+			t = bm_src_index(c + 1);
+			if (h >= 0 && t >= 0) d_turbo[h] = t + 1;
+		}
+		return;
+	}
+	bits = db_get_int(db_lib(), d_turbo_old, 0);
+	for (i = 0; i < BM_SRC_N; i++)
+		if (bits & (1 << i)) d_turbo[i] = i + 1;
 }
 static void d_turbo_send(void);
 
@@ -1255,10 +1296,13 @@ bool plat_resident_send(const plat_game *g)
 		{
 			const char *f = g->rom ? strrchr(g->rom, '/') : NULL;
 
-			snprintf(d_turbo_key, sizeof d_turbo_key, "turbo.%s/%s", tag ? tag : "",
+			snprintf(d_turbo_key, sizeof d_turbo_key, "turbomap.%s/%s", tag ? tag : "",
+			         f ? f + 1 : g->rom ? g->rom : "");
+			snprintf(d_turbo_old, sizeof d_turbo_old, "turbo.%s/%s", tag ? tag : "",
 			         f ? f + 1 : g->rom ? g->rom : "");
 		}
-		d_turbo = d_turbo_persist() ? (uint32_t)db_get_int(db_lib(), d_turbo_key, 0) : 0;
+		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
+		d_turbo_load();
 		d_turbo_gba = tag && !strcmp(tag, "GBA");
 		d_turbo_send();
 
@@ -1451,61 +1495,106 @@ static void d_note_shot(const char *l)
 }
 
 /* ---- turbo, chosen in the game (plorpos-tkh, Diatom's ADR-0045) ----------
- * Diatom reports Turbo Assign; this keeps which buttons are turbo for the game
- * now running and answers each change with the whole map (ADR-0020, ADR-0028:
- * `b:b~3` is B pressed three frames and released three, about ten a second).
- * Emptied at RUN, so a game's turbo ends with it; the menu and Muse leave it
- * alone, and so does Diatom's map across PAUSE.
+ * Diatom reports Turbo Assign; this keeps which turbo each button fires for
+ * the game now running and answers each change with the whole map (ADR-0020,
+ * ADR-0028: `x:a~3` is X sending A pressed three frames and released three,
+ * about ten a second). Emptied at RUN, so a game's turbo ends with it; the
+ * menu and Muse leave it alone, and so does Diatom's map across PAUSE.
+ *
+ * The map also carries the system's Button Mapping (plorpos-c4l): a turbo is
+ * "what that button sends", so hotkey + A + X on a system where A was moved
+ * to B makes X a turbo B. A button's turbo wins over its mapping.
  *
  * Game Boy Advance's L2 and R2 are mGBA's own Turbo L and R. Mapped to none
  * on GBA, always, so those two are free for hotkeys like everywhere else -
  * the reason fixed X/Y turbo went too. */
-static const char *const turbo_names[] = { "a", "b", "x", "y", "l1", "r1", "l2", "r2" };
-#define TURBO_N ((int)(sizeof turbo_names / sizeof turbo_names[0]))
 #define TURBO_FRAMES 3
+
+static void d_btnmap_get(const char *tag, char *out, size_t n)
+{
+	char key[32];
+
+	snprintf(key, sizeof key, "btnmap.%s", tag);
+	if (!db_get_str(db_lib(), key, out, n, "")) out[0] = '\0';
+}
+
+const char *plat_btnmap(const char *tag)
+{
+	static char spec[160];
+
+	d_btnmap_get(tag ? tag : "", spec, sizeof spec);
+	return spec;
+}
 
 static void d_turbo_send(void)
 {
-	char map[160];
+	char map[200], spec[160];
 	int i, n = 0;
 
+	d_btnmap_get(d_tag, spec, sizeof spec);
 	map[0] = '\0';
-	if (d_turbo_gba) n = snprintf(map, sizeof map, "l2:none,r2:none");
-	for (i = 0; i < TURBO_N; i++) {
-		bool gba_none = d_turbo_gba && i >= 6;   /* l2, r2 */
-		if (!(d_turbo & (1u << i)) || gba_none) continue;
-		n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:%s~%d",
-		              n ? "," : "", turbo_names[i], turbo_names[i], TURBO_FRAMES);
+	for (i = 0; i < BM_SRC_N; i++) {
+		const char *tgt = bm_target(d_tag, spec, i), *tt = NULL;
+
+		if (d_turbo[i]) tt = bm_target(d_tag, spec, d_turbo[i] - 1);
+		if (d_turbo_gba && i >= 6)             /* l2, r2 */
+			n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:none", n ? "," : "", BM_SRC[i]);
+		else if (tt && strcmp(tt, "none"))
+			n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:%s~%d", n ? "," : "",
+			              BM_SRC[i], tt, TURBO_FRAMES);
+		else if (strcmp(tgt, BM_SRC[i]))
+			n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:%s", n ? "," : "", BM_SRC[i], tgt);
 	}
 	fprintf(stderr, "turbo: %s\n", n ? map : "identity");
 	dsend("SETMAP\tmap=%s", n ? map : "identity");
 }
 
-/* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tbtn=a", "TURBO\tclear=1" */
+void plat_btnmap_set(const char *tag, const char *spec)
+{
+	char key[32];
+
+	if (!tag) return;
+	snprintf(key, sizeof key, "btnmap.%s", tag);
+	if (spec && *spec) db_set_str(db_lib(), key, spec);
+	else               db_del(db_lib(), key);
+	/* Live, as the hotkeys are: this screen only opens mid-game. */
+	if (!strcmp(tag, d_tag)) d_turbo_send();
+}
+
+/* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tpick=a", "TURBO\tbtn=a\ton=x",
+ * "TURBO\tclear=1". A Diatom before plorpos-c4l sends btn= alone: its own. */
 static void d_note_turbo(const char *l)
 {
 	const char *v;
-	char up[4] = "";
-	int i;
+	char what[16];
+	int t, h;
 
 	if ((v = strstr(l, "arm="))) {
 		if (d_on_turbo) d_on_turbo(v[4] == '1' ? PLAT_TURBO_ARMED : PLAT_TURBO_CANCEL, "");
+	} else if ((v = strstr(l, "pick="))) {
+		if ((t = bm_src_index(v + 5)) >= 0 && d_on_turbo)
+			d_on_turbo(PLAT_TURBO_PICKED, BM_SRC_LABEL[t]);
 	} else if (strstr(l, "clear=1")) {
-		d_turbo = 0;
+		memset(d_turbo, 0, sizeof d_turbo);
 		d_turbo_send();
 		d_turbo_save();
 		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
 	} else if ((v = strstr(l, "btn="))) {
-		for (i = 0; i < TURBO_N; i++)
-			if (!strcmp(v + 4, turbo_names[i])) break;
-		if (i == TURBO_N) return;
-		d_turbo ^= 1u << i;
+		char name[4];
+		const char *on = strstr(l, "\ton=");
+
+		snprintf(name, sizeof name, "%.*s", (int)strcspn(v + 4, "\t"), v + 4);
+		t = bm_src_index(name);
+		h = on ? bm_src_index(on + 4) : t;
+		if (t < 0 || h < 0) return;
+		/* The same pair again takes it off; another turbo replaces it. */
+		d_turbo[h] = d_turbo[h] == t + 1 ? 0 : t + 1;
 		d_turbo_send();
 		d_turbo_save();
-		for (int k = 0; turbo_names[i][k] && k < 3; k++)
-			up[k] = (char)toupper((unsigned char)turbo_names[i][k]);
+		if (h == t) snprintf(what, sizeof what, "%s", BM_SRC_LABEL[t]);
+		else        snprintf(what, sizeof what, "%s on %s", BM_SRC_LABEL[t], BM_SRC_LABEL[h]);
 		if (d_on_turbo)
-			d_on_turbo(d_turbo & (1u << i) ? PLAT_TURBO_ON : PLAT_TURBO_OFF, up);
+			d_on_turbo(d_turbo[h] ? PLAT_TURBO_ON : PLAT_TURBO_OFF, what);
 	}
 }
 
