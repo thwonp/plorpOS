@@ -12,8 +12,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-plorp.git}
-PD=${PD_COMMIT:-PINNED_AT_RELEASE} # feat/libretro-core
-SHA=${PD_SHA:-}                    # sha256 of the stripped core, pinned once the commit is
+PD=${PD_COMMIT:-8554b5a8e1ce891244df7d14a21cc3adfb2cc22a} # feat/libretro-core: the parity table, 2026-11-03
+SHA=${PD_SHA:-e22c8a866a3ea44619968f097d19bc47873470a6a3382cc97b0fe0ef9e757041} # sha256 of the stripped core
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
