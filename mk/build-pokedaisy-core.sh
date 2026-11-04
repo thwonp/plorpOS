@@ -13,7 +13,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-plorp.git}
 PD=${PD_COMMIT:-8554b5a8e1ce891244df7d14a21cc3adfb2cc22a} # feat/libretro-core: the parity table, 2026-11-03
-SHA=${PD_SHA:-e22c8a866a3ea44619968f097d19bc47873470a6a3382cc97b0fe0ef9e757041} # sha256 of the stripped core
+SHA=${PD_SHA:-e22c8a866a3ea44619968f097d19bc47873470a6a3382cc97b0fe0ef9e757041} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -46,7 +46,7 @@ echo "glibc: $g"
 SO=$OUT/pokedaisy_libretro.stripped.so
 [ -f "$SO" ] || { echo "!! build failed (see $OUT/build.log)" >&2; exit 1; }
 GOT=$(sha256sum "$SO" | cut -d' ' -f1)
-if [ -n "$SHA" ] && [ "$GOT" != "$SHA" ]; then
+if [ -n "$SHA" ] && [ "$SHA" != "-" ] && [ "$GOT" != "$SHA" ]; then
 	echo "!! pokedaisy core sha256 $GOT, expected $SHA" >&2
 	echo "  The toolchain image or the source changed. Verify the core, then update PD_SHA here." >&2
 	exit 1
