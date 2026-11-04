@@ -155,6 +155,33 @@ static void hotkeys_load(void)
 	db_each_prefix(db_lib(), "hotkey.", hotkey_row, NULL);
 }
 
+/* A hotkey list as Diatom takes it. Diatom refuses a whole list that names an action it does not have,
+ * and "hud" (the HUD Focus hotkey of PokeDaisy's own SDL host) is none of its: dropped, so the
+ * fast-forward, rewind and state hotkeys beside it still work. PokeDaisy as a core puts the HUD
+ * cursor on a core option button instead. */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap)
+{
+	size_t n = 0;
+
+	if (!cap) return;
+	out[0] = '\0';
+	for (const char *p = spec ? spec : ""; *p;) {
+		const char *e = strchr(p, ','), *colon;
+		size_t len = e ? (size_t)(e - p) : strlen(p);
+
+		colon = memchr(p, ':', len);
+		if (!(colon && len - (size_t)(colon + 1 - p) == 3 && !memcmp(colon + 1, "hud", 3)) &&
+		    n + len + 2 < cap) {
+			memcpy(out + n, p, len);
+			n += len;
+			out[n++] = ',';
+			out[n] = '\0';
+		}
+		p += len + (e ? 1 : 0);
+	}
+	if (n) out[n - 1] = '\0';
+}
+
 /* The binding string for this system, or "" for one with none set - never
  * NULL, so a caller building a SETHOTKEYS line needs no extra branch (an
  * empty spec is itself valid: Diatom's hotkeys_set("") means "no bindings",
@@ -1258,6 +1285,20 @@ bool plat_resident_send(const plat_game *g)
 			}
 		}
 
+		/* PokeDaisy draws its own frame (the game, the companion, the HUD and the quick
+		 * menu on one canvas), so it is shown at a whole scale and its canvas is a third
+		 * of the panel: 341x256 on the Brick's 1024x768, the same pixels at 3x. The mode
+		 * is this launch's only: the shelf's own setting is not touched, and mGBA's
+		 * launch keeps it. */
+		const char *mode = g->mode ? g->mode : "";
+		if (g->core && strstr(g->core, "pokedaisy_libretro")) {
+			mode = "integer";
+			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
+			/* The core now picks its own canvas from the panel (EXPAND at the game's whole scale, ZOOM OUT one
+			 * less); the canvas above is the fallback for a panel the core does not list. */
+			dsend("SETOPT\tkey=pokedaisy_panel\tvalue=%dx%d", plat_panel_w, plat_panel_h);
+		}
+
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
 		 * (its ADR-0032), so sent first it is in force from the game's first
 		 * sample - a game started while music plays never makes a sound -
@@ -1298,7 +1339,7 @@ bool plat_resident_send(const plat_game *g)
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
 		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
-		           g->core, g->rom, tag, g->mode ? g->mode : "",
+		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
@@ -1326,7 +1367,9 @@ bool plat_resident_send(const plat_game *g)
 		}
 		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
 		d_turbo_load();
-		d_turbo_gba = tag && !strcmp(tag, "GBA");
+		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
+		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
+		d_turbo_gba = tag && !strcmp(tag, "GBA") && !(g->core && strstr(g->core, "pokedaisy_libretro"));
 		d_turbo_send();
 
 		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
@@ -1341,6 +1384,10 @@ bool plat_resident_send(const plat_game *g)
 		 * reasoning the comment above already gives). */
 		{
 			const char *hk = plat_hotkey_map(tag);
+			char kept[256];
+
+			plat_hotkeys_for_diatom(hk, kept, sizeof kept);
+			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
 			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",

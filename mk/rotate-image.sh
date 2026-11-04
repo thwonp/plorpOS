@@ -9,7 +9,11 @@
 # (mke2fs -d) inside a podman container, so its owners survive.
 #
 #   mk/rotate-image.sh [OUT]   (default ~/projects/misc/rg-rotate/image/plorpos-rotate.img)
-#   REUSE=1 mk/rotate-image.sh  repacks from the last read (work/), no device
+#   Builds from the base in work/ (p1.img, p2.img, fstab, rootfs.tar.zst): no
+#   device. The plorpOS folder, kernel files and first-boot scripts all come
+#   from this repo, so a new release needs no device read (plorpos-gq0).
+#   READ_DEVICE=1 mk/rotate-image.sh  refreshes the base from the unit at
+#   ROTATE_HOST first - only when the rootfs itself (packages, kernel) changes.
 #
 # The image: p1 uboot and p2 bootfs as on the device, p3 the rootfs at a
 # fixed ROOT_MB with the device's UUID (fstab names it) and PARTUUID (extlinux's root=), no p4:
@@ -72,7 +76,7 @@ ln -s libSDL2-2.0.so.0 "$O/usr/lib/aarch64-linux-gnu/libSDL2.so"
 
 # 2. The device's partitions 1-2 raw, and its rootfs as a tarball. ~3-5 min
 #    over Wi-Fi.
-if [ -z "${REUSE:-}" ]; then
+if [ -n "${READ_DEVICE:-}" ]; then
 # The rootfs is the device's, so what it has installed is what the card gets.
 # PortMaster's ports need these beyond the launcher's own (plorpos-3yv.86.2):
 # SDL2_mixer and OpenAL for many ports, Xwayland for X11 ones, glxinfo
@@ -103,7 +107,9 @@ ssh_ 'tar -C / --one-file-system --numeric-owner -cf - \
 	--exclude="./usr/lib/firmware/sprd/*" \
 	--exclude=./swapfile . | zstd -1 -T0' > "$W/rootfs.tar.zst"
 fi
-[ -s "$W/rootfs.tar.zst" ] || { echo "image: no rootfs read" >&2; exit 1; }
+for f in p1.img p2.img fstab rootfs.tar.zst; do
+	[ -s "$W/$f" ] || { echo "image: no base ($W/$f); READ_DEVICE=1 reads one from $HOST" >&2; exit 1; }
+done
 UUID=$(awk '$2 == "/" { sub("UUID=", "", $1); print $1 }' "$W/fstab")
 
 # 2b. p2 as Armbian ships it plus the plorpOS kernel, DT and extlinux.conf:
@@ -118,6 +124,14 @@ mdir -i "$W/p2-out.img" -/ -b ::/ | grep -E \
 	'^::/(Image-plorpos(\.uimg\..+)?|initrd-fw\.cpio\.gz\..+|plorpos-fw\..+|initrd\.img-.+|uInitrd|dtb/sprd/.+\.dtb\..+|extlinux/extlinux\.conf\..+)$' |
 	xargs -r mdel -i "$W/p2-out.img"
 KBUILD=${KBUILD:-$HOME/projects/git/build-ums512}
+# gen_init_cpio is one C file in the kernel tree: built here when the kernel
+# build dir has none (plorpos-gq0).
+if [ ! -x "$KBUILD/usr/gen_init_cpio" ]; then
+	KSRC=${KSRC:-$HOME/projects/git/linux-plorpos-fixes}
+	mkdir -p "$W/kb/usr"
+	cc -O1 -o "$W/kb/usr/gen_init_cpio" "$KSRC/usr/gen_init_cpio.c"
+	KBUILD=$W/kb
+fi
 sh "$ROOT/mk/rotate-pm-bootcode.sh" "$W/pm_bootcode.bin" > /dev/null
 printf '%s\n' 'dir /dev 0755 0 0' 'nod /dev/console 0600 0 0 c 5 1' 'dir /lib 0755 0 0' \
 	'dir /lib/firmware 0755 0 0' 'dir /lib/firmware/sprd 0755 0 0' \

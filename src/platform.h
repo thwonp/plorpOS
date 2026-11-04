@@ -312,6 +312,8 @@ const char *plat_coreopt(const char *tag, int i);
  * value (diatom's ADR-0035). plat_hotkey_set persists it and updates the
  * cache in the same call, for the settings screen that edits it live. */
 const char *plat_hotkey_map(const char *tag);
+/* The same list without the actions Diatom does not have (see platform.c). */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its
