@@ -19,7 +19,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-$HOME/.cache/tortos-dsperate-brick}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=${LR:-3e1fbfac29cfe9659f830e6c0b455606b95c4a48} # DSperate v3.3.0 + slot 2, rumble, analog, frame skip; the same pin as the GKD's
+LR=${LR:-801a2dc2bd9ddc6ec66eefd7b8f621d1d4b8adb6} # DSperate v3.3.0 + slot 2, rumble, analog, frame skip; the same pin as the GKD's
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 TUNE=${TUNE--mcpu=cortex-a53}
 
