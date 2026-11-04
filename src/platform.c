@@ -1235,6 +1235,17 @@ bool plat_resident_send(const plat_game *g)
 			}
 		}
 
+		/* PokeDaisy draws its own frame (the game, the companion, the HUD and the quick
+		 * menu on one canvas), so it is shown at a whole scale and its canvas is a third
+		 * of the panel: 341x256 on the Brick's 1024x768, the same pixels at 3x. The mode
+		 * is this launch's only: the shelf's own setting is not touched, and mGBA's
+		 * launch keeps it. */
+		const char *mode = g->mode ? g->mode : "";
+		if (g->core && strstr(g->core, "pokedaisy_libretro")) {
+			mode = "integer";
+			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
+		}
+
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
 		 * (its ADR-0032), so sent first it is in force from the game's first
 		 * sample - a game started while music plays never makes a sound -
@@ -1275,7 +1286,7 @@ bool plat_resident_send(const plat_game *g)
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
 		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
-		           g->core, g->rom, tag, g->mode ? g->mode : "",
+		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
