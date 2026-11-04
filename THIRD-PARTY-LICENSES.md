@@ -202,11 +202,19 @@ the list itself, is this project's (MIT).
 
 ## Fonts
 
-- `res/fonts/menu.ttf` - **Josefin Sans**, SIL Open Font License 1.1. Full text
-  in `res/fonts/OFL.txt`. It is TortOS's UI face, the in-game menu's face, and
-  the face the boot animation and the system cards are lettered in.
-- `res/fonts/wordmark.ttf` - **Josefin Sans** too, the same OFL 1.1
-  (`res/fonts/OFL.txt`), for the plorpOS wordmark.
+All five are under the SIL Open Font License 1.1; each family's copyright notice
+and the licence text are in the `res/fonts/` file named below.
+
+- `res/fonts/menu.ttf` - **Quicksand** (`OFL.txt`). TortOS's UI face, the
+  in-game menu's face, and the face the boot animation and the system cards
+  are lettered in.
+- `res/fonts/head.ttf` - **Fredoka** (`OFL-Fredoka.txt`). The heading face for
+  titles, menu headings and the cards.
+- `res/fonts/josefin.ttf` - **Josefin Sans** (`OFL-JosefinSans.txt`). One of the
+  faces UI Settings > Font offers.
+- `res/fonts/lato.ttf` - **Lato** (`OFL-Lato.txt`). The other one.
+- `res/fonts/wordmark.ttf` - **Josefin Sans** too (`OFL-JosefinSans.txt`), for
+  the plorpOS wordmark.
 
 ---
 
