@@ -1344,7 +1344,9 @@ bool plat_resident_send(const plat_game *g)
 		}
 		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
 		d_turbo_load();
-		d_turbo_gba = tag && !strcmp(tag, "GBA");
+		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
+		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
+		d_turbo_gba = tag && !strcmp(tag, "GBA") && !(g->core && strstr(g->core, "pokedaisy_libretro"));
 		d_turbo_send();
 
 		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
