@@ -1271,6 +1271,9 @@ bool plat_resident_send(const plat_game *g)
 		if (g->core && strstr(g->core, "pokedaisy_libretro")) {
 			mode = "integer";
 			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
+			/* The core now picks its own canvas from the panel (EXPAND at the game's whole scale, ZOOM OUT one
+			 * less); the canvas above is the fallback for a panel the core does not list. */
+			dsend("SETOPT\tkey=pokedaisy_panel\tvalue=%dx%d", plat_panel_w, plat_panel_h);
 		}
 
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
