@@ -25,7 +25,7 @@ if [ -z "$POKEDAISY_SRC" ]; then
 	git -C "$SRC" clean -qfdx -e third_party/mgba
 fi
 [ -f "$SRC/third_party/mgba/CMakeLists.txt" ] || { echo "!! $SRC has no third_party/mgba" >&2; exit 1; }
-OUT=$SRC/build-brick
+OUT=${POKEDAISY_OUT:-$HOME/.cache/tortos-pokedaisy-core-out}
 mkdir -p "$OUT"
 
 docker run --rm -v "$SRC:/src:z" -v "$OUT:/out:z" -w /src $IMAGE sh -c '
