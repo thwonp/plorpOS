@@ -1329,6 +1329,30 @@ bool plat_resident_send(const plat_game *g)
 		 * reasoning the comment above already gives). */
 		{
 			const char *hk = plat_hotkey_map(tag);
+			char kept[256];
+			size_t n = 0;
+
+			/* Diatom refuses a whole list that names an action it does not have, and "hud" (the
+			 * HUD Focus hotkey of PokeDaisy's own SDL host) is none of its: dropped here, so the
+			 * fast-forward, rewind and state hotkeys beside it still work. PokeDaisy as a core
+			 * puts the HUD cursor on a core option button instead. */
+			kept[0] = '\0';
+			for (const char *p = hk ? hk : ""; *p;) {
+				const char *e = strchr(p, ','), *colon;
+				size_t len = e ? (size_t)(e - p) : strlen(p);
+
+				colon = memchr(p, ':', len);
+				if (!(colon && len - (size_t)(colon + 1 - p) == 3 && !memcmp(colon + 1, "hud", 3)) &&
+				    n + len + 2 < sizeof kept) {
+					memcpy(kept + n, p, len);
+					n += len;
+					kept[n++] = ',';
+					kept[n] = '\0';
+				}
+				p += len + (e ? 1 : 0);
+			}
+			if (n) kept[n - 1] = '\0';
+			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
 			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
