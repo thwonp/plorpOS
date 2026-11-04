@@ -56,7 +56,7 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 - **Fifteen shader presets**, Game Boy palettes, and Aspect, Stretch or Integer scaling.
 - **RetroAchievements,** signed in on the device. A game's set downloads once and then works offline; unlocks made offline are sent later.
 
-- **Nintendo DS** runs full speed **on every device** thanks to **DSperate** (runs under a libretro wrapper), with melonDS DS as an option on the RG Rotate and GKD.
+- **Nintendo DS** runs full speed **on every device** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with melonDS DS as an option on the RG Rotate and GKD.
     - Multiple Layout / Scaling options, Stylus emulation (and touch support), Microphone emulation.
 
 - **Portmaster** (UNOFFICIALLY SUPPORTED) on every device. Most games seem to run great but this is experimental. Report problems to plorpOS, NOT the PortMaster team.
