@@ -11514,8 +11514,13 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			 * mid-session (reached from the in-game menu), so the change
 			 * should take hold without the player having to quit and
 			 * relaunch to see it. */
-			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-			                   spec, legacy_wire);
+			{
+				char wire[256];
+
+				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
+				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
+				                   wire, legacy_wire);
+			}
 			changed = false;
 		}
 

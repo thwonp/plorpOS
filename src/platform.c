@@ -155,6 +155,33 @@ static void hotkeys_load(void)
 	db_each_prefix(db_lib(), "hotkey.", hotkey_row, NULL);
 }
 
+/* A hotkey list as Diatom takes it. Diatom refuses a whole list that names an action it does not have,
+ * and "hud" (the HUD Focus hotkey of PokeDaisy's own SDL host) is none of its: dropped, so the
+ * fast-forward, rewind and state hotkeys beside it still work. PokeDaisy as a core puts the HUD
+ * cursor on a core option button instead. */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap)
+{
+	size_t n = 0;
+
+	if (!cap) return;
+	out[0] = '\0';
+	for (const char *p = spec ? spec : ""; *p;) {
+		const char *e = strchr(p, ','), *colon;
+		size_t len = e ? (size_t)(e - p) : strlen(p);
+
+		colon = memchr(p, ':', len);
+		if (!(colon && len - (size_t)(colon + 1 - p) == 3 && !memcmp(colon + 1, "hud", 3)) &&
+		    n + len + 2 < cap) {
+			memcpy(out + n, p, len);
+			n += len;
+			out[n++] = ',';
+			out[n] = '\0';
+		}
+		p += len + (e ? 1 : 0);
+	}
+	if (n) out[n - 1] = '\0';
+}
+
 /* The binding string for this system, or "" for one with none set - never
  * NULL, so a caller building a SETHOTKEYS line needs no extra branch (an
  * empty spec is itself valid: Diatom's hotkeys_set("") means "no bindings",
@@ -1330,28 +1357,8 @@ bool plat_resident_send(const plat_game *g)
 		{
 			const char *hk = plat_hotkey_map(tag);
 			char kept[256];
-			size_t n = 0;
 
-			/* Diatom refuses a whole list that names an action it does not have, and "hud" (the
-			 * HUD Focus hotkey of PokeDaisy's own SDL host) is none of its: dropped here, so the
-			 * fast-forward, rewind and state hotkeys beside it still work. PokeDaisy as a core
-			 * puts the HUD cursor on a core option button instead. */
-			kept[0] = '\0';
-			for (const char *p = hk ? hk : ""; *p;) {
-				const char *e = strchr(p, ','), *colon;
-				size_t len = e ? (size_t)(e - p) : strlen(p);
-
-				colon = memchr(p, ':', len);
-				if (!(colon && len - (size_t)(colon + 1 - p) == 3 && !memcmp(colon + 1, "hud", 3)) &&
-				    n + len + 2 < sizeof kept) {
-					memcpy(kept + n, p, len);
-					n += len;
-					kept[n++] = ',';
-					kept[n] = '\0';
-				}
-				p += len + (e ? 1 : 0);
-			}
-			if (n) kept[n - 1] = '\0';
+			plat_hotkeys_for_diatom(hk, kept, sizeof kept);
 			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
