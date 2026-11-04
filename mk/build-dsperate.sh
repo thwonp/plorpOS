@@ -22,7 +22,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-/tmp/tortos-dsperate}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=093d50fcbd10531273e0cc22a23c6644a26b9b71 # DSperate v3.0.5, load-state/mic/achievements fixes, optional tuning
+LR=3e1fbfac29cfe9659f830e6c0b455606b95c4a48 # DSperate v3.3.0, slot 2 / rumble / grip / analog, frame skip (plorpos-l07)
 TUNE=
 SHA=400ac7b486ec3108de07785eb6f586a122536ccce49096343caab3cfbc1c2ca1
 IMAGE=dsperate-lr-cross

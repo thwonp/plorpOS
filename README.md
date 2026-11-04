@@ -265,7 +265,7 @@ plorpOS is C and SDL2, built on Eric Reinsmidt's TortOS. Games run in [diatom](h
 
 ## Credits
 
-- **DS frame skipping.** When a heavy 3D scene would run late, the frontend tells DSperate and the core leaves that frame's rendering out, so the game keeps its speed. The approach, and the idea of driving it from libretro's audio-buffer-status callback, is from nelynes's [slotPlus](https://github.com/nelynes/slotPlus) (`crates/slot-retro`), which does the same for DSperate on the RG SP. Our version is `mk/patches/dsperate-lr-frameskip.patch` and Diatom's frame loop.
+- **DS frame skipping.** When a heavy 3D scene would run late, the frontend tells DSperate and the core leaves that frame's rendering out, so the game keeps its speed. The approach, and the idea of driving it from libretro's audio-buffer-status callback, is from nelynes's [slotPlus](https://github.com/nelynes/slotPlus) (`crates/slot-retro`), which does the same for DSperate on the RG SP. Our version is the wrapper's `dsperate_frameskip` option (dsperate-lr, with slotPlus's whole-display-period skip) and Diatom's frame loop, which is where the lateness estimate lives. A skip leaves out only the 3D raster; the audio is never skipped.
 
 ## License
 
