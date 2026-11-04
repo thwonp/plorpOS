@@ -265,7 +265,16 @@ plorpOS is C and SDL2, built on Eric Reinsmidt's TortOS. Games run in [diatom](h
 
 ## Credits
 
-- **DS frame skipping.** When a heavy 3D scene would run late, the frontend tells DSperate and the core leaves that frame's rendering out, so the game keeps its speed. The approach, and the idea of driving it from libretro's audio-buffer-status callback, is from nelynes's [slotPlus](https://github.com/nelynes/slotPlus) (`crates/slot-retro`), which does the same for DSperate on the RG SP. Our version is the wrapper's `dsperate_frameskip` option (dsperate-lr, with slotPlus's whole-display-period skip) and Diatom's frame loop, which is where the lateness estimate lives. A skip leaves out only the 3D raster; the audio is never skipped.
+plorpOS stands on a lot of other people's work. The licence of every piece is in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) and [NOTICE](NOTICE), but here's some standouts:
+
+- **[Eric Reinsmidt's](https://github.com/ericreinsmidt)** [TortOS](https://tortos.games/) and [diatom](https://github.com/ericreinsmidt/diatom) are the cornerstones this project forked from.
+- **[NextUI](https://github.com/LoveRetro/NextUI)** provided sleep and suspend for the Brick, CHD reading, multiple shaders, and fast-forward/rewind/hotkeys design.
+- **[beebono](https://github.com/beebono)** for [DSperate](https://github.com/beebono/DSperate) and their initial RG Rotate Linux port.
+- **[crackerjacques](https://github.com/crackerjacques)** and **[TheGammaSqueeze](https://www.patreon.com/GammaOS/)** for more work [base618](https://github.com/thwonp/base618#credits) built on.
+- **[pvaibhav](https://github.com/pvaibhav)** for [BaseOS](https://github.com/pvaibhav/BaseOS) which powers the h700 ports.
+- **[DrUm78](https://github.com/DrUm78)** for their [FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics) build that plorpOS Nano built on.
+- **[nelynes](https://github.com/nelynes)** of [slotPlus](https://github.com/nelynes/slotPlus) for helping with DSperate frame-skip implementation.
+- All the contributors for [libretro](https://github.com/libretro), [PortMaster](https://portmaster.games), [RetroAchievements](https://retroachievements.org), [ScreenScraper](https://www.screenscraper.fr), and other projects used here.
 
 ## License
 
