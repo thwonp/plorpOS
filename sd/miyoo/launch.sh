@@ -19,6 +19,10 @@ mkdir -p "$LOGS" "$SD/Bios" "$SD/Saves" "$SD/Roms" "$SD/.userdata/shared"
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 echo "plorpOS on the Miyoo Mini Flip, uptime $(cut -d' ' -f1 /proc/uptime)" > "$LOG"
 
+# Full clock: ondemand held 1.0 GHz while mGBA fell behind in play
+# (2026-11-04). Until the Flip has a real power policy (plorpos-f1p.7).
+echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2> /dev/null
+
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {
 	pidof diatom > /dev/null && return

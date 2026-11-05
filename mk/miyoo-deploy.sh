@@ -38,10 +38,24 @@ push() { # staging dir
 }
 S=$B/stage
 rm -rf "$S"; mkdir -p "$S"
+# The Flip's systems.cfg: the shared one with its own cores where the shared
+# pick is too heavy for two 1.2 GHz Cortex-A7s - GBA on gpsp, not mGBA
+# (user, 2026-11-04: mGBA lagged in play even at 1.2 GHz).
+flip_cfg() {
+	sed 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' "$ROOT/config/systems.cfg" > "$1"
+}
+fetch_cores() { # copy each systems.cfg core the card lacks from Allium's RetroArch set
+	$SSH 'D=/mnt/SDCARD/TortOS; mkdir -p $D/cores
+		for c in $(awk -F"|" "\$1==\"sys\"{gsub(/^[ \t]+|[ \t]+$/,\"\",\$4); print \$4}" $D/systems.cfg | sort -u); do
+			[ -f $D/cores/${c}_libretro.so ] || cp /mnt/SDCARD/RetroArch/.retroarch/cores/${c}_libretro.so $D/cores/ 2>/dev/null ||
+				echo "no Allium core $c"
+		done; sync'
+}
 case $MODE in
 elf)    cp "$B/tortos.elf" "$S/" ;;
 diatom) cp "$DIATOM" "$S/diatom" ;;
 launch) cp "$ROOT/sd/miyoo/launch.sh" "$S/" ;;
+cfg)    flip_cfg "$S/systems.cfg" ;;
 libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
 	        "$LIB"/libavformat.so.60 "$LIB"/libavcodec.so.60 "$LIB"/libavfilter.so.9 "$LIB"/libswresample.so.4 \
 	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done ;;
@@ -49,7 +63,7 @@ all)
 	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
 	cp "$DIATOM" "$S/diatom"
 	cp "$ROOT/sd/miyoo/launch.sh" "$S/"
-	cp "$ROOT/config/systems.cfg" "$S/"
+	flip_cfg "$S/systems.cfg"
 	mkdir -p "$S/lib"
 	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
 	         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58 \
@@ -65,14 +79,8 @@ all)
 	plorpos_files "$S" "$F"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
 	;;
-*) echo "mode: all | elf | diatom | launch | libs | hook" >&2; exit 1 ;;
+*) echo "mode: all | elf | diatom | launch | libs | cfg | hook" >&2; exit 1 ;;
 esac
 push "$S"
-if [ "$MODE" = all ]; then
-	$SSH 'D=/mnt/SDCARD/TortOS; mkdir -p $D/cores
-		for c in $(awk -F"|" "\$1==\"sys\"{gsub(/^[ \t]+|[ \t]+$/,\"\",\$4); print \$4}" $D/systems.cfg | sort -u); do
-			[ -f $D/cores/${c}_libretro.so ] || cp /mnt/SDCARD/RetroArch/.retroarch/cores/${c}_libretro.so $D/cores/ 2>/dev/null ||
-				echo "no Allium core $c"
-		done; sync'
-fi
+case $MODE in all|cfg) fetch_cores ;; esac
 echo "deployed $MODE to $MIYOO:/mnt/SDCARD/TortOS ($(md5sum "$B/tortos.elf" | cut -c1-8) tortos.elf)"
