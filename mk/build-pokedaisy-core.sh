@@ -14,8 +14,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-plorp.git}
-PD=${PD_COMMIT:-445e6ae555ccb93f2e923c39a5154581df9a6a22} # feat/libretro-core: GB glow, rewind holds aspect, 2026-11-04
-SHA=${PD_SHA:-895e09badd161b4264ae3448a5320846c6334a534698d8d1721513e8c4f935ab} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-4ab40fac9c7255853c9c32c1de227836e6f699e2} # feat/libretro-core: + the GKD's 1600x1440 panel, 2026-11-04
+SHA=${PD_SHA:-f67b2888c47d6f338056204390953440e4e217ae43956810073946cf983d3e90} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -32,7 +32,9 @@ mkdir -p "$OUT"
 
 docker run --rm -v "$SRC:/src:z" -v "$OUT:/out:z" -w /src $IMAGE sh -c '
 set -e
-cmake -S libretro -B /out -DCMAKE_TOOLCHAIN_FILE=/src/libretro/aarch64.cmake -DCMAKE_BUILD_TYPE=Release >/out/cfg.log 2>&1
+# A fresh build dir every time: CMake reads the toolchain file'"'"'s flags only on a first configure, and a kept cache once
+# froze them empty (the v0.3-pre2 asset is the generic armv8 build that made; plorpos-oe0.23).
+rm -rf /out/* && cmake -S libretro -B /out -DCMAKE_TOOLCHAIN_FILE=/src/libretro/aarch64.cmake -DCMAKE_BUILD_TYPE=Release >/out/cfg.log 2>&1
 cmake --build /out -j"$(nproc)" --target pokedaisy_libretro >/out/build.log 2>&1
 aarch64-linux-gnu-strip --strip-unneeded -o /out/pokedaisy_libretro.stripped.so /out/pokedaisy_libretro.so
 # Never ship one that cannot load on the Brick: every libretro entry point and nothing else exported,
