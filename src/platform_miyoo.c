@@ -153,11 +153,17 @@ void plat_present(SDL_Renderer *r)
 
 	SDL_RenderPresent(r);
 	if (!surf || r != ren || ioctl(fb_fd, FBIOGET_VSCREENINFO, &v) != 0) return;
-	row = (size_t)surf->w * 4;
+	row = (size_t)surf->w;
 	if (((size_t)v.yoffset + (size_t)surf->h) * fix.line_length > fix.smem_len) return;
-	for (int y = 0; y < surf->h; y++)
-		memcpy(fb + ((size_t)v.yoffset + (size_t)y) * fix.line_length,
-		       (uint8_t *)surf->pixels + (size_t)y * (size_t)surf->pitch, row);
+	/* The panel is mounted upside down (seen on the Flip, 2026-11-04), as on
+	 * other Miyoo Minis: the surface goes on glass turned 180 degrees - the
+	 * last row first, each row back to front. */
+	for (int y = 0; y < surf->h; y++) {
+		const uint32_t *s = (const uint32_t *)((uint8_t *)surf->pixels + (size_t)y * (size_t)surf->pitch);
+		uint32_t *d = (uint32_t *)(fb + ((size_t)v.yoffset + (size_t)(surf->h - 1 - y)) *
+		                           fix.line_length) + row - 1;
+		for (size_t x = 0; x < row; x++) *d-- = s[x];
+	}
 }
 
 void plat_video_quit(void)

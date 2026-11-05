@@ -1,0 +1,74 @@
+#!/bin/sh
+# Put a PLATFORM=miyoo build on a Miyoo Mini Flip over ssh (plorpos-f1p). The
+# Flip's USB-C is charge-only, so Wi-Fi is the only way in.
+#
+#   mk/miyoo-deploy.sh all      launcher, Muse, diatom, SDL2/FFmpeg libraries,
+#                               fonts, art, systems.cfg and the launch script
+#   mk/miyoo-deploy.sh elf      the launcher only
+#   mk/miyoo-deploy.sh diatom   the resident emulator only (../diatom-miyoo or DIATOM_ELF)
+#   mk/miyoo-deploy.sh hook     the boot hook (sd/miyoo/updater) into .tmp_update/, the
+#                               CFW's own updater kept as updater.allium - plorpOS
+#                               falls back to it; TortOS/.boot-allium boots it outright
+#
+# MIYOO=root@<ip> (default the dev unit). Cores are not shipped yet
+# (plorpos-f1p.11); `all` copies the card's Allium cores into TortOS/cores.
+set -eu
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+. "$ROOT/mk/plorpos-files.sh"
+MODE=${1:-elf}
+MIYOO=${MIYOO:-root@192.168.0.73}
+B=$ROOT/build/miyoo
+LIB=$ROOT/sysroot-miyoo/usr/lib
+DIATOM=${DIATOM_ELF:-$ROOT/../diatom-miyoo/build/miyoo/diatom}
+SSH="ssh -o ConnectTimeout=5 $MIYOO"
+for f in tortos.elf muse musectl; do
+	[ -f "$B/$f" ] || { echo "no $B/$f; run: make PLATFORM=miyoo" >&2; exit 1; }
+done
+if [ "$MODE" = hook ]; then
+	$SSH 'T=/mnt/SDCARD/.tmp_update; [ -f $T/updater.allium ] || mv $T/updater $T/updater.allium' &&
+	$SSH 'cat > /mnt/SDCARD/.tmp_update/updater && chmod +x /mnt/SDCARD/.tmp_update/updater && sync' < "$ROOT/sd/miyoo/updater"
+	echo "hook installed; it starts plorpOS at the next boot"
+	exit 0
+fi
+[ "$MODE" = elf ] || [ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; }
+
+# One tar over one ssh: the card is FAT, so no permissions or links to keep.
+push() { # staging dir
+	tar -C "$1" -cf - . | $SSH 'mkdir -p /mnt/SDCARD/TortOS && tar -C /mnt/SDCARD/TortOS -xf - && sync'
+}
+S=$B/stage
+rm -rf "$S"; mkdir -p "$S"
+case $MODE in
+elf)    cp "$B/tortos.elf" "$S/" ;;
+diatom) cp "$DIATOM" "$S/diatom" ;;
+launch) cp "$ROOT/sd/miyoo/launch.sh" "$S/" ;;
+all)
+	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
+	cp "$DIATOM" "$S/diatom"
+	cp "$ROOT/sd/miyoo/launch.sh" "$S/"
+	cp "$ROOT/config/systems.cfg" "$S/"
+	mkdir -p "$S/lib"
+	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
+	         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$LIB/$l")" "$S/lib/$l"
+	done
+	# Everything else every device ships, less the cores: an empty stand-in
+	# per core satisfies plorpos_files, and cores/ is left off the card.
+	F=$B/stub-cores; rm -rf "$F"; mkdir -p "$F"
+	for c in $(awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' "$S/systems.cfg" | sort -u); do
+		: > "$F/${c}_libretro.so"
+	done
+	plorpos_files "$S" "$F"
+	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
+	;;
+*) echo "mode: all | elf | diatom | launch | hook" >&2; exit 1 ;;
+esac
+push "$S"
+if [ "$MODE" = all ]; then
+	$SSH 'D=/mnt/SDCARD/TortOS; mkdir -p $D/cores
+		for c in $(awk -F"|" "\$1==\"sys\"{gsub(/^[ \t]+|[ \t]+$/,\"\",\$4); print \$4}" $D/systems.cfg | sort -u); do
+			[ -f $D/cores/${c}_libretro.so ] || cp /mnt/SDCARD/RetroArch/.retroarch/cores/${c}_libretro.so $D/cores/ 2>/dev/null ||
+				echo "no Allium core $c"
+		done; sync'
+fi
+echo "deployed $MODE to $MIYOO:/mnt/SDCARD/TortOS ($(md5sum "$B/tortos.elf" | cut -c1-8) tortos.elf)"

@@ -1,0 +1,46 @@
+#!/bin/sh
+# The Miyoo Mini Flip's boot hook (plorpos-f1p.12): the stock firmware's
+# /customer/main runs /mnt/SDCARD/.tmp_update/updater, when there is one, in
+# place of Miyoo's MainUI. This one starts plorpOS, and falls back to the
+# CFW whose updater it displaced (kept beside it as updater.allium) when:
+#   - there is no TortOS/launch.sh, or TortOS/.boot-allium exists, or
+#   - plorpOS's launch loop gives up (five launcher failures in a row).
+ROOT=/mnt/SDCARD
+T=$ROOT/.tmp_update
+FALLBACK=$T/updater.allium
+
+boot_fallback() {
+	[ -x "$FALLBACK" ] && exec "$FALLBACK"
+	while :; do sleep 3600; done          # nothing to fall back to; stay up for ssh
+}
+[ -f "$ROOT/TortOS/launch.sh" ] && [ ! -f "$ROOT/TortOS/.boot-allium" ] || boot_fallback
+
+export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
+
+# Backlight and panel as the stock firmware and Allium bring them up.
+echo 0 > /sys/class/pwm/pwmchip0/export 2> /dev/null
+echo 800 > /sys/class/pwm/pwmchip0/pwm0/period
+echo 50 > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
+echo 1 > /sys/class/pwm/pwmchip0/pwm0/enable
+cat /proc/ls > /dev/null
+# The stock telnetd: Allium kills it too, and ssh replaces it below.
+killall telnetd 2> /dev/null
+
+# Wi-Fi and ssh in the background, the commands Allium's wifi-on.sh and
+# ssh-on.sh use (development; plorpOS's own Wi-Fi settings come later).
+(
+	grep -q 8188fu /proc/modules || insmod "$T/8188fu.ko"
+	ifconfig lo up
+	/customer/app/axp_test wifion
+	sleep 2
+	ifconfig wlan0 up
+	/customer/app/wpa_supplicant -B -D nl80211 -iwlan0 -c /appconfigs/wpa_supplicant.conf
+	udhcpc -i wlan0 -s /etc/init.d/udhcpc.script > /dev/null 2>&1 &
+	if [ -x "$ROOT/.allium/bin/dropbear" ]; then
+		mount | grep -q " /etc/passwd " || mount -o bind "$ROOT/.allium/etc/passwd" /etc/passwd
+		"$ROOT/.allium/bin/dropbear" -R -B -p 22
+	fi
+) > /dev/null 2>&1 &
+
+sh "$ROOT/TortOS/launch.sh"
+boot_fallback
