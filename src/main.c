@@ -609,16 +609,16 @@ static struct { int index, count; char label[24]; } g_disc;
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
  * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
- * mGBA on the Brick's three Game Boy shelves. `bare` is the core whose states
+ * mGBA on every port's three Game Boy shelves (plorpos-oe0.22). `bare` is the core whose states
  * live in the shelf's own .tortos folder - the one that was there first -
  * whichever is the default now (plorpos-3yv.105). `on` says which build ships
  * the alternative. */
-enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2 };
+enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
 static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; } ALT_CORES[] = {
 	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE },
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. */
-	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_BRICK },
+	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
@@ -628,7 +628,7 @@ static int alt_core(const system_cfg *s)
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	const int here = ALT_ON_GKD_ROTATE;
 #elif defined(PLATFORM_H700)
-	const int here = 0; /* the H700 has DSperate alone and no PokeDaisy core */
+	const int here = ALT_ON_H700; /* DSperate is its only DS core */
 #else
 	const int here = ALT_ON_BRICK;
 #endif

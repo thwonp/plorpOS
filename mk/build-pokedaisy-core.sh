@@ -1,8 +1,10 @@
 #!/bin/sh
-# Build PokeDaisy as a libretro core for the plain Brick: mGBA's own libretro core with the PokeDaisy companion
+# Build PokeDaisy as a libretro core for every port: mGBA's own libretro core with the PokeDaisy companion
 # layered over it (thwonp/pokedaisy-plorp, libretro/). One core for Game Boy, Game Boy Color and Game Boy Advance,
 # offered in the Core row of those three shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols): the Brick's firmware glibc is 2.33.
+# The same file runs on the H700 (BaseOS glibc 2.35), GKD (2.40) and Rotate (2.41); it is installed to
+# vendor/cores-brick only. No payload carries it yet (no systems.cfg names it): it is deployed by hand (plorpos-oe0.22).
 #
 #   mk/build-pokedaisy-core.sh     build, install to vendor/cores-brick
 #   POKEDAISY_SRC=/path ...        use that checkout (with third_party/mgba) instead of cloning the pin
