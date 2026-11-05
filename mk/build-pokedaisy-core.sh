@@ -14,8 +14,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-plorp.git}
-PD=${PD_COMMIT:-6bf806e6d6eeefb938dd8cc5e89b79a5d7bd2d01} # feat/libretro-core: HUD on the visible frame, menus >= 320x240, bag underline, long setting labels, 2026-11-04
-SHA=${PD_SHA:-2b964079a9e458c0772016021d031b2be9ae3e244124f72b0e605c00461e0cab} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-2e211609dd74c322c71b7624c6caec6552424bc1} # feat/libretro-core: HUD cursor keeps the EXPAND frame, menu cursor walks lists one row a press, 2026-11-04
+SHA=${PD_SHA:-3c5419590b4bf40f8afed9797e6a47f251bec924482a829e654dbbea5272d40d} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
