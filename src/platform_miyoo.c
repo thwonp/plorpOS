@@ -51,8 +51,9 @@ const char *const plat_child_env[] = {
 	"SAVES_PATH=/mnt/SDCARD/Saves",
 	NULL
 };
-/* Our SDL2 and FFmpeg live on the card; the firmware has SDL 1.2 only. */
-const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib";
+/* Our SDL2 and FFmpeg live on the card (the firmware has SDL 1.2 only), and
+ * a standalone diatom needs the firmware's libmi_* for MI_AO and MI_GFX. */
+const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib:/config/lib:/customer/lib";
 /* Native PICO-8 is out of scope here (no PICO-8 for armhf glibc 2.28 tested). */
 const char *const plat_pico8_preload = "";
 const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
@@ -78,7 +79,7 @@ static const struct { int code; in_button b; } padmap[] = {
 };
 
 static SDL_Renderer *ren;
-static int fd_pad = -1, fd_lid = -1;
+static int fd_pad = -1;
 
 /* Menu as on the H700: a modifier when held with another button, brightness
  * with a volume key, a press on release alone, the switcher held. */
@@ -182,9 +183,11 @@ void screen_yield(bool to_game) { (void)to_game; }
 bool plat_input_init(void)
 {
 	if (fd_pad < 0) fd_pad = open(PAD_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (fd_lid < 0) fd_lid = open(LID_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	/* KEY_POWER is on the pad's node: platform.c's light sleep reads fd_power. */
-	if (fd_power < 0 && fd_pad >= 0) fd_power = fd_pad;
+	/* platform.c reads fd_power on its own and drains everything on it, so it
+	 * must never be the pad's descriptor: aliased to it, it swallowed every
+	 * press the in-game menu waited for (2026-11-04). The hall sensor's node
+	 * reports KEY_POWER too; which node the power BUTTON uses is f1p.7's. */
+	if (fd_power < 0) fd_power = open(LID_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fprintf(stderr, "input: %s: %s\n", PAD_NODE, strerror(errno));
 	return fd_pad >= 0;
 }
@@ -197,7 +200,6 @@ void plat_input_flush(void)
 	SDL_PumpEvents();
 	while (SDL_PollEvent(&e)) { }
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
-	while (fd_lid >= 0 && read(fd_lid, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
 	menu_sent = menu_pulse = switcher_pulse = false;
 	{
 		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
@@ -305,13 +307,16 @@ void plat_input_poll(in_state *st)
 	while (SDL_PollEvent(&e))
 		if (e.type == SDL_QUIT) st->quit_requested = true;
 	pad_read(st);
-	/* The lid: drained, not acted on yet (plorpos-f1p.7). */
-	while (fd_lid >= 0 && read(fd_lid, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
+	/* fd_power (the lid's node): KEY_POWER as POWER; the lid itself is f1p.7's. */
+	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value != 2)
+			set_btn(st, IN_POWER, ev.value == 1);
 }
 
 void plat_leds_off(void) { }
 
-/* ---- volume and brightness: stubs until plorpos-f1p.7 -------------------- */
+/* ---- volume: the resident diatom's (it owns MI_AO); brightness a stub until
+ * plorpos-f1p.7 ----------------------------------------------------------- */
 
 #define VOL_MAX    PLAT_VOL_MAX
 #define BRIGHT_MAX PLAT_BRIGHT_MAX
@@ -328,7 +333,14 @@ void levels_save(void)
 	db_write_boot_env();
 }
 
-void apply_volume(int v) { cur_vol = v; }
+/* MI_AO has one owner, the resident diatom, so the level goes to it as
+ * SETLEVEL, on the shelf and in a game alike (platform.c sends the same at
+ * a game's start). */
+void apply_volume(int v)
+{
+	cur_vol = v;
+	if (v >= 0) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", v, VOL_MAX + 1);
+}
 bool plat_headphones_present(void) { return false; }
 void plat_audio_jack_poll(void) { }
 void jack_forget(void) { }
@@ -347,8 +359,11 @@ void plat_settings_init(void)
 	int v = db_get_int(db_dev(), "volume", -1);
 	int b = db_get_int(db_dev(), "brightness", -1);
 
-	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : -1;
+	/* No saved level is the resident's quiet default (8 of 20), so the
+	 * first key press moves from there rather than from full. */
+	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : 8;
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
+	apply_volume(cur_vol);
 }
 
 /* ---- sleep and battery: stubs until plorpos-f1p.7 ------------------------ */

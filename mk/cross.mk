@@ -37,6 +37,10 @@ ifeq ($(PLATFORM),rotate)
 # as on the GKD (PLAT_PIPEWIRE in platform.h), so Muse keeps the codec open
 # like the GKD's: no MUSE_HANDOVER.
 CFLAGS += -DPLATFORM_H700 -DPLATFORM_ROTATE
+# Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
+# trixie's own libc headers in the sysroot never shadow the toolchain's.
+CFLAGS += -idirafter $(SYSROOT)/usr/include
+endif
 ifeq ($(PLATFORM),miyoo)
 # Miyoo Mini Flip on its stock firmware (plorpos-f1p): the H700's branches,
 # as the Rotate takes them, and PLATFORM_MIYOO where it differs
@@ -44,10 +48,6 @@ ifeq ($(PLATFORM),miyoo)
 # takes it only to play, as on the H700.
 CFLAGS += -DPLATFORM_H700 -DPLATFORM_MIYOO
 MUSE_DEFS := -DMUSE_HANDOVER
-endif
-# Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
-# trixie's own libc headers in the sysroot never shadow the toolchain's.
-CFLAGS += -idirafter $(SYSROOT)/usr/include
 endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on

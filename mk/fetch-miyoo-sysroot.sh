@@ -16,6 +16,10 @@
 #
 # FFmpeg as on the H700: LGPL only, --disable-everything plus what Muse plays.
 #
+# SQLite (public domain) for the settings database: src/db.c dlopens
+# libsqlite3.so.0, which every other device's firmware ships and the Flip's
+# does not - without it nothing set on the Flip was remembered (2026-11-04).
+#
 # Needs: docker with the miyoo-toolchain image, curl, tar.
 #
 #   mk/fetch-miyoo-sysroot.sh [sysroot-dir]   default: sysroot-miyoo
@@ -33,6 +37,8 @@ TTF_VER=2.20.2
 TTF_SHA=9dc71ed93487521b107a2c4a9ca6bf43fb62f6bddd5c26b055e6b91418a22053
 FF_VER=6.1
 FF_SHA=938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316
+SQ_VER=3460100
+SQ_SHA=67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071
 
 for t in docker curl tar; do
 	command -v $t > /dev/null || { echo "need $t" >&2; exit 1; }
@@ -51,11 +57,12 @@ fetch SDL2_image-$IMG_VER.tar.gz "$IMG_SHA" \
 fetch SDL2_ttf-$TTF_VER.tar.gz "$TTF_SHA" \
 	"https://github.com/libsdl-org/SDL_ttf/releases/download/release-$TTF_VER/SDL2_ttf-$TTF_VER.tar.gz"
 fetch ffmpeg-$FF_VER.tar.gz "$FF_SHA" "https://ffmpeg.org/releases/ffmpeg-$FF_VER.tar.gz"
+fetch sqlite-autoconf-$SQ_VER.tar.gz "$SQ_SHA" "https://www.sqlite.org/2024/sqlite-autoconf-$SQ_VER.tar.gz"
 
 SRC=$DL/src
 rm -rf "$SRC" "$OUT"
 mkdir -p "$SRC" "$OUT/usr/lib" "$OUT/usr/include"
-for t in SDL2-$SDL_VER SDL2_image-$IMG_VER SDL2_ttf-$TTF_VER ffmpeg-$FF_VER; do
+for t in SDL2-$SDL_VER SDL2_image-$IMG_VER SDL2_ttf-$TTF_VER ffmpeg-$FF_VER sqlite-autoconf-$SQ_VER; do
 	tar -xzf "$DL/$t.tar.gz" -C "$SRC"
 done
 
@@ -114,8 +121,16 @@ cd /src/ffmpeg-$FF_VER
 		{ tail -30 /tmp/ffmpeg.log; echo "!! ffmpeg failed" >&2; exit 1; }
 grep -q "^License: LGPL" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-only" >&2; exit 1; }
 echo "  built  ffmpeg $FF_VER (\$(grep ^License: /tmp/ffmpeg.log))"
+cd /src/sqlite-autoconf-$SQ_VER
+CFLAGS="-O2 $ARCH_FLAGS" ./configure --host=arm-linux-gnueabihf --prefix=/usr \
+	--enable-shared --disable-static --disable-readline > /tmp/sqlite.log 2>&1 &&
+	make -j\$(nproc) >> /tmp/sqlite.log 2>&1 &&
+	make install DESTDIR=/out >> /tmp/sqlite.log 2>&1 ||
+		{ tail -30 /tmp/sqlite.log; echo "!! sqlite failed" >&2; exit 1; }
+echo "  built  sqlite $SQ_VER"
 for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
-         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58 \
+         libsqlite3.so.0; do
 	arm-linux-gnueabihf-strip --strip-unneeded "\$(readlink -f /out/usr/lib/\$l)"
 	if arm-linux-gnueabihf-objdump -T /out/usr/lib/\$l | grep -qE 'GLIBC_2\.(29|[3-9][0-9])'; then
 		echo "!! \$l needs a newer glibc than the Flip's 2.28" >&2; exit 1

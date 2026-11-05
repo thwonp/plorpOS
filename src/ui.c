@@ -485,7 +485,14 @@ bool ui_redraw_due(unsigned now) { return now >= redraw_at_ms; }
 /* A gap this long between two passes means something else had the screen -
  * a menu, a game, the art scraper - and whatever it drew is not this one.
  * Catching it here covers every one of them without a list to keep. */
+#if defined(PLATFORM_MIYOO)
+/* Longer than this device's own slowest draw: a software-rendered shelf
+ * frame took 118-190 ms on the Miyoo Flip, every gap after one looked like
+ * "away", and the shelf redrew forever while idle (plorpos-f1p.14.2). */
+#define AWAY_MS 500
+#else
 #define AWAY_MS 100
+#endif
 /* Drawn at least this often regardless. A backstop, not a mechanism: if some
  * animation is ever added without telling ui_redraw_at, it shows as a screen
  * updating once a second, which is visibly wrong, rather than one that has

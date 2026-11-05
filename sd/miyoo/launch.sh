@@ -33,6 +33,10 @@ while :; do
 	start_resident
 	START=$(cut -d. -f1 /proc/uptime)
 	./tortos.elf >> "$LOG" 2>&1
+	RC=$?
+	# A signal shows as 128 + its number (139 = SIGSEGV); the kernel here
+	# logs no user-space faults, so this line is the only record.
+	echo "launcher exited $RC" >> "$LOG"
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))

@@ -42,6 +42,9 @@ case $MODE in
 elf)    cp "$B/tortos.elf" "$S/" ;;
 diatom) cp "$DIATOM" "$S/diatom" ;;
 launch) cp "$ROOT/sd/miyoo/launch.sh" "$S/" ;;
+libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
+	        "$LIB"/libavformat.so.60 "$LIB"/libavcodec.so.60 "$LIB"/libavfilter.so.9 "$LIB"/libswresample.so.4 \
+	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done ;;
 all)
 	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
 	cp "$DIATOM" "$S/diatom"
@@ -49,7 +52,8 @@ all)
 	cp "$ROOT/config/systems.cfg" "$S/"
 	mkdir -p "$S/lib"
 	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
-	         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+	         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58 \
+	         libsqlite3.so.0; do
 		cp "$(readlink -f "$LIB/$l")" "$S/lib/$l"
 	done
 	# Everything else every device ships, less the cores: an empty stand-in
@@ -61,7 +65,7 @@ all)
 	plorpos_files "$S" "$F"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
 	;;
-*) echo "mode: all | elf | diatom | launch | hook" >&2; exit 1 ;;
+*) echo "mode: all | elf | diatom | launch | libs | hook" >&2; exit 1 ;;
 esac
 push "$S"
 if [ "$MODE" = all ]; then
