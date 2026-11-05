@@ -614,11 +614,12 @@ static struct { int index, count; char label[24]; } g_disc;
  * whichever is the default now (plorpos-3yv.105). `on` says which build ships
  * the alternative. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
-static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE },
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
-	 * shelves share the mgba core, so one row serves all three. */
-	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL },
+	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
+	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
+	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
@@ -641,14 +642,36 @@ static int alt_core(const system_cfg *s)
 	return -1;
 }
 
-/* The core a shelf's games launch with: its own, or the alternative it was
- * turned to. */
-static const char *shelf_core(app *a, int sys)
+/* engine.<TAG>/<file>: a per-game shelf's game turned to the alternative core. No row = the shelf's own core. */
+static void engine_game_key(char *out, size_t n, const system_cfg *s, const char *file)
+{
+	snprintf(out, n, "engine.%s/%s", s->tag, file);
+}
+
+/* The game the shelf's cursor is on, or NULL for an empty shelf. */
+static const char *cursor_file(app *a, int sys)
+{
+	const sysview *v = &a->view[sys];
+	return v->list.count ? v->list.items[v->cursor].file : NULL;
+}
+
+/* The core a game launches with: its shelf's own, or the alternative the shelf
+ * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
+static const char *shelf_core(app *a, int sys, const char *file)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
-	return k >= 0 && a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+	if (k < 0) return s->core;
+	if (ALT_CORES[k].per_game) {
+		char key[LIB_PATH + 32], name[CFG_STR];
+
+		if (!file) return s->core;
+		engine_game_key(key, sizeof key, s, file);
+		return db_get_str(db_dev(), key, name, sizeof name, NULL) && !strcmp(name, ALT_CORES[k].alt)
+		       ? ALT_CORES[k].alt : s->core;
+	}
+	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
 }
 
 /* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
@@ -661,7 +684,7 @@ static void engine_load(app *a)
 
 	for (i = 0; i < a->sys.count; i++) {
 		k = alt_core(&a->sys.systems[i]);
-		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
+		if (!is_pico8(&a->sys.systems[i]) && (k < 0 || ALT_CORES[k].per_game)) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
 		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
@@ -671,12 +694,26 @@ static void engine_load(app *a)
 
 static void engine_save(app *a, int sys)
 {
-	char key[CFG_STR + 16];
+	char key[LIB_PATH + 32];
 	int k = alt_core(&a->sys.systems[sys]);
 
 	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys)
+	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys, NULL)
 	                                 : a->view[sys].native ? "native" : "fake08");
+}
+
+/* Turn the game under the shelf's cursor to the other core of a per-game shelf, saved at once. */
+static void engine_game_flip(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	const char *file = cursor_file(a, sys);
+	char key[LIB_PATH + 32];
+	int k = alt_core(s);
+
+	if (k < 0 || !file) return;
+	engine_game_key(key, sizeof key, s, file);
+	if (strcmp(shelf_core(a, sys, file), ALT_CORES[k].alt)) db_set_str(db_dev(), key, ALT_CORES[k].alt);
+	else db_del(db_dev(), key);
 }
 
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
@@ -689,6 +726,8 @@ static const char *engine_label(app *a, int sys)
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
+	if (k >= 0 && ALT_CORES[k].per_game)
+		return strcmp(shelf_core(a, sys, cursor_file(a, sys)), ALT_CORES[k].alt) ? ALT_CORES[k].label : ALT_CORES[k].alt_label;
 	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
 	return NULL;
 }
@@ -1270,11 +1309,11 @@ static const char *slot_name(int slot)
  * write over it. Tied to the core, not to which one is the default, so
  * changing the default moves nobody's states. Battery saves are a raw chip
  * image either core reads, and stay shared in Saves/. */
-static const char *persist_folder(app *a, int s)
+static const char *persist_folder(app *a, int s, const char *file)
 {
 	static char buf[CFG_STR * 2 + 2];
 	const system_cfg *sc = &a->sys.systems[s];
-	const char *core = shelf_core(a, s);
+	const char *core = shelf_core(a, s, file);
 	int k = alt_core(sc);
 
 	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
@@ -1287,7 +1326,7 @@ static void preview_path(app *a, int s, const game_entry *g, char *out, size_t n
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(SLOT_AUTO));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(SLOT_AUTO));
 }
 
 /* Where Diatom writes the frame it hands over, which is NOT the Auto card's
@@ -1324,7 +1363,7 @@ static void slot_state_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.state",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
@@ -1333,7 +1372,7 @@ static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void state_path(app *a, int s, const game_entry *g, char *out, size_t n)
@@ -1366,14 +1405,14 @@ static bool db_paths_ready(char *dev, size_t ndev, char *lib, size_t nlib,
 	return true;
 }
 
-static void persist_dir_ensure(app *a, int s)
+static void persist_dir_ensure(app *a, int s, const char *file)
 {
 	char d[LIB_PATH * 2];
 	snprintf(d, sizeof d, "%s/.tortos", P_SHARED);
 	mkdir(d, 0755);
 	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, a->sys.systems[s].folder);
 	mkdir(d, 0755);
-	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s));
+	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s, file));
 	mkdir(d, 0755);
 }
 
@@ -8513,9 +8552,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
 			sysview *v = &a->view[a->sys_cursor];
 
+			int k = alt_core(&a->sys.systems[a->sys_cursor]);
+
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
+			else if (ALT_CORES[k].per_game) engine_game_flip(a, a->sys_cursor);
 			else v->alt = !v->alt;
-			engine_save(a, a->sys_cursor);
+			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
 			/* Each core keeps its own states, and a card with no art shows
 			 * its game's Auto preview: the other core's, until the cards are
 			 * read again (seq 139). */
@@ -13487,7 +13529,7 @@ static void launch_one(app *a)
 
 	if (v->list.count == 0) return;
 
-	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
+	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o, v->list.items[v->cursor].file));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
 	/* Captured once, beside the path it goes into: play time is keyed on the
 	 * launch path the same way favorites are, and reading the cursor again
@@ -13589,7 +13631,7 @@ static void launch_one(app *a)
 	/* The scratch, not the Auto card - see pause_preview_path. The card is
 	 * written from this only when the game actually ends, below. */
 	pause_preview_path(pv, sizeof pv);
-	persist_dir_ensure(a, o);
+	persist_dir_ensure(a, o, v->list.items[v->cursor].file);
 	t_b = plat_now_ms();
 
 	/* Achievements, if this game has any. Most of a library does not, and that
