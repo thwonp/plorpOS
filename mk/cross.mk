@@ -10,7 +10,12 @@ SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFOR
 CC ?= aarch64-linux-gnu-gcc
 
 VERSION ?= 0.0
-CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
+# The CPU every device but the Flip has; the Flip is 32-bit (below).
+CPU := -mcpu=cortex-a53
+ifeq ($(PLATFORM),miyoo)
+CPU := -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
+endif
+CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
           -I$(SYSROOT)/usr/include/SDL2 -D_GNU_SOURCE
 ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
@@ -32,6 +37,14 @@ ifeq ($(PLATFORM),rotate)
 # as on the GKD (PLAT_PIPEWIRE in platform.h), so Muse keeps the codec open
 # like the GKD's: no MUSE_HANDOVER.
 CFLAGS += -DPLATFORM_H700 -DPLATFORM_ROTATE
+ifeq ($(PLATFORM),miyoo)
+# Miyoo Mini Flip on its stock firmware (plorpos-f1p): the H700's branches,
+# as the Rotate takes them, and PLATFORM_MIYOO where it differs
+# (src/platform_miyoo.c). One opener at a time on its sound (MI_AO), so Muse
+# takes it only to play, as on the H700.
+CFLAGS += -DPLATFORM_H700 -DPLATFORM_MIYOO
+MUSE_DEFS := -DMUSE_HANDOVER
+endif
 # Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
 # trixie's own libc headers in the sysroot never shadow the toolchain's.
 CFLAGS += -idirafter $(SYSROOT)/usr/include
@@ -69,7 +82,7 @@ CREDS := $(BUILD)/ss_creds.h
 CFLAGS += -I$(BUILD)
 
 TP_OUT := $(BUILD)/tp
-TP_OPT := -O2 -mcpu=cortex-a53
+TP_OPT := -O2 $(CPU)
 include mk/third_party.mk
 CFLAGS += $(TP_CFLAGS)
 
@@ -100,41 +113,41 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 MUSE_SRC := $(wildcard src/muse/*.c)
 $(BUILD)/muse: $(MUSE_SRC) $(wildcard src/muse/*.h)
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
+	$(CC) -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
 	      -D_GNU_SOURCE $(MUSE_DEFS) -I$(SYSROOT)/usr/include $(LDFLAGS) -o $@ $(MUSE_SRC) \
 	      -lavformat -lavcodec -lavfilter -lswresample -lavutil -lpthread -ldl
 
 # Talks to Muse by hand over ssh; the device's BusyBox nc has no -U.
 $(BUILD)/musectl: tools/musectl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $<
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $<
 
 # Registers a do-nothing media player with BlueZ so a headset's absolute
 # volume is not dropped; see the file. libdbus by dlopen, like ALSA in Muse.
 $(BUILD)/btplayer: tools/btplayer.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $< -ldl
 
 # Preloaded into native PICO-8 on the Brick (the firmware SDL has no sensors
 # and PICO-8 asks for them) and the H700: quiet while Muse plays, and its
 # sound follows the headset. See the file.
 $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
 		-o $@ $< -ldl
 
 # Preloaded into PortMaster ports on the H700 (sd/h700/portmaster/pm-run.sh).
 $(BUILD)/portcompat.so: tools/portcompat.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC \
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC \
 		-o $@ $< -ldl
 
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -std=gnu11 -o $@ $<
+	$(CC) -O2 $(CPU) -Wall -std=gnu11 -o $@ $<
 
 # A libc-only probe, no SDL. It dlopens the device's own libsqlite3 rather than
 # linking it, because there is no sqlite3.h on the device or in the sysroot.
 $(BUILD)/storeprobe: tools/storeprobe.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $< -ldl

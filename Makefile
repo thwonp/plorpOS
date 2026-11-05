@@ -34,6 +34,8 @@ else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
+else ifeq ($(PLATFORM),miyoo)
+all: build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl
 else ifeq ($(PLATFORM),rotate)
 all: build/rotate/tortos.elf build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 else
@@ -73,7 +75,7 @@ VERSION ?= 1.7.1
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd h700 rotate,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd h700 rotate miyoo,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -97,10 +99,11 @@ build/ss_creds.h: FORCE
 
 # Each device's sources: everything but the other device's file, so that editing
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
-SRC_BRICK  := $(filter-out src/platform_gkd.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
-SRC_GKD    := $(filter-out src/platform_brick.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
-SRC_H700   := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_rotate.c,$(wildcard src/*.c))
-SRC_ROTATE := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
+SRC_BRICK  := $(filter-out src/platform_gkd.c src/platform_h700.c src/platform_rotate.c src/platform_miyoo.c,$(wildcard src/*.c))
+SRC_GKD    := $(filter-out src/platform_brick.c src/platform_h700.c src/platform_rotate.c src/platform_miyoo.c,$(wildcard src/*.c))
+SRC_H700   := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_rotate.c src/platform_miyoo.c,$(wildcard src/*.c))
+SRC_ROTATE := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_h700.c src/platform_miyoo.c,$(wildcard src/*.c))
+SRC_MIYOO  := $(filter-out src/platform_brick.c src/platform_gkd.c src/platform_h700.c src/platform_rotate.c,$(wildcard src/*.c))
 # And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
 THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
@@ -237,6 +240,21 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so bu
 # unpacked by mk/fetch-rotate-sysroot.sh - no device needed.
 build/rotate/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/rotate creds
+build/miyoo/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/miyoo creds
+
+# The Miyoo Mini Flip (plorpos-f1p): 32-bit, glibc 2.28, so its own buster
+# image (mk/miyoo-toolchain.Dockerfile) and sysroot (mk/fetch-miyoo-sysroot.sh).
+MIYOO_IMAGE := miyoo-toolchain
+build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl: $(SRC_MIYOO) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) \
+		$(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c build/miyoo/ss_creds.h
+	@docker image inspect $(MIYOO_IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: docker build -t $(MIYOO_IMAGE) -f mk/miyoo-toolchain.Dockerfile mk" >&2; exit 1; }
+	@[ -d sysroot-miyoo/usr/include/SDL2 ] || { \
+		echo "no Miyoo sysroot; run: mk/fetch-miyoo-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work:z -w /work $(MIYOO_IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=miyoo BUILD=build/miyoo SYSROOT=/work/sysroot-miyoo \
+		VERSION=$(VERSION) creds build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl
 
 build/rotate/tortos.elf: $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rotate/ss_creds.h
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
