@@ -22,9 +22,9 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-/tmp/tortos-dsperate}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=093d50fcbd10531273e0cc22a23c6644a26b9b71 # DSperate v3.0.5, load-state/mic/achievements fixes, optional tuning
+LR=801a2dc2bd9ddc6ec66eefd7b8f621d1d4b8adb6 # DSperate v3.3.0, slot 2 / rumble / grip / analog, frame skip (plorpos-l07)
 TUNE=
-SHA=400ac7b486ec3108de07785eb6f586a122536ccce49096343caab3cfbc1c2ca1
+SHA=ec871ed5ede55c236f52c587197a83ae17fe383ed71df81ade352116b147da00
 IMAGE=dsperate-lr-cross
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -36,7 +36,7 @@ git -C "$SRC" clean -qfdx
 docker image inspect $IMAGE >/dev/null 2>&1 ||
 	docker build -q -t $IMAGE "$SRC" >/dev/null
 
-docker run --rm -e DSPERATE_TUNE="$TUNE" -v "$SRC:/w" -w /w $IMAGE sh -c "
+docker run --rm -e DSPERATE_TUNE="$TUNE" -v "$SRC:/w:z" -w /w $IMAGE sh -c "
 set -e
 ./build.sh /w/build | grep -v '^\['
 so=/w/build/dsperate_libretro.so
@@ -48,7 +48,7 @@ aarch64-linux-gnu-objdump -T \$so | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail
 "
 
 SO=$SRC/build/dsperate_libretro.so
-GOT=$(shasum -a 256 "$SO" | cut -d' ' -f1)
+GOT=$(sha256sum "$SO" | cut -d' ' -f1)
 if [ "$GOT" != "$SHA" ]; then
 	echo "!! dsperate sha256 $GOT, expected $SHA" >&2
 	echo "  The toolchain image, the source or the profile changed." >&2

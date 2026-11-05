@@ -51,7 +51,7 @@ carries its own; see Runtime libraries.
 | `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
-| `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without the committed PGO profile, which needs a newer compiler; the frame-skip hook in `mk/patches/dsperate-lr-frameskip.patch` follows the approach of nelynes's slotPlus, https://github.com/nelynes/slotPlus) |
+| `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without PGO: DSperate's committed profile needs GCC 13, and its GCC 10.5 profile applies to our compiler but measured no gain on the Brick; the frame skip (`dsperate_frameskip`) is nelynes's slotPlus design, https://github.com/nelynes/slotPlus, `cores/dsperate/wrapper-0001-frameskip.patch`, folded into the wrapper) |
 | `melondsds_libretro.so` (RG Rotate only, `vendor/cores-rotate/`) | Nintendo DS | GPL-3.0 (melonDS DS, https://github.com/JesseTG/melonds-ds v1.4.0, on melonDS, https://github.com/JesseTG/melonDS at the commit it pins; built with two patches of ours, `mk/patches/melondsds-plorpos.patch` and `mk/patches/melonds-plorpos.patch`, which are GPL-3.0 like the code they change - `mk/build-melondsds.sh`) |
 
 The GKD card ships all nine. The Brick card ships the first six only - no
@@ -215,11 +215,19 @@ the list itself, is this project's (MIT).
 
 ## Fonts
 
-- `res/fonts/menu.ttf` - **Josefin Sans**, SIL Open Font License 1.1. Full text
-  in `res/fonts/OFL.txt`. It is TortOS's UI face, the in-game menu's face, and
-  the face the boot animation and the system cards are lettered in.
-- `res/fonts/wordmark.ttf` - **Josefin Sans** too, the same OFL 1.1
-  (`res/fonts/OFL.txt`), for the plorpOS wordmark.
+All five are under the SIL Open Font License 1.1; each family's copyright notice
+and the licence text are in the `res/fonts/` file named below.
+
+- `res/fonts/menu.ttf` - **Quicksand** (`OFL.txt`). TortOS's UI face, the
+  in-game menu's face, and the face the boot animation and the system cards
+  are lettered in.
+- `res/fonts/head.ttf` - **Fredoka** (`OFL-Fredoka.txt`). The heading face for
+  titles, menu headings and the cards.
+- `res/fonts/josefin.ttf` - **Josefin Sans** (`OFL-JosefinSans.txt`). One of the
+  faces UI Settings > Font offers.
+- `res/fonts/lato.ttf` - **Lato** (`OFL-Lato.txt`). The other one.
+- `res/fonts/wordmark.ttf` - **Josefin Sans** too (`OFL-JosefinSans.txt`), for
+  the plorpOS wordmark.
 
 ---
 

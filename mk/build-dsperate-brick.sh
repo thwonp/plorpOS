@@ -19,7 +19,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-$HOME/.cache/tortos-dsperate-brick}
 REPO=${DSPERATE_LR:-https://github.com/thwonp/dsperate-lr.git}
-LR=093d50fcbd10531273e0cc22a23c6644a26b9b71 # the same pin as the GKD's
+LR=${LR:-801a2dc2bd9ddc6ec66eefd7b8f621d1d4b8adb6} # DSperate v3.3.0 + slot 2, rumble, analog, frame skip; the same pin as the GKD's
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 TUNE=${TUNE--mcpu=cortex-a53}
 
@@ -35,9 +35,7 @@ for p in "$SRC"/patches/*.patch; do
 	[ -e "$p" ] || continue
 	git -C "$SRC/DSperate" apply "$p"
 done
-# The wrapper's frame skip: the core leaves a frame's rendering out when the
-# frontend says it will run late (plorpos-reo.21.7; slotPlus does the same).
-git -C "$SRC" apply "$ROOT/mk/patches/dsperate-lr-frameskip.patch"
+# (The frame skip, plorpos-reo.21.7, is in the wrapper itself since l07.)
 
 docker run --rm -e TUNE="$TUNE" -v "$SRC:/w:z" -w /w $IMAGE sh -c '
 set -e
