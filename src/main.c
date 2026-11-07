@@ -4518,6 +4518,10 @@ static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect
 	if (k == i) ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, c);
 }
 
+/* Set around a menu_draw that is to fill the screen: no margin, no border or
+ * glow, the list running edge to edge (the Muse artist list). */
+static bool g_menu_full;
+
 static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
                          int n, int sel, int fixed_w, unsigned accent,
                          const unsigned *vcolors, bool visits_all, int loop_at)
@@ -4592,7 +4596,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * up, and this menu is meant to gain rows - so the panel is capped to the
 	 * screen and the rows window around the selection when they do not all
 	 * fit. A menu that runs off the top is worse than one that scrolls. */
-	const int margin = MENU_MARGIN;
+	const int margin = g_menu_full ? 0 : MENU_MARGIN;
 	int vis = n, first = 0;
 
 	for (i = 0; i < n; i++)
@@ -4754,6 +4758,8 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	}
 	panel.x = (TORTOS_SCREEN_W - panel.w) / 2;
 	panel.y = (TORTOS_SCREEN_H - panel.h) / 2;
+	if (g_menu_full)
+		panel = (SDL_Rect){ 0, 0, TORTOS_SCREEN_W, TORTOS_SCREEN_H };
 	cx = panel.x + panel.w / 2;
 	content_x = panel.x + pad;
 	content_y = panel.y + content_off;
@@ -4768,8 +4774,13 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * color without either having been checked against the other. Unified on
 	 * this cyan on 2026-08-28, that being the direction that stays clear of the
 	 * eleven system accents; the mark's old blue sat close to Genesis. */
-	ui_glow(a->r, &panel, accent, 60, 1.5f);
-	ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	if (g_menu_full) {
+		SDL_SetRenderDrawColor(a->r, 22, 24, 32, 255);
+		SDL_RenderFillRect(a->r, &panel);
+	} else {
+		ui_glow(a->r, &panel, accent, 60, 1.5f);
+		ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	}
 	ui_hit_modal(&panel);   /* the panel is what a tap can reach now */
 
 	if (heading) {
@@ -11122,8 +11133,10 @@ static int muse_artist_pick(app *a, int start)
 			continue;
 		}
 		muse_backdrop(a);
+		g_menu_full = true;
 		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
-		          menu_std_width(a), MUSE_ACCENT);
+		          TORTOS_SCREEN_W - menu_pad() * 2, MUSE_ACCENT);
+		g_menu_full = false;
 		draw_chrome(a->r);
 		plat_present(a->r);
 	}
