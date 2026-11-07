@@ -39,6 +39,9 @@
  * along, and waiting on a key repeat is the most obvious kind of slow. */
 #define REPEAT_DELAY_MS 300
 #define REPEAT_RATE_MS  90
+/* How long the music may be stopped in the dark before the suspend goes on:
+ * main.c's MUSIC_GRACE_MS, the same fixed 30 s. */
+#define MUSIC_GRACE_MS  30000u
 #define SKIP_HOLD_MS    500   /* a volume key held this long, Muse playing: a track skip */
 
 int fd_power = -1; /* axp2202-pek: KEY_POWER */
@@ -719,6 +722,8 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool term_killed = false;   /* its game KILLed, the script let finish */
 	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
+	bool dark = false;               /* a power tap while Muse plays: screen off, music on */
+	unsigned dark_t0 = 0, dark_stopped = 0;   /* when it began; when the music stopped, 0 playing */
 	lv_down[0] = lv_down[1] = lv_moved[0] = lv_moved[1] = lv_muse = false;
 	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
 	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
@@ -782,7 +787,49 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
-			if (pa == PWR_SLEEP) {
+			if (dark) {
+				/* Music dark: a tap wakes; the music stopping for the grace
+				 * period goes on to the suspend it was holding off. The
+				 * volume keys and the tick, above, stay live throughout. */
+				unsigned now = plat_now_ms();
+
+				if (pa == PWR_SLEEP) {
+					plat_screen(true);
+					group_kill(pid, SIGCONT);
+					dark = false;
+					run_asleep_ms += now - dark_t0;
+					fprintf(stderr, "sleep: music dark %us, woke (child)\n", (now - dark_t0) / 1000);
+					pa = PWR_NONE;
+					pwr_down = false;
+				} else if (pa == PWR_NONE) {
+					if (lv_muse) dark_stopped = 0;
+					else if (!dark_stopped) dark_stopped = now ? now : 1;
+					else if (now - dark_stopped >= MUSIC_GRACE_MS) {
+						bool awake = plat_light_sleep(now - dark_stopped);
+
+						group_kill(pid, SIGCONT);
+						dark = false;
+						run_asleep_ms += plat_now_ms() - dark_t0;
+						fprintf(stderr, "sleep: music stopped, %s after %us (child)\n",
+						        awake ? "awake" : "no suspend, powering off",
+						        (plat_now_ms() - dark_t0) / 1000);
+						pwr_down = false;
+						if (!awake) pa = PWR_POWEROFF;
+					}
+				}
+			} else if (pa == PWR_SLEEP && lv_muse) {
+				/* Suspend is where the sound would stop (the DAC goes with
+				 * it): the screen off, the child frozen, Muse playing on. */
+				group_kill(pid, SIGSTOP);
+				plat_screen(false);
+				hold.next = 0;
+				lv_down[0] = lv_down[1] = false;
+				dark = true;
+				dark_t0 = plat_now_ms();
+				dark_stopped = 0;
+				pwr_down = false;
+				pa = PWR_NONE;
+			} else if (pa == PWR_SLEEP) {
 				unsigned t0 = plat_now_ms();
 				bool awake;
 
@@ -851,6 +898,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
+		if (dark) { menu = false; swipe = GESTURE_NONE; }   /* no menu in the dark */
 		run_menu_why = menu ? GESTURE_NONE : swipe;
 		if (swipe != GESTURE_NONE) menu = true;
 		if (!term_at && !menu) lv_hold_tick(&hold);
@@ -893,6 +941,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
 		if (g_terminating) quit = true;
 		if (quit && !term_at) {
+			if (dark) {      /* a frozen child cannot act on the TERM */
+				plat_screen(true);
+				group_kill(pid, SIGCONT);
+				dark = false;
+			}
 			group_term(pid, &ending);
 			term_at = plat_now_ms() | 1;
 			term_killed = false;
@@ -909,6 +962,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			term_at = 0;
 		}
 	}
+	if (dark) plat_screen(true);
 	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 #else
 	(void)on_menu; (void)on_tick; (void)ctx;
