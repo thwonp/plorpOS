@@ -167,6 +167,10 @@ typedef bool (*run_tick_fn)(void *ctx);
 int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
               run_menu_fn on_menu, run_tick_fn on_tick, void *ctx);
 bool plat_run_power_pressed(void);
+/* An analogue trigger's evdev event (ABS_Z, ABS_RZ) as a button: past the
+ * middle of the range fd's node reports (plorpos-wjw.6). */
+struct input_event;
+bool plat_abs_pressed(int fd, const struct input_event *ev);
 /* How long the last plat_run spent asleep (a power tap), to keep out of
  * Play Time. */
 unsigned plat_run_asleep_ms(void);
@@ -205,6 +209,15 @@ bool plat_resident_ready_wait(void);
 void plat_child_audio(const char *dev, const char *link);
 void plat_child_audio_reset(void);
 #endif
+/* What PokeDaisy runs with besides the child environment (plorpos-c9p), NULL
+ * ended: the pad as SDL_GAMECONTROLLERCONFIG, by POSITION - PokeDaisy takes
+ * SDL's a (bottom) as game B and b (right) as game A, as an Xbox pad has them.
+ * Where guide is mapped (the GBA hotkeys' Menu modifier, plorpos-wjw.3)
+ * PokeDaisy leaves MENU to the launcher, as POCKET_HOTKEYS_FILE tells it. */
+extern const char *const plat_daisy_env[];
+/* POCKET_FN_KEYS=... for PokeDaisy: the node and codes of keys SDL never
+ * reports that are hotkey triggers (the Bricks' Fn keys), or NULL. */
+const char *plat_daisy_fn_keys(void);
 #if defined(PLATFORM_H700)
 /* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
  * wants it, for native PICO-8 (plorpos-7ny.41). */
@@ -304,6 +317,8 @@ const char *plat_coreopt(const char *tag, int i);
  * value (diatom's ADR-0035). plat_hotkey_set persists it and updates the
  * cache in the same call, for the settings screen that edits it live. */
 const char *plat_hotkey_map(const char *tag);
+/* The same list without the actions Diatom does not have (see platform.c). */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its

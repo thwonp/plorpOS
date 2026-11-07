@@ -70,6 +70,28 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
+/* SDL numbers B (304) b0, A b1, Y (307) b2, X (308) b3 - JOY_* below; the
+ * rest as portmaster/control.txt has them. Menu (316, b8) and the stick
+ * clicks are the GBA hotkeys' modifiers, which PokeDaisy reads
+ * (plorpos-wjw.3). ALSA, as ports get it (pm-run.sh). */
+const char *const plat_daisy_env[] = {
+	"SDL_GAMECONTROLLERCONFIG=0300a3845e0400008e02000014010000,TRIMUI Player1,"
+	"a:b0,b:b1,x:b2,y:b3,back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+	"leftshoulder:b4,rightshoulder:b5,"
+	"lefttrigger:a2,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+	"platform:Linux,",
+	"SDL_AUDIODRIVER=alsa",
+	NULL
+};
+/* Fn1 and Fn2, hotkey triggers PokeDaisy reads from the pad's node
+ * (plorpos-wjw.3): the plain Brick's 317/318 (SDL's b9/b10 too), the Pro's
+ * KEY_F1/KEY_F2, which SDL never reports - see CODE_FN_LEFT. Both, there, by
+ * model: the Pro's 317/318 are its stick clicks (plorpos-wjw.7). */
+const char *plat_daisy_fn_keys(void)
+{
+	return plat_is_brick_pro() ? "POCKET_FN_KEYS=/dev/input/event3:59:60"
+	                           : "POCKET_FN_KEYS=/dev/input/event3:317:318";
+}
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 /* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */
@@ -477,6 +499,13 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 		d[0] = ev->value < 0;
 		d[1] = ev->value > 0;
 		set_dirs(st);
+		return true;
+	}
+	/* L2/R2, axes that only ever rest or slam: past the middle of the
+	 * range the node reports is pressed, as SDL's > 16384 is (plorpos-wjw.6
+	 * - without it no trigger could be bound here). */
+	if (ev->type == EV_ABS && (ev->code == ABS_Z || ev->code == ABS_RZ)) {
+		set_btn(st, ev->code == ABS_Z ? IN_L2 : IN_R2, plat_abs_pressed(fd_joy, ev));
 		return true;
 	}
 	if (ev->type != EV_KEY || ev->value == 2) return false;

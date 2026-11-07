@@ -53,6 +53,7 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "btnmap.h"
+#include "daisy.h"
 #include "shaderlist.h"
 #include "clock.h"
 #include "gbpal.h"
@@ -323,6 +324,7 @@ typedef struct {
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	bool in_port;               /* a PortMaster port runs: no Splore row */
+	const char *daisy_ini;      /* PokeDaisy runs: its settings, the Options row's */
 	SDL_Renderer *r;
 } app;
 
@@ -357,6 +359,9 @@ static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
 static bool is_ports(const system_cfg *s);
 static void pm_here(char *out, size_t n, const char *leaf);
+static bool daisy_can(const system_cfg *s, const char *file);
+static bool daisy_plays(const system_cfg *s, const char *file);
+static void daisy_set(const system_cfg *s, const char *file, bool on);
 /* Game Settings (plorpos-pyz): read where they act, so a change holds from
  * the next launch on without anything to reload. */
 static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
@@ -603,38 +608,70 @@ static struct { int index, count; char label[24]; } g_disc;
 
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
- * that ship are listed: the Rotate's DS pair. `bare` is the core whose states
+ * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
+ * mGBA on every port's three Game Boy shelves (plorpos-oe0.22). `bare` is the core whose states
  * live in the shelf's own .tortos folder - the one that was there first -
- * whichever is the default now (plorpos-3yv.105). */
-static const struct { const char *core, *label, *alt, *alt_label, *bare; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds" },
+ * whichever is the default now (plorpos-3yv.105). `on` says which build ships
+ * the alternative. */
+enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
+	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
+	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
+	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
+	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
 static int alt_core(const system_cfg *s)
 {
 	size_t k;
-
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
-	/* Only the GKD and the Rotate ship melonDS DS: the Brick and the H700 have
-	 * DSperate alone, and a Core row would offer a core that is not there
-	 * (plorpos-reo.21.11). */
-	(void)s;
-	return -1;
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+	const int here = ALT_ON_GKD_ROTATE;
+#elif defined(PLATFORM_H700)
+	const int here = ALT_ON_H700; /* DSperate is its only DS core */
+#else
+	const int here = ALT_ON_BRICK;
 #endif
+
+	/* A Core row would offer a core that is not there (plorpos-reo.21.11): only
+	 * the build that carries the alternative lists it. */
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
-		if (!strcmp(s->core, ALT_CORES[k].core)) return (int)k;
+		if (!strcmp(s->core, ALT_CORES[k].core))
+			return (ALT_CORES[k].on & here) ? (int)k : -1;
 	return -1;
 }
 
-/* The core a shelf's games launch with: its own, or the alternative it was
- * turned to. */
-static const char *shelf_core(app *a, int sys)
+/* engine.<TAG>/<file>: a per-game shelf's game turned to the alternative core. No row = the shelf's own core. */
+static void engine_game_key(char *out, size_t n, const system_cfg *s, const char *file)
+{
+	snprintf(out, n, "engine.%s/%s", s->tag, file);
+}
+
+/* The game the shelf's cursor is on, or NULL for an empty shelf. */
+static const char *cursor_file(app *a, int sys)
+{
+	const sysview *v = &a->view[sys];
+	return v->list.count ? v->list.items[v->cursor].file : NULL;
+}
+
+/* The core a game launches with: its shelf's own, or the alternative the shelf
+ * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
+static const char *shelf_core(app *a, int sys, const char *file)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
-	return k >= 0 && a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+	if (k < 0) return s->core;
+	if (ALT_CORES[k].per_game) {
+		char key[LIB_PATH + 32], name[CFG_STR];
+
+		if (!file) return s->core;
+		engine_game_key(key, sizeof key, s, file);
+		return db_get_str(db_dev(), key, name, sizeof name, NULL) && !strcmp(name, ALT_CORES[k].alt)
+		       ? ALT_CORES[k].alt : s->core;
+	}
+	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
 }
 
 /* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
@@ -647,7 +684,7 @@ static void engine_load(app *a)
 
 	for (i = 0; i < a->sys.count; i++) {
 		k = alt_core(&a->sys.systems[i]);
-		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
+		if (!is_pico8(&a->sys.systems[i]) && (k < 0 || ALT_CORES[k].per_game)) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
 		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
@@ -657,12 +694,26 @@ static void engine_load(app *a)
 
 static void engine_save(app *a, int sys)
 {
-	char key[CFG_STR + 16];
+	char key[LIB_PATH + 32];
 	int k = alt_core(&a->sys.systems[sys]);
 
 	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys)
+	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys, NULL)
 	                                 : a->view[sys].native ? "native" : "fake08");
+}
+
+/* Turn the game under the shelf's cursor to the other core of a per-game shelf, saved at once. */
+static void engine_game_flip(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	const char *file = cursor_file(a, sys);
+	char key[LIB_PATH + 32];
+	int k = alt_core(s);
+
+	if (k < 0 || !file) return;
+	engine_game_key(key, sizeof key, s, file);
+	if (strcmp(shelf_core(a, sys, file), ALT_CORES[k].alt)) db_set_str(db_dev(), key, ALT_CORES[k].alt);
+	else db_del(db_dev(), key);
 }
 
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
@@ -675,6 +726,8 @@ static const char *engine_label(app *a, int sys)
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
+	if (k >= 0 && ALT_CORES[k].per_game)
+		return strcmp(shelf_core(a, sys, cursor_file(a, sys)), ALT_CORES[k].alt) ? ALT_CORES[k].label : ALT_CORES[k].alt_label;
 	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
 	return NULL;
 }
@@ -1256,11 +1309,11 @@ static const char *slot_name(int slot)
  * write over it. Tied to the core, not to which one is the default, so
  * changing the default moves nobody's states. Battery saves are a raw chip
  * image either core reads, and stay shared in Saves/. */
-static const char *persist_folder(app *a, int s)
+static const char *persist_folder(app *a, int s, const char *file)
 {
 	static char buf[CFG_STR * 2 + 2];
 	const system_cfg *sc = &a->sys.systems[s];
-	const char *core = shelf_core(a, s);
+	const char *core = shelf_core(a, s, file);
 	int k = alt_core(sc);
 
 	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
@@ -1273,7 +1326,7 @@ static void preview_path(app *a, int s, const game_entry *g, char *out, size_t n
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(SLOT_AUTO));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(SLOT_AUTO));
 }
 
 /* Where Diatom writes the frame it hands over, which is NOT the Auto card's
@@ -1310,7 +1363,7 @@ static void slot_state_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.state",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
@@ -1319,7 +1372,7 @@ static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void state_path(app *a, int s, const game_entry *g, char *out, size_t n)
@@ -1352,14 +1405,14 @@ static bool db_paths_ready(char *dev, size_t ndev, char *lib, size_t nlib,
 	return true;
 }
 
-static void persist_dir_ensure(app *a, int s)
+static void persist_dir_ensure(app *a, int s, const char *file)
 {
 	char d[LIB_PATH * 2];
 	snprintf(d, sizeof d, "%s/.tortos", P_SHARED);
 	mkdir(d, 0755);
 	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, a->sys.systems[s].folder);
 	mkdir(d, 0755);
-	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s));
+	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s, file));
 	mkdir(d, 0755);
 }
 
@@ -6441,6 +6494,8 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 
 	memset(gi, 0, sizeof *gi);
 	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
+	if (daisy_can(s, g->file))
+		gi->play_with = daisy_plays(s, g->file) ? "PokeDaisy" : "plorpOS";
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -6958,7 +7013,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
@@ -7075,6 +7130,13 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 	if (key == IN_X) return MENU_DONE;
 	if (key != IN_ACCEPT || sel >= n || !rows[sel].live) return MENU_STAY;
 
+	if (!strcmp(rows[sel].label, "Play With")) {
+		const system_cfg *s = &a->sys.systems[c->owner];
+
+		daisy_set(s, c->g->file, !daisy_plays(s, c->g->file));
+		gi_gather(a, c->owner, c->g, &c->gi);
+		return MENU_STAY;
+	}
 	if (!strcmp(rows[sel].label, "Synopsis")) {
 		game_meta m;
 
@@ -8581,9 +8643,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
 			sysview *v = &a->view[a->sys_cursor];
 
+			int k = alt_core(&a->sys.systems[a->sys_cursor]);
+
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
+			else if (ALT_CORES[k].per_game) engine_game_flip(a, a->sys_cursor);
 			else v->alt = !v->alt;
-			engine_save(a, a->sys_cursor);
+			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
 			/* Each core keeps its own states, and a card with no art shows
 			 * its game's Auto preview: the other core's, until the cards are
 			 * read again (seq 139). */
@@ -11474,7 +11539,9 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 	memset(&a->in, 0, sizeof a->in);
 }
 
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+/* daisy: from PokeDaisy's in-game menu (plorpos-wjw.5) - only the four
+ * actions it takes, and no Button Mapping, which it does not. */
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -11502,14 +11569,15 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
-	 * Blow Into Mic on every device (plorpos-6ei.3): the last five action rows.
+	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
-	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
+	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
-		bool shown = i < R_SWAP;
+		bool shown = (i < R_SWAP && (!daisy || i <= 3))   /* ff rewind save load */
+			|| (daisy && i == R_HUD);                  /* HUD Focus: PokeDaisy's only */
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
@@ -11525,6 +11593,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	const int NROWS = FIRST_ACT + nact;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
+	if (daisy) {
+		rows[R_MAPPING] = (menu_row){ "Button Mapping", "Not in PokeDaisy", false };
+		sel = FIRST_ACT;
+	}
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -11567,8 +11639,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
+			if (in_repeat(&a->in, IN_UP)) {
+				sel = (sel + NROWS - 1) % NROWS;
+				if (daisy && sel == R_MAPPING) sel = NROWS - 1;
+			}
+			if (in_repeat(&a->in, IN_DOWN)) {
+				sel = (sel + 1) % NROWS;
+				if (daisy && sel == R_MAPPING) sel = FIRST_ACT;
+			}
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, tag);
@@ -11592,8 +11670,13 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			 * mid-session (reached from the in-game menu), so the change
 			 * should take hold without the player having to quit and
 			 * relaunch to see it. */
-			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-			                   spec, legacy_wire);
+			{
+				char wire[256];
+
+				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
+				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
+				                   wire, legacy_wire);
+			}
 			changed = false;
 		}
 
@@ -12391,7 +12474,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, false);
 		break;
 	}
 	case GM_RESET:
@@ -12613,7 +12696,12 @@ typedef struct {
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
 	bool       port;       /* a PortMaster port: no Splore row at all */
+	const char *daisy_ini; /* PokeDaisy: Options and Hotkeys rows (plorpos-wjw) */
+	const menu_style *style;   /* the menu's, for Options' own */
 } nm_ctx;
+
+/* PokeDaisy's rows read in Continue, Options, Hotkeys, Reset, Quit order. */
+enum { NMD_OPTIONS = 1, NMD_HOTKEYS, NMD_RESET, NMD_QUIT };
 
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
@@ -12627,6 +12715,14 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
+	if (c->daisy_ini) {
+		gm_native_rows(true, rows);
+		rows[NMD_QUIT] = rows[GMN_QUIT];
+		rows[NMD_RESET] = rows[GMN_RESET];
+		rows[NMD_OPTIONS] = (menu_row){ "Options", NULL, true };
+		rows[NMD_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };
+		return NMD_QUIT + 1;
+	}
 	if (c->port) {
 		gm_native_rows(true, rows);
 		rows[GMN_SPLORE] = rows[GMN_QUIT];
@@ -12656,11 +12752,67 @@ static menu_result nm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
+/* PokeDaisy's Options (plorpos-wjw): its settings.ini, written as the menu
+ * is left; PokeDaisy reads it again as it is thawed. */
+static int do_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)max;
+	*heading = "Options";
+	return daisy_rows(ctx, rows);
+}
+
+static menu_result do_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)a;
+	if (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)
+		daisy_step(ctx, sel, key == IN_LEFT ? -1 : 1);
+	return MENU_STAY;
+}
+
+/* PokeDaisy's hotkeys file, beside its settings.ini: the GBA shelf's
+ * bindings, then the modifier a binding naming none holds. */
+static void daisy_keys_write(const char *ini)
+{
+	char path[LIB_PATH + 32];
+	const char *slash = strrchr(ini, '/');
+	FILE *f;
+
+	snprintf(path, sizeof path, "%.*s/hotkeys.txt", slash ? (int)(slash - ini) : 0, ini);
+	if (!(f = fopen(path, "w"))) return;
+	fprintf(f, "%s\n%s\n", plat_hotkey_map("GBA"), plat_hotkey_modifier());
+	fclose(f);
+}
+
+static void daisy_options(app *a, nm_ctx *c)
+{
+	daisy_opts o, was;
+
+	daisy_load(c->daisy_ini, &o);
+	was = o;
+	menu_run(a, c->style, do_build, do_key, &o);
+	if (memcmp(&o, &was, sizeof o) && !daisy_save(c->daisy_ini, &o))
+		fprintf(stderr, "pokedaisy: %s not written\n", c->daisy_ini);
+}
+
 static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (c->daisy_ini) {
+		if (sel == NMD_OPTIONS) {
+			daisy_options(a, c);
+			return MENU_STAY;
+		}
+		if (sel == NMD_HOTKEYS) {
+			/* The GBA shelf's, shared; PokeDaisy reads them again on
+			 * Continue (plorpos-wjw.5). */
+			hotkeys_screen(a, NULL, "GBA", true);
+			daisy_keys_write(c->daisy_ini);
+			return MENU_STAY;
+		}
+		sel = sel == NMD_RESET ? GMN_RESET : sel == NMD_QUIT ? GMN_QUIT : sel;
+	}
 	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
@@ -12673,8 +12825,8 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 	menu_style st = { 0 };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port, a->daisy_ini, &st };
 
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
@@ -13134,6 +13286,124 @@ static int run_port(app *a, const system_cfg *s, const char *file)
 	return r;
 }
 
+/* ---- PokeDaisy -----------------------------------------------------------
+ *
+ * A GBA game set to Play With PokeDaisy (the info screen, plorpos-c9p) runs in
+ * lidor30/pokedaisy's Linux host instead of Diatom: mGBA with a companion that
+ * reads the Pokemon games as they play. A separate GPL-3.0 program, built by
+ * mk/build-pokedaisy.sh and shipped in <plorpOS>/pokedaisy, run the way a port
+ * is - native_menu's Continue, Reset and Quit, power sleeps, never the
+ * resident. It plays the game's own Saves/<folder>/<rom>.srm (the patch's
+ * --save), the raw save Diatom's mGBA keeps, so either can carry on the game.
+ * Its states, settings and save backups are its own, in shared/pokedaisy.
+ * .gba, .gb and .gbc (no zip): the companion reads Gen 3 now, Gen 1/2 as plorpos-l22.10 lands. The choice is per game, in the library db: playwith.<TAG>/<file>,
+ * present only for PokeDaisy. */
+static void daisy_bin(char *out, size_t n)
+{
+	snprintf(out, n, "%s/pokedaisy/pokedaisy-linux", P_ROOT);
+}
+
+static void daisy_key(char *out, size_t n, const system_cfg *s, const char *file)
+{
+	snprintf(out, n, "playwith.%s/%s", s->tag, file);
+}
+
+static bool daisy_can(const system_cfg *s, const char *file)
+{
+	const char *dot = strrchr(file, '.');
+	char bin[LIB_PATH];
+
+	/* The GB and GBC shelves too (plorpos-l22.9): Diatom plays them on the same mGBA, so the raw .srm is shared
+	 * the same way, and the host opens .gb / .gbc as it does .gba. */
+	if (!dot || !((!strcmp(s->tag, "GBA") && !strcasecmp(dot, ".gba")) ||
+	              (!strcmp(s->tag, "GB") && !strcasecmp(dot, ".gb")) ||
+	              (!strcmp(s->tag, "GBC") && !strcasecmp(dot, ".gbc"))))
+		return false;
+	daisy_bin(bin, sizeof bin);
+	return access(bin, X_OK) == 0;
+}
+
+static bool daisy_plays(const system_cfg *s, const char *file)
+{
+	char key[LIB_PATH + 32];
+
+	if (!daisy_can(s, file)) return false;
+	daisy_key(key, sizeof key, s, file);
+	return db_has(db_lib(), key);
+}
+
+static void daisy_set(const system_cfg *s, const char *file, bool on)
+{
+	char key[LIB_PATH + 32];
+
+	daisy_key(key, sizeof key, s, file);
+	if (on) db_set_str(db_lib(), key, "pokedaisy");
+	else    db_del(db_lib(), key);
+}
+
+/* `save` is the shelf's Saves folder; the .srm in it is named as Diatom names
+ * it, the ROM's file name without its extension (diatom save.c).
+ *
+ * `st` and `apv` are the game's Diatom autosave and its Auto card. A session
+ * that changed the .srm leaves that autosave behind the game's own save:
+ * resumed, the game would come up where Diatom left it, and its next save
+ * would write over what was played here (plorpos-c9p.3). So it goes, card
+ * and all, and Diatom next starts the game from its save. Judged here, by
+ * the .srm before and after, rather than by comparing times at Diatom's
+ * launch: Diatom's own last SRAM flush can land after its autosave. */
+static int run_daisy(app *a, const char *rom, const char *save, const char *file,
+                     const char *st, const char *apv)
+{
+	struct stat was, now;
+	bool had;
+	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
+	char ini[LIB_PATH + 16], keys[LIB_PATH + 40];
+	const char *slash = strrchr(file, '/');
+	char *argv[24], *dot;
+	int n = 0, i, r;
+
+	daisy_bin(bin, sizeof bin);
+	snprintf(data, sizeof data, "%s/pokedaisy", P_SHARED);
+	mkdir(data, 0755);
+	snprintf(base, sizeof base, "%s", slash ? slash + 1 : file);
+	if ((dot = strrchr(base, '.'))) *dot = '\0';
+	snprintf(srm, sizeof srm, "%s/%s.srm", save, base);
+
+	argv[n++] = (char *)"/usr/bin/env";
+	argv[n++] = (char *)"POCKET_FULLSCREEN=1";
+	/* The pad whether or not its window has the focus: under sway the in-game
+	 * menu's window takes it, and after Continue the game heard nothing. */
+	argv[n++] = (char *)"SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1";
+	/* The GBA shelf's hotkeys, the ones it can (plorpos-wjw.3), in a file
+	 * the Hotkeys row rewrites (.5); set at all, Menu is ours alone - this
+	 * menu and the modifier. */
+	snprintf(ini, sizeof ini, "%s/settings.ini", data);
+	daisy_keys_write(ini);
+	snprintf(keys, sizeof keys, "POCKET_HOTKEYS_FILE=%s/hotkeys.txt", data);
+	argv[n++] = keys;
+	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
+	if (plat_daisy_fn_keys()) argv[n++] = (char *)plat_daisy_fn_keys();
+	argv[n++] = bin;
+	argv[n++] = (char *)"--data"; argv[n++] = data;
+	argv[n++] = (char *)"--save"; argv[n++] = srm;
+	argv[n++] = (char *)rom;
+	argv[n] = NULL;
+	had = stat(srm, &was) == 0;
+	a->in_port = true;   /* native_menu: no Splore row */
+	a->daisy_ini = ini;  /* ... and an Options row */
+	a->pico8_splore = false;
+	r = run_alone(a, argv, native_menu, native_tick);
+	a->in_port = false;
+	a->daisy_ini = NULL;
+	if (stat(srm, &now) == 0 &&
+	    (!had || now.st_mtime != was.st_mtime || now.st_size != was.st_size) &&
+	    unlink(st) == 0) {
+		unlink(apv);
+		fprintf(stderr, "pokedaisy: the save moved on; Diatom's autosave dropped\n");
+	}
+	return r;
+}
+
 /* -home is where PICO-8 keeps everything it writes - config, log, cart data,
  * Splore's downloads - and -desktop its screenshots, which by default would
  * land beside the carts and show on the shelf as .png carts. Both under
@@ -13346,7 +13616,7 @@ static void launch_one(app *a)
 
 	if (v->list.count == 0) return;
 
-	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
+	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o, v->list.items[v->cursor].file));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
 	/* Captured once, beside the path it goes into: play time is keyed on the
 	 * launch path the same way favorites are, and reading the cursor again
@@ -13428,6 +13698,8 @@ static void launch_one(app *a)
 		return;
 	}
 	native |= is_ports(s);   /* run by the launcher too, never the resident */
+	bool daisy = !native && daisy_plays(s, romfile);
+	native |= daisy;
 
 	/* Front of the switcher's list, in memory only - the tick writes it.
 	 * Splore is a place, not a game (plorpos-gl5.1). */
@@ -13446,7 +13718,7 @@ static void launch_one(app *a)
 	/* The scratch, not the Auto card - see pause_preview_path. The card is
 	 * written from this only when the game actually ends, below. */
 	pause_preview_path(pv, sizeof pv);
-	persist_dir_ensure(a, o);
+	persist_dir_ensure(a, o, v->list.items[v->cursor].file);
 	t_b = plat_now_ms();
 
 	/* Achievements, if this game has any. Most of a library does not, and that
@@ -13713,6 +13985,16 @@ static void launch_one(app *a)
 		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
 		stats_begin(s->tag, from, plat_now_ms());
 		fprintf(stderr, "port exited %d\n", run_port(a, s, from));
+		stats_asleep(plat_run_asleep_ms());
+		stats_end(NULL, plat_now_ms());
+		if (!a->running) return;
+	} else if (daisy) {
+		char from[LIB_PATH];
+
+		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
+		stats_begin(s->tag, from, plat_now_ms());
+		preview_path(a, o, &v->list.items[v->cursor], apv, sizeof apv);
+		fprintf(stderr, "pokedaisy exited %d\n", run_daisy(a, rom, save, from, st, apv));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;

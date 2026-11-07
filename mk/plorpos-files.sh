@@ -73,6 +73,8 @@ plorpos_files() {
 		echo "payload: run mk/fetch-vendor.sh" >&2
 		exit 1
 	fi
+	# The SDL PokeDaisy host (Play With PokeDaisy, plorpos-c9p) no longer ships: the
+	# PokeDaisy libretro core, picked per game in the Core row, replaced it (plorpos-oe0.29).
 }
 
 # plorpos_rom_folders P: the ROM folder of every system in P/systems.cfg, one a

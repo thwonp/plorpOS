@@ -14,6 +14,7 @@
 #include "../src/sys_menu.h"
 #include "../src/cards.h"
 #include "../src/game_menu.h"
+#include "../src/daisy.h"
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -866,10 +867,18 @@ static void info_rows(void)
 	ck(rows[n - 1].live, "and needs no network");
 	k = reachable(rows, n, got, GI_MAX);
 	ck(got[k - 1] == n - 1, "and is reachable");
+	/* A game PokeDaisy can run: Play With, live, before the other actions
+	 * (plorpos-c9p). Everything shown at once still fits GI_MAX. */
+	gi.play_with = "PokeDaisy";
+	n = gi_rows(rows, &gi, true);
+	printf("game info, a game PokeDaisy can run:\n");
+	ck(!strcmp(rows[n - 4].label, "Play With") && !strcmp(val(&rows[n - 4]), "PokeDaisy")
+	   && rows[n - 4].live, "Play With says what runs it, above Box Art");
 	snprintf(gi.year, sizeof gi.year, "1995");
 	snprintf(gi.genre, sizeof gi.genre, "Platform");
 	n = gi_rows(rows, &gi, true);
 	ck(n == GI_MAX, "every row at once fits GI_MAX");
+	gi.play_with = NULL;
 	gi.deletable = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)
@@ -1182,6 +1191,64 @@ static void card_sets(void)
 	ck(ok, "a step always lands on a different, real set");
 }
 
+/* PokeDaisy's Options (plorpos-wjw): what the rows say, how they step, and a
+ * save that keeps the companion's own lines and reads back as it was. */
+static void daisy_options(void)
+{
+	const char *path = "build-native/daisy-check.ini";
+	daisy_opts o, back;
+	menu_row rows[DO_ROWS + 2];
+	char line[128];
+	FILE *f;
+	int n, tabs = 0, aspects = 0;
+
+	printf("daisy options\n");
+	remove(path);
+	daisy_load(path, &o);
+	ck(o.ff == 2 && o.autozoom && o.hud && !o.rewind && !o.aspect && !o.scaling,
+	   "no file: PokeDaisy's defaults");
+	n = daisy_rows(&o, rows);
+	ck(n == DO_ROWS + 2 && rule_at(rows, n) == DO_ROWS, "ten rows, a rule, a note");
+	ck(!strcmp(rows[DO_HUDLAYOUT].value, "Corners") && !strcmp(rows[DO_HUDLOOK].value, "Glass") &&
+	   !strcmp(rows[DO_HUDSIZE].value, "Normal") && rows[DO_HUDLAYOUT].live, "HUD defaults: Corners, Glass, Normal");
+	daisy_step(&o, DO_HUDLAYOUT, -1);
+	daisy_step(&o, DO_HUDSIZE, +1);
+	ck(o.hudlayout == 3 && o.hudsize == 2, "Layout left of Corners is Dock; Size right of Normal is Large");
+	daisy_step(&o, DO_HUD, +1);
+	ck(!(daisy_rows(&o, rows), rows[DO_HUDLOOK].live), "HUD off: its Layout / Look / Size quiet");
+	daisy_step(&o, DO_HUD, +1);
+	ck(!strcmp(rows[DO_ASPECT].value, "Integer") && !strcmp(rows[DO_FF].value, "2x") &&
+	   !strcmp(rows[DO_WILD].value, "On"), "defaults read Integer, 2x, encounters On");
+	ck(!rows[DO_AUTOZOOM].live, "Auto Zoom In is Zoom Out's: quiet otherwise");
+
+	daisy_step(&o, DO_ASPECT, -1);
+	ck(o.aspect == 2 && !strcmp((daisy_rows(&o, rows), rows[DO_ASPECT].value), "Zoom Out")
+	   && rows[DO_AUTOZOOM].live, "Aspect left of Integer is Zoom Out, and Auto Zoom In wakes");
+	for (n = 0; n < 5; n++) { daisy_step(&o, DO_ASPECT, +1); aspects++; }
+	ck(o.aspect == 2 && aspects == 5, "Aspect goes round its five");
+	daisy_step(&o, DO_ASPECT, +1);
+	daisy_step(&o, DO_ASPECT, +1);
+	ck(!o.aspect && o.scaling == 1, "Integer, then Fit");
+	daisy_step(&o, DO_FF, -1);
+	ck(o.ff == 0 && !strcmp((daisy_rows(&o, rows), rows[DO_FF].value), "Max"), "left of 2x is Max");
+
+	f = fopen(path, "w");
+	fputs("screen=0\nff=4\ntabs=31\nhudhide=2\n", f);
+	fclose(f);
+	o.rewind = o.wildoff = true;
+	ck(daisy_save(path, &o), "saved");
+	f = fopen(path, "r");
+	while (f && fgets(line, sizeof line, f)) {
+		if (!strcmp(line, "tabs=31\n") || !strcmp(line, "hudhide=2\n") || !strcmp(line, "screen=0\n")) tabs++;
+		ck(strcmp(line, "ff=4\n") != 0, "the old ff line replaced, not kept");
+	}
+	if (f) fclose(f);
+	ck(tabs == 3, "the companion's own lines kept");
+	daisy_load(path, &back);
+	ck(!memcmp(&back, &o, sizeof o), "reads back as saved");
+	remove(path);
+}
+
 int main(void)
 {
 	off_state();
@@ -1206,6 +1273,7 @@ int main(void)
 	ingame_rows();
 	native_rows();
 	audio_row();
+	daisy_options();
 	if (fails) { printf("\n%d menu check(s) failed\n", fails); return 1; }
 	printf("\nok: menus contain what they should\n");
 	return 0;

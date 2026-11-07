@@ -64,6 +64,16 @@ const char *const plat_child_env[] = {
 };
 /* SDL2 and FFmpeg are Debian's, in the system paths. */
 const char plat_child_libpath[] = "";
+/* SDL numbers A (BTN_SOUTH here) b0, B b1, X b2, Y b3, measured for
+ * plat_pico8_pad. Not yet tried on a device. */
+const char *const plat_daisy_env[] = {
+	"SDL_GAMECONTROLLERCONFIG=19000000010000000100000000010000,gpio-keys-gamepad,"
+	"a:b1,b:b0,x:b3,y:b2,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,"
+	"righttrigger:b7,back:b8,start:b9,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,"
+	"platform:Linux,",
+	NULL
+};
+const char *plat_daisy_fn_keys(void) { return NULL; }
 /* Neither, as on the GKD: Debian's SDL has sensors, PipeWire quiets PICO-8
  * (child_quiet) and follows the output, and Debian's wget is GNU, with TLS. */
 const char *const plat_pico8_preload = NULL;

@@ -159,6 +159,32 @@ game nothing. X clears a row; Reset to Default puts them back. Two-button
 consoles have two rows. Directions, START and SELECT never move, and the
 menus and hotkeys always read the real buttons.
 
+**Play With** (game info, X on a GBA game's card) runs that game in
+[PokeDaisy](https://github.com/lidor30/pokedaisy) instead of plorpOS's own
+emulator: mGBA with a companion that reads the retail English Gen 3 Pokemon
+games as you play - party, bag, map, battle matchups, Pokedex and a guide. A again puts it back on plorpOS. Each game keeps
+its own choice, and launching it from the shelf, Favorites or the game
+switcher all follow it. Both play the same save, Saves/Game Boy Advance/<game>.srm,
+so a game can move between them; an in-game save made in PokeDaisy retires
+plorpOS's autosave for that game, so it next starts from that save rather than
+from where plorpOS left it. In PokeDaisy, **X** opens the companion, **Y** its
+quick menu (PC, Fly, Repel and Bike in English FireRed, LeafGreen and Emerald), and **START + SELECT**
+its own menu (save states, fast-forward); **MENU** is plorpOS's Continue,
+Options, Hotkeys, Reset and Quit, and power sleeps as in any game. **Options** sets
+PokeDaisy's Aspect (Integer, Fit, Stretch, or Expand and Zoom Out, which draw
+the map past the GBA's edges in the games PokeDaisy knows), Auto Zoom In,
+fast-forward speed (2x to 10x, or Max: as fast as the device keeps a smooth
+picture) and sound (off, or sped up), Run Indoors, Wild Encounters and its
+HUD; they take effect on Continue, and the
+companion's own Settings (X, then the gear) shows the same values plus its
+tab bar and HUD parts. **Hotkeys** there is the GBA shelf's Hotkeys screen
+- the same bindings as any GBA game - with the four PokeDaisy takes:
+Fast-Forward and Rewind while held (the last 20 seconds, kept while Rewind has
+a hotkey), Quick Save and Quick Load into PokeDaisy's own state. Screenshot, Turbo Assign and Button
+Mapping, the right stick and the GKD's Home key don't reach PokeDaisy. Its states and settings are its own,
+in .userdata/shared/pokedaisy, along with a copy of each save before it opens
+it. No achievements there, and only .gba files (not zipped ones).
+
 The other hotkeys are in the README's [FAQ](../README.md#faq). Nintendo DS
 layouts, the stylus and Ports differ by device; each install guide has them.
 
