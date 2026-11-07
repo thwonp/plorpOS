@@ -170,6 +170,7 @@ typedef struct {
 	bool muse_books;         /* and it shows books rather than music */
 	bool muse_both;          /* and the card has both kinds */
 	bool muse_artists;       /* and its Display is Artist List */
+	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
 	const char *ssid;        /* the network's name when connected, else NULL */

@@ -5412,6 +5412,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_artists = u.muse && g_muse_artists;
+		u.muse_list = u.muse_artists && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
