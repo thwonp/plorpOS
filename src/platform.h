@@ -458,6 +458,10 @@ gesture plat_run_menu_why(void);
  * on the top of the range, so they live here rather than beside the ladder
  * table that only the settings code can see. */
 #define PLAT_VOL_MAX     20   /* 21 positions, 0..20 */
+/* The highest level a headset or DAC arrives at, on every port: a new one
+ * wakes at its own stored or full level, and IEMs on a DAC at 100% is hearing
+ * damage (plorpos-3yv.68, plorpos-7wu.1). The user raises it from there. */
+#define PLAT_OUT_CAP 6
 #define PLAT_BRIGHT_MAX  11   /* a 12-rung geometric ladder, 0..11 */
 
 /* Levels come from the settings database: seeded from the shipped defaults on

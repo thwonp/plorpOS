@@ -2617,6 +2617,19 @@ static void bt_volume_follow(const char *out, bool fresh)
 	}
 	if (level < 0) { level = plat_volume_get(); count = PLAT_VOL_MAX + 1; }
 	if (level < 0 || count < 2) return;
+	/* A new DAC or headset arrives no louder than PLAT_OUT_CAP, before its first
+	 * volume is sent. The level is one for every output here, so the cap lowers
+	 * it - the speaker comes back at it too. Where it goes: Diatom in a game. */
+	if (fresh && level > PLAT_OUT_CAP) {
+		if (g_game_ticking)
+			plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
+			                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+		else
+			plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
+		        out, PLAT_OUT_CAP, level);
+		level = PLAT_OUT_CAP;
+	}
 	v = (level * 127 + (count - 1) / 2) / (count - 1);
 	/* And again for a different headset at the same level: with two connected
 	 * the sound can move between them, and a link handle is no help there - it
