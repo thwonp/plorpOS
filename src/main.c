@@ -346,6 +346,7 @@ static muse_exit muse_tracks(app *a, int album, bool now);
  * which live down with the shelf code. */
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
+static int  muse_artist_filter(void);
 static int  shelf_letter_jump(sysview *v, int dir);
 /* Whether a shelf is Muse's; sorting needs to know, well before Muse's code.
  * And sorting puts Muse's shelf in order by its own. */
@@ -943,6 +944,23 @@ static bool g_muse_books;
  * makes the Favorites shelf. The view is this session's; it ends by itself
  * when its last album is unmarked, or when the kind shown has none. */
 static bool g_muse_favs;
+
+/* Display (plorpos-mn1). DESIGN: Muse's menu gets a Display row, Coverflow
+ * (the default, the path that was always here) or Artist List, kept in the
+ * device settings as "muse.display" like Show. Artist List is a list screen
+ * (muse_artist_pick) over the library's own artist index, in the scan's
+ * order, one row per artist of the kind shown with its album count; A on one
+ * sets g_muse_artist, a filter muse_order_view applies to the same shelf, so
+ * the albums are the existing coverflow with its menu, Sort By, Y marks and
+ * letter jump - no second renderer. B in that coverflow goes back to the
+ * list, B on the list leaves Muse as everywhere. The list is built once when
+ * it opens and drawn by menu_draw, which paints the visible rows only. Books
+ * work the same (authors); the Favorites view filters inside one artist.
+ * Show clears the filter. The filter survives a Rescan by artist name. */
+static bool g_muse_artists;           /* Display is Artist List */
+static int g_muse_artist = -1;        /* the artist whose albums are shown, or -1 */
+static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
+static char g_muse_artist_name[128];
 static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
 #define MUSE_FAV_HOLD_MS 500u
 
@@ -1818,6 +1836,7 @@ static void free_view_textures(sysview *v)
 static void muse_show(sysview *v, bool books)
 {
 	g_muse_books = books;
+	g_muse_artist = -1;
 	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
 	free_view_textures(v);
 	muse_order_view(v);
@@ -5376,6 +5395,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
+		u.muse_artists = u.muse && g_muse_artists;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -7960,7 +7980,7 @@ static int menu_shelf_width(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		bool muse = is_muse(&a->sys.systems[i]);
 		bool own  = muse || a->view[i].owner;
-		int  srow = own ? 1 : SM_SORT, show = -1;
+		int  srow = own ? 1 : SM_SORT, show = -1, disp = -1;
 
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
@@ -7971,6 +7991,14 @@ static int menu_shelf_width(app *a)
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
 				if (ids[k] == SMM_SHOW) show = k;
+				if (ids[k] == SMM_DISPLAY) disp = k;
+			}
+			if (disp >= 0) {
+				int mw;
+
+				rows[disp].value = "Artist List";
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
 			}
 			/* The longer of Show's two values, so turning it over does not
 			 * change the menu's width under the cursor. */
@@ -8600,6 +8628,15 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				/* Two values, so left, right and A all turn it over. */
 				if (d || key == IN_ACCEPT)
 					muse_show(&a->view[a->sys_cursor], !muse_books_shown());
+				return MENU_STAY;
+			} else if (id == SMM_DISPLAY) {
+				/* Two values, so left, right and A all turn it over. The
+				 * shelf under the menu follows when it closes
+				 * (muse_display_sync). */
+				if (d || key == IN_ACCEPT) {
+					g_muse_artists = !g_muse_artists;
+					db_set_str(db_dev(), "muse.display", g_muse_artists ? "artists" : "coverflow");
+				}
 				return MENU_STAY;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
@@ -10873,6 +10910,189 @@ static void muse_fav_hold(sysview *v)
 	muse_refilter(v, al);
 }
 
+/* ---- Muse: Display, Artist List (plorpos-mn1; design at g_muse_artists) ------ */
+
+/* The artist the shelf is filtered to, or -1. A Rescan renumbers the library,
+ * so an index from an older one is found again by name, and given up when the
+ * artist is gone. */
+static int muse_artist_filter(void)
+{
+	int i;
+
+	if (g_muse_artist < 0) return -1;
+	if (g_muse_artist_gen != g_muse_gen) {
+		g_muse_artist_gen = g_muse_gen;
+		for (i = 0; i < g_muse.nartists; i++)
+			if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == muse_books_shown() &&
+			    !strcmp(g_muse.artists[i].name, g_muse_artist_name)) break;
+		g_muse_artist = i < g_muse.nartists ? i : -1;
+	}
+	return g_muse_artist < g_muse.nartists ? g_muse_artist : -1;
+}
+
+/* The shelf onto one artist's albums (`ar`), or onto all of them (-1), on
+ * `album` when it is there. */
+static void muse_set_filter(sysview *v, int ar, int album)
+{
+	int k;
+
+	g_muse_artist = ar;
+	g_muse_artist_gen = g_muse_gen;
+	if (ar >= 0) snprintf(g_muse_artist_name, sizeof g_muse_artist_name, "%s",
+	                      g_muse.artists[ar].name);
+	free_view_textures(v);
+	muse_order_view(v);
+	k = album >= 0 ? muse_card_of(v, album) : -1;
+	v->cursor = k > 0 ? k : 0;
+	cf_reset(&v->cf, v->cursor);
+	ui_redraw_now();
+}
+
+enum { MP_LEAVE = -1, MP_FLAT = -2 };
+
+/* The initial an artist is listed under, for the jump. */
+static int muse_initial(int ar)
+{
+	unsigned char c = (unsigned char)g_muse.artists[ar].name[0];
+
+	return isalpha(c) ? toupper(c) : '#';
+}
+
+/* The artist list: one row per artist of the kind shown, with how many albums
+ * it has. A picks one (its index), B and SELECT leave Muse (MP_LEAVE), and
+ * MENU is Muse's menu, which may turn Display back to Coverflow (MP_FLAT).
+ * `start` is the artist to stand on, or -1. Built once, and again after a
+ * Rescan; a frame draws only the rows in view and only when something moved. */
+static int muse_artist_pick(app *a, int start)
+{
+	int *ix = NULL, n = 0, sel = 0, ret = MP_LEAVE, i;
+	menu_row *rows = NULL;
+	char (*vals)[12] = NULL;
+	bool build = true, books = muse_books_shown();
+	ui_pace pace = {0};
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		if (build) {
+			int cnt = 0;
+
+			free(ix); free(rows); free(vals);
+			books = muse_books_shown();
+			for (i = 0; i < g_muse.nartists; i++)
+				if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
+			ix = calloc((size_t)cnt + 1, sizeof *ix);
+			rows = calloc((size_t)cnt + 1, sizeof *rows);
+			vals = calloc((size_t)cnt + 1, sizeof *vals);
+			if (!ix || !rows || !vals) break;
+			for (i = 0, n = 0; i < g_muse.nartists; i++) {
+				if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
+				ix[n] = i;
+				snprintf(vals[n], sizeof vals[n], "%d", g_muse.artists[i].n);
+				rows[n] = (menu_row){ g_muse.artists[i].name, vals[n], true };
+				if (i == start) sel = n;
+				n++;
+			}
+			if (n == 0) { rows[0] = (menu_row){ "Nothing here", "", false }; }
+			if (sel >= n) sel = n ? n - 1 : 0;
+			build = false;
+			ui_redraw_now();
+		}
+		muse_screen_poll();
+		if (cover_answers()) ui_redraw_now();
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); break; }
+		}
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+
+		if (n > 0) {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
+			if (in_repeat(&a->in, IN_L1))   sel = ((sel - 8) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1))   sel = (sel + 8) % n;
+			if (in_repeat(&a->in, IN_RIGHT)) {
+				int c0 = muse_initial(ix[sel]);
+
+				for (i = 1; i < n; i++)
+					if (muse_initial(ix[(sel + i) % n]) != c0) { sel = (sel + i) % n; break; }
+			}
+			if (in_repeat(&a->in, IN_LEFT)) {
+				/* The top of this initial, else the top of the one before. */
+				int s = sel;
+
+				while (s > 0 && muse_initial(ix[s - 1]) == muse_initial(ix[sel])) s--;
+				if (s == sel) {
+					sel = sel > 0 ? sel - 1 : n - 1;
+					while (sel > 0 && muse_initial(ix[sel - 1]) == muse_initial(ix[sel])) sel--;
+				} else sel = s;
+			}
+		}
+		vol_keys(&a->in);
+		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
+		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		if (a->in.pressed[IN_ACCEPT] && n > 0) { ret = ix[sel]; break; }
+		if (a->in.pressed[IN_MENU]) {
+			muse_exit how;
+
+			start = n > 0 ? ix[sel] : -1;
+			how = muse_menu(a);
+			if (how == MUSE_CLOSE) break;
+			if (!muse_shelf_refind(a)) break;
+			if (!g_muse_artists) { ret = MP_FLAT; break; }
+			if (how == MUSE_REBUILT || books != muse_books_shown()) { build = true; sel = 0; }
+			ui_redraw_now();
+			continue;
+		}
+
+		/* Nothing but the cursor changes what is drawn. */
+		if (!screen_draw_due(a, &pace, (unsigned)sel + 1u)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		muse_backdrop(a);
+		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
+		          menu_std_width(a), MUSE_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	free(ix); free(rows); free(vals);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	return ret;
+}
+
+/* The artist list, then the shelf onto what it chose. False when Muse is to
+ * close. `*v` is found again, a menu inside the list may have rescanned. */
+static bool muse_to_picker(app *a, sysview **v, int start, int album)
+{
+	int ar = muse_artist_pick(a, start);
+	sysview *nv;
+
+	if (ar == MP_LEAVE || want_quit || !a->running || g_muse_gone || g_muse_sw) return false;
+	if (!(nv = muse_shelf_refind(a))) return false;
+	*v = nv;
+	muse_set_filter(nv, ar >= 0 ? ar : -1, album);
+	return true;
+}
+
+/* After the menu (or anything that rebuilds the library): the shelf is to be
+ * what Display says - the artist list when it is on and no artist is chosen,
+ * all albums when it is off. False when Muse is to close. */
+static bool muse_display_sync(app *a, sysview **v)
+{
+	if (g_muse_artists && muse_artist_filter() < 0) {
+		muse_set_filter(*v, -1, -1);
+		return muse_to_picker(a, v, -1, -1);
+	}
+	if (!g_muse_artists && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
+	return true;
+}
+
 /* MUSE'S SHELF, OPENED ON TOP OF WHATEVER WAS ON SCREEN. Eric's, 2026-09-20.
  *
  * SELECT used to open a list of artists, because this shelf belongs to the
@@ -10918,7 +11138,17 @@ static void muse_shelf_screen(app *a, bool now)
 
 		if (k >= 0) { v->cursor = k; cf_reset(&v->cf, k); }
 	}
-	if (now && playing >= 0) {
+	/* Display: Artist List. Opened on the playing album's artist when music
+	 * is on, whose coverflow B then returns to; otherwise the list first. */
+	g_muse_artist = -1;
+	if (g_muse_artists) {
+		int pa = playing >= 0 && g_muse.albums[playing].book == muse_books_shown()
+		         ? muse_artist_of(playing) : -1;
+
+		if (now && pa >= 0) muse_set_filter(v, pa, playing);
+		else if (!muse_to_picker(a, &v, pa, playing)) done = true;
+	}
+	if (!done && now && playing >= 0) {
 		muse_exit how = muse_tracks(a, playing, true);
 
 		if (how == MUSE_CLOSE || g_muse_gone) done = true;
@@ -10926,6 +11156,7 @@ static void muse_shelf_screen(app *a, bool now)
 			sysview *nv = muse_shelf_refind(a);
 
 			if (nv) v = nv; else done = true;
+			if (!done && !muse_display_sync(a, &v)) done = true;
 		}
 	}
 
@@ -10949,6 +11180,14 @@ static void muse_shelf_screen(app *a, bool now)
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
 		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_BACK] && g_muse_artists && muse_artist_filter() >= 0) {
+			/* One level up: the artist list, standing on this artist. */
+			int ar = muse_artist_filter();
+
+			muse_set_filter(v, -1, -1);
+			if (!muse_to_picker(a, &v, ar, -1)) break;
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 
 		if (n > 0) {
@@ -10990,6 +11229,7 @@ static void muse_shelf_screen(app *a, bool now)
 
 				if (!nv) break;
 				v = nv;
+				if (!muse_display_sync(a, &v)) break;
 			}
 		} else if (a->in.pressed[IN_MENU]) {
 			/* Muse's own menu. Sort By reorders this shelf and Rescan
@@ -10999,6 +11239,7 @@ static void muse_shelf_screen(app *a, bool now)
 			if (muse_menu(a) == MUSE_CLOSE) break;
 			if (!(nv = muse_shelf_refind(a))) break;
 			v = nv;
+			if (!muse_display_sync(a, &v)) break;
 		}
 
 		ft1 = g_ft ? ft_us() : 0;
@@ -11011,6 +11252,12 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 	}
 
+	/* The shelf goes back to all of its albums for whatever shows it next. */
+	if (muse_artist_filter() >= 0 && muse_shelf_refind(a)) {
+		v = &a->view[a->sys_cursor];
+		muse_set_filter(v, -1, -1);
+	}
+	g_muse_artist = -1;
 	evict_far(v, TEX_KEEP_FAR);
 	a->screen = prev_screen;
 	a->sys_cursor = prev_sys;
@@ -14500,6 +14747,19 @@ static void muse_order_view(sysview *v)
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
 	                               g_year, v->album);
+	{
+		int ar = muse_artist_filter();
+
+		if (ar >= 0) {
+			const ml_artist *r = &g_muse.artists[ar];
+			int kept = 0;
+
+			for (k = 0; k < v->list.count; k++)
+				if (v->album[k] >= r->first && v->album[k] < r->first + r->n)
+					v->album[kept++] = v->album[k];
+			v->list.count = kept;
+		}
+	}
 	if (g_muse_favs) {
 		int kept = 0;
 		char dir[LIB_PATH];
@@ -14905,6 +15165,8 @@ static void build_muse_shelf(app *a, bool bg)
 
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
 		g_muse_books = !strcmp(show, "books");
+		db_get_str(db_dev(), "muse.display", show, sizeof show, "coverflow");
+		g_muse_artists = !strcmp(show, "artists");
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;

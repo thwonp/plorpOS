@@ -270,7 +270,7 @@ otherwise a shelf of album covers, the way a console's opens onto its games -
 in all three layouts, with the other axis jumping from one initial to the
 next. A on an
 album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
-Sort By, Album Art (below), and Rescan Folder for music copied on while the
+Sort By, Album Art (below), Display, and Rescan Folder for music copied on while the
 device was running.
 
 **Show** switches the shelf between music and audiobooks, and is there only
@@ -281,6 +281,13 @@ SELECT with a book playing lands on the books, on that book.
 album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
+
+**Display** is `Coverflow`, the shelf of albums, or `Artist List`, a list of
+the artists (the authors, on books) with how many albums each has: up and down
+step, left and right jump by initial, L1 and R1 go eight at a time, and A opens
+that artist's albums as the same coverflow, with the same menu. B goes back
+from the albums to the list, and from the list out of Muse. Kept across
+restarts; Show and Rescan Folder return to the list.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
