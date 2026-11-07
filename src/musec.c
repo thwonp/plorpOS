@@ -82,6 +82,7 @@ static void   (*g_on_arrive)(const char *sink);
  * the sound then sat on the speaker for good (plorpos-7wu.6). */
 static char     g_want[128];
 static int      g_retries;
+static unsigned g_pause_sent;       /* a toggle sent PAUSE at this time; the daemon has not said so yet */
 static bool     g_fell_back;        /* its last answer was the codec, not the sink asked for */
 static unsigned g_retry_at;
 
@@ -311,6 +312,7 @@ static void event(const char *line)
 		if (g_advanced && !strcmp(v, "stopped")) { g_advanced = false; return; }
 		g_advanced = false;
 		g_asked = false;
+		g_pause_sent = 0;
 		g_now.state = !strcmp(v, "playing") ? MU_PLAYING
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
 		if (g_now.state == MU_PLAYING) {
@@ -733,9 +735,20 @@ void musec_pause(void)
 
 void musec_toggle(void)
 {
-	if (g_now.state == MU_PLAYING) sendf("PAUSE");
-	else if (g_now.state == MU_PAUSED) {
+	/* By what the last toggle asked for until the daemon says it happened: its
+	 * state follows a PAUSE a moment late, and a second toggle in that moment
+	 * read "playing" and paused again - a pause/play chord that would not
+	 * resume (plorpos-7wu.5). A PLAY or RESUME not yet answered is playing. */
+	bool recent = g_pause_sent && (int)(plat_now_ms() - g_pause_sent) < 1500;
+	bool playing = g_asked || (g_now.state == MU_PLAYING && !recent);
+
+	if (playing) {
+		g_asked = false;
+		g_pause_sent = plat_now_ms() | 1;
+		sendf("PAUSE");
+	} else if (g_now.state == MU_PAUSED || recent) {
 		g_asked = true;
+		g_pause_sent = 0;
 		if (g_before_heard) g_before_heard();   /* see play_current */
 		sendf("RESUME");
 	}
