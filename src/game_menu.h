@@ -134,8 +134,9 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b);
 
 /* Native PICO-8's menu (plorpos-gkd.50.16). The game is another process,
  * frozen under it, so only what can be done to a process from outside: no
- * states, and no Display - its flags are read once, at startup. */
-typedef enum { GMN_CONTINUE, GMN_RESET, GMN_SPLORE, GMN_QUIT, GMN_ROWS } gmn_row;
+ * states, and Display is saved for the next start: its flags are read once, at
+ * startup (plorpos-zoq). */
+typedef enum { GMN_CONTINUE, GMN_DISPLAY, GMN_RESET, GMN_SPLORE, GMN_QUIT, GMN_ROWS } gmn_row;
 
 /* Splore ends the cart and opens Splore (plorpos-gkd.50.21); greyed in
  * Splore itself, where Reset is the same thing. */
@@ -146,6 +147,6 @@ typedef enum { GMN_CONTINUE, GMN_RESET, GMN_SPLORE, GMN_QUIT, GMN_ROWS } gmn_row
  * the question the menu was opened to ask. Returns the new count. */
 int gm_compact(menu_row *rows, int n, int *ids);
 
-int gm_native_rows(bool in_splore, menu_row *out);
+int gm_native_rows(bool in_splore, const char *display, menu_row *out);
 
 #endif
