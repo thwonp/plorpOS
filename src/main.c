@@ -337,6 +337,10 @@ static void muse_walk_poll(app *a);
  * library rebuilt under it by Rescan Folder, so every album index it held is
  * stale and the shelf has to find itself again. */
 typedef enum { MUSE_BACK, MUSE_CLOSE, MUSE_REBUILT } muse_exit;
+/* Menu held (a swipe up on the Rotate) inside Muse closes Muse and asks the
+ * shelf for the game switcher (plorpos-ovk). muse_open clears it on entry, so
+ * only a call that checks it right after - muse_open_shelf - ever acts on it. */
+static bool g_muse_sw;
 static muse_exit muse_tracks(app *a, int album, bool now);
 /* Muse's shelf borrows the games shelf's cards and its letter jump, both of
  * which live down with the shelf code. */
@@ -10437,6 +10441,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
 		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
 			if (how != MUSE_BACK) break;
@@ -10667,6 +10672,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
 		{
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
@@ -10721,6 +10727,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
 	if (g_walk_thread) {
@@ -10941,6 +10948,7 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 
 		if (n > 0) {
@@ -12627,6 +12635,13 @@ static void switcher_shelf(app *a)
 	launch(a);
 }
 
+/* Muse opened from a shelf: if Menu was held inside it, the switcher follows. */
+static void muse_open_shelf(app *a)
+{
+	muse_open(a, NULL, NULL);
+	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_shelf(a); }
+}
+
 static void respawn_resident(app *a)
 {
 	char elf[CFG_STR * 2], save[CFG_STR * 2], bios[CFG_STR * 2];
@@ -13987,7 +14002,7 @@ static void update_systems(app *a)
 	if (dir) load_ahead(a);
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
-		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open(a, NULL, NULL);
+		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a);
 		else enter_system(a);
 	}
 	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
@@ -14082,7 +14097,7 @@ static void update_games(app *a)
 	 * comes back to the card on the systems row. */
 	if (is_muse(&a->sys.systems[a->sys_cursor])) {
 		a->screen = SCREEN_SYSTEMS;
-		muse_open(a, NULL, NULL);
+		muse_open_shelf(a);
 		return;
 	}
 	/* The two axes trade roles with the shelf rather than one of them being
@@ -16215,7 +16230,7 @@ int main(int argc, char *argv[])
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
 		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open(&a, NULL, NULL); continue; }
+		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
 		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */
