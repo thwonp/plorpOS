@@ -50,6 +50,10 @@ static bool    g_advanced;          /* the next track is asked for; see event() 
 static int     g_skips;             /* consecutive tracks that would not open */
 static char    g_artist[128], g_album[128];
 static mu_now  g_now;
+/* The track just asked for has no title on show until the daemon's META says
+ * the file's own tag (plorpos-974): the file's name would flash first. If META
+ * has none, or the file never opens, this name stands in. */
+static char    g_title_wait[96];
 static bool    g_book;              /* the queue is a book: in order, always */
 static double  g_start_at;          /* where the first PLAY of a queue starts */
 static bool    g_ran_out;           /* see musec_take_ran_out */
@@ -212,9 +216,10 @@ static void play_current(void)
 	 * one the queue moved on to, from its beginning. */
 	sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
 	g_nch = 0;                     /* the new file says its own */
-	/* Until META says otherwise, the name the file has. */
+	/* No title until META: the tag, or the name the file has if it has none. */
 	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
-	              g_now.title, sizeof g_now.title);
+	              g_title_wait, sizeof g_title_wait);
+	g_now.title[0] = '\0';
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
@@ -295,6 +300,14 @@ static void adopt(const char *line, const char *state)
 	g_now.count = g_qn;
 }
 
+/* The name stands in for a title that did not come. */
+static void title_fallback(void)
+{
+	if (g_title_wait[0] && !g_now.title[0])
+		snprintf(g_now.title, sizeof g_now.title, "%s", g_title_wait);
+	g_title_wait[0] = '\0';
+}
+
 static void event(const char *line)
 {
 	char v[256];
@@ -341,6 +354,7 @@ static void event(const char *line)
 		 * every time - the rips carry an album tag and no artist one. */
 		field(line, "title", v, sizeof v);
 		if (v[0]) snprintf(g_now.title, sizeof g_now.title, "%s", v);
+		title_fallback();
 		field(line, "artist", v, sizeof v);
 		if (v[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", v);
 		field(line, "album", v, sizeof v);
@@ -436,6 +450,7 @@ static void event(const char *line)
 	} else if (!strncmp(line, "ERROR", 5)) {
 		field(line, "why", v, sizeof v);
 		fprintf(stderr, "muse: %s\n", v);
+		title_fallback();
 		/* A track that will not open is skipped rather than ending the
 		 * album - but not forever: a whole album of files that fail is a
 		 * folder problem, and walking it at a frame a track says nothing. */
