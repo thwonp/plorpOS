@@ -10,6 +10,7 @@ cover them; each file's terms are its own.
 | File | Author / origin (as stated in the file) | License (as stated in the file) |
 |---|---|---|
 | barrel-distortion.glsl | davej, 2015 | GPL v2 or later |
+| fakelottes-geom-mini.glsl | Rogalian aka cools: a hack-together of fakelottes (shadow mask, curvature) and fake-CRT-geom (smooth border, corners); libretro glsl-shaders `crt/shaders/fakelottes-geom-mini.glsl`, not from NextUI | none stated in the file; the two shaders it is built from carry their own terms (not checked here) |
 | edge1pixel.glsl | decavoid | none stated, here or upstream (glsl-shaders, slang-shaders) |
 | fast-sharpen.glsl | guest(r), 2005-2019 | GPL v2 or later |
 | lcd1x.glsl | (based on public-domain work) | GPL v2 or later |
