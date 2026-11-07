@@ -65,8 +65,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					                     u->muse_books ? "Audiobooks" : "Music", true };
 					break;
 				case SMM_SORT:
-					out[k] = (menu_row){ "Sort By", u->sort ? u->sort
-					                     : u->muse_books ? "Author" : "Artist", true };
+					/* The artist list has one order, so the row says it and
+					 * is grayed; the shelf under a chosen artist sorts. */
+					out[k] = (menu_row){ "Sort By",
+					                     u->muse_list || !u->sort
+					                     ? (u->muse_books ? "Author" : "Artist") : u->sort,
+					                     !u->muse_list };
 					break;
 				case SMM_ART:
 					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };

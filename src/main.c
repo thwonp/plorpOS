@@ -348,6 +348,11 @@ static muse_exit muse_tracks(app *a, int album, bool now);
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
+/* The order a Muse shelf shows: under one artist, Artist order is Album. */
+static ml_order muse_sort_shown(int sort)
+{
+	return sort == ML_BY_ARTIST && muse_artist_filter() >= 0 ? ML_BY_ALBUM : (ml_order)sort;
+}
 static int  shelf_letter_jump(sysview *v, int dir);
 /* Whether a shelf is Muse's; sorting needs to know, well before Muse's code.
  * And sorting puts Muse's shelf in order by its own. */
@@ -4518,6 +4523,10 @@ static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect
 	if (k == i) ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, c);
 }
 
+/* Set around a menu_draw that is to fill the screen: no margin, no border or
+ * glow, the list running edge to edge (the Muse artist list). */
+static bool g_menu_full;
+
 static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
                          int n, int sel, int fixed_w, unsigned accent,
                          const unsigned *vcolors, bool visits_all, int loop_at)
@@ -4592,7 +4601,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * up, and this menu is meant to gain rows - so the panel is capped to the
 	 * screen and the rows window around the selection when they do not all
 	 * fit. A menu that runs off the top is worse than one that scrolls. */
-	const int margin = MENU_MARGIN;
+	const int margin = g_menu_full ? 0 : MENU_MARGIN;
 	int vis = n, first = 0;
 
 	for (i = 0; i < n; i++)
@@ -4754,6 +4763,8 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	}
 	panel.x = (TORTOS_SCREEN_W - panel.w) / 2;
 	panel.y = (TORTOS_SCREEN_H - panel.h) / 2;
+	if (g_menu_full)
+		panel = (SDL_Rect){ 0, 0, TORTOS_SCREEN_W, TORTOS_SCREEN_H };
 	cx = panel.x + panel.w / 2;
 	content_x = panel.x + pad;
 	content_y = panel.y + content_off;
@@ -4768,8 +4779,13 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * color without either having been checked against the other. Unified on
 	 * this cyan on 2026-08-28, that being the direction that stays clear of the
 	 * eleven system accents; the mark's old blue sat close to Genesis. */
-	ui_glow(a->r, &panel, accent, 60, 1.5f);
-	ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	if (g_menu_full) {
+		SDL_SetRenderDrawColor(a->r, 22, 24, 32, 255);
+		SDL_RenderFillRect(a->r, &panel);
+	} else {
+		ui_glow(a->r, &panel, accent, 60, 1.5f);
+		ui_panel(a->r, &panel, MENU_RADIUS, accent);
+	}
 	ui_hit_modal(&panel);   /* the panel is what a tap can reach now */
 
 	if (heading) {
@@ -5401,8 +5417,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_artists = u.muse && g_muse_artists;
+		u.muse_list = u.muse_artists && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
-		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
+		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
 		aout_state ao = aout_now();
@@ -8784,9 +8801,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (d && sel == SM_SORT) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->sort = is_muse(&a->sys.systems[a->sys_cursor])
-			        ? (v->sort + d + ML_ORDERS) % ML_ORDERS
-			        : sort_step(v->sort, d);
+			if (!is_muse(&a->sys.systems[a->sys_cursor]))
+				v->sort = sort_step(v->sort, d);
+			else if (muse_artist_filter() >= 0)   /* Album and Year only */
+				v->sort = muse_sort_shown(v->sort) == ML_BY_ALBUM ? ML_BY_YEAR : ML_BY_ALBUM;
+			else
+				v->sort = (v->sort + d + ML_ORDERS) % ML_ORDERS;
 			shelf_resort(a, a->sys_cursor);
 			sort_save(a);
 			return MENU_STAY;
@@ -11122,8 +11142,10 @@ static int muse_artist_pick(app *a, int start)
 			continue;
 		}
 		muse_backdrop(a);
+		g_menu_full = true;
 		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
-		          menu_std_width(a), MUSE_ACCENT);
+		          TORTOS_SCREEN_W - menu_pad() * 2, MUSE_ACCENT);
+		g_menu_full = false;
 		draw_chrome(a->r);
 		plat_present(a->r);
 	}
@@ -14879,7 +14901,7 @@ static void muse_order_view(sysview *v)
 
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
-	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
+	v->list.count = ml_shelf_order(&g_muse, muse_sort_shown(v->sort), muse_books_shown(),
 	                               g_year, v->album);
 	{
 		int ar = muse_artist_filter();
