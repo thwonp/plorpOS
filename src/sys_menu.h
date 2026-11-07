@@ -45,6 +45,15 @@ typedef enum {
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
+/* A side mute switch: the Bricks only. The GKD and the H700s (the Rotate
+ * defines PLATFORM_H700 too) have none; Muse Settings' Sleep Button Lock is
+ * a plain software toggle there. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+#define SYS_HAS_MUTESW 1
+#else
+#define SYS_HAS_MUTESW 0
+#endif
+
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
@@ -53,7 +62,7 @@ typedef enum {
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
+#if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
 	ST_ROWS
@@ -61,7 +70,9 @@ typedef enum {
 
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
-typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT, US_ROWS } us_row;
+typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT,
+       US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
+       US_ROWS } us_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
@@ -110,9 +121,11 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * not there: MusicBrainz knows records. Show is there only when the card has
  * both kinds, since with one there is nothing to choose between. So the rows
  * move, and which one is where is sys_menu_muse_rows's to say. */
-typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_RESCAN,
+typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_DISPLAY, SMM_RESCAN,
                SMM_SETTINGS } sm_muse_row;
-#define SM_MUSE_ROWS 6
+#define SM_MUSE_ROWS 7
+/* Display (plorpos-mn1): Coverflow, the shelf of albums, or Artist List, a
+ * list of artists whose A opens that artist's albums as a coverflow. */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has
  * both. Returns how many. The build and the key handler both ask this, so the
@@ -156,6 +169,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	bool muse_both;          /* and the card has both kinds */
+	bool muse_artists;       /* and its Display is Artist List */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
 	const char *ssid;        /* the network's name when connected, else NULL */
@@ -174,6 +188,8 @@ typedef struct {
 	const char *font;        /* the body face's name (plorpos-8m1.3) */
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
+	bool        has_ports;   /* systems.cfg has a Ports shelf: US_PORTS is listed */
+	bool        ports_hidden; /* Ports Tile reads Hidden */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
@@ -235,7 +251,8 @@ int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
 
-/* Settings > UI Settings. Returns US_ROWS. */
+/* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
+ * shelf to hide. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif

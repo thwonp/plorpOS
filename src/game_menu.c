@@ -156,12 +156,13 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	return k;
 }
 
-int gm_native_rows(bool in_splore, menu_row *out)
+int gm_native_rows(bool in_splore, const char *display, menu_row *out)
 {
-	static const char *label[GMN_ROWS] = { "Continue", "Reset", "Splore", "Quit" };
+	static const char *label[GMN_ROWS] = { "Continue", "Display", "Reset", "Splore", "Quit" };
 	int i;
 
 	for (i = 0; i < GMN_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
+	out[GMN_DISPLAY].value = display;   /* the shelf's own Display, same names */
 	out[GMN_SPLORE].live = !in_splore;
 	return GMN_ROWS;
 }

@@ -167,6 +167,10 @@ typedef bool (*run_tick_fn)(void *ctx);
 int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
               run_menu_fn on_menu, run_tick_fn on_tick, void *ctx);
 bool plat_run_power_pressed(void);
+/* An analogue trigger's evdev event (ABS_Z, ABS_RZ) as a button: past the
+ * middle of the range fd's node reports (plorpos-wjw.6). */
+struct input_event;
+bool plat_abs_pressed(int fd, const struct input_event *ev);
 /* How long the last plat_run spent asleep (a power tap), to keep out of
  * Play Time. */
 unsigned plat_run_asleep_ms(void);
@@ -280,6 +284,11 @@ void plat_resident_audio_asked(void);
  * (see d_apply_levels), so a headset that has to follow the keys DURING a game
  * reads it here. */
 int  plat_resident_volume(int *count);
+/* What the volume keys asked of Muse during a game (Diatom's SKIP line, or
+ * plat_run's own key reads): a hold while Muse plays is next/previous track,
+ * both keys together are pause/play. Taken once by the launcher's game tick. */
+enum { MUSICKEY_NONE = 0, MUSICKEY_NEXT, MUSICKEY_PREV, MUSICKEY_TOGGLE };
+int  plat_musickey_take(void);
 /* Increments each time the launcher connects to a resident emulator. Anything
  * the launcher pushed into the last one has to be pushed into a new one. */
 unsigned plat_resident_generation(void);
@@ -299,6 +308,8 @@ const char *plat_coreopt(const char *tag, int i);
  * value (diatom's ADR-0035). plat_hotkey_set persists it and updates the
  * cache in the same call, for the settings screen that edits it live. */
 const char *plat_hotkey_map(const char *tag);
+/* The same list without the actions Diatom does not have (see platform.c). */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its
@@ -458,6 +469,10 @@ gesture plat_run_menu_why(void);
  * on the top of the range, so they live here rather than beside the ladder
  * table that only the settings code can see. */
 #define PLAT_VOL_MAX     20   /* 21 positions, 0..20 */
+/* The highest level a headset or DAC arrives at, on every port: a new one
+ * wakes at its own stored or full level, and IEMs on a DAC at 100% is hearing
+ * damage (plorpos-3yv.68, plorpos-7wu.1). The user raises it from there. */
+#define PLAT_OUT_CAP 6
 #define PLAT_BRIGHT_MAX  11   /* a 12-rung geometric ladder, 0..11 */
 
 /* Levels come from the settings database: seeded from the shipped defaults on

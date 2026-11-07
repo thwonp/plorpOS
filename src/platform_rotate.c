@@ -1230,7 +1230,7 @@ static void speaker_mute(const char *builtin, bool mute)
  * real change and back at its own stored level - the route, which wpctl
  * reads; pactl reads the node - before it can become the default. wpctl
  * takes the object id, which only pactl's long list gives by name. */
-#define OUT_CAP 6   /* the highest level a headset or DAC arrives at */
+#define OUT_CAP PLAT_OUT_CAP   /* the highest level a headset or DAC arrives at */
 
 static void sink_resync(const char *name)
 {

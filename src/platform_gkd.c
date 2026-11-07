@@ -762,10 +762,75 @@ static void btkey_write(const char *act)
 
 enum { ON_BUILTIN, ON_BT, ON_USB };   /* which sink route_eval chose last */
 
+static void pactl_run(char *const argv[])
+{
+	extern char **environ;
+	pid_t pid;
+	int st;
+
+	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+		waitpid(pid, &st, 0);
+}
+
+/* A headset or DAC is a new node too, at 1.0 until WirePlumber's restore
+ * reaches it - and it can miss, as the speaker's did (plorpos-3yv.63): IEMs on
+ * a DAC at 100% is hearing damage (plorpos-3yv.68). So each new one gets a
+ * real change and back at its own stored level - the route, which wpctl
+ * reads; pactl reads the node - before it can become the default. wpctl
+ * takes the object id, which only pactl's long list gives by name. */
+#define OUT_CAP PLAT_OUT_CAP   /* the highest level a headset or DAC arrives at */
+
+static void sink_resync(const char *name)
+{
+	char line[256], id[16] = "";
+	bool mine = false;
+	int lv = -1;
+	FILE *f = popen("pactl list sinks 2>/dev/null", "r");
+
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		char *v = line + strspn(line, " \t");
+		if (!strncmp(v, "Name: ", 6)) { v += 6; v[strcspn(v, "\n")] = '\0'; mine = !strcmp(v, name); }
+		/* Whole key: a bluez sink lists spa.object.id first. */
+		else if (mine && !strncmp(v, "object.id = \"", 13) && !id[0])
+			snprintf(id, sizeof id, "%.*s", (int)strcspn(v + 13, "\""), v + 13);
+	}
+	pclose(f);
+	if (!id[0]) { fprintf(stderr, "audio: no id for %s, not re-synced\n", name); return; }
+	snprintf(line, sizeof line, "wpctl get-volume %s 2>/dev/null", id);
+	if ((f = popen(line, "r"))) {
+		float v;
+		if (fscanf(f, "Volume: %f", &v) == 1) lv = (int)(v * VOL_MAX + 0.5f);
+		pclose(f);
+	}
+	/* Its stored level can be a loud one - the user's DAC came back at 10 -
+	 * so never above OUT_CAP on arrival (plorpos-3yv.73). The set is itself
+	 * the real change the re-sync needs. */
+	if (lv > OUT_CAP) {
+		char cap[8];
+		char *set[] = { "wpctl", "set-volume", id, cap, NULL };
+		snprintf(cap, sizeof cap, "%.2f", (float)OUT_CAP / VOL_MAX);
+		pactl_run(set);
+		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n", name, OUT_CAP, lv);
+		return;
+	}
+	{
+		char *up[] = { "wpctl", "set-volume", id, "0.01+", NULL };
+		char *dn[] = { "wpctl", "set-volume", id, "0.01-", NULL };
+		pactl_run(up);
+		pactl_run(dn);
+	}
+	fprintf(stderr, "audio: new output %s re-synced\n", name);
+}
+
+static int sink_seen = -1;          /* the newest sink serial route_eval looked at */
+
 static void route_eval(int *on)
 {
 	extern char **environ;
 	char line[256], bt[128] = "", usb[128] = "", builtin[128] = "", def[128] = "";
+	char fresh[2][128] = { "", "" };
+	int newest = sink_seen;
 	const char *want;
 	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
 	FILE *f = popen("pactl list short sinks 2>/dev/null", "r");
@@ -777,7 +842,14 @@ static void route_eval(int *on)
 	 * whatever the DAC. */
 	while (fgets(line, sizeof line, f)) {
 		char name[128];
-		if (sscanf(line, "%*s %127s", name) != 1) continue;
+		int id;
+		if (sscanf(line, "%d %127s", &id, name) != 2) continue;
+		if (id > newest) newest = id;
+		/* pactl's index is the serial: never reused, so newer = new. */
+		if (id > sink_seen && (!strncmp(name, "bluez_output.", 13) ||
+		                       !strncmp(name, "alsa_output.usb-", 16)))
+			for (int i = 0; i < 2; i++)
+				if (!fresh[i][0]) { snprintf(fresh[i], sizeof fresh[i], "%s", name); break; }
 		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
 			snprintf(bt, sizeof bt, "%s", name);
 		else if (!strncmp(name, "alsa_output.usb-", 16) && !usb[0])
@@ -786,6 +858,8 @@ static void route_eval(int *on)
 			snprintf(builtin, sizeof builtin, "%s", name);
 	}
 	pclose(f);
+	for (int i = 0; i < 2 && fresh[i][0]; i++) sink_resync(fresh[i]);
+	sink_seen = newest;
 	if ((f = popen("pactl get-default-sink 2>/dev/null", "r"))) {
 		if (fgets(def, sizeof def, f)) def[strcspn(def, "\n")] = '\0';
 		pclose(f);
@@ -827,6 +901,8 @@ static void *route_worker(void *arg)
 		int fd[2];
 		pid_t pid;
 		bool speaker = !route_speaker_only, jack = !plat_headphones_present();
+
+		sink_seen = -1;                         /* a new session: serials start again */
 
 		if (pipe(fd) < 0) { sleep(2); continue; }
 		/* Not posix_spawn: pactl ignores SIGPIPE itself, so a launcher that

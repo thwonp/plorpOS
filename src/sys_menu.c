@@ -27,6 +27,7 @@ int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
 	if (both) out[n++] = SMM_SHOW;
 	out[n++] = SMM_SORT;
 	if (!books) out[n++] = SMM_ART;
+	out[n++] = SMM_DISPLAY;
 	out[n++] = SMM_RESCAN;
 	out[n++] = SMM_SETTINGS;
 	return n;
@@ -69,6 +70,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_ART:
 					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };
+					break;
+				case SMM_DISPLAY:
+					out[k] = (menu_row){ "Display",
+					                     u->muse_artists ? "Artist List" : "Coverflow", true };
 					break;
 				case SMM_RESCAN:
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };
@@ -191,7 +196,7 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch on the H700s */
+#if SYS_HAS_MUTESW
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif
@@ -210,7 +215,9 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
 	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };
-	return US_ROWS;
+	out[US_PORTS]    = (menu_row){ "Ports Tile",
+	                               u->ports_hidden ? "Hidden" : "Visible", true };
+	return u->has_ports ? US_ROWS : US_PORTS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

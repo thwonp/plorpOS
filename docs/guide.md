@@ -34,7 +34,7 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **Right stick, stick clicks** (Brick Pro, RG34xxSP, RG35XX H) | never seen by games (the bundled cores are all digital, except DSperate's opt-in analog patches, which read the sticks), except as the Nintendo DS stylus when **Stylus Stick** picks it, but hotkeys: the left click can be a modifier, and the right stick's directions and click are triggers with a modifier or alone (no stick direction on the Nintendo DS, where R Stick Click is Stylus Tap by default). The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) under Hotkeys |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. Native PICO-8 has Continue, Display, Reset, Splore, Quit (PortMaster ports: Continue, Reset, Quit); its Display is the same per-system Display Mode (Stretch, Aspect, Integer), saved at once but read only when PICO-8 starts, so a changed value shows "Reset game to apply" until the game is reset. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) under Hotkeys |
 | **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
@@ -63,7 +63,7 @@ than any one console:
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
-| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else |
+| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else. **Ports Tile**: `Visible` or `Hidden`, whether the Ports card is on the systems row (only listed on devices that have one; hiding it does not delete anything, and Ports games in Favorites and the switcher wait for it to come back) |
 | **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Off` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what the Fast-Forward hotkey runs at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Download Achievement Sets**: every game's set onto the card at once, for playing offline; games already cached are skipped, and the panel counts the games with no achievements to earn. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
 | **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
@@ -270,7 +270,7 @@ otherwise a shelf of album covers, the way a console's opens onto its games -
 in all three layouts, with the other axis jumping from one initial to the
 next. A on an
 album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
-Sort By, Album Art (below), and Rescan Folder for music copied on while the
+Sort By, Album Art (below), Display, and Rescan Folder for music copied on while the
 device was running.
 
 **Show** switches the shelf between music and audiobooks, and is there only
@@ -281,6 +281,13 @@ SELECT with a book playing lands on the books, on that book.
 album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
+
+**Display** is `Coverflow`, the shelf of albums, or `Artist List`, a list of
+the artists (the authors, on books) with how many albums each has: up and down
+step, left and right jump by initial, L1 and R1 go eight at a time, and A opens
+that artist's albums as the same coverflow, with the same menu. B goes back
+from the albums to the list, and from the list out of Muse. Kept across
+restarts; Show and Rescan Folder return to the list.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
@@ -362,10 +369,15 @@ the same buttons keep working for 30 seconds, so a pause in the dark can be
 undone in the dark. Then the device suspends, or with Auto Off it powers
 down. NextUI pauses the music to sleep; this is plorpOS's own.
 
-For a pocket, set **Mute Switch** (System Settings) to `muse button lock`. The switch
-then no longer mutes; it works like an iPod's hold switch. While it is down
-and the music plays with the screen dark, every button and the volume keys are
-ignored. POWER and a headset's buttons still work. With the screen on, the
+For a pocket, lock the buttons. On every device that is **Sleep Button Lock** in Muse
+Settings (Off/On); while it is on and the music plays with the screen dark, the face
+and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
+Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
+Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
+Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
+then no longer mutes; it works like an iPod's hold switch, locking the same buttons
+while it is down. Muse Settings' row reads `lock switch on`, grayed out, while
+the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.
 

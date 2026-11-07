@@ -323,6 +323,7 @@ typedef struct {
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	bool in_port;               /* a PortMaster port runs: no Splore row */
+	const char *pico8_dmode;    /* the Display mode native PICO-8 was started with */
 	SDL_Renderer *r;
 } app;
 
@@ -337,11 +338,16 @@ static void muse_walk_poll(app *a);
  * library rebuilt under it by Rescan Folder, so every album index it held is
  * stale and the shelf has to find itself again. */
 typedef enum { MUSE_BACK, MUSE_CLOSE, MUSE_REBUILT } muse_exit;
+/* Menu held (a swipe up on the Rotate) inside Muse closes Muse and asks the
+ * shelf for the game switcher (plorpos-ovk). muse_open clears it on entry, so
+ * only a call that checks it right after - muse_open_shelf - ever acts on it. */
+static bool g_muse_sw;
 static muse_exit muse_tracks(app *a, int album, bool now);
 /* Muse's shelf borrows the games shelf's cards and its letter jump, both of
  * which live down with the shelf code. */
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
+static int  muse_artist_filter(void);
 static int  shelf_letter_jump(sysview *v, int dir);
 /* Whether a shelf is Muse's; sorting needs to know, well before Muse's code.
  * And sorting puts Muse's shelf in order by its own. */
@@ -603,38 +609,70 @@ static struct { int index, count; char label[24]; } g_disc;
 
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
- * that ship are listed: the Rotate's DS pair. `bare` is the core whose states
+ * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
+ * mGBA on every port's three Game Boy shelves (plorpos-oe0.22). `bare` is the core whose states
  * live in the shelf's own .tortos folder - the one that was there first -
- * whichever is the default now (plorpos-3yv.105). */
-static const struct { const char *core, *label, *alt, *alt_label, *bare; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds" },
+ * whichever is the default now (plorpos-3yv.105). `on` says which build ships
+ * the alternative. */
+enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
+	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
+	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
+	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
+	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
+	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
 static int alt_core(const system_cfg *s)
 {
 	size_t k;
-
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
-	/* Only the GKD and the Rotate ship melonDS DS: the Brick and the H700 have
-	 * DSperate alone, and a Core row would offer a core that is not there
-	 * (plorpos-reo.21.11). */
-	(void)s;
-	return -1;
+#if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+	const int here = ALT_ON_GKD_ROTATE;
+#elif defined(PLATFORM_H700)
+	const int here = ALT_ON_H700; /* DSperate is its only DS core */
+#else
+	const int here = ALT_ON_BRICK;
 #endif
+
+	/* A Core row would offer a core that is not there (plorpos-reo.21.11): only
+	 * the build that carries the alternative lists it. */
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
-		if (!strcmp(s->core, ALT_CORES[k].core)) return (int)k;
+		if (!strcmp(s->core, ALT_CORES[k].core))
+			return (ALT_CORES[k].on & here) ? (int)k : -1;
 	return -1;
 }
 
-/* The core a shelf's games launch with: its own, or the alternative it was
- * turned to. */
-static const char *shelf_core(app *a, int sys)
+/* engine.<TAG>/<file>: a per-game shelf's game turned to the alternative core. No row = the shelf's own core. */
+static void engine_game_key(char *out, size_t n, const system_cfg *s, const char *file)
+{
+	snprintf(out, n, "engine.%s/%s", s->tag, file);
+}
+
+/* The game the shelf's cursor is on, or NULL for an empty shelf. */
+static const char *cursor_file(app *a, int sys)
+{
+	const sysview *v = &a->view[sys];
+	return v->list.count ? v->list.items[v->cursor].file : NULL;
+}
+
+/* The core a game launches with: its shelf's own, or the alternative the shelf
+ * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
+static const char *shelf_core(app *a, int sys, const char *file)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
-	return k >= 0 && a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+	if (k < 0) return s->core;
+	if (ALT_CORES[k].per_game) {
+		char key[LIB_PATH + 32], name[CFG_STR];
+
+		if (!file) return s->core;
+		engine_game_key(key, sizeof key, s, file);
+		return db_get_str(db_dev(), key, name, sizeof name, NULL) && !strcmp(name, ALT_CORES[k].alt)
+		       ? ALT_CORES[k].alt : s->core;
+	}
+	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
 }
 
 /* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
@@ -647,7 +685,7 @@ static void engine_load(app *a)
 
 	for (i = 0; i < a->sys.count; i++) {
 		k = alt_core(&a->sys.systems[i]);
-		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
+		if (!is_pico8(&a->sys.systems[i]) && (k < 0 || ALT_CORES[k].per_game)) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
 		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
@@ -657,12 +695,26 @@ static void engine_load(app *a)
 
 static void engine_save(app *a, int sys)
 {
-	char key[CFG_STR + 16];
+	char key[LIB_PATH + 32];
 	int k = alt_core(&a->sys.systems[sys]);
 
 	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys)
+	db_set_str(db_dev(), key, k >= 0 ? shelf_core(a, sys, NULL)
 	                                 : a->view[sys].native ? "native" : "fake08");
+}
+
+/* Turn the game under the shelf's cursor to the other core of a per-game shelf, saved at once. */
+static void engine_game_flip(app *a, int sys)
+{
+	const system_cfg *s = &a->sys.systems[sys];
+	const char *file = cursor_file(a, sys);
+	char key[LIB_PATH + 32];
+	int k = alt_core(s);
+
+	if (k < 0 || !file) return;
+	engine_game_key(key, sizeof key, s, file);
+	if (strcmp(shelf_core(a, sys, file), ALT_CORES[k].alt)) db_set_str(db_dev(), key, ALT_CORES[k].alt);
+	else db_del(db_dev(), key);
 }
 
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
@@ -675,6 +727,8 @@ static const char *engine_label(app *a, int sys)
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
+	if (k >= 0 && ALT_CORES[k].per_game)
+		return strcmp(shelf_core(a, sys, cursor_file(a, sys)), ALT_CORES[k].alt) ? ALT_CORES[k].label : ALT_CORES[k].alt_label;
 	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
 	return NULL;
 }
@@ -830,6 +884,10 @@ static int g_cards;
 static int g_dir;
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
+/* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
+ * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
+ * read before the drop, so the setting row only exists where there is a tile. */
+static bool g_ports_hidden, g_has_ports;
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
  * the green its card is drawn in - the iPod's own, sampled from the photograph
@@ -891,6 +949,23 @@ static bool g_muse_books;
  * makes the Favorites shelf. The view is this session's; it ends by itself
  * when its last album is unmarked, or when the kind shown has none. */
 static bool g_muse_favs;
+
+/* Display (plorpos-mn1). DESIGN: Muse's menu gets a Display row, Coverflow
+ * (the default, the path that was always here) or Artist List, kept in the
+ * device settings as "muse.display" like Show. Artist List is a list screen
+ * (muse_artist_pick) over the library's own artist index, in the scan's
+ * order, one row per artist of the kind shown with its album count; A on one
+ * sets g_muse_artist, a filter muse_order_view applies to the same shelf, so
+ * the albums are the existing coverflow with its menu, Sort By, Y marks and
+ * letter jump - no second renderer. B in that coverflow goes back to the
+ * list, B on the list leaves Muse as everywhere. The list is built once when
+ * it opens and drawn by menu_draw, which paints the visible rows only. Books
+ * work the same (authors); the Favorites view filters inside one artist.
+ * Show clears the filter. The filter survives a Rescan by artist name. */
+static bool g_muse_artists;           /* Display is Artist List */
+static int g_muse_artist = -1;        /* the artist whose albums are shown, or -1 */
+static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
+static char g_muse_artist_name[128];
 static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
 #define MUSE_FAV_HOLD_MS 500u
 
@@ -1256,11 +1331,11 @@ static const char *slot_name(int slot)
  * write over it. Tied to the core, not to which one is the default, so
  * changing the default moves nobody's states. Battery saves are a raw chip
  * image either core reads, and stay shared in Saves/. */
-static const char *persist_folder(app *a, int s)
+static const char *persist_folder(app *a, int s, const char *file)
 {
 	static char buf[CFG_STR * 2 + 2];
 	const system_cfg *sc = &a->sys.systems[s];
-	const char *core = shelf_core(a, s);
+	const char *core = shelf_core(a, s, file);
 	int k = alt_core(sc);
 
 	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
@@ -1273,7 +1348,7 @@ static void preview_path(app *a, int s, const game_entry *g, char *out, size_t n
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(SLOT_AUTO));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(SLOT_AUTO));
 }
 
 /* Where Diatom writes the frame it hands over, which is NOT the Auto card's
@@ -1310,7 +1385,7 @@ static void slot_state_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.state",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
@@ -1319,7 +1394,7 @@ static void slot_preview_path(app *a, int s, const game_entry *g, int slot,
 	const char *base = strrchr(g->file, '/');
 	base = base ? base + 1 : g->file;
 	snprintf(out, n, "%s/.tortos/%s/%s.%s.bmp",
-	         P_SHARED, persist_folder(a, s), base, slot_name(slot));
+	         P_SHARED, persist_folder(a, s, g->file), base, slot_name(slot));
 }
 
 static void state_path(app *a, int s, const game_entry *g, char *out, size_t n)
@@ -1352,14 +1427,14 @@ static bool db_paths_ready(char *dev, size_t ndev, char *lib, size_t nlib,
 	return true;
 }
 
-static void persist_dir_ensure(app *a, int s)
+static void persist_dir_ensure(app *a, int s, const char *file)
 {
 	char d[LIB_PATH * 2];
 	snprintf(d, sizeof d, "%s/.tortos", P_SHARED);
 	mkdir(d, 0755);
 	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, a->sys.systems[s].folder);
 	mkdir(d, 0755);
-	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s));
+	snprintf(d, sizeof d, "%s/.tortos/%s", P_SHARED, persist_folder(a, s, file));
 	mkdir(d, 0755);
 }
 
@@ -1766,6 +1841,7 @@ static void free_view_textures(sysview *v)
 static void muse_show(sysview *v, bool books)
 {
 	g_muse_books = books;
+	g_muse_artist = -1;
 	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
 	free_view_textures(v);
 	muse_order_view(v);
@@ -2555,6 +2631,32 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
 #if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
+/* The level lowered to PLAT_OUT_CAP when it is above, where it goes: Diatom in
+ * a game. Returns the level now. */
+static int cap_level(const char *out, int level)
+{
+	if (level <= PLAT_OUT_CAP) return level;
+	if (g_game_ticking)
+		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
+		                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+	else
+		plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
+	        out, PLAT_OUT_CAP, level);
+	return PLAT_OUT_CAP;
+}
+
+/* Muse's sound landed on a DAC or headset - new, or back from the speaker it
+ * fell back to, where the level may have been raised to be heard
+ * (plorpos-7wu.6). */
+static void muse_arrived(const char *sink)
+{
+	int count = 0, level = plat_resident_volume(&count);
+
+	if (level < 0) level = plat_volume_get();
+	if (level >= 0) cap_level(sink, level);
+}
+
 static void bt_volume_follow(const char *out, bool fresh)
 {
 	static int      sent = -1;
@@ -2617,6 +2719,10 @@ static void bt_volume_follow(const char *out, bool fresh)
 	}
 	if (level < 0) { level = plat_volume_get(); count = PLAT_VOL_MAX + 1; }
 	if (level < 0 || count < 2) return;
+	/* A new DAC or headset arrives no louder than PLAT_OUT_CAP, before its first
+	 * volume is sent. The level is one for every output here, so the cap lowers
+	 * it - the speaker comes back at it too. Where it goes: Diatom in a game. */
+	if (fresh) level = cap_level(out, level);
 	v = (level * 127 + (count - 1) / 2) / (count - 1);
 	/* And again for a different headset at the same level: with two connected
 	 * the sound can move between them, and a link handle is no help there - it
@@ -2705,6 +2811,75 @@ static void aout_apply(bool force)
 	if (muse) musec_sink(out);
 	if (!on_usb) bt_volume_follow(named ? out : "", fresh);
 #endif
+}
+
+#define VOL_SKIP_HOLD_MS 500
+
+/* What the volume keys asked of Muse during a game - a hold while it plays is
+ * the next or previous track, both keys together are pause/play - carried out
+ * on the game tick, from Diatom's SKIP line or plat_run's own key reads
+ * (plorpos-7wu.3, .5). */
+static void music_keys(void)
+{
+	switch (plat_musickey_take()) {
+	case MUSICKEY_NEXT:   musec_next();   break;
+	case MUSICKEY_PREV:   musec_prev();   break;
+	case MUSICKEY_TOGGLE: musec_toggle(); break;
+	}
+}
+
+/* The volume keys: a press is one step; held, the step repeats - except while
+ * Muse plays, where a hold of VOL_SKIP_HOLD_MS is the next track (up) or the
+ * previous one (down), once per hold (plorpos-7wu.2). Both keys together are
+ * Muse's pause/play, playing or not (plorpos-7wu.5), and then neither steps,
+ * skips or repeats until both are up. The press steps at once, so volume
+ * answers at the press and not at the release; a skip or a chord takes that
+ * step back, so reaching for either leaves the level where it was. */
+static void vol_keys(in_state *st)
+{
+	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
+	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
+	static bool   moved[2];         /* the press's step changed the level */
+	static bool   armed[2];         /* Muse played at the press: a hold skips */
+	static bool   chord;            /* both went down: spent until both are up */
+	Uint32 now = SDL_GetTicks();
+	int k;
+
+	if (chord) {
+		if (!st->down[IN_VOLUP] && !st->down[IN_VOLDN]) chord = false;
+		return;
+	}
+	for (k = 0; k < 2; k++) {
+		int o = 1 - k;
+
+		if (st->pressed[key[k]] && st->down[key[o]]) {
+			if (moved[o]) plat_volume_nudge(o == 0 ? -1 : +1);
+			moved[0] = moved[1] = armed[0] = armed[1] = false;
+			chord = true;
+			musec_toggle();
+			return;
+		}
+	}
+	for (k = 0; k < 2; k++) {
+		in_button b = key[k];
+		int dir = k ? -1 : +1;
+
+		if (!st->down[b]) armed[k] = false;
+		if (st->pressed[b]) {
+			int before = plat_volume_get();
+
+			plat_volume_nudge(dir);
+			moved[k] = plat_volume_get() != before;
+			armed[k] = musec_playing();
+		} else if (!armed[k]) {
+			if (in_repeat(st, b)) plat_volume_nudge(dir);
+		} else if (st->down[b] && st->down_since[b] != skipped[k] &&
+		           now - st->down_since[b] >= VOL_SKIP_HOLD_MS) {
+			skipped[k] = st->down_since[b];
+			if (moved[k]) plat_volume_nudge(-dir);
+			if (k) musec_prev(); else musec_next();
+		}
+	}
 }
 
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
@@ -2818,6 +2993,7 @@ static void on_game_tick(void)
 	 * change is sent. */
 	muse_poll();
 	plat_resident_quiet(musec_playing());
+	music_keys();
 
 	/* Play time. Writes at most one unsynced row and usually nothing, and
 	 * never an fsync: measured on the card, an fsync is 1.56 ms median but
@@ -5224,6 +5400,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
+		u.muse_artists = u.muse && g_muse_artists;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -5238,6 +5415,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
+		u.has_ports = g_has_ports;
+		u.ports_hidden = g_ports_hidden;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
@@ -5603,8 +5782,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * impossible, arriving by the one route it could still come from: the
 		 * runner forgetting, rather than a screen forgetting. Every other loop
 		 * in this file carries these four lines by hand. */
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6239,8 +6417,7 @@ static void xfer_screen(app *a)
 		}
 		if (menu_leaving(a)) done = true;
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6480,8 +6657,7 @@ static void art_screen(app *a, const char *only, const char *one,
 					memset(&a->in, 0, sizeof a->in);
 					return;
 				}
-				if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-				if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+				vol_keys(&a->in);
 				if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 				if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6603,8 +6779,7 @@ static void art_screen(app *a, const char *only, const char *one,
 			done = true;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6789,8 +6964,7 @@ static void ra_sets_screen(app *a)
 		}
 		if (!a->running || menu_leaving(a)) break;
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7318,8 +7492,7 @@ static void bt_screen(app *a)
 			next_refresh = 0;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7583,8 +7756,7 @@ static bool stats_screen(app *a)
 			if (cursor >= top + vis) top = cursor - vis + 1;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7659,8 +7831,7 @@ static void about_screen(app *a)
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7718,8 +7889,7 @@ static void controls_screen(app *a)
 		if (in_repeat(&a->in, IN_RIGHT)) page = (ctl_page)((page + 1) % CTL_PAGES);
 		if (in_repeat(&a->in, IN_LEFT))
 			page = (ctl_page)((page + CTL_PAGES - 1) % CTL_PAGES);
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7817,7 +7987,7 @@ static int menu_shelf_width(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		bool muse = is_muse(&a->sys.systems[i]);
 		bool own  = muse || a->view[i].owner;
-		int  srow = own ? 1 : SM_SORT, show = -1;
+		int  srow = own ? 1 : SM_SORT, show = -1, disp = -1;
 
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
@@ -7828,6 +7998,14 @@ static int menu_shelf_width(app *a)
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
 				if (ids[k] == SMM_SHOW) show = k;
+				if (ids[k] == SMM_DISPLAY) disp = k;
+			}
+			if (disp >= 0) {
+				int mw;
+
+				rows[disp].value = "Artist List";
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
 			}
 			/* The longer of Show's two values, so turning it over does not
 			 * change the menu's width under the cursor. */
@@ -7968,6 +8146,41 @@ static int muse_screen_off_at(void)
 	return 1;                             /* 10s, should it be off-ladder */
 }
 
+/* The software Sleep Button Lock. The GKD keeps its own (plat_hold_switch,
+ * db "muteswitch" since gkd.34); elsewhere it is db "muse.lock", cached - the
+ * Now Playing draw asks every frame. muse_hold() is whether the buttons are
+ * locked right now, by the Brick's physical switch or by this. */
+#if !defined(PLATFORM_GKD)
+static int soft_lock = -1;
+#endif
+#if SYS_HAS_MUTESW
+static int mutesw_lock = -1;   /* the Brick's Mute Switch in muse button lock */
+
+static bool mutesw_locks(void)
+{
+	if (mutesw_lock < 0) mutesw_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
+	return mutesw_lock;
+}
+#endif
+
+static bool muse_hold_soft(void)
+{
+#if defined(PLATFORM_GKD)
+	return false;
+#else
+#if SYS_HAS_MUTESW
+	if (mutesw_locks()) return false;   /* the switch has it; the row is grayed */
+#endif
+	if (soft_lock < 0) soft_lock = db_get_int(db_dev(), "muse.lock", 0) == 1;
+	return soft_lock;
+#endif
+}
+
+static bool muse_hold(void)
+{
+	return plat_hold_switch() || muse_hold_soft();
+}
+
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
 {
@@ -7979,15 +8192,20 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	                      true };
 	rows[1] = (menu_row){ "Screen Off",
 	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
-#if defined(PLATFORM_GKD)
-	/* The GKD has no switch to hold, so this is it (gkd.34) - see
-	 * plat_hold_switch. The Brick's Mute Switch row's db key. */
-	rows[2] = (menu_row){ "Sleep Button Lock",
-	                      plat_hold_switch() ? "On" : "Off", true };
-	return 3;
-#else
-	return 2;
+	/* Sleep Button Lock (gkd.34, plorpos-uvs.2): on every device, while the
+	 * screen is off during Muse playback the face and shoulder buttons do
+	 * nothing - music_dark. Volume, its chord and hold-skip, the Rotate's
+	 * media key, POWER and a headset's keys stay live. On a Brick the
+	 * Mute Switch in muse button lock is the same thing in hardware, and
+	 * then this row is only a label. */
+#if SYS_HAS_MUTESW
+	if (mutesw_locks())
+		rows[2] = (menu_row){ "Sleep Button Lock", "lock switch on", false };
+	else
 #endif
+	rows[2] = (menu_row){ "Sleep Button Lock",
+	                      muse_hold() ? "On" : "Off", true };
+	return 3;
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -8009,15 +8227,24 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
 		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
 	}
-#if defined(PLATFORM_GKD)
-	/* Sleep Button Lock: a toggle, like Wake. */
+	/* Sleep Button Lock: a toggle, like Wake. Not while the Brick's Mute
+	 * Switch row has it (the row is not live then; belt and braces). */
 	if (sel == 2 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		bool lock = !plat_hold_switch();
-
-		db_set_int(db_dev(), "muteswitch", lock);
-		plat_mute_switch_lock(lock);
-	}
+#if SYS_HAS_MUTESW
+		if (mutesw_locks()) return MENU_STAY;
 #endif
+#if defined(PLATFORM_GKD)
+		{
+			bool lock = !plat_hold_switch();
+
+			db_set_int(db_dev(), "muteswitch", lock);   /* gkd.34's key */
+			plat_mute_switch_lock(lock);
+		}
+#else
+		soft_lock = !muse_hold_soft();
+		db_set_int(db_dev(), "muse.lock", soft_lock);
+#endif
+	}
 	return MENU_STAY;
 }
 
@@ -8282,11 +8509,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+#if SYS_HAS_MUTESW
 	if (sel == ST_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 
 		db_set_int(db_dev(), "muteswitch", lock);
+		mutesw_lock = lock;
 		plat_mute_switch_lock(lock);
 		return MENU_STAY;
 	}
@@ -8375,6 +8603,16 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
+	/* The Ports card, shown or dropped: the shelves are scanned again, which
+	 * is what puts it back or takes it off. A scan, so the panel says so. */
+	if (sel == US_PORTS && g_has_ports && (d || key == IN_ACCEPT)) {
+		g_ports_hidden = !g_ports_hidden;
+		db_set_int(db_dev(), "ports_hidden", g_ports_hidden ? 1 : 0);
+		wait_panel(a, "Ports Tile", "Scanning...");
+		rescan_all(a);
+		return MENU_STAY;
+	}
+
 	return MENU_STAY;
 }
 
@@ -8458,6 +8696,15 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (d || key == IN_ACCEPT)
 					muse_show(&a->view[a->sys_cursor], !muse_books_shown());
 				return MENU_STAY;
+			} else if (id == SMM_DISPLAY) {
+				/* Two values, so left, right and A all turn it over. The
+				 * shelf under the menu follows when it closes
+				 * (muse_display_sync). */
+				if (d || key == IN_ACCEPT) {
+					g_muse_artists = !g_muse_artists;
+					db_set_str(db_dev(), "muse.display", g_muse_artists ? "artists" : "coverflow");
+				}
+				return MENU_STAY;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
@@ -8490,9 +8737,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
 			sysview *v = &a->view[a->sys_cursor];
 
+			int k = alt_core(&a->sys.systems[a->sys_cursor]);
+
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
+			else if (ALT_CORES[k].per_game) engine_game_flip(a, a->sys_cursor);
 			else v->alt = !v->alt;
-			engine_save(a, a->sys_cursor);
+			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
 			/* Each core keeps its own states, and a card with no art shows
 			 * its game's Auto preview: the other core's, until the cards are
 			 * read again (seq 139). */
@@ -10295,6 +10545,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
 		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
 			if (how != MUSE_BACK) break;
@@ -10316,8 +10567,7 @@ static muse_exit muse_now_screen(app *a)
 		if (in_repeat(&a->in, IN_R1))       musec_next();
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10349,7 +10599,7 @@ static muse_exit muse_now_screen(app *a)
 		memcpy(shown.album, mn->album, sizeof shown.album);
 		shown.tex = g_np.tex;
 		shown.mode = musec_is_book() ? -1 : (int)musec_mode();
-		shown.lock = plat_hold_switch();
+		shown.lock = muse_hold();
 		shown.chapter = musec_chapter_now();
 		shown.speed = (int)(musec_speed() * 100 + 0.5);
 		for (b = 0; b < IN_COUNT && !touched; b++)
@@ -10501,8 +10751,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10527,6 +10776,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
 		{
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
@@ -10581,6 +10831,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
 	if (g_walk_thread) {
@@ -10726,6 +10977,189 @@ static void muse_fav_hold(sysview *v)
 	muse_refilter(v, al);
 }
 
+/* ---- Muse: Display, Artist List (plorpos-mn1; design at g_muse_artists) ------ */
+
+/* The artist the shelf is filtered to, or -1. A Rescan renumbers the library,
+ * so an index from an older one is found again by name, and given up when the
+ * artist is gone. */
+static int muse_artist_filter(void)
+{
+	int i;
+
+	if (g_muse_artist < 0) return -1;
+	if (g_muse_artist_gen != g_muse_gen) {
+		g_muse_artist_gen = g_muse_gen;
+		for (i = 0; i < g_muse.nartists; i++)
+			if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == muse_books_shown() &&
+			    !strcmp(g_muse.artists[i].name, g_muse_artist_name)) break;
+		g_muse_artist = i < g_muse.nartists ? i : -1;
+	}
+	return g_muse_artist < g_muse.nartists ? g_muse_artist : -1;
+}
+
+/* The shelf onto one artist's albums (`ar`), or onto all of them (-1), on
+ * `album` when it is there. */
+static void muse_set_filter(sysview *v, int ar, int album)
+{
+	int k;
+
+	g_muse_artist = ar;
+	g_muse_artist_gen = g_muse_gen;
+	if (ar >= 0) snprintf(g_muse_artist_name, sizeof g_muse_artist_name, "%s",
+	                      g_muse.artists[ar].name);
+	free_view_textures(v);
+	muse_order_view(v);
+	k = album >= 0 ? muse_card_of(v, album) : -1;
+	v->cursor = k > 0 ? k : 0;
+	cf_reset(&v->cf, v->cursor);
+	ui_redraw_now();
+}
+
+enum { MP_LEAVE = -1, MP_FLAT = -2 };
+
+/* The initial an artist is listed under, for the jump. */
+static int muse_initial(int ar)
+{
+	unsigned char c = (unsigned char)g_muse.artists[ar].name[0];
+
+	return isalpha(c) ? toupper(c) : '#';
+}
+
+/* The artist list: one row per artist of the kind shown, with how many albums
+ * it has. A picks one (its index), B and SELECT leave Muse (MP_LEAVE), and
+ * MENU is Muse's menu, which may turn Display back to Coverflow (MP_FLAT).
+ * `start` is the artist to stand on, or -1. Built once, and again after a
+ * Rescan; a frame draws only the rows in view and only when something moved. */
+static int muse_artist_pick(app *a, int start)
+{
+	int *ix = NULL, n = 0, sel = 0, ret = MP_LEAVE, i;
+	menu_row *rows = NULL;
+	char (*vals)[12] = NULL;
+	bool build = true, books = muse_books_shown();
+	ui_pace pace = {0};
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		if (build) {
+			int cnt = 0;
+
+			free(ix); free(rows); free(vals);
+			books = muse_books_shown();
+			for (i = 0; i < g_muse.nartists; i++)
+				if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
+			ix = calloc((size_t)cnt + 1, sizeof *ix);
+			rows = calloc((size_t)cnt + 1, sizeof *rows);
+			vals = calloc((size_t)cnt + 1, sizeof *vals);
+			if (!ix || !rows || !vals) break;
+			for (i = 0, n = 0; i < g_muse.nartists; i++) {
+				if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
+				ix[n] = i;
+				snprintf(vals[n], sizeof vals[n], "%d", g_muse.artists[i].n);
+				rows[n] = (menu_row){ g_muse.artists[i].name, vals[n], true };
+				if (i == start) sel = n;
+				n++;
+			}
+			if (n == 0) { rows[0] = (menu_row){ "Nothing here", "", false }; }
+			if (sel >= n) sel = n ? n - 1 : 0;
+			build = false;
+			ui_redraw_now();
+		}
+		muse_screen_poll();
+		if (cover_answers()) ui_redraw_now();
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); break; }
+		}
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+
+		if (n > 0) {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
+			if (in_repeat(&a->in, IN_L1))   sel = ((sel - 8) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1))   sel = (sel + 8) % n;
+			if (in_repeat(&a->in, IN_RIGHT)) {
+				int c0 = muse_initial(ix[sel]);
+
+				for (i = 1; i < n; i++)
+					if (muse_initial(ix[(sel + i) % n]) != c0) { sel = (sel + i) % n; break; }
+			}
+			if (in_repeat(&a->in, IN_LEFT)) {
+				/* The top of this initial, else the top of the one before. */
+				int s = sel;
+
+				while (s > 0 && muse_initial(ix[s - 1]) == muse_initial(ix[sel])) s--;
+				if (s == sel) {
+					sel = sel > 0 ? sel - 1 : n - 1;
+					while (sel > 0 && muse_initial(ix[sel - 1]) == muse_initial(ix[sel])) sel--;
+				} else sel = s;
+			}
+		}
+		vol_keys(&a->in);
+		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
+		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		if (a->in.pressed[IN_ACCEPT] && n > 0) { ret = ix[sel]; break; }
+		if (a->in.pressed[IN_MENU]) {
+			muse_exit how;
+
+			start = n > 0 ? ix[sel] : -1;
+			how = muse_menu(a);
+			if (how == MUSE_CLOSE) break;
+			if (!muse_shelf_refind(a)) break;
+			if (!g_muse_artists) { ret = MP_FLAT; break; }
+			if (how == MUSE_REBUILT || books != muse_books_shown()) { build = true; sel = 0; }
+			ui_redraw_now();
+			continue;
+		}
+
+		/* Nothing but the cursor changes what is drawn. */
+		if (!screen_draw_due(a, &pace, (unsigned)sel + 1u)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		muse_backdrop(a);
+		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
+		          menu_std_width(a), MUSE_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	free(ix); free(rows); free(vals);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	return ret;
+}
+
+/* The artist list, then the shelf onto what it chose. False when Muse is to
+ * close. `*v` is found again, a menu inside the list may have rescanned. */
+static bool muse_to_picker(app *a, sysview **v, int start, int album)
+{
+	int ar = muse_artist_pick(a, start);
+	sysview *nv;
+
+	if (ar == MP_LEAVE || want_quit || !a->running || g_muse_gone || g_muse_sw) return false;
+	if (!(nv = muse_shelf_refind(a))) return false;
+	*v = nv;
+	muse_set_filter(nv, ar >= 0 ? ar : -1, album);
+	return true;
+}
+
+/* After the menu (or anything that rebuilds the library): the shelf is to be
+ * what Display says - the artist list when it is on and no artist is chosen,
+ * all albums when it is off. False when Muse is to close. */
+static bool muse_display_sync(app *a, sysview **v)
+{
+	if (g_muse_artists && muse_artist_filter() < 0) {
+		muse_set_filter(*v, -1, -1);
+		return muse_to_picker(a, v, -1, -1);
+	}
+	if (!g_muse_artists && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
+	return true;
+}
+
 /* MUSE'S SHELF, OPENED ON TOP OF WHATEVER WAS ON SCREEN. Eric's, 2026-09-20.
  *
  * SELECT used to open a list of artists, because this shelf belongs to the
@@ -10771,7 +11205,17 @@ static void muse_shelf_screen(app *a, bool now)
 
 		if (k >= 0) { v->cursor = k; cf_reset(&v->cf, k); }
 	}
-	if (now && playing >= 0) {
+	/* Display: Artist List. Opened on the playing album's artist when music
+	 * is on, whose coverflow B then returns to; otherwise the list first. */
+	g_muse_artist = -1;
+	if (g_muse_artists) {
+		int pa = playing >= 0 && g_muse.albums[playing].book == muse_books_shown()
+		         ? muse_artist_of(playing) : -1;
+
+		if (now && pa >= 0) muse_set_filter(v, pa, playing);
+		else if (!muse_to_picker(a, &v, pa, playing)) done = true;
+	}
+	if (!done && now && playing >= 0) {
 		muse_exit how = muse_tracks(a, playing, true);
 
 		if (how == MUSE_CLOSE || g_muse_gone) done = true;
@@ -10779,6 +11223,7 @@ static void muse_shelf_screen(app *a, bool now)
 			sysview *nv = muse_shelf_refind(a);
 
 			if (nv) v = nv; else done = true;
+			if (!done && !muse_display_sync(a, &v)) done = true;
 		}
 	}
 
@@ -10801,6 +11246,15 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_BACK] && g_muse_artists && muse_artist_filter() >= 0) {
+			/* One level up: the artist list, standing on this artist. */
+			int ar = muse_artist_filter();
+
+			muse_set_filter(v, -1, -1);
+			if (!muse_to_picker(a, &v, ar, -1)) break;
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 
 		if (n > 0) {
@@ -10812,8 +11266,7 @@ static void muse_shelf_screen(app *a, bool now)
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
 			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
 		}
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10843,6 +11296,7 @@ static void muse_shelf_screen(app *a, bool now)
 
 				if (!nv) break;
 				v = nv;
+				if (!muse_display_sync(a, &v)) break;
 			}
 		} else if (a->in.pressed[IN_MENU]) {
 			/* Muse's own menu. Sort By reorders this shelf and Rescan
@@ -10852,6 +11306,7 @@ static void muse_shelf_screen(app *a, bool now)
 			if (muse_menu(a) == MUSE_CLOSE) break;
 			if (!(nv = muse_shelf_refind(a))) break;
 			v = nv;
+			if (!muse_display_sync(a, &v)) break;
 		}
 
 		ft1 = g_ft ? ft_us() : 0;
@@ -10864,6 +11319,12 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 	}
 
+	/* The shelf goes back to all of its albums for whatever shows it next. */
+	if (muse_artist_filter() >= 0 && muse_shelf_refind(a)) {
+		v = &a->view[a->sys_cursor];
+		muse_set_filter(v, -1, -1);
+	}
+	g_muse_artist = -1;
 	evict_far(v, TEX_KEEP_FAR);
 	a->screen = prev_screen;
 	a->sys_cursor = prev_sys;
@@ -11043,8 +11504,7 @@ static void album_art_screen(app *a)
 			}
 		}
 		if (menu_leaving(a)) done = true;
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -11415,12 +11875,12 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
 	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
-	 * Blow Into Mic on every device (plorpos-6ei.3): the last five action rows.
+	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
-	enum { R_SWAP = HK_ROW_COUNT - 5, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW };
+	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
 		bool shown = i < R_SWAP;
 		if (is_nds_tag(tag) && !shown) {
@@ -11480,8 +11940,12 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + NROWS - 1) % NROWS;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % NROWS;
+			if (in_repeat(&a->in, IN_UP)) {
+				sel = (sel + NROWS - 1) % NROWS;
+			}
+			if (in_repeat(&a->in, IN_DOWN)) {
+				sel = (sel + 1) % NROWS;
+			}
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, tag);
@@ -11505,8 +11969,13 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			 * mid-session (reached from the in-game menu), so the change
 			 * should take hold without the player having to quit and
 			 * relaunch to see it. */
-			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-			                   spec, legacy_wire);
+			{
+				char wire[256];
+
+				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
+				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
+				                   wire, legacy_wire);
+			}
 			changed = false;
 		}
 
@@ -11892,13 +12361,18 @@ static dark_end music_dark(app *a, unsigned *waited)
 			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
 			break;
 		}
-		/* The switch as an iPod's hold (TortOS-ib9): read every tick, so
-		 * flipping it here takes effect at once. Presses made while it is
-		 * down are dropped, not saved for later. POWER, above, and headset
-		 * keys, in musec_poll, stay live. */
-		if (plat_hold_switch()) { SDL_Delay(50); continue; }
-		if (in_repeat(&a->in, IN_VOLUP)) plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN)) plat_volume_nudge(-1);
+		/* Volume, its Vol+Vol- chord (pause/play) and the hold-skip stay
+		 * live under the lock (plorpos-uvs.2): they run first, so the lock
+		 * below never swallows them. */
+		vol_keys(&a->in);
+		music_keys();
+		/* The lock as an iPod's hold (TortOS-ib9; the Brick's switch, or
+		 * Muse Settings' Sleep Button Lock everywhere): face and shoulder
+		 * buttons, and the Rotate's touch panel (its gestures arrive as
+		 * those buttons), are dropped, not saved for later. Read every
+		 * tick, so flipping the switch here takes effect at once. POWER,
+		 * above, and headset and media keys, in musec_poll, stay live. */
+		if (muse_hold()) { SDL_Delay(50); continue; }
 		for (b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] && b != IN_POWER &&
 			    b != IN_VOLUP && b != IN_VOLDN) break;
@@ -12481,6 +12955,13 @@ static void switcher_shelf(app *a)
 	launch(a);
 }
 
+/* Muse opened from a shelf: if Menu was held inside it, the switcher follows. */
+static void muse_open_shelf(app *a)
+{
+	muse_open(a, NULL, NULL);
+	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_shelf(a); }
+}
+
 static void respawn_resident(app *a)
 {
 	char elf[CFG_STR * 2], save[CFG_STR * 2], bios[CFG_STR * 2];
@@ -12526,8 +13007,30 @@ typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
-	bool       port;       /* a PortMaster port: no Splore row at all */
+	app       *a;
+	bool       port;       /* a PortMaster port: no Splore or Display row */
+	int        ids[GMN_ROWS];   /* a drawn row, read back as the gmn_row it shows */
 } nm_ctx;
+
+/* The display flag pair native PICO-8 is started with, for a Display mode:
+ * Stretch a draw_rect over the whole output, Integer pixel_perfect, Aspect
+ * pixel_perfect off (PICO-8's own fit, its default). They sit in two fixed
+ * slots of run_pico8's argv, which plat_run starts again on a Reset: so a
+ * changed mode is written here and the Reset applies it (plorpos-zoq). */
+static char **g_p8_flags;
+static int    g_p8_ow, g_p8_oh;
+static char   g_p8_rect[32];
+
+static void p8_flags(char **f, const char *dmode)
+{
+	if (!strcmp(dmode, "stretch") && g_p8_ow > 0 && g_p8_oh > 0) {
+		snprintf(g_p8_rect, sizeof g_p8_rect, "0,0,%d,%d", g_p8_ow, g_p8_oh);
+		f[0] = (char *)"-draw_rect"; f[1] = g_p8_rect;
+	} else {
+		f[0] = (char *)"-pixel_perfect";
+		f[1] = (char *)(!strcmp(dmode, "integer") ? "1" : "0");
+	}
+}
 
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
@@ -12541,12 +13044,29 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
-	if (c->port) {
-		gm_native_rows(true, rows);
-		rows[GMN_SPLORE] = rows[GMN_QUIT];
-		return GMN_ROWS - 1;
+	if (c->port) {         /* Continue, Reset, Quit */
+		menu_row all[GMN_ROWS];
+		int n = 0, i;
+
+		gm_native_rows(true, NULL, all);
+		for (i = 0; i < GMN_ROWS; i++)
+			if (i != GMN_DISPLAY && i != GMN_SPLORE) {
+				rows[n] = all[i];
+				c->ids[n++] = i;
+			}
+		return n;
 	}
-	return gm_native_rows(c->in_splore, rows);
+	{
+		sysview *v = owner_view(c->a);
+
+		for (int i = 0; i < GMN_ROWS; i++) c->ids[i] = i;
+		/* Flags are read at PICO-8's start, so a change waits for a Reset:
+		 * said in the heading's place for as long as it differs from the
+		 * run's own (plorpos-zoq). */
+		if (strcmp(DMODES[v->dmode].name, c->a->pico8_dmode))
+			*heading = "Reset game to apply";
+		return gm_native_rows(c->in_splore, DMODES[v->dmode].label, rows);
+	}
 }
 
 /* Black: no picture of the game behind it - grim takes 260 ms, and the menu
@@ -12574,8 +13094,16 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
+	sel = c->ids[sel];
+	if (sel == GMN_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
+		sysview *v = owner_view(a);
+
+		v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode,
+		                      key == IN_RIGHT ? 1 : -1);
+		display_save(a);
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
 	a->to_splore = sel == GMN_SPLORE;
@@ -12587,8 +13115,8 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 	menu_style st = { 0 };
+	nm_ctx c = { .choice = RUN_CONTINUE, .in_splore = a->pico8_splore, .a = a, .port = a->in_port };
 
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
@@ -12629,6 +13157,14 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+	if (c.choice == RUN_RESET && g_p8_flags && !a->pico8_splore) {
+		const char *now = DMODES[owner_view(a)->dmode].name;
+
+		if (strcmp(now, a->pico8_dmode)) {   /* the Reset starts it as chosen */
+			p8_flags(g_p8_flags, now);
+			a->pico8_dmode = now;
+		}
+	}
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	plat_input_quit();
@@ -12651,6 +13187,7 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+	music_keys();
 	recent_flush();                  /* as on_game_tick */
 #if !defined(PLAT_PIPEWIRE)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
@@ -13068,7 +13605,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
                      const char *rom, bool splore, const char *dmode)
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
-	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
+	char preload[CFG_STR * 2 + 16], path[1024];
 #if defined(PLATFORM_H700)
 	char *argv[19];   /* 19 at most: env, preload, PATH, pad, AUDIODEV, the binary, 12 flags, NULL */
 #else
@@ -13152,16 +13689,14 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	argv[n++] = (char *)"-desktop";   argv[n++] = desk;
 	argv[n++] = (char *)"-joystick";  argv[n++] = (char *)"0";
 	flags = n;
-	if (!strcmp(dmode, "stretch") &&
-	    SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0 && ow > 0 && oh > 0) {
-		snprintf(rect, sizeof rect, "0,0,%d,%d", ow, oh);
-		argv[n++] = (char *)"-draw_rect"; argv[n++] = rect;
-	} else if (!strcmp(dmode, "integer")) {
-		argv[n++] = (char *)"-pixel_perfect"; argv[n++] = (char *)"1";
-	}
-	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
-	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
+	g_p8_ow = g_p8_oh = 0;
+	if (SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0) { g_p8_ow = ow; g_p8_oh = oh; }
+	g_p8_flags = &argv[n];
+	p8_flags(g_p8_flags, dmode);
+	n += 2;   /* two slots, always: a Reset rewrites them (plorpos-zoq) */
+	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode, argv[flags], argv[flags + 1]);
 	a->pico8_splore = splore;
+	a->pico8_dmode = dmode;
 	a->to_splore = false;
 #if !defined(PLAT_PIPEWIRE)
 	plat_child_audio_reset();
@@ -13259,7 +13794,7 @@ static void launch_one(app *a)
 
 	if (v->list.count == 0) return;
 
-	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o));
+	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o, v->list.items[v->cursor].file));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
 	/* Captured once, beside the path it goes into: play time is keyed on the
 	 * launch path the same way favorites are, and reading the cursor again
@@ -13359,7 +13894,7 @@ static void launch_one(app *a)
 	/* The scratch, not the Auto card - see pause_preview_path. The card is
 	 * written from this only when the game actually ends, below. */
 	pause_preview_path(pv, sizeof pv);
-	persist_dir_ensure(a, o);
+	persist_dir_ensure(a, o, v->list.items[v->cursor].file);
 	t_b = plat_now_ms();
 
 	/* Achievements, if this game has any. Most of a library does not, and that
@@ -13840,7 +14375,7 @@ static void update_systems(app *a)
 	if (dir) load_ahead(a);
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
-		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open(a, NULL, NULL);
+		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a);
 		else enter_system(a);
 	}
 	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
@@ -13935,7 +14470,7 @@ static void update_games(app *a)
 	 * comes back to the card on the systems row. */
 	if (is_muse(&a->sys.systems[a->sys_cursor])) {
 		a->screen = SCREEN_SYSTEMS;
-		muse_open(a, NULL, NULL);
+		muse_open_shelf(a);
 		return;
 	}
 	/* The two axes trade roles with the shelf rather than one of them being
@@ -14023,7 +14558,15 @@ static void hide_empty_systems(app *a)
 {
 	int i, n = 0;
 
+	g_has_ports = false;
+	for (i = 0; i < a->sys.count; i++)
+		if (is_ports(&a->sys.systems[i])) g_has_ports = true;
+
 	for (i = 0; i < a->sys.count; i++) {
+		/* Ports Tile: Hidden. Dropped like an empty shelf, so the cursor,
+		 * the jump and the coverflow never see it. Its favorites and recents
+		 * stay in their files and come back when it is Visible again. */
+		if (g_ports_hidden && is_ports(&a->sys.systems[i])) continue;
 		if (a->view[i].list.count <= 0) continue;
 		if (n != i) {
 			a->sys.systems[n] = a->sys.systems[i];
@@ -14338,6 +14881,19 @@ static void muse_order_view(sysview *v)
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
 	                               g_year, v->album);
+	{
+		int ar = muse_artist_filter();
+
+		if (ar >= 0) {
+			const ml_artist *r = &g_muse.artists[ar];
+			int kept = 0;
+
+			for (k = 0; k < v->list.count; k++)
+				if (v->album[k] >= r->first && v->album[k] < r->first + r->n)
+					v->album[kept++] = v->album[k];
+			v->list.count = kept;
+		}
+	}
 	if (g_muse_favs) {
 		int kept = 0;
 		char dir[LIB_PATH];
@@ -14743,6 +15299,8 @@ static void build_muse_shelf(app *a, bool bg)
 
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
 		g_muse_books = !strcmp(show, "books");
+		db_get_str(db_dev(), "muse.display", show, sizeof show, "coverflow");
+		g_muse_artists = !strcmp(show, "artists");
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
@@ -15050,7 +15608,7 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
-	np_draw(a, &mn, next, plat_hold_switch());
+	np_draw(a, &mn, next, muse_hold());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not
@@ -15694,6 +16252,7 @@ int main(int argc, char *argv[])
 
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
+		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
 		order_systems(&a);
 	}
 
@@ -15736,6 +16295,9 @@ int main(int argc, char *argv[])
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			musec_on_before_heard(aout_before_muse);
+#if !defined(PLAT_PIPEWIRE)
+			musec_on_arrive(muse_arrived);
+#endif
 		}
 		/* The play mode the player left it in. */
 		{
@@ -16054,8 +16616,7 @@ int main(int argc, char *argv[])
 			if (pa == PWR_POWEROFF) { power_off(&a); break; }
 		}
 
-		if (in_repeat(&a.in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a.in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a.in);
 		if (in_repeat(&a.in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a.in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -16066,7 +16627,7 @@ int main(int argc, char *argv[])
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
 		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open(&a, NULL, NULL); continue; }
+		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
 		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */

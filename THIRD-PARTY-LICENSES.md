@@ -71,6 +71,16 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
+## PokeDaisy (`pokedaisy_libretro.so`, `vendor/cores-brick/`)
+
+A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
+https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
+https://github.com/thwonp/pokedaisy-plorp (its `libretro/` core, plus our commits,
+GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
+commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
+
+---
+
 ## Runtime libraries
 
 None are redistributed. Measured 2026-08-26, the cores need only
@@ -184,6 +194,7 @@ states none:
 | sharp-shimmerless.glsl, sharp-shimmerless-grid.glsl | zadpos | public domain |
 | stock.glsl | libretro's pass-through (common-shaders `stock.cg`) | none stated; a pass-through with no expression in it |
 | PT_SkyWalker541.glsl | SkyWalker541, v1.8.0 (github.com/SkyWalker541/PT-SkyWalker541; not from NextUI) | MIT, full text below |
+| fakelottes-geom-mini.glsl | Rogalian aka cools (glsl-shaders `crt/shaders/fakelottes-geom-mini.glsl`), a hack-together of fakelottes and fake-CRT-geom | **No license stated in the file** (see below) |
 | edge1pixel.glsl | decavoid (glsl-shaders `pixel-art-scaling/shaders/edge1pixel.glsl`) | **No license could be found** (see below) |
 
 **edge1pixel.glsl: no license could be found.** Neither the file nor libretro's
@@ -191,6 +202,8 @@ glsl-shaders or slang-shaders repositories, where it is published, state terms
 for it (checked 2026-10-03). It is shipped as published there, unmodified and
 credited to its author, decavoid, as libretro distributes it. It is not covered
 by this project's MIT license. If the author objects, it will be removed.
+
+**fakelottes-geom-mini.glsl: no license is stated in the file.** Its header says it is a hack-together of fakelottes and fake-CRT-geom, two other libretro shaders whose own terms were not checked for this entry. It is shipped as published in libretro's glsl-shaders (2026-11-07), unmodified and credited to its author, and is not covered by this project's MIT license. If the author objects, it will be removed.
 
 GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
 the list itself, is this project's (MIT).

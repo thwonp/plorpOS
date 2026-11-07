@@ -252,11 +252,20 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
 	   "Battery Percentage defaults to off");
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
+	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
+	u.has_ports = true;
+	n = sys_menu_ui_build(&u, rows, &heading);
+	ck(n == US_ROWS, "with a Ports shelf, one row more");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
+	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
+	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
+	   "Ports Tile reads Visible by default");
+	u.ports_hidden = true;
+	n = sys_menu_ui_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
 	n = sys_menu_build(&u, rows, &b, &heading);
@@ -518,7 +527,7 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == 5, "five rows with only music, not seven");
+		ck(mn == 6, "six rows with only music, not seven");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[1].label, "Sort By") && mrows[1].live &&
@@ -526,9 +535,12 @@ static void system_menu(void)
 		   "Sort By, and by artist when nothing says otherwise");
 		ck(!strcmp(mrows[2].label, "Album Art") && mrows[2].live,
 		   "covers to fetch, on a network");
-		ck(!strcmp(mrows[3].label, "Rescan Folder") && mrows[3].live,
+		ck(!strcmp(mrows[3].label, "Display") && mrows[3].live &&
+		   !strcmp(val(&mrows[3]), "Coverflow"),
+		   "Display, Coverflow when nothing says otherwise");
+		ck(!strcmp(mrows[4].label, "Rescan Folder") && mrows[4].live,
 		   "and a rescan that works");
-		ck(!strcmp(mrows[4].label, "Muse Settings") && mrows[4].live,
+		ck(!strcmp(mrows[5].label, "Muse Settings") && mrows[5].live,
 		   "and Muse's own settings");
 		m.sort = "Album";
 		m.wifi = WIFI_OFF;
@@ -536,8 +548,12 @@ static void system_menu(void)
 		ck(!strcmp(val(&mrows[1]), "Album"), "the order it is in");
 		ck(!mrows[2].live && !strcmp(val(&mrows[2]), "needs Wi-Fi"),
 		   "Album Art says why it cannot, off the network");
-		ck(mrows[1].live && mrows[3].live,
+		ck(mrows[1].live && mrows[4].live,
 		   "and neither Sort By nor Rescan Folder needs one");
+		m.muse_artists = true;
+		sys_menu_build(&m, mrows, &mb, &mhead);
+		ck(!strcmp(val(&mrows[3]), "Artist List"), "Display, on the artist list");
+		m.muse_artists = false;
 		for (k = 0; k < mn; k++) {
 			ck(strcmp(mrows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(mrows[k].label, "Display Mode") != 0, "no Display Mode");
@@ -549,7 +565,7 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;
 		m.muse_both = true;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == SM_MUSE_ROWS, "six rows with both kinds");
+		ck(mn == SM_MUSE_ROWS, "seven rows with both kinds");
 		ck(!strcmp(mrows[1].label, "Show") && mrows[1].live &&
 		   !strcmp(val(&mrows[1]), "Music"), "Show, on music");
 		ck(!strcmp(mrows[2].label, "Sort By") && !strcmp(mrows[3].label, "Album Art"),
@@ -557,7 +573,7 @@ static void system_menu(void)
 		m.muse_books = true;
 		m.game_count = 2;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 5, "five rows on books");
+		ck(mn == 6, "six rows on books");
 		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
 		   "how many books");
 		ck(!strcmp(val(&mrows[1]), "Audiobooks"), "Show, on books");
@@ -568,9 +584,9 @@ static void system_menu(void)
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, false, ids) == 4 && ids[1] == SMM_SORT &&
-			   ids[3] == SMM_SETTINGS,
-			   "books alone: the count, Sort By, Rescan Folder and Muse Settings");
+			ck(sys_menu_muse_rows(true, false, ids) == 5 && ids[1] == SMM_SORT &&
+			   ids[2] == SMM_DISPLAY && ids[4] == SMM_SETTINGS,
+			   "books alone: the count, Sort By, Display, Rescan Folder and Muse Settings");
 		}
 	}
 }
@@ -1020,20 +1036,22 @@ static void native_rows(void)
 	menu_row rows[GMN_ROWS];
 	int got[GMN_ROWS], n;
 
-	n = gm_native_rows(false, rows);
+	n = gm_native_rows(false, "Aspect", rows);
 	printf("native PICO-8 menu:\n");
-	ck(n == 4, "four rows");
+	ck(n == 5, "five rows");
 	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
+	   !strcmp(rows[GMN_DISPLAY].label, "Display") &&
 	   !strcmp(rows[GMN_RESET].label, "Reset") &&
 	   !strcmp(rows[GMN_SPLORE].label, "Splore") &&
-	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Reset, Splore, Quit");
+	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Display, Reset, Splore, Quit");
+	ck(!strcmp(rows[GMN_DISPLAY].value, "Aspect"), "Display carries the mode's label");
 	ck(reachable(rows, n, got, GMN_ROWS) == GMN_ROWS, "every row is a stop");
 
 	/* In Splore itself the row stays, greyed: Reset is the same thing. */
-	n = gm_native_rows(true, rows);
-	ck(n == 4 && !rows[GMN_SPLORE].live, "in Splore: Splore greyed, still there");
-	ck(reachable(rows, n, got, GMN_ROWS) == 3 && got[2] == GMN_QUIT,
-	   "in Splore: Continue, Reset, Quit are the stops");
+	n = gm_native_rows(true, "Aspect", rows);
+	ck(n == 5 && !rows[GMN_SPLORE].live, "in Splore: Splore greyed, still there");
+	ck(reachable(rows, n, got, GMN_ROWS) == 4 && got[3] == GMN_QUIT,
+	   "in Splore: Continue, Display, Reset, Quit are the stops");
 }
 
 /* The save slots, and the one constant that survived a rename by being written

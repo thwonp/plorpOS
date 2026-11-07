@@ -39,6 +39,10 @@
  * along, and waiting on a key repeat is the most obvious kind of slow. */
 #define REPEAT_DELAY_MS 300
 #define REPEAT_RATE_MS  90
+/* How long the music may be stopped in the dark before the suspend goes on:
+ * main.c's MUSIC_GRACE_MS, the same fixed 30 s. */
+#define MUSIC_GRACE_MS  30000u
+#define SKIP_HOLD_MS    500   /* a volume key held this long, Muse playing: a track skip */
 
 int fd_power = -1; /* axp2202-pek: KEY_POWER */
 
@@ -153,6 +157,33 @@ static void hotkeys_load(void)
 {
 	nhotkeys = 0;
 	db_each_prefix(db_lib(), "hotkey.", hotkey_row, NULL);
+}
+
+/* A hotkey list as Diatom takes it. Diatom refuses a whole list that names an action it does not have,
+ * and "hud" (the HUD Focus hotkey of PokeDaisy's own SDL host) is none of its: dropped, so the
+ * fast-forward, rewind and state hotkeys beside it still work. PokeDaisy as a core puts the HUD
+ * cursor on a core option button instead. */
+void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap)
+{
+	size_t n = 0;
+
+	if (!cap) return;
+	out[0] = '\0';
+	for (const char *p = spec ? spec : ""; *p;) {
+		const char *e = strchr(p, ','), *colon;
+		size_t len = e ? (size_t)(e - p) : strlen(p);
+
+		colon = memchr(p, ':', len);
+		if (!(colon && len - (size_t)(colon + 1 - p) == 3 && !memcmp(colon + 1, "hud", 3)) &&
+		    n + len + 2 < cap) {
+			memcpy(out + n, p, len);
+			n += len;
+			out[n++] = ',';
+			out[n] = '\0';
+		}
+		p += len + (e ? 1 : 0);
+	}
+	if (n) out[n - 1] = '\0';
 }
 
 /* The binding string for this system, or "" for one with none set - never
@@ -444,6 +475,19 @@ static void level_nudge(bool bright, int d)
 	else        plat_volume_nudge(d);
 }
 
+/* What the volume keys ask of Muse while a game runs, for the launcher's game
+ * tick to carry out - platform.c does not know Muse. Posted by plat_run's own
+ * key reads (PortMaster, native PICO-8) and by Diatom's "SKIP dir=..." line
+ * (plorpos-7wu.3, .5). One slot: the tick is ten a second. */
+static int g_musickey;
+int plat_musickey_take(void)
+{
+	int v = g_musickey;
+
+	g_musickey = MUSICKEY_NONE;
+	return v;
+}
+
 /* A level key held in native PICO-8 repeats at the shelf's pace,
  * REPEAT_DELAY_MS then REPEAT_RATE_MS (plorpos-xpt.1.1), as it does in a
  * Diatom game now. One hold at a time, keeping the kind its press had; the
@@ -451,12 +495,78 @@ static void level_nudge(bool bright, int d)
  * is dropped when the menu opens or the device sleeps - a key held into the
  * menu stepping on after Continue was why holds were taken out here before
  * (plorpos-gkd.50.26). */
-typedef struct { int fd, code, d; bool bright; unsigned next; } lv_hold;
+typedef struct { int fd, code, d; bool bright; unsigned next; bool skip; } lv_hold;
+
+/* Whether Muse plays (plat_run's tick says), and the two keys' state across
+ * the three nodes they can arrive on: down, and whether the press's own step
+ * changed the level (so a skip or a chord can take it back). [0] Vol+. */
+static bool lv_muse, lv_down[2], lv_moved[2];
+static unsigned lv_t[2];        /* when each went down */
+
+/* Asked of the kernel. The loop drops what is pending after a menu and a
+ * sleep, so a release can be lost and a key read as held for the rest of the
+ * run: every lone Vol+ was then a chord and toggled Muse (plorpos-7wu.5). */
+static bool lv_key_held(int fd, int code)
+{
+	unsigned char keys[KEY_MAX / 8 + 1];
+
+	memset(keys, 0, sizeof keys);
+	return fd >= 0 && ioctl(fd, EVIOCGKEY(sizeof keys), keys) >= 0 &&
+	       (keys[code / 8] & (1u << (code % 8)));
+}
 
 static void lv_hold_start(lv_hold *h, int fd, int code, bool bright, int d)
 {
-	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS };
+	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS, false };
 	if (!h->next) h->next = 1;
+}
+
+/* A level key went down. Volume, with the other key already down: both
+ * together are Muse's pause/play, and the first one's step is taken back.
+ * Otherwise a step - and while Muse plays, a hold of SKIP_HOLD_MS is the next
+ * (Vol+) or previous (Vol-) track instead of the repeat (plorpos-7wu.2, .5).
+ * Brightness (a modifier held) is only ever the step and its repeat. */
+static void lv_press(lv_hold *h, int fd, int code, bool bright, int d)
+{
+	int k = d > 0 ? 0 : 1;
+
+	if (!bright) {
+		unsigned now = plat_now_ms();
+
+		/* A key tracked as down for over a second that the kernel says is up
+		 * lost its release: not a chord. */
+		if (lv_down[1 - k] && now - lv_t[1 - k] > 1000 &&
+		    !lv_key_held(fd, k == 0 ? KEY_VOLUMEDOWN : KEY_VOLUMEUP))
+			lv_down[1 - k] = false;
+		lv_down[k] = true;
+		lv_t[k] = now;
+		if (lv_down[1 - k]) {
+			if (lv_moved[1 - k]) plat_volume_nudge(k == 0 ? +1 : -1);
+			lv_moved[1 - k] = lv_moved[k] = false;
+			h->next = 0;
+			g_musickey = MUSICKEY_TOGGLE;
+			return;
+		}
+	}
+	{
+		int before = bright ? 0 : plat_volume_get();
+
+		level_nudge(bright, d);
+		lv_moved[k] = !bright && plat_volume_get() != before;
+	}
+	lv_hold_start(h, fd, code, bright, d);
+	if (!bright && lv_muse) {
+		h->skip = true;
+		h->next = plat_now_ms() + SKIP_HOLD_MS;
+		if (!h->next) h->next = 1;
+	}
+}
+
+static void lv_release(lv_hold *h, int fd, int code)
+{
+	if (code == KEY_VOLUMEUP)   lv_down[0] = false;
+	if (code == KEY_VOLUMEDOWN) lv_down[1] = false;
+	if (h->fd == fd && h->code == code) h->next = 0;
 }
 
 /* Due: step again if the key is still held. True when it stepped. */
@@ -469,6 +579,14 @@ static bool lv_hold_tick(lv_hold *h)
 	if (ioctl(h->fd, EVIOCGKEY(sizeof keys), keys) < 0 ||
 	    !(keys[h->code / 8] & (1u << (h->code % 8)))) {
 		h->next = 0;
+		return false;
+	}
+	if (h->skip) {   /* held long enough: a skip, once, and the step goes back */
+		int k = h->d > 0 ? 0 : 1;
+
+		h->next = 0;
+		if (lv_moved[k]) plat_volume_nudge(-h->d);
+		g_musickey = h->d > 0 ? MUSICKEY_NEXT : MUSICKEY_PREV;
 		return false;
 	}
 	h->next = plat_now_ms() + REPEAT_RATE_MS;
@@ -589,6 +707,18 @@ static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
 
+bool plat_abs_pressed(int fd, const struct input_event *ev)
+{
+#ifdef __linux__
+	struct input_absinfo ai;
+
+	if (fd >= 0 && ioctl(fd, EVIOCGABS(ev->code), &ai) == 0 && ai.maximum > ai.minimum)
+		return ev->value > ai.minimum + (ai.maximum - ai.minimum) / 2;
+#endif
+	(void)fd;
+	return ev->value > 0;
+}
+
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
@@ -631,6 +761,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool term_killed = false;   /* its game KILLed, the script let finish */
 	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
+	bool dark = false;               /* a power tap while Muse plays: screen off, music on */
+	unsigned dark_t0 = 0, dark_stopped = 0;   /* when it began; when the music stopped, 0 playing */
+	lv_down[0] = lv_down[1] = lv_moved[0] = lv_moved[1] = lv_muse = false;
 	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
 	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
 	 * release, as pad_read and diatom have it, and only if no level key
@@ -646,21 +779,18 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		poll(pfd, 4, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
 		gesture swipe = fd_ges >= 0 ? gesture_read() : GESTURE_NONE;
-		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
+		if (on_tick && !term_at) {
+			lv_muse = on_tick(ctx);
+			child_quiet(pid, lv_muse);
+		}
 		/* The volume keys: volume, or brightness with Home held, a step per
 		 * press and, held, the shelf's repeat (lv_hold). */
 		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
 
 			if (ev.type != EV_KEY || !d) continue;
-			if (ev.value == 1) {
-				bool bright = levels_alt();
-
-				level_nudge(bright, d);
-				lv_hold_start(&hold, fd_lv, ev.code, bright, d);
-			} else if (ev.value == 0 && hold.fd == fd_lv && hold.code == ev.code) {
-				hold.next = 0;
-			}
+			if (ev.value == 1) lv_press(&hold, fd_lv, ev.code, levels_alt(), d);
+			else if (ev.value == 0) lv_release(&hold, fd_lv, ev.code);
 		}
 #if defined(PLATFORM_H700)
 		bool lid_tap = false;
@@ -678,11 +808,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				if (ev.value == 1) {
 					bool bright = levels_alt();
 
-					level_nudge(bright, d);
-					lv_hold_start(&hold, fd_power, ev.code, bright, d);
+					lv_press(&hold, fd_power, ev.code, bright, d);
 					if (bright) menu_spent = true;
-				} else if (ev.value == 0 && hold.fd == fd_power && hold.code == ev.code) {
-					hold.next = 0;
+				} else if (ev.value == 0) {
+					lv_release(&hold, fd_power, ev.code);
 				}
 			}
 #if defined(PLATFORM_H700)
@@ -697,11 +826,54 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
-			if (pa == PWR_SLEEP) {
+			if (dark) {
+				/* Music dark: a tap wakes; the music stopping for the grace
+				 * period goes on to the suspend it was holding off. The
+				 * volume keys and the tick, above, stay live throughout. */
+				unsigned now = plat_now_ms();
+
+				if (pa == PWR_SLEEP) {
+					plat_screen(true);
+					group_kill(pid, SIGCONT);
+					dark = false;
+					run_asleep_ms += now - dark_t0;
+					fprintf(stderr, "sleep: music dark %us, woke (child)\n", (now - dark_t0) / 1000);
+					pa = PWR_NONE;
+					pwr_down = false;
+				} else if (pa == PWR_NONE) {
+					if (lv_muse) dark_stopped = 0;
+					else if (!dark_stopped) dark_stopped = now ? now : 1;
+					else if (now - dark_stopped >= MUSIC_GRACE_MS) {
+						bool awake = plat_light_sleep(now - dark_stopped);
+
+						group_kill(pid, SIGCONT);
+						dark = false;
+						run_asleep_ms += plat_now_ms() - dark_t0;
+						fprintf(stderr, "sleep: music stopped, %s after %us (child)\n",
+						        awake ? "awake" : "no suspend, powering off",
+						        (plat_now_ms() - dark_t0) / 1000);
+						pwr_down = false;
+						if (!awake) pa = PWR_POWEROFF;
+					}
+				}
+			} else if (pa == PWR_SLEEP && lv_muse) {
+				/* Suspend is where the sound would stop (the DAC goes with
+				 * it): the screen off, the child frozen, Muse playing on. */
+				group_kill(pid, SIGSTOP);
+				plat_screen(false);
+				hold.next = 0;
+				lv_down[0] = lv_down[1] = false;
+				dark = true;
+				dark_t0 = plat_now_ms();
+				dark_stopped = 0;
+				pwr_down = false;
+				pa = PWR_NONE;
+			} else if (pa == PWR_SLEEP) {
 				unsigned t0 = plat_now_ms();
 				bool awake;
 
 				hold.next = 0;
+				lv_down[0] = lv_down[1] = false;   /* releases may go unseen */
 				group_kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
 				group_kill(pid, SIGCONT);
@@ -723,15 +895,25 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 
 			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
 			if (d && ev.value == 0) {
-				if (hold.fd == fd_menu && hold.code == ev.code) hold.next = 0;
+				lv_release(&hold, fd_menu, ev.code);
 				continue;
 			}
 			if (d) {
-				level_nudge(bright, d);
-				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
+				lv_press(&hold, fd_menu, ev.code, bright, d);
 				if (bright) menu_spent = true;
 				continue;
 			}
+			/* Another button with Menu held is a chord - one of the
+			 * game's own hotkeys (PokeDaisy's, plorpos-wjw.3) - so
+			 * Menu's release opens nothing. A d-pad hat or an analogue
+			 * trigger counts as a button. */
+			if (menu_held && ev.code != menu_code &&
+			    ((ev.type == EV_KEY && ev.value == 1) ||
+			     (ev.type == EV_ABS && ev.value != 0 &&
+			      (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y)) ||
+			     (ev.type == EV_ABS && (ev.code == ABS_Z || ev.code == ABS_RZ) &&
+			      plat_abs_pressed(fd_menu, &ev))))
+				menu_spent = true;
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				menu_held = true;
 				menu_spent = false;
@@ -766,6 +948,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
+		if (dark) { menu = false; swipe = GESTURE_NONE; }   /* no menu in the dark */
 		run_menu_why = menu ? GESTURE_NONE : swipe;
 		if (swipe != GESTURE_NONE) menu = true;
 		if (!term_at && !menu) lv_hold_tick(&hold);
@@ -791,6 +974,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 					;
 				if (fd_ges >= 0) gesture_read();   /* the screen's own touches */
 				pwr_down = false;
+				lv_down[0] = lv_down[1] = false;   /* drained above: releases lost */
 			}
 			if (c == RUN_CONTINUE) {
 				/* Muse may have started or stopped in the menu: said before
@@ -807,6 +991,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
 		if (g_terminating) quit = true;
 		if (quit && !term_at) {
+			if (dark) {      /* a frozen child cannot act on the TERM */
+				plat_screen(true);
+				group_kill(pid, SIGCONT);
+				dark = false;
+			}
 			group_term(pid, &ending);
 			term_at = plat_now_ms() | 1;
 			term_killed = false;
@@ -823,6 +1012,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			term_at = 0;
 		}
 	}
+	if (dark) plat_screen(true);
 	kill(-pid, SIGKILL);   /* anything of it the script left behind */
 #else
 	(void)on_menu; (void)on_tick; (void)ctx;
@@ -1235,6 +1425,20 @@ bool plat_resident_send(const plat_game *g)
 			}
 		}
 
+		/* PokeDaisy draws its own frame (the game, the companion, the HUD and the quick
+		 * menu on one canvas), so it is shown at a whole scale and its canvas is a third
+		 * of the panel: 341x256 on the Brick's 1024x768, the same pixels at 3x. The mode
+		 * is this launch's only: the shelf's own setting is not touched, and mGBA's
+		 * launch keeps it. */
+		const char *mode = g->mode ? g->mode : "";
+		if (g->core && strstr(g->core, "pokedaisy_libretro")) {
+			mode = "integer";
+			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
+			/* The core now picks its own canvas from the panel (EXPAND at the game's whole scale, ZOOM OUT one
+			 * less); the canvas above is the fallback for a panel the core does not list. */
+			dsend("SETOPT\tkey=pokedaisy_panel\tvalue=%dx%d", plat_panel_w, plat_panel_h);
+		}
+
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
 		 * (its ADR-0032), so sent first it is in force from the game's first
 		 * sample - a game started while music plays never makes a sound -
@@ -1275,7 +1479,7 @@ bool plat_resident_send(const plat_game *g)
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
 		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
-		           g->core, g->rom, tag, g->mode ? g->mode : "",
+		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
@@ -1303,7 +1507,9 @@ bool plat_resident_send(const plat_game *g)
 		}
 		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
 		d_turbo_load();
-		d_turbo_gba = tag && !strcmp(tag, "GBA");
+		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
+		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
+		d_turbo_gba = tag && !strcmp(tag, "GBA") && !(g->core && strstr(g->core, "pokedaisy_libretro"));
 		d_turbo_send();
 
 		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
@@ -1318,6 +1524,10 @@ bool plat_resident_send(const plat_game *g)
 		 * reasoning the comment above already gives). */
 		{
 			const char *hk = plat_hotkey_map(tag);
+			char kept[256];
+
+			plat_hotkeys_for_diatom(hk, kept, sizeof kept);
+			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
 			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
@@ -1887,6 +2097,9 @@ static int diatom_wait(void)
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+			else if (strncmp(l, "SKIP\t", 5) == 0)
+				g_musickey = strstr(l, "dir=toggle") ? MUSICKEY_TOGGLE :
+				             strstr(l, "dir=prev") ? MUSICKEY_PREV : MUSICKEY_NEXT;
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
@@ -2361,50 +2574,6 @@ void plat_brightness_set(int level)
 	if (disp_fd < 0) return;
 	apply_brightness(clampi(level, 0, BRIGHT_MAX));
 	levels_save();
-}
-
-/* ---- battery ---- */
-
-/* A power_supply node's gauge, which each device file points at. Percent is the
- * kernel's, so a bigger cell needs nothing here: it only means more minutes
- * per percent. */
-bool battery_read(const char *dir, int *pct, bool *charging)
-{
-	const char *fake = getenv("TORTOS_FAKE_BATT");
-	if (fake && *fake) {   /* "80", or "80c" for charging */
-		if (pct) *pct = atoi(fake);
-		if (charging) *charging = strchr(fake, 'c') != NULL;
-		return true;
-	}
-#ifdef __linux__
-	char path[128];
-	snprintf(path, sizeof path, "%s/capacity", dir);
-	FILE *f = fopen(path, "r");
-	if (!f) return false;
-	int v = -1;
-	if (fscanf(f, "%d", &v) != 1) v = -1;
-	fclose(f);
-	if (v < 0) return false;
-	if (pct) *pct = v;
-	if (charging) {
-		*charging = false;
-		snprintf(path, sizeof path, "%s/status", dir);
-		FILE *s = fopen(path, "r");
-		if (s) {
-			char st[32] = { 0 };
-			if (fgets(st, sizeof st, s) &&
-			    (strncmp(st, "Charging", 8) == 0 || strncmp(st, "Full", 4) == 0))
-				*charging = true;
-			fclose(s);
-		}
-	}
-	return true;
-#else
-	(void)dir;
-	(void)pct;
-	(void)charging;
-	return false;
-#endif
 }
 
 /* ---- Date & Time ---------------------------------------------------------- */
