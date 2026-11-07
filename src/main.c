@@ -348,6 +348,11 @@ static muse_exit muse_tracks(app *a, int album, bool now);
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
+/* The order a Muse shelf shows: under one artist, Artist order is Album. */
+static ml_order muse_sort_shown(int sort)
+{
+	return sort == ML_BY_ARTIST && muse_artist_filter() >= 0 ? ML_BY_ALBUM : (ml_order)sort;
+}
 static int  shelf_letter_jump(sysview *v, int dir);
 /* Whether a shelf is Muse's; sorting needs to know, well before Muse's code.
  * And sorting puts Muse's shelf in order by its own. */
@@ -5414,7 +5419,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.muse_artists = u.muse && g_muse_artists;
 		u.muse_list = u.muse_artists && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
-		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
+		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
 		aout_state ao = aout_now();
@@ -8796,9 +8801,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (d && sel == SM_SORT) {
 			sysview *v = &a->view[a->sys_cursor];
 
-			v->sort = is_muse(&a->sys.systems[a->sys_cursor])
-			        ? (v->sort + d + ML_ORDERS) % ML_ORDERS
-			        : sort_step(v->sort, d);
+			if (!is_muse(&a->sys.systems[a->sys_cursor]))
+				v->sort = sort_step(v->sort, d);
+			else if (muse_artist_filter() >= 0)   /* Album and Year only */
+				v->sort = muse_sort_shown(v->sort) == ML_BY_ALBUM ? ML_BY_YEAR : ML_BY_ALBUM;
+			else
+				v->sort = (v->sort + d + ML_ORDERS) % ML_ORDERS;
 			shelf_resort(a, a->sys_cursor);
 			sort_save(a);
 			return MENU_STAY;
@@ -14893,7 +14901,7 @@ static void muse_order_view(sysview *v)
 
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
-	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
+	v->list.count = ml_shelf_order(&g_muse, muse_sort_shown(v->sort), muse_books_shown(),
 	                               g_year, v->album);
 	{
 		int ar = muse_artist_filter();
