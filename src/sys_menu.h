@@ -45,6 +45,15 @@ typedef enum {
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
+/* A side mute switch: the Bricks only. The GKD and the H700s (the Rotate
+ * defines PLATFORM_H700 too) have none; Muse Settings' Sleep Button Lock is
+ * a plain software toggle there. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+#define SYS_HAS_MUTESW 1
+#else
+#define SYS_HAS_MUTESW 0
+#endif
+
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
@@ -53,7 +62,7 @@ typedef enum {
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
+#if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
 	ST_ROWS

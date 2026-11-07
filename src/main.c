@@ -8118,6 +8118,41 @@ static int muse_screen_off_at(void)
 	return 1;                             /* 10s, should it be off-ladder */
 }
 
+/* The software Sleep Button Lock. The GKD keeps its own (plat_hold_switch,
+ * db "muteswitch" since gkd.34); elsewhere it is db "muse.lock", cached - the
+ * Now Playing draw asks every frame. muse_hold() is whether the buttons are
+ * locked right now, by the Brick's physical switch or by this. */
+#if !defined(PLATFORM_GKD)
+static int soft_lock = -1;
+#endif
+#if SYS_HAS_MUTESW
+static int mutesw_lock = -1;   /* the Brick's Mute Switch in muse button lock */
+
+static bool mutesw_locks(void)
+{
+	if (mutesw_lock < 0) mutesw_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
+	return mutesw_lock;
+}
+#endif
+
+static bool muse_hold_soft(void)
+{
+#if defined(PLATFORM_GKD)
+	return false;
+#else
+#if SYS_HAS_MUTESW
+	if (mutesw_locks()) return false;   /* the switch has it; the row is grayed */
+#endif
+	if (soft_lock < 0) soft_lock = db_get_int(db_dev(), "muse.lock", 0) == 1;
+	return soft_lock;
+#endif
+}
+
+static bool muse_hold(void)
+{
+	return plat_hold_switch() || muse_hold_soft();
+}
+
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
 {
@@ -8129,15 +8164,20 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	                      true };
 	rows[1] = (menu_row){ "Screen Off",
 	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
-#if defined(PLATFORM_GKD)
-	/* The GKD has no switch to hold, so this is it (gkd.34) - see
-	 * plat_hold_switch. The Brick's Mute Switch row's db key. */
-	rows[2] = (menu_row){ "Sleep Button Lock",
-	                      plat_hold_switch() ? "On" : "Off", true };
-	return 3;
-#else
-	return 2;
+	/* Sleep Button Lock (gkd.34, plorpos-uvs.2): on every device, while the
+	 * screen is off during Muse playback the face and shoulder buttons do
+	 * nothing - music_dark. Volume, its chord and hold-skip, the Rotate's
+	 * media key, POWER and a headset's keys stay live. On a Brick the
+	 * Mute Switch in muse button lock is the same thing in hardware, and
+	 * then this row is only a label. */
+#if SYS_HAS_MUTESW
+	if (mutesw_locks())
+		rows[2] = (menu_row){ "Sleep Button Lock", "lock switch active", false };
+	else
 #endif
+	rows[2] = (menu_row){ "Sleep Button Lock",
+	                      muse_hold() ? "On" : "Off", true };
+	return 3;
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -8159,15 +8199,24 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
 		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
 	}
-#if defined(PLATFORM_GKD)
-	/* Sleep Button Lock: a toggle, like Wake. */
+	/* Sleep Button Lock: a toggle, like Wake. Not while the Brick's Mute
+	 * Switch row has it (the row is not live then; belt and braces). */
 	if (sel == 2 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		bool lock = !plat_hold_switch();
-
-		db_set_int(db_dev(), "muteswitch", lock);
-		plat_mute_switch_lock(lock);
-	}
+#if SYS_HAS_MUTESW
+		if (mutesw_locks()) return MENU_STAY;
 #endif
+#if defined(PLATFORM_GKD)
+		{
+			bool lock = !plat_hold_switch();
+
+			db_set_int(db_dev(), "muteswitch", lock);   /* gkd.34's key */
+			plat_mute_switch_lock(lock);
+		}
+#else
+		soft_lock = !muse_hold_soft();
+		db_set_int(db_dev(), "muse.lock", soft_lock);
+#endif
+	}
 	return MENU_STAY;
 }
 
@@ -8432,11 +8481,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+#if SYS_HAS_MUTESW
 	if (sel == ST_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 
 		db_set_int(db_dev(), "muteswitch", lock);
+		mutesw_lock = lock;
 		plat_mute_switch_lock(lock);
 		return MENU_STAY;
 	}
@@ -10512,7 +10562,7 @@ static muse_exit muse_now_screen(app *a)
 		memcpy(shown.album, mn->album, sizeof shown.album);
 		shown.tex = g_np.tex;
 		shown.mode = musec_is_book() ? -1 : (int)musec_mode();
-		shown.lock = plat_hold_switch();
+		shown.lock = muse_hold();
 		shown.chapter = musec_chapter_now();
 		shown.speed = (int)(musec_speed() * 100 + 0.5);
 		for (b = 0; b < IN_COUNT && !touched; b++)
@@ -12064,12 +12114,18 @@ static dark_end music_dark(app *a, unsigned *waited)
 			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
 			break;
 		}
-		/* The switch as an iPod's hold (TortOS-ib9): read every tick, so
-		 * flipping it here takes effect at once. Presses made while it is
-		 * down are dropped, not saved for later. POWER, above, and headset
-		 * keys, in musec_poll, stay live. */
-		if (plat_hold_switch()) { SDL_Delay(50); continue; }
+		/* Volume, its Vol+Vol- chord (pause/play) and the hold-skip stay
+		 * live under the lock (plorpos-uvs.2): they run first, so the lock
+		 * below never swallows them. */
 		vol_keys(&a->in);
+		music_keys();
+		/* The lock as an iPod's hold (TortOS-ib9; the Brick's switch, or
+		 * Muse Settings' Sleep Button Lock everywhere): face and shoulder
+		 * buttons, and the Rotate's touch panel (its gestures arrive as
+		 * those buttons), are dropped, not saved for later. Read every
+		 * tick, so flipping the switch here takes effect at once. POWER,
+		 * above, and headset and media keys, in musec_poll, stay live. */
+		if (muse_hold()) { SDL_Delay(50); continue; }
 		for (b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] && b != IN_POWER &&
 			    b != IN_VOLUP && b != IN_VOLDN) break;
@@ -15265,7 +15321,7 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
-	np_draw(a, &mn, next, plat_hold_switch());
+	np_draw(a, &mn, next, muse_hold());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not
