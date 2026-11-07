@@ -156,6 +156,9 @@ static const struct { const char *name, *label; } DMODES[] = {
 	{ "stretch", "Stretch" },
 	{ "aspect",  "Aspect"  },
 	{ "integer", "Integer" },
+	/* Integer Overscale: the next whole factor, a few edge pixels cropped
+	 * (diatom's integer-over). Square panels only - see dmode_step. */
+	{ "integer-over", "Integer Overscale" },
 	/* The Nintendo DS's two-screen layouts (plorpos-3yv.47), and the only
 	 * modes its shelf offers - none of the three above mean anything for a
 	 * frame that is two screens. See dmode_step. */
@@ -208,18 +211,19 @@ static void font_apply(bool head, int k)
 	ui_set_face(head, path, FONTS[k].scale);
 }
 #define DMODE_ASPECT 1
-#define DMODE_DS_A   3
+#define DMODE_DS_A   4
+#define DMODE_INTOVER 3
 /* The DS's layouts, in DMODES order of their own: the split ones where the
  * port draws a split, the cropped/composed ones on the Brick and H700, the
  * two Overlays last on both (plorpos-6ei.5). Diatom's layout_step rings
  * match. */
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
-static const int DS_RING[] = { 3, 4, 5, 10, 11 };
+static const int DS_RING[] = { 4, 5, 6, 11, 12 };
 #else
-static const int DS_RING[] = { 6, 7, 8, 9, 10, 11 };
+static const int DS_RING[] = { 7, 8, 9, 10, 11, 12 };
 #endif
 #define DS_RING_N ((int)(sizeof DS_RING / sizeof DS_RING[0]))
-_Static_assert(DMODE_COUNT == 12, "DS_RING indexes DMODES");
+_Static_assert(DMODE_COUNT == 13, "DS_RING indexes DMODES");
 
 /* A system's own set of DMODES: the DS its layouts, every other system the
  * first three. Cycling stays inside it, and a mode outside it (never set,
@@ -284,8 +288,14 @@ static int dmode_step(const char *tag, int cur, int d)
 	int i;
 
 	if (!is_nds_tag(tag)) {
+		/* Integer Overscale is the square panels' (720x720: the GKD 350H
+		 * Ultra, the Rotate); everywhere else the set is the first three,
+		 * and a card carrying it from elsewhere lands on Integer. */
+		int n = plat_screen_w == plat_screen_h ? DMODE_DS_A : DMODE_INTOVER;
+
+		if (cur == DMODE_INTOVER && n == DMODE_INTOVER) return DMODE_INTOVER - 1;
 		if (cur < 0 || cur >= DMODE_DS_A) return 0;
-		return (cur + d + DMODE_DS_A) % DMODE_DS_A;
+		return (cur + d + n) % n;
 	}
 	for (i = 0; i < DS_RING_N; i++)
 		if (DS_RING[i] == cur) return DS_RING[(i + d + DS_RING_N) % DS_RING_N];
@@ -13050,7 +13060,7 @@ static void p8_flags(char **f, const char *dmode)
 		f[0] = (char *)"-draw_rect"; f[1] = g_p8_rect;
 	} else {
 		f[0] = (char *)"-pixel_perfect";
-		f[1] = (char *)(!strcmp(dmode, "integer") ? "1" : "0");
+		f[1] = (char *)(!strncmp(dmode, "integer", 7) ? "1" : "0");
 	}
 }
 
