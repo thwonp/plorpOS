@@ -471,6 +471,19 @@ typedef struct { int fd, code, d; bool bright; unsigned next; bool skip; } lv_ho
  * the three nodes they can arrive on: down, and whether the press's own step
  * changed the level (so a skip or a chord can take it back). [0] Vol+. */
 static bool lv_muse, lv_down[2], lv_moved[2];
+static unsigned lv_t[2];        /* when each went down */
+
+/* Asked of the kernel. The loop drops what is pending after a menu and a
+ * sleep, so a release can be lost and a key read as held for the rest of the
+ * run: every lone Vol+ was then a chord and toggled Muse (plorpos-7wu.5). */
+static bool lv_key_held(int fd, int code)
+{
+	unsigned char keys[KEY_MAX / 8 + 1];
+
+	memset(keys, 0, sizeof keys);
+	return fd >= 0 && ioctl(fd, EVIOCGKEY(sizeof keys), keys) >= 0 &&
+	       (keys[code / 8] & (1u << (code % 8)));
+}
 
 static void lv_hold_start(lv_hold *h, int fd, int code, bool bright, int d)
 {
@@ -488,7 +501,15 @@ static void lv_press(lv_hold *h, int fd, int code, bool bright, int d)
 	int k = d > 0 ? 0 : 1;
 
 	if (!bright) {
+		unsigned now = plat_now_ms();
+
+		/* A key tracked as down for over a second that the kernel says is up
+		 * lost its release: not a chord. */
+		if (lv_down[1 - k] && now - lv_t[1 - k] > 1000 &&
+		    !lv_key_held(fd, k == 0 ? KEY_VOLUMEDOWN : KEY_VOLUMEUP))
+			lv_down[1 - k] = false;
 		lv_down[k] = true;
+		lv_t[k] = now;
 		if (lv_down[1 - k]) {
 			if (lv_moved[1 - k]) plat_volume_nudge(k == 0 ? +1 : -1);
 			lv_moved[1 - k] = lv_moved[k] = false;
@@ -766,6 +787,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				bool awake;
 
 				hold.next = 0;
+				lv_down[0] = lv_down[1] = false;   /* releases may go unseen */
 				group_kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
 				group_kill(pid, SIGCONT);
@@ -854,6 +876,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 					;
 				if (fd_ges >= 0) gesture_read();   /* the screen's own touches */
 				pwr_down = false;
+				lv_down[0] = lv_down[1] = false;   /* drained above: releases lost */
 			}
 			if (c == RUN_CONTINUE) {
 				/* Muse may have started or stopped in the menu: said before
