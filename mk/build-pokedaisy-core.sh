@@ -4,7 +4,8 @@
 # offered in the Core row of those three shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols): the Brick's firmware glibc is 2.33.
 # The same file runs on the H700 (BaseOS glibc 2.35), GKD (2.40) and Rotate (2.41); it is installed to
-# vendor/cores-brick only. No payload carries it yet (no systems.cfg names it): it is deployed by hand (plorpos-oe0.22).
+# vendor/cores-brick only, and every payload (mk/payload.sh, mk/rotate-deploy.sh) ships it from there as an
+# extra core: no systems.cfg names it, the Core row of the Game Boy shelves switches to it (plorpos-uvs.1).
 #
 #   mk/build-pokedaisy-core.sh     build, install to vendor/cores-brick
 #   POKEDAISY_SRC=/path ...        use that checkout (with third_party/mgba) instead of cloning the pin
