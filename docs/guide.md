@@ -362,10 +362,15 @@ the same buttons keep working for 30 seconds, so a pause in the dark can be
 undone in the dark. Then the device suspends, or with Auto Off it powers
 down. NextUI pauses the music to sleep; this is plorpOS's own.
 
-For a pocket, set **Mute Switch** (System Settings) to `muse button lock`. The switch
-then no longer mutes; it works like an iPod's hold switch. While it is down
-and the music plays with the screen dark, every button and the volume keys are
-ignored. POWER and a headset's buttons still work. With the screen on, the
+For a pocket, lock the buttons. On every device that is **Sleep Button Lock** in Muse
+Settings (Off/On); while it is on and the music plays with the screen dark, the face
+and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
+Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
+Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
+Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
+then no longer mutes; it works like an iPod's hold switch, locking the same buttons
+while it is down. Muse Settings' row reads `lock switch active`, grayed out, while
+the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.
 
