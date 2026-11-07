@@ -12765,6 +12765,26 @@ typedef struct {
 	int        ids[GMN_ROWS];   /* a drawn row, read back as the gmn_row it shows */
 } nm_ctx;
 
+/* The display flag pair native PICO-8 is started with, for a Display mode:
+ * Stretch a draw_rect over the whole output, Integer pixel_perfect, Aspect
+ * pixel_perfect off (PICO-8's own fit, its default). They sit in two fixed
+ * slots of run_pico8's argv, which plat_run starts again on a Reset: so a
+ * changed mode is written here and the Reset applies it (plorpos-zoq). */
+static char **g_p8_flags;
+static int    g_p8_ow, g_p8_oh;
+static char   g_p8_rect[32];
+
+static void p8_flags(char **f, const char *dmode)
+{
+	if (!strcmp(dmode, "stretch") && g_p8_ow > 0 && g_p8_oh > 0) {
+		snprintf(g_p8_rect, sizeof g_p8_rect, "0,0,%d,%d", g_p8_ow, g_p8_oh);
+		f[0] = (char *)"-draw_rect"; f[1] = g_p8_rect;
+	} else {
+		f[0] = (char *)"-pixel_perfect";
+		f[1] = (char *)(!strcmp(dmode, "integer") ? "1" : "0");
+	}
+}
+
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
  * 2026-10-02). */
@@ -12890,6 +12910,14 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+	if (c.choice == RUN_RESET && g_p8_flags && !a->pico8_splore) {
+		const char *now = DMODES[owner_view(a)->dmode].name;
+
+		if (strcmp(now, a->pico8_dmode)) {   /* the Reset starts it as chosen */
+			p8_flags(g_p8_flags, now);
+			a->pico8_dmode = now;
+		}
+	}
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	plat_input_quit();
@@ -13330,7 +13358,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
                      const char *rom, bool splore, const char *dmode)
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
-	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
+	char preload[CFG_STR * 2 + 16], path[1024];
 #if defined(PLATFORM_H700)
 	char *argv[19];   /* 19 at most: env, preload, PATH, pad, AUDIODEV, the binary, 12 flags, NULL */
 #else
@@ -13414,15 +13442,12 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	argv[n++] = (char *)"-desktop";   argv[n++] = desk;
 	argv[n++] = (char *)"-joystick";  argv[n++] = (char *)"0";
 	flags = n;
-	if (!strcmp(dmode, "stretch") &&
-	    SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0 && ow > 0 && oh > 0) {
-		snprintf(rect, sizeof rect, "0,0,%d,%d", ow, oh);
-		argv[n++] = (char *)"-draw_rect"; argv[n++] = rect;
-	} else if (!strcmp(dmode, "integer")) {
-		argv[n++] = (char *)"-pixel_perfect"; argv[n++] = (char *)"1";
-	}
-	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
-	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
+	g_p8_ow = g_p8_oh = 0;
+	if (SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0) { g_p8_ow = ow; g_p8_oh = oh; }
+	g_p8_flags = &argv[n];
+	p8_flags(g_p8_flags, dmode);
+	n += 2;   /* two slots, always: a Reset rewrites them (plorpos-zoq) */
+	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode, argv[flags], argv[flags + 1]);
 	a->pico8_splore = splore;
 	a->pico8_dmode = dmode;
 	a->to_splore = false;
