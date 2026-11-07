@@ -376,7 +376,7 @@ Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
-while it is down. Muse Settings' row reads `lock switch active`, grayed out, while
+while it is down. Muse Settings' row reads `lock switch on`, grayed out, while
 the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.

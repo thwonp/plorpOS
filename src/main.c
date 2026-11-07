@@ -8200,7 +8200,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	 * then this row is only a label. */
 #if SYS_HAS_MUTESW
 	if (mutesw_locks())
-		rows[2] = (menu_row){ "Sleep Button Lock", "lock switch active", false };
+		rows[2] = (menu_row){ "Sleep Button Lock", "lock switch on", false };
 	else
 #endif
 	rows[2] = (menu_row){ "Sleep Button Lock",
