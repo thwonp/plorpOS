@@ -61,7 +61,9 @@ typedef enum {
 
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
-typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT, US_ROWS } us_row;
+typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT,
+       US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
+       US_ROWS } us_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
@@ -174,6 +176,8 @@ typedef struct {
 	const char *font;        /* the body face's name (plorpos-8m1.3) */
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
+	bool        has_ports;   /* systems.cfg has a Ports shelf: US_PORTS is listed */
+	bool        ports_hidden; /* Ports Tile reads Hidden */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
@@ -235,7 +239,8 @@ int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
 
-/* Settings > UI Settings. Returns US_ROWS. */
+/* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
+ * shelf to hide. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif

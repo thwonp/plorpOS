@@ -882,6 +882,10 @@ static int g_cards;
 static int g_dir;
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
+/* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
+ * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
+ * read before the drop, so the setting row only exists where there is a tile. */
+static bool g_ports_hidden, g_has_ports;
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
  * the green its card is drawn in - the iPod's own, sampled from the photograph
@@ -5390,6 +5394,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
+		u.has_ports = g_has_ports;
+		u.ports_hidden = g_ports_hidden;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
@@ -8515,6 +8521,16 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		db_set_str(db_dev(), "sys_order", SYS_ORDERS[g_order].id);
 		order_systems(a);
 		refresh_favorites_shelf(a);
+		return MENU_STAY;
+	}
+
+	/* The Ports card, shown or dropped: the shelves are scanned again, which
+	 * is what puts it back or takes it off. A scan, so the panel says so. */
+	if (sel == US_PORTS && g_has_ports && (d || key == IN_ACCEPT)) {
+		g_ports_hidden = !g_ports_hidden;
+		db_set_int(db_dev(), "ports_hidden", g_ports_hidden ? 1 : 0);
+		wait_panel(a, "Ports Tile", "Scanning...");
+		rescan_all(a);
 		return MENU_STAY;
 	}
 
@@ -14185,7 +14201,15 @@ static void hide_empty_systems(app *a)
 {
 	int i, n = 0;
 
+	g_has_ports = false;
+	for (i = 0; i < a->sys.count; i++)
+		if (is_ports(&a->sys.systems[i])) g_has_ports = true;
+
 	for (i = 0; i < a->sys.count; i++) {
+		/* Ports Tile: Hidden. Dropped like an empty shelf, so the cursor,
+		 * the jump and the coverflow never see it. Its favorites and recents
+		 * stay in their files and come back when it is Visible again. */
+		if (g_ports_hidden && is_ports(&a->sys.systems[i])) continue;
 		if (a->view[i].list.count <= 0) continue;
 		if (n != i) {
 			a->sys.systems[n] = a->sys.systems[i];
@@ -15856,6 +15880,7 @@ int main(int argc, char *argv[])
 
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
+		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
 		order_systems(&a);
 	}
 
