@@ -210,7 +210,9 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
 	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };
-	return US_ROWS;
+	out[US_PORTS]    = (menu_row){ "Ports Tile",
+	                               u->ports_hidden ? "Hidden" : "Visible", true };
+	return u->has_ports ? US_ROWS : US_PORTS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

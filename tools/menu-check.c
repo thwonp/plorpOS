@@ -252,11 +252,20 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
 	   "Battery Percentage defaults to off");
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
+	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
+	u.has_ports = true;
+	n = sys_menu_ui_build(&u, rows, &heading);
+	ck(n == US_ROWS, "with a Ports shelf, one row more");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
+	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
+	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
+	   "Ports Tile reads Visible by default");
+	u.ports_hidden = true;
+	n = sys_menu_ui_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
 	n = sys_menu_build(&u, rows, &b, &heading);
