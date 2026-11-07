@@ -2868,6 +2868,13 @@ static void on_game_tick(void)
 	 * change is sent. */
 	muse_poll();
 	plat_resident_quiet(musec_playing());
+	/* A volume key held in the game while Muse plays (plorpos-7wu.3). */
+	{
+		int skip = plat_resident_skip_take();
+
+		if (skip > 0) musec_next();
+		else if (skip < 0) musec_prev();
+	}
 
 	/* Play time. Writes at most one unsynced row and usually nothing, and
 	 * never an fsync: measured on the card, an fsync is 1.56 ms median but

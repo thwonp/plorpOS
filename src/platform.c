@@ -1438,6 +1438,17 @@ static void d_note_audio(const char *l)
 	d_audio_known = true;
 }
 
+/* A volume key held in a game while Muse plays: Diatom's "SKIP dir=next|prev"
+ * (plorpos-7wu.3), taken once by the launcher's game tick. */
+static int d_skip;
+int plat_resident_skip_take(void)
+{
+	int v = d_skip;
+
+	d_skip = 0;
+	return v;
+}
+
 int plat_resident_volume(int *count)
 {
 	if (count) *count = d_pend_vol_n;
@@ -1887,6 +1898,7 @@ static int diatom_wait(void)
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+			else if (strncmp(l, "SKIP\t", 5) == 0) d_skip = strstr(l, "dir=prev") ? -1 : +1;
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
