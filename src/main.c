@@ -288,10 +288,12 @@ static int dmode_step(const char *tag, int cur, int d)
 	int i;
 
 	if (!is_nds_tag(tag)) {
-		/* Integer Overscale is the square panels' (720x720: the GKD 350H
-		 * Ultra, the Rotate); everywhere else the set is the first three,
+		/* Integer Overscale is the square-ish panels' (the Rotate's 720x720,
+		 * the GKD 350H Ultra's 1600x1440; within 15%); everywhere else the set is the first three,
 		 * and a card carrying it from elsewhere lands on Integer. */
-		int n = plat_screen_w == plat_screen_h ? DMODE_DS_A : DMODE_INTOVER;
+		bool near_sq = plat_screen_w * 100 <= plat_screen_h * 115
+		            && plat_screen_h * 100 <= plat_screen_w * 115;
+		int n = near_sq ? DMODE_DS_A : DMODE_INTOVER;
 
 		if (cur == DMODE_INTOVER && n == DMODE_INTOVER) return DMODE_INTOVER - 1;
 		if (cur < 0 || cur >= DMODE_DS_A) return 0;
