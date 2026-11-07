@@ -71,16 +71,13 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
-## PokeDaisy (`vendor/pokedaisy/`, shipped as `TortOS/pokedaisy/`)
+## PokeDaisy (`pokedaisy_libretro.so`, `vendor/cores-brick/`)
 
-A separate program the launcher runs for GBA games set to Play With PokeDaisy,
-never linked into it: the Linux host of PokeDaisy, https://github.com/lidor30/pokedaisy,
-by Lidor Itzhari, **GPL-3.0**, as our fork https://github.com/thwonp/pokedaisy-plorp
-(upstream tag v1.3.3, commit 52f9597, plus our commits, GPL-3.0 like the code
-they change) with mGBA (MPL-2.0) at the commit it pins, fetched from the fork's
-release by `mk/build-pokedaisy.sh`. The folder carries its LICENSE, NOTICE, the notices
-of mGBA, blip_buf (LGPL-2.1) and inih (BSD) and its font (Pixel Operator, CC0),
-and SOURCE.txt, which says where that exact source is.
+A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
+https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
+https://github.com/thwonp/pokedaisy-plorp (its `libretro/` core, plus our commits,
+GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
+commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
 
 ---
 

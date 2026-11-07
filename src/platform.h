@@ -209,15 +209,6 @@ bool plat_resident_ready_wait(void);
 void plat_child_audio(const char *dev, const char *link);
 void plat_child_audio_reset(void);
 #endif
-/* What PokeDaisy runs with besides the child environment (plorpos-c9p), NULL
- * ended: the pad as SDL_GAMECONTROLLERCONFIG, by POSITION - PokeDaisy takes
- * SDL's a (bottom) as game B and b (right) as game A, as an Xbox pad has them.
- * Where guide is mapped (the GBA hotkeys' Menu modifier, plorpos-wjw.3)
- * PokeDaisy leaves MENU to the launcher, as POCKET_HOTKEYS_FILE tells it. */
-extern const char *const plat_daisy_env[];
-/* POCKET_FN_KEYS=... for PokeDaisy: the node and codes of keys SDL never
- * reports that are hotkey triggers (the Bricks' Fn keys), or NULL. */
-const char *plat_daisy_fn_keys(void);
 #if defined(PLATFORM_H700)
 /* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
  * wants it, for native PICO-8 (plorpos-7ny.41). */

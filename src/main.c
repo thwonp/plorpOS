@@ -53,7 +53,6 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "btnmap.h"
-#include "daisy.h"
 #include "shaderlist.h"
 #include "clock.h"
 #include "gbpal.h"
@@ -324,7 +323,6 @@ typedef struct {
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	bool in_port;               /* a PortMaster port runs: no Splore row */
-	const char *daisy_ini;      /* PokeDaisy runs: its settings, the Options row's */
 	SDL_Renderer *r;
 } app;
 
@@ -359,9 +357,6 @@ static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
 static bool is_ports(const system_cfg *s);
 static void pm_here(char *out, size_t n, const char *leaf);
-static bool daisy_can(const system_cfg *s, const char *file);
-static bool daisy_plays(const system_cfg *s, const char *file);
-static void daisy_set(const system_cfg *s, const char *file, bool on);
 /* Game Settings (plorpos-pyz): read where they act, so a change holds from
  * the next launch on without anything to reload. */
 static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) != 0; }
@@ -6494,8 +6489,6 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 
 	memset(gi, 0, sizeof *gi);
 	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
-	if (daisy_can(s, g->file))
-		gi->play_with = daisy_plays(s, g->file) ? "PokeDaisy" : "plorpOS";
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -7013,7 +7006,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
@@ -7130,13 +7123,6 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 	if (key == IN_X) return MENU_DONE;
 	if (key != IN_ACCEPT || sel >= n || !rows[sel].live) return MENU_STAY;
 
-	if (!strcmp(rows[sel].label, "Play With")) {
-		const system_cfg *s = &a->sys.systems[c->owner];
-
-		daisy_set(s, c->g->file, !daisy_plays(s, c->g->file));
-		gi_gather(a, c->owner, c->g, &c->gi);
-		return MENU_STAY;
-	}
 	if (!strcmp(rows[sel].label, "Synopsis")) {
 		game_meta m;
 
@@ -11539,9 +11525,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 	memset(&a->in, 0, sizeof a->in);
 }
 
-/* daisy: from PokeDaisy's in-game menu (plorpos-wjw.5) - only the four
- * actions it takes, and no Button Mapping, which it does not. */
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -11576,8 +11560,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 
 	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
-		bool shown = (i < R_SWAP && (!daisy || i <= 3))   /* ff rewind save load */
-			|| (daisy && i == R_HUD);                  /* HUD Focus: PokeDaisy's only */
+		bool shown = i < R_SWAP;
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
@@ -11593,10 +11576,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 	const int NROWS = FIRST_ACT + nact;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
-	if (daisy) {
-		rows[R_MAPPING] = (menu_row){ "Button Mapping", "Not in PokeDaisy", false };
-		sel = FIRST_ACT;
-	}
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -11641,11 +11620,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, bool daisy)
 		} else {
 			if (in_repeat(&a->in, IN_UP)) {
 				sel = (sel + NROWS - 1) % NROWS;
-				if (daisy && sel == R_MAPPING) sel = NROWS - 1;
 			}
 			if (in_repeat(&a->in, IN_DOWN)) {
 				sel = (sel + 1) % NROWS;
-				if (daisy && sel == R_MAPPING) sel = FIRST_ACT;
 			}
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
@@ -12474,7 +12451,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, false);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
 		break;
 	}
 	case GM_RESET:
@@ -12696,12 +12673,7 @@ typedef struct {
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
 	bool       port;       /* a PortMaster port: no Splore row at all */
-	const char *daisy_ini; /* PokeDaisy: Options and Hotkeys rows (plorpos-wjw) */
-	const menu_style *style;   /* the menu's, for Options' own */
 } nm_ctx;
-
-/* PokeDaisy's rows read in Continue, Options, Hotkeys, Reset, Quit order. */
-enum { NMD_OPTIONS = 1, NMD_HOTKEYS, NMD_RESET, NMD_QUIT };
 
 /* Also where the press-to-menu time is said: the second build comes right
  * after the first frame went to the screen. 100 ms is the budget (user,
@@ -12715,14 +12687,6 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
-	if (c->daisy_ini) {
-		gm_native_rows(true, rows);
-		rows[NMD_QUIT] = rows[GMN_QUIT];
-		rows[NMD_RESET] = rows[GMN_RESET];
-		rows[NMD_OPTIONS] = (menu_row){ "Options", NULL, true };
-		rows[NMD_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };
-		return NMD_QUIT + 1;
-	}
 	if (c->port) {
 		gm_native_rows(true, rows);
 		rows[GMN_SPLORE] = rows[GMN_QUIT];
@@ -12752,67 +12716,11 @@ static menu_result nm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
-/* PokeDaisy's Options (plorpos-wjw): its settings.ini, written as the menu
- * is left; PokeDaisy reads it again as it is thawed. */
-static int do_build(void *ctx, menu_row *rows, int max, const char **heading)
-{
-	(void)max;
-	*heading = "Options";
-	return daisy_rows(ctx, rows);
-}
-
-static menu_result do_key(app *a, void *ctx, in_button key, int sel)
-{
-	(void)a;
-	if (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)
-		daisy_step(ctx, sel, key == IN_LEFT ? -1 : 1);
-	return MENU_STAY;
-}
-
-/* PokeDaisy's hotkeys file, beside its settings.ini: the GBA shelf's
- * bindings, then the modifier a binding naming none holds. */
-static void daisy_keys_write(const char *ini)
-{
-	char path[LIB_PATH + 32];
-	const char *slash = strrchr(ini, '/');
-	FILE *f;
-
-	snprintf(path, sizeof path, "%.*s/hotkeys.txt", slash ? (int)(slash - ini) : 0, ini);
-	if (!(f = fopen(path, "w"))) return;
-	fprintf(f, "%s\n%s\n", plat_hotkey_map("GBA"), plat_hotkey_modifier());
-	fclose(f);
-}
-
-static void daisy_options(app *a, nm_ctx *c)
-{
-	daisy_opts o, was;
-
-	daisy_load(c->daisy_ini, &o);
-	was = o;
-	menu_run(a, c->style, do_build, do_key, &o);
-	if (memcmp(&o, &was, sizeof o) && !daisy_save(c->daisy_ini, &o))
-		fprintf(stderr, "pokedaisy: %s not written\n", c->daisy_ini);
-}
-
 static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (c->daisy_ini) {
-		if (sel == NMD_OPTIONS) {
-			daisy_options(a, c);
-			return MENU_STAY;
-		}
-		if (sel == NMD_HOTKEYS) {
-			/* The GBA shelf's, shared; PokeDaisy reads them again on
-			 * Continue (plorpos-wjw.5). */
-			hotkeys_screen(a, NULL, "GBA", true);
-			daisy_keys_write(c->daisy_ini);
-			return MENU_STAY;
-		}
-		sel = sel == NMD_RESET ? GMN_RESET : sel == NMD_QUIT ? GMN_QUIT : sel;
-	}
 	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
@@ -12826,7 +12734,7 @@ static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
 	menu_style st = { 0 };
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port, a->daisy_ini, &st };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
 
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
@@ -13286,124 +13194,6 @@ static int run_port(app *a, const system_cfg *s, const char *file)
 	return r;
 }
 
-/* ---- PokeDaisy -----------------------------------------------------------
- *
- * A GBA game set to Play With PokeDaisy (the info screen, plorpos-c9p) runs in
- * lidor30/pokedaisy's Linux host instead of Diatom: mGBA with a companion that
- * reads the Pokemon games as they play. A separate GPL-3.0 program, built by
- * mk/build-pokedaisy.sh and shipped in <plorpOS>/pokedaisy, run the way a port
- * is - native_menu's Continue, Reset and Quit, power sleeps, never the
- * resident. It plays the game's own Saves/<folder>/<rom>.srm (the patch's
- * --save), the raw save Diatom's mGBA keeps, so either can carry on the game.
- * Its states, settings and save backups are its own, in shared/pokedaisy.
- * .gba, .gb and .gbc (no zip): the companion reads Gen 3 now, Gen 1/2 as plorpos-l22.10 lands. The choice is per game, in the library db: playwith.<TAG>/<file>,
- * present only for PokeDaisy. */
-static void daisy_bin(char *out, size_t n)
-{
-	snprintf(out, n, "%s/pokedaisy/pokedaisy-linux", P_ROOT);
-}
-
-static void daisy_key(char *out, size_t n, const system_cfg *s, const char *file)
-{
-	snprintf(out, n, "playwith.%s/%s", s->tag, file);
-}
-
-static bool daisy_can(const system_cfg *s, const char *file)
-{
-	const char *dot = strrchr(file, '.');
-	char bin[LIB_PATH];
-
-	/* The GB and GBC shelves too (plorpos-l22.9): Diatom plays them on the same mGBA, so the raw .srm is shared
-	 * the same way, and the host opens .gb / .gbc as it does .gba. */
-	if (!dot || !((!strcmp(s->tag, "GBA") && !strcasecmp(dot, ".gba")) ||
-	              (!strcmp(s->tag, "GB") && !strcasecmp(dot, ".gb")) ||
-	              (!strcmp(s->tag, "GBC") && !strcasecmp(dot, ".gbc"))))
-		return false;
-	daisy_bin(bin, sizeof bin);
-	return access(bin, X_OK) == 0;
-}
-
-static bool daisy_plays(const system_cfg *s, const char *file)
-{
-	char key[LIB_PATH + 32];
-
-	if (!daisy_can(s, file)) return false;
-	daisy_key(key, sizeof key, s, file);
-	return db_has(db_lib(), key);
-}
-
-static void daisy_set(const system_cfg *s, const char *file, bool on)
-{
-	char key[LIB_PATH + 32];
-
-	daisy_key(key, sizeof key, s, file);
-	if (on) db_set_str(db_lib(), key, "pokedaisy");
-	else    db_del(db_lib(), key);
-}
-
-/* `save` is the shelf's Saves folder; the .srm in it is named as Diatom names
- * it, the ROM's file name without its extension (diatom save.c).
- *
- * `st` and `apv` are the game's Diatom autosave and its Auto card. A session
- * that changed the .srm leaves that autosave behind the game's own save:
- * resumed, the game would come up where Diatom left it, and its next save
- * would write over what was played here (plorpos-c9p.3). So it goes, card
- * and all, and Diatom next starts the game from its save. Judged here, by
- * the .srm before and after, rather than by comparing times at Diatom's
- * launch: Diatom's own last SRAM flush can land after its autosave. */
-static int run_daisy(app *a, const char *rom, const char *save, const char *file,
-                     const char *st, const char *apv)
-{
-	struct stat was, now;
-	bool had;
-	char bin[LIB_PATH], data[LIB_PATH], srm[LIB_PATH * 3], base[LIB_PATH];
-	char ini[LIB_PATH + 16], keys[LIB_PATH + 40];
-	const char *slash = strrchr(file, '/');
-	char *argv[24], *dot;
-	int n = 0, i, r;
-
-	daisy_bin(bin, sizeof bin);
-	snprintf(data, sizeof data, "%s/pokedaisy", P_SHARED);
-	mkdir(data, 0755);
-	snprintf(base, sizeof base, "%s", slash ? slash + 1 : file);
-	if ((dot = strrchr(base, '.'))) *dot = '\0';
-	snprintf(srm, sizeof srm, "%s/%s.srm", save, base);
-
-	argv[n++] = (char *)"/usr/bin/env";
-	argv[n++] = (char *)"POCKET_FULLSCREEN=1";
-	/* The pad whether or not its window has the focus: under sway the in-game
-	 * menu's window takes it, and after Continue the game heard nothing. */
-	argv[n++] = (char *)"SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1";
-	/* The GBA shelf's hotkeys, the ones it can (plorpos-wjw.3), in a file
-	 * the Hotkeys row rewrites (.5); set at all, Menu is ours alone - this
-	 * menu and the modifier. */
-	snprintf(ini, sizeof ini, "%s/settings.ini", data);
-	daisy_keys_write(ini);
-	snprintf(keys, sizeof keys, "POCKET_HOTKEYS_FILE=%s/hotkeys.txt", data);
-	argv[n++] = keys;
-	for (i = 0; plat_daisy_env[i]; i++) argv[n++] = (char *)plat_daisy_env[i];
-	if (plat_daisy_fn_keys()) argv[n++] = (char *)plat_daisy_fn_keys();
-	argv[n++] = bin;
-	argv[n++] = (char *)"--data"; argv[n++] = data;
-	argv[n++] = (char *)"--save"; argv[n++] = srm;
-	argv[n++] = (char *)rom;
-	argv[n] = NULL;
-	had = stat(srm, &was) == 0;
-	a->in_port = true;   /* native_menu: no Splore row */
-	a->daisy_ini = ini;  /* ... and an Options row */
-	a->pico8_splore = false;
-	r = run_alone(a, argv, native_menu, native_tick);
-	a->in_port = false;
-	a->daisy_ini = NULL;
-	if (stat(srm, &now) == 0 &&
-	    (!had || now.st_mtime != was.st_mtime || now.st_size != was.st_size) &&
-	    unlink(st) == 0) {
-		unlink(apv);
-		fprintf(stderr, "pokedaisy: the save moved on; Diatom's autosave dropped\n");
-	}
-	return r;
-}
-
 /* -home is where PICO-8 keeps everything it writes - config, log, cart data,
  * Splore's downloads - and -desktop its screenshots, which by default would
  * land beside the carts and show on the shelf as .png carts. Both under
@@ -13698,8 +13488,6 @@ static void launch_one(app *a)
 		return;
 	}
 	native |= is_ports(s);   /* run by the launcher too, never the resident */
-	bool daisy = !native && daisy_plays(s, romfile);
-	native |= daisy;
 
 	/* Front of the switcher's list, in memory only - the tick writes it.
 	 * Splore is a place, not a game (plorpos-gl5.1). */
@@ -13985,16 +13773,6 @@ static void launch_one(app *a)
 		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
 		stats_begin(s->tag, from, plat_now_ms());
 		fprintf(stderr, "port exited %d\n", run_port(a, s, from));
-		stats_asleep(plat_run_asleep_ms());
-		stats_end(NULL, plat_now_ms());
-		if (!a->running) return;
-	} else if (daisy) {
-		char from[LIB_PATH];
-
-		snprintf(from, sizeof from, "%s", romfile);   /* see native below */
-		stats_begin(s->tag, from, plat_now_ms());
-		preview_path(a, o, &v->list.items[v->cursor], apv, sizeof apv);
-		fprintf(stderr, "pokedaisy exited %d\n", run_daisy(a, rom, save, from, st, apv));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;
