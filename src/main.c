@@ -2720,6 +2720,43 @@ static void aout_apply(bool force)
 #endif
 }
 
+#define VOL_SKIP_HOLD_MS 500
+
+/* The volume keys: a press is one step; held, the step repeats - except while
+ * Muse plays, where a hold of VOL_SKIP_HOLD_MS is the next track (up) or the
+ * previous one (down), once per hold (plorpos-7wu.2). The press steps at once,
+ * so volume answers at the press and not at the release; the hold takes that
+ * step back, so reaching for a skip leaves the level where it was. */
+static void vol_keys(in_state *st)
+{
+	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
+	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
+	static bool   moved[2];         /* the press's step changed the level */
+	Uint32 now = SDL_GetTicks();
+	int k;
+
+	if (!musec_playing()) {
+		if (in_repeat(st, IN_VOLUP)) plat_volume_nudge(+1);
+		if (in_repeat(st, IN_VOLDN)) plat_volume_nudge(-1);
+		return;
+	}
+	for (k = 0; k < 2; k++) {
+		in_button b = key[k];
+		int dir = k ? -1 : +1;
+
+		if (st->pressed[b]) {
+			int before = plat_volume_get();
+			plat_volume_nudge(dir);
+			moved[k] = plat_volume_get() != before;
+		} else if (st->down[b] && st->down_since[b] != skipped[k] &&
+		           now - st->down_since[b] >= VOL_SKIP_HOLD_MS) {
+			skipped[k] = st->down_since[b];
+			if (moved[k]) plat_volume_nudge(-dir);
+			if (k) musec_prev(); else musec_next();
+		}
+	}
+}
+
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
  * the headset rather than reaching it a tick later. */
 static void aout_before_muse(void)
@@ -5616,8 +5653,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * impossible, arriving by the one route it could still come from: the
 		 * runner forgetting, rather than a screen forgetting. Every other loop
 		 * in this file carries these four lines by hand. */
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6252,8 +6288,7 @@ static void xfer_screen(app *a)
 		}
 		if (menu_leaving(a)) done = true;
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6493,8 +6528,7 @@ static void art_screen(app *a, const char *only, const char *one,
 					memset(&a->in, 0, sizeof a->in);
 					return;
 				}
-				if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-				if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+				vol_keys(&a->in);
 				if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 				if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6616,8 +6650,7 @@ static void art_screen(app *a, const char *only, const char *one,
 			done = true;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -6802,8 +6835,7 @@ static void ra_sets_screen(app *a)
 		}
 		if (!a->running || menu_leaving(a)) break;
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7331,8 +7363,7 @@ static void bt_screen(app *a)
 			next_refresh = 0;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7596,8 +7627,7 @@ static bool stats_screen(app *a)
 			if (cursor >= top + vis) top = cursor - vis + 1;
 		}
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7672,8 +7702,7 @@ static void about_screen(app *a)
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -7731,8 +7760,7 @@ static void controls_screen(app *a)
 		if (in_repeat(&a->in, IN_RIGHT)) page = (ctl_page)((page + 1) % CTL_PAGES);
 		if (in_repeat(&a->in, IN_LEFT))
 			page = (ctl_page)((page + CTL_PAGES - 1) % CTL_PAGES);
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10329,8 +10357,7 @@ static muse_exit muse_now_screen(app *a)
 		if (in_repeat(&a->in, IN_R1))       musec_next();
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10514,8 +10541,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -10825,8 +10851,7 @@ static void muse_shelf_screen(app *a, bool now)
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
 			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
 		}
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -11056,8 +11081,7 @@ static void album_art_screen(app *a)
 			}
 		}
 		if (menu_leaving(a)) done = true;
-		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -11910,8 +11934,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		 * down are dropped, not saved for later. POWER, above, and headset
 		 * keys, in musec_poll, stay live. */
 		if (plat_hold_switch()) { SDL_Delay(50); continue; }
-		if (in_repeat(&a->in, IN_VOLUP)) plat_volume_nudge(+1);
-		if (in_repeat(&a->in, IN_VOLDN)) plat_volume_nudge(-1);
+		vol_keys(&a->in);
 		for (b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] && b != IN_POWER &&
 			    b != IN_VOLUP && b != IN_VOLDN) break;
@@ -16067,8 +16090,7 @@ int main(int argc, char *argv[])
 			if (pa == PWR_POWEROFF) { power_off(&a); break; }
 		}
 
-		if (in_repeat(&a.in, IN_VOLUP))    plat_volume_nudge(+1);
-		if (in_repeat(&a.in, IN_VOLDN))    plat_volume_nudge(-1);
+		vol_keys(&a.in);
 		if (in_repeat(&a.in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a.in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
