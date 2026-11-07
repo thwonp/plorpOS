@@ -24,7 +24,7 @@ bool battery_read(const char *hint, int *pct, bool *charging);
 
 static bool rd_long(const char *dir, const char *name, long *v)
 {
-	char path[320];
+	char path[640];
 	snprintf(path, sizeof path, "%s/%s", dir, name);
 	FILE *f = fopen(path, "r");
 	if (!f) return false;
@@ -35,7 +35,7 @@ static bool rd_long(const char *dir, const char *name, long *v)
 
 static bool rd_str(const char *dir, const char *name, char *out, size_t n)
 {
-	char path[320];
+	char path[640];
 	snprintf(path, sizeof path, "%s/%s", dir, name);
 	FILE *f = fopen(path, "r");
 	if (!f) return false;
