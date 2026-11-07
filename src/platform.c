@@ -39,6 +39,7 @@
  * along, and waiting on a key repeat is the most obvious kind of slow. */
 #define REPEAT_DELAY_MS 300
 #define REPEAT_RATE_MS  90
+#define SKIP_HOLD_MS    500   /* a volume key held this long, Muse playing: a track skip */
 
 int fd_power = -1; /* axp2202-pek: KEY_POWER */
 
@@ -444,6 +445,19 @@ static void level_nudge(bool bright, int d)
 	else        plat_volume_nudge(d);
 }
 
+/* What the volume keys ask of Muse while a game runs, for the launcher's game
+ * tick to carry out - platform.c does not know Muse. Posted by plat_run's own
+ * key reads (PortMaster, native PICO-8) and by Diatom's "SKIP dir=..." line
+ * (plorpos-7wu.3, .5). One slot: the tick is ten a second. */
+static int g_musickey;
+int plat_musickey_take(void)
+{
+	int v = g_musickey;
+
+	g_musickey = MUSICKEY_NONE;
+	return v;
+}
+
 /* A level key held in native PICO-8 repeats at the shelf's pace,
  * REPEAT_DELAY_MS then REPEAT_RATE_MS (plorpos-xpt.1.1), as it does in a
  * Diatom game now. One hold at a time, keeping the kind its press had; the
@@ -451,12 +465,57 @@ static void level_nudge(bool bright, int d)
  * is dropped when the menu opens or the device sleeps - a key held into the
  * menu stepping on after Continue was why holds were taken out here before
  * (plorpos-gkd.50.26). */
-typedef struct { int fd, code, d; bool bright; unsigned next; } lv_hold;
+typedef struct { int fd, code, d; bool bright; unsigned next; bool skip; } lv_hold;
+
+/* Whether Muse plays (plat_run's tick says), and the two keys' state across
+ * the three nodes they can arrive on: down, and whether the press's own step
+ * changed the level (so a skip or a chord can take it back). [0] Vol+. */
+static bool lv_muse, lv_down[2], lv_moved[2];
 
 static void lv_hold_start(lv_hold *h, int fd, int code, bool bright, int d)
 {
-	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS };
+	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS, false };
 	if (!h->next) h->next = 1;
+}
+
+/* A level key went down. Volume, with the other key already down: both
+ * together are Muse's pause/play, and the first one's step is taken back.
+ * Otherwise a step - and while Muse plays, a hold of SKIP_HOLD_MS is the next
+ * (Vol+) or previous (Vol-) track instead of the repeat (plorpos-7wu.2, .5).
+ * Brightness (a modifier held) is only ever the step and its repeat. */
+static void lv_press(lv_hold *h, int fd, int code, bool bright, int d)
+{
+	int k = d > 0 ? 0 : 1;
+
+	if (!bright) {
+		lv_down[k] = true;
+		if (lv_down[1 - k]) {
+			if (lv_moved[1 - k]) plat_volume_nudge(k == 0 ? +1 : -1);
+			lv_moved[1 - k] = lv_moved[k] = false;
+			h->next = 0;
+			g_musickey = MUSICKEY_TOGGLE;
+			return;
+		}
+	}
+	{
+		int before = bright ? 0 : plat_volume_get();
+
+		level_nudge(bright, d);
+		lv_moved[k] = !bright && plat_volume_get() != before;
+	}
+	lv_hold_start(h, fd, code, bright, d);
+	if (!bright && lv_muse) {
+		h->skip = true;
+		h->next = plat_now_ms() + SKIP_HOLD_MS;
+		if (!h->next) h->next = 1;
+	}
+}
+
+static void lv_release(lv_hold *h, int fd, int code)
+{
+	if (code == KEY_VOLUMEUP)   lv_down[0] = false;
+	if (code == KEY_VOLUMEDOWN) lv_down[1] = false;
+	if (h->fd == fd && h->code == code) h->next = 0;
 }
 
 /* Due: step again if the key is still held. True when it stepped. */
@@ -469,6 +528,14 @@ static bool lv_hold_tick(lv_hold *h)
 	if (ioctl(h->fd, EVIOCGKEY(sizeof keys), keys) < 0 ||
 	    !(keys[h->code / 8] & (1u << (h->code % 8)))) {
 		h->next = 0;
+		return false;
+	}
+	if (h->skip) {   /* held long enough: a skip, once, and the step goes back */
+		int k = h->d > 0 ? 0 : 1;
+
+		h->next = 0;
+		if (lv_moved[k]) plat_volume_nudge(-h->d);
+		g_musickey = h->d > 0 ? MUSICKEY_NEXT : MUSICKEY_PREV;
 		return false;
 	}
 	h->next = plat_now_ms() + REPEAT_RATE_MS;
@@ -631,6 +698,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool term_killed = false;   /* its game KILLed, the script let finish */
 	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
+	lv_down[0] = lv_down[1] = lv_moved[0] = lv_moved[1] = lv_muse = false;
 	/* Every port alike since plorpos-gl5.4 (the Brick and the GKD read a
 	 * press before): Menu is the brightness modifier too (Menu+Vol): a tap goes on its
 	 * release, as pad_read and diatom have it, and only if no level key
@@ -646,21 +714,18 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		poll(pfd, 4, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
 		gesture swipe = fd_ges >= 0 ? gesture_read() : GESTURE_NONE;
-		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
+		if (on_tick && !term_at) {
+			lv_muse = on_tick(ctx);
+			child_quiet(pid, lv_muse);
+		}
 		/* The volume keys: volume, or brightness with Home held, a step per
 		 * press and, held, the shelf's repeat (lv_hold). */
 		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
 
 			if (ev.type != EV_KEY || !d) continue;
-			if (ev.value == 1) {
-				bool bright = levels_alt();
-
-				level_nudge(bright, d);
-				lv_hold_start(&hold, fd_lv, ev.code, bright, d);
-			} else if (ev.value == 0 && hold.fd == fd_lv && hold.code == ev.code) {
-				hold.next = 0;
-			}
+			if (ev.value == 1) lv_press(&hold, fd_lv, ev.code, levels_alt(), d);
+			else if (ev.value == 0) lv_release(&hold, fd_lv, ev.code);
 		}
 #if defined(PLATFORM_H700)
 		bool lid_tap = false;
@@ -678,11 +743,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				if (ev.value == 1) {
 					bool bright = levels_alt();
 
-					level_nudge(bright, d);
-					lv_hold_start(&hold, fd_power, ev.code, bright, d);
+					lv_press(&hold, fd_power, ev.code, bright, d);
 					if (bright) menu_spent = true;
-				} else if (ev.value == 0 && hold.fd == fd_power && hold.code == ev.code) {
-					hold.next = 0;
+				} else if (ev.value == 0) {
+					lv_release(&hold, fd_power, ev.code);
 				}
 			}
 #if defined(PLATFORM_H700)
@@ -723,12 +787,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 
 			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
 			if (d && ev.value == 0) {
-				if (hold.fd == fd_menu && hold.code == ev.code) hold.next = 0;
+				lv_release(&hold, fd_menu, ev.code);
 				continue;
 			}
 			if (d) {
-				level_nudge(bright, d);
-				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
+				lv_press(&hold, fd_menu, ev.code, bright, d);
 				if (bright) menu_spent = true;
 				continue;
 			}
@@ -1438,17 +1501,6 @@ static void d_note_audio(const char *l)
 	d_audio_known = true;
 }
 
-/* A volume key held in a game while Muse plays: Diatom's "SKIP dir=next|prev"
- * (plorpos-7wu.3), taken once by the launcher's game tick. */
-static int d_skip;
-int plat_resident_skip_take(void)
-{
-	int v = d_skip;
-
-	d_skip = 0;
-	return v;
-}
-
 int plat_resident_volume(int *count)
 {
 	if (count) *count = d_pend_vol_n;
@@ -1898,7 +1950,9 @@ static int diatom_wait(void)
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
-			else if (strncmp(l, "SKIP\t", 5) == 0) d_skip = strstr(l, "dir=prev") ? -1 : +1;
+			else if (strncmp(l, "SKIP\t", 5) == 0)
+				g_musickey = strstr(l, "dir=toggle") ? MUSICKEY_TOGGLE :
+				             strstr(l, "dir=prev") ? MUSICKEY_PREV : MUSICKEY_NEXT;
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);

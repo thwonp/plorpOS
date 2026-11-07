@@ -280,9 +280,11 @@ void plat_resident_audio_asked(void);
  * (see d_apply_levels), so a headset that has to follow the keys DURING a game
  * reads it here. */
 int  plat_resident_volume(int *count);
-/* +1 next track, -1 previous, 0 none: a volume key held in a game while Muse
- * plays (Diatom's SKIP line). Once per hold. */
-int  plat_resident_skip_take(void);
+/* What the volume keys asked of Muse during a game (Diatom's SKIP line, or
+ * plat_run's own key reads): a hold while Muse plays is next/previous track,
+ * both keys together are pause/play. Taken once by the launcher's game tick. */
+enum { MUSICKEY_NONE = 0, MUSICKEY_NEXT, MUSICKEY_PREV, MUSICKEY_TOGGLE };
+int  plat_musickey_take(void);
 /* Increments each time the launcher connects to a resident emulator. Anything
  * the launcher pushed into the last one has to be pushed into a new one. */
 unsigned plat_resident_generation(void);

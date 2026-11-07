@@ -2722,32 +2722,64 @@ static void aout_apply(bool force)
 
 #define VOL_SKIP_HOLD_MS 500
 
+/* What the volume keys asked of Muse during a game - a hold while it plays is
+ * the next or previous track, both keys together are pause/play - carried out
+ * on the game tick, from Diatom's SKIP line or plat_run's own key reads
+ * (plorpos-7wu.3, .5). */
+static void music_keys(void)
+{
+	switch (plat_musickey_take()) {
+	case MUSICKEY_NEXT:   musec_next();   break;
+	case MUSICKEY_PREV:   musec_prev();   break;
+	case MUSICKEY_TOGGLE: musec_toggle(); break;
+	}
+}
+
 /* The volume keys: a press is one step; held, the step repeats - except while
  * Muse plays, where a hold of VOL_SKIP_HOLD_MS is the next track (up) or the
- * previous one (down), once per hold (plorpos-7wu.2). The press steps at once,
- * so volume answers at the press and not at the release; the hold takes that
- * step back, so reaching for a skip leaves the level where it was. */
+ * previous one (down), once per hold (plorpos-7wu.2). Both keys together are
+ * Muse's pause/play, playing or not (plorpos-7wu.5), and then neither steps,
+ * skips or repeats until both are up. The press steps at once, so volume
+ * answers at the press and not at the release; a skip or a chord takes that
+ * step back, so reaching for either leaves the level where it was. */
 static void vol_keys(in_state *st)
 {
 	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
 	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
 	static bool   moved[2];         /* the press's step changed the level */
+	static bool   armed[2];         /* Muse played at the press: a hold skips */
+	static bool   chord;            /* both went down: spent until both are up */
 	Uint32 now = SDL_GetTicks();
 	int k;
 
-	if (!musec_playing()) {
-		if (in_repeat(st, IN_VOLUP)) plat_volume_nudge(+1);
-		if (in_repeat(st, IN_VOLDN)) plat_volume_nudge(-1);
+	if (chord) {
+		if (!st->down[IN_VOLUP] && !st->down[IN_VOLDN]) chord = false;
 		return;
+	}
+	for (k = 0; k < 2; k++) {
+		int o = 1 - k;
+
+		if (st->pressed[key[k]] && st->down[key[o]]) {
+			if (moved[o]) plat_volume_nudge(o == 0 ? -1 : +1);
+			moved[0] = moved[1] = armed[0] = armed[1] = false;
+			chord = true;
+			musec_toggle();
+			return;
+		}
 	}
 	for (k = 0; k < 2; k++) {
 		in_button b = key[k];
 		int dir = k ? -1 : +1;
 
+		if (!st->down[b]) armed[k] = false;
 		if (st->pressed[b]) {
 			int before = plat_volume_get();
+
 			plat_volume_nudge(dir);
 			moved[k] = plat_volume_get() != before;
+			armed[k] = musec_playing();
+		} else if (!armed[k]) {
+			if (in_repeat(st, b)) plat_volume_nudge(dir);
 		} else if (st->down[b] && st->down_since[b] != skipped[k] &&
 		           now - st->down_since[b] >= VOL_SKIP_HOLD_MS) {
 			skipped[k] = st->down_since[b];
@@ -2868,13 +2900,7 @@ static void on_game_tick(void)
 	 * change is sent. */
 	muse_poll();
 	plat_resident_quiet(musec_playing());
-	/* A volume key held in the game while Muse plays (plorpos-7wu.3). */
-	{
-		int skip = plat_resident_skip_take();
-
-		if (skip > 0) musec_next();
-		else if (skip < 0) musec_prev();
-	}
+	music_keys();
 
 	/* Play time. Writes at most one unsynced row and usually nothing, and
 	 * never an fsync: measured on the card, an fsync is 1.56 ms median but
@@ -12694,6 +12720,7 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+	music_keys();
 	recent_flush();                  /* as on_game_tick */
 #if !defined(PLAT_PIPEWIRE)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
