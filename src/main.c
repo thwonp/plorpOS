@@ -323,6 +323,7 @@ typedef struct {
 	bool pico8_splore;          /* the native PICO-8 running is Splore */
 	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	bool in_port;               /* a PortMaster port runs: no Splore row */
+	const char *pico8_dmode;    /* the Display mode native PICO-8 was started with */
 	SDL_Renderer *r;
 } app;
 
@@ -12687,7 +12688,9 @@ typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
 	bool       in_splore;
-	bool       port;       /* a PortMaster port: no Splore row at all */
+	app       *a;
+	bool       port;       /* a PortMaster port: no Splore or Display row */
+	int        ids[GMN_ROWS];   /* a drawn row, read back as the gmn_row it shows */
 } nm_ctx;
 
 /* Also where the press-to-menu time is said: the second build comes right
@@ -12702,12 +12705,29 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
-	if (c->port) {
-		gm_native_rows(true, rows);
-		rows[GMN_SPLORE] = rows[GMN_QUIT];
-		return GMN_ROWS - 1;
+	if (c->port) {         /* Continue, Reset, Quit */
+		menu_row all[GMN_ROWS];
+		int n = 0, i;
+
+		gm_native_rows(true, NULL, all);
+		for (i = 0; i < GMN_ROWS; i++)
+			if (i != GMN_DISPLAY && i != GMN_SPLORE) {
+				rows[n] = all[i];
+				c->ids[n++] = i;
+			}
+		return n;
 	}
-	return gm_native_rows(c->in_splore, rows);
+	{
+		sysview *v = owner_view(c->a);
+
+		for (int i = 0; i < GMN_ROWS; i++) c->ids[i] = i;
+		/* Flags are read at PICO-8's start, so a change waits for a Reset:
+		 * said in the heading's place for as long as it differs from the
+		 * run's own (plorpos-zoq). */
+		if (strcmp(DMODES[v->dmode].name, c->a->pico8_dmode))
+			*heading = "Reset game to apply";
+		return gm_native_rows(c->in_splore, DMODES[v->dmode].label, rows);
+	}
 }
 
 /* Black: no picture of the game behind it - grim takes 260 ms, and the menu
@@ -12735,8 +12755,16 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
+	sel = c->ids[sel];
+	if (sel == GMN_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
+		sysview *v = owner_view(a);
+
+		v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode,
+		                      key == IN_RIGHT ? 1 : -1);
+		display_save(a);
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (c->port && sel == GMN_SPLORE) sel = GMN_QUIT;   /* see nm_build */
 	/* Splore is a Quit that launch() follows with Splore: the child is
 	 * ended the same way, so plat_run need not know. */
 	a->to_splore = sel == GMN_SPLORE;
@@ -12749,7 +12777,7 @@ static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
 	menu_style st = { 0 };
-	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore, a->in_port };
+	nm_ctx c = { .choice = RUN_CONTINUE, .in_splore = a->pico8_splore, .a = a, .port = a->in_port };
 
 
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
@@ -13324,6 +13352,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
+	a->pico8_dmode = dmode;
 	a->to_splore = false;
 #if !defined(PLAT_PIPEWIRE)
 	plat_child_audio_reset();

@@ -1020,20 +1020,22 @@ static void native_rows(void)
 	menu_row rows[GMN_ROWS];
 	int got[GMN_ROWS], n;
 
-	n = gm_native_rows(false, rows);
+	n = gm_native_rows(false, "Aspect", rows);
 	printf("native PICO-8 menu:\n");
-	ck(n == 4, "four rows");
+	ck(n == 5, "five rows");
 	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
+	   !strcmp(rows[GMN_DISPLAY].label, "Display") &&
 	   !strcmp(rows[GMN_RESET].label, "Reset") &&
 	   !strcmp(rows[GMN_SPLORE].label, "Splore") &&
-	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Reset, Splore, Quit");
+	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Display, Reset, Splore, Quit");
+	ck(!strcmp(rows[GMN_DISPLAY].value, "Aspect"), "Display carries the mode's label");
 	ck(reachable(rows, n, got, GMN_ROWS) == GMN_ROWS, "every row is a stop");
 
 	/* In Splore itself the row stays, greyed: Reset is the same thing. */
-	n = gm_native_rows(true, rows);
-	ck(n == 4 && !rows[GMN_SPLORE].live, "in Splore: Splore greyed, still there");
-	ck(reachable(rows, n, got, GMN_ROWS) == 3 && got[2] == GMN_QUIT,
-	   "in Splore: Continue, Reset, Quit are the stops");
+	n = gm_native_rows(true, "Aspect", rows);
+	ck(n == 5 && !rows[GMN_SPLORE].live, "in Splore: Splore greyed, still there");
+	ck(reachable(rows, n, got, GMN_ROWS) == 4 && got[3] == GMN_QUIT,
+	   "in Splore: Continue, Display, Reset, Quit are the stops");
 }
 
 /* The save slots, and the one constant that survived a rename by being written
