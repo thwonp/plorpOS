@@ -76,6 +76,20 @@ static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that que
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
+static void   (*g_on_arrive)(const char *sink);
+/* A named sink that fell back to the codec is asked for again, twice, 2.5 s
+ * apart: the usual cause is the game still letting go of a DAC (Busy), and
+ * the sound then sat on the speaker for good (plorpos-7wu.6). */
+static char     g_want[128];
+static int      g_retries;
+static bool     g_fell_back;        /* its last answer was the codec, not the sink asked for */
+static unsigned g_retry_at;
+
+/* A DAC or a headset: what btvol_set can set, and what needs the arrival cap. */
+static bool sink_named(const char *s)
+{
+	return !strncmp(s, "plughw:CARD=", 12) || !strncmp(s, "bt_", 3);
+}
 
 static void seek_to(double t);
 
@@ -359,8 +373,30 @@ static void event(const char *line)
 	} else if (!strncmp(line, "END", 3)) {
 		advance(false);
 	} else if (!strncmp(line, "SINK", 4)) {
+		char prev[sizeof g_sink_said];
+
+		snprintf(prev, sizeof prev, "%s", g_sink_said);
 		field(line, "device", g_sink_said, sizeof g_sink_said);
 		g_sink_waiting = false;
+		/* The sound is back on a DAC or headset after an unplanned stay on the
+		 * speaker: whatever level it was raised to there, to be heard, is not
+		 * one for that (plorpos-7wu.6). Not for the planned hand-offs - the
+		 * menu takes the DAC and gives it back - which keep the player's
+		 * level. Before the play below. */
+		if (g_on_arrive && g_fell_back && sink_named(g_sink_said) && strcmp(prev, g_sink_said))
+			g_on_arrive(g_sink_said);
+		g_fell_back = sink_named(g_sink_sent) && strcmp(g_sink_sent, g_sink_said);
+		if (g_fell_back) {
+			if (g_retries < 2) {
+				g_retries++;
+				snprintf(g_want, sizeof g_want, "%s", g_sink_sent);
+				g_retry_at = plat_now_ms() + 2500;
+				if (!g_retry_at) g_retry_at = 1;
+			}
+		} else {
+			g_retries = 0;
+			g_retry_at = 0;
+		}
 		/* Taken as the starting point only when nothing has been asked of
 		 * this daemon yet. After that, what was ASKED stands: re-asking
 		 * because Muse fell back would retry a dead headset every tick,
@@ -454,6 +490,16 @@ void musec_poll(void)
 	ssize_t got;
 
 	headset_keys();
+	if (g_retry_at && (int)(plat_now_ms() - g_retry_at) >= 0) {
+		g_retry_at = 0;
+		if (g_fd >= 0 && !g_sink_waiting && !strcmp(g_sink_sent, g_want) &&
+		    strcmp(g_sink_said, g_want)) {
+			g_sink_ms = plat_now_ms();
+			g_sink_waiting = true;
+			sendf("SINK\tdevice=%s", g_want);
+			fprintf(stderr, "muse: %s fell back; trying again (%d of 2)\n", g_want, g_retries);
+		}
+	}
 
 	/* Reconnect whenever there is a queue to look after, not only when a
 	 * play is waiting: a daemon that restarts mid-album would otherwise
@@ -697,6 +743,7 @@ void musec_toggle(void)
 }
 
 void musec_on_before_heard(void (*fn)(void)) { g_before_heard = fn; }
+void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 

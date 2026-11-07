@@ -2555,6 +2555,32 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
 #if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
+/* The level lowered to PLAT_OUT_CAP when it is above, where it goes: Diatom in
+ * a game. Returns the level now. */
+static int cap_level(const char *out, int level)
+{
+	if (level <= PLAT_OUT_CAP) return level;
+	if (g_game_ticking)
+		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
+		                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+	else
+		plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
+	        out, PLAT_OUT_CAP, level);
+	return PLAT_OUT_CAP;
+}
+
+/* Muse's sound landed on a DAC or headset - new, or back from the speaker it
+ * fell back to, where the level may have been raised to be heard
+ * (plorpos-7wu.6). */
+static void muse_arrived(const char *sink)
+{
+	int count = 0, level = plat_resident_volume(&count);
+
+	if (level < 0) level = plat_volume_get();
+	if (level >= 0) cap_level(sink, level);
+}
+
 static void bt_volume_follow(const char *out, bool fresh)
 {
 	static int      sent = -1;
@@ -2620,16 +2646,7 @@ static void bt_volume_follow(const char *out, bool fresh)
 	/* A new DAC or headset arrives no louder than PLAT_OUT_CAP, before its first
 	 * volume is sent. The level is one for every output here, so the cap lowers
 	 * it - the speaker comes back at it too. Where it goes: Diatom in a game. */
-	if (fresh && level > PLAT_OUT_CAP) {
-		if (g_game_ticking)
-			plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-			                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
-		else
-			plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
-		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
-		        out, PLAT_OUT_CAP, level);
-		level = PLAT_OUT_CAP;
-	}
+	if (fresh) level = cap_level(out, level);
 	v = (level * 127 + (count - 1) / 2) / (count - 1);
 	/* And again for a different headset at the same level: with two connected
 	 * the sound can move between them, and a link handle is no help there - it
@@ -15806,6 +15823,9 @@ int main(int argc, char *argv[])
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			musec_on_before_heard(aout_before_muse);
+#if !defined(PLAT_PIPEWIRE)
+			musec_on_arrive(muse_arrived);
+#endif
 		}
 		/* The play mode the player left it in. */
 		{

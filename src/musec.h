@@ -144,6 +144,10 @@ const char *musec_sink_now(void);
 /* Called just before a PLAY or RESUME is sent, so the launcher can move the
  * headset to Muse first. */
 void musec_on_before_heard(void (*fn)(void));
+/* Called when Muse's real output becomes a DAC or a headset it was not on a
+ * moment ago - including coming back from a fall-back to the speaker - before
+ * the next play. The launcher caps the level there (plorpos-7wu.6). */
+void musec_on_arrive(void (*fn)(const char *sink));
 
 /* The queue's track `i` in PLAY order - shuffled, the i-th to be heard -
  * relative to the music root, or NULL past either end. */
