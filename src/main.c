@@ -4114,6 +4114,74 @@ static void draw_shelf(app *a)
 	else draw_games(a);
 }
 
+static bool g_snap_dirty;   /* a menu key handler ran: the shelf may have changed */
+
+#if defined(PLATFORM_MIYOO)
+/* The shelf behind a menu, dimmed, as ONE picture drawn once. Every menu frame
+ * used to redraw the whole shelf (cards, text, rail) and then blend a full
+ * screen dim over it - about 50 ms of a 55-70 ms press-to-glass on the Flip's
+ * software renderer (plorpos-f1p.14.3), for a shelf that cannot change while a
+ * menu is up. Shared by menu_run_body and the keyboard's backdrop. Rebuilt when
+ * the tint eases or the dim differs; freed when the outermost menu exits. */
+static SDL_Texture *g_snap;
+static unsigned g_snap_tint, g_snap_dim;
+static int g_snap_depth;
+
+static void shelf_dim_cached(app *a, unsigned dim)
+{
+	if (g_snap && (g_snap_tint != a->tint || g_snap_dim != dim || g_snap_dirty)) {
+		SDL_DestroyTexture(g_snap);
+		g_snap = NULL;
+	}
+	g_snap_dirty = false;
+	if (!g_snap) {
+		int w = 0, h = 0;
+		float sx = 1.0f, sy = 1.0f;
+		SDL_Texture *was = SDL_GetRenderTarget(a->r);
+
+		SDL_GetRendererOutputSize(a->r, &w, &h);
+		g_snap = SDL_CreateTexture(a->r, SDL_PIXELFORMAT_ARGB8888,
+		                           SDL_TEXTUREACCESS_TARGET, w, h);
+		if (g_snap) {
+			/* A texture target resets the render scale to 1 (SDL), so the
+			 * layout scale is put back for the draw and again after it. */
+			SDL_RenderGetScale(a->r, &sx, &sy);
+			SDL_SetTextureBlendMode(g_snap, SDL_BLENDMODE_NONE);
+			if (SDL_SetRenderTarget(a->r, g_snap) == 0) {
+				SDL_RenderSetScale(a->r, sx, sy);
+				draw_shelf(a);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+				SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+				SDL_RenderFillRect(a->r, NULL);
+				SDL_SetRenderTarget(a->r, was);
+				SDL_RenderSetScale(a->r, sx, sy);
+				g_snap_tint = a->tint;
+				g_snap_dim = dim;
+			} else {
+				SDL_DestroyTexture(g_snap);
+				g_snap = NULL;
+			}
+		}
+	}
+	if (g_snap) {
+		SDL_RenderCopy(a->r, g_snap, NULL, NULL);
+		return;
+	}
+	draw_shelf(a);
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+	SDL_RenderFillRect(a->r, NULL);
+}
+#else
+static void shelf_dim_cached(app *a, unsigned dim)
+{
+	draw_shelf(a);
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+	SDL_RenderFillRect(a->r, NULL);
+}
+#endif
+
 /* Drawing only when something changed. See ui_redraw_at in ui.h.
  *
  * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
@@ -5717,10 +5785,10 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * triggered: holding A on a row that opens a screen should open it
 		 * once. Sent before the press loop below, which skips them. */
 		if (on_key && in_repeat(&a->in, IN_LEFT))
-			if (on_key(a, ctx, IN_LEFT, sel) == MENU_DONE)
+			if ((g_snap_dirty = true, on_key(a, ctx, IN_LEFT, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 		if (on_key && in_repeat(&a->in, IN_RIGHT))
-			if (on_key(a, ctx, IN_RIGHT, sel) == MENU_DONE)
+			if ((g_snap_dirty = true, on_key(a, ctx, IN_RIGHT, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 		if (!a->running) return MENU_LEFT_GONE;
 
@@ -5732,7 +5800,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 			if (b == IN_UP || b == IN_DOWN || b == IN_BACK || b == IN_MENU
 			    || b == IN_POWER || b == IN_VOLUP || b == IN_VOLDN
 			    || b == IN_BRIGHTUP || b == IN_BRIGHTDN) continue;
-			if (on_key && on_key(a, ctx, (in_button)b, sel) == MENU_DONE)
+			if (on_key && (g_snap_dirty = true, on_key(a, ctx, (in_button)b, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 			if (!a->running) return MENU_LEFT_GONE;
 			/* The screen it opened was left with MENU: out of this one too,
@@ -5755,10 +5823,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		if (st->backdrop) {
 			st->backdrop(a, ctx);
 		} else {
-			draw_shelf(a);
-			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
-			SDL_RenderFillRect(a->r, NULL);
+			shelf_dim_cached(a, 120);
 		}
 		menu_draw(a, heading, rows, n, sel, st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
@@ -5786,7 +5851,13 @@ static menu_exit menu_run(app *a, const menu_style *st,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+#if defined(PLATFORM_MIYOO)
+	g_snap_depth++;
+#endif
 	how = menu_run_body(a, st, build, on_key, ctx);
+#if defined(PLATFORM_MIYOO)
+	if (--g_snap_depth == 0 && g_snap) { SDL_DestroyTexture(g_snap); g_snap = NULL; }
+#endif
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -5796,10 +5867,7 @@ static menu_exit menu_run(app *a, const menu_style *st,
 static void wifi_backdrop(void *ctx)
 {
 	app *a = ctx;
-	draw_shelf(a);
-	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 150);
-	SDL_RenderFillRect(a->r, NULL);
+	shelf_dim_cached(a, 150);
 	draw_battery(a->r);   /* the keyboard draws over this and presents itself */
 }
 
