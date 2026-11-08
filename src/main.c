@@ -350,8 +350,9 @@ static void muse_walk_poll(app *a);
  * library rebuilt under it by Rescan Folder, so every album index it held is
  * stale and the shelf has to find itself again. */
 typedef enum { MUSE_BACK, MUSE_CLOSE, MUSE_REBUILT } muse_exit;
-/* Menu held (a swipe up on the Rotate) inside Muse closes Muse and asks the
- * shelf for the game switcher (plorpos-ovk). muse_open clears it on entry, so
+/* Menu held (a swipe up on the Rotate) inside Muse runs the game switcher in
+ * place (muse_switch_unwind); a game picked closes Muse and sets this, and the
+ * shelf launches it (plorpos-ovk, plorpos-uvs.4). muse_open clears it on entry, so
  * only a call that checks it right after - muse_open_shelf - ever acts on it. */
 static bool g_muse_sw;
 static muse_exit muse_tracks(app *a, int album, bool now);
@@ -9660,6 +9661,25 @@ static bool switcher_in_game(app *a, SDL_Texture *bg, bool *powered)
 	return true;
 }
 
+/* Menu held inside Muse (plorpos-uvs.4): the switcher opens where Muse stands, so
+ * B comes back to the same Muse screen rather than to the shelf. True when a
+ * game was picked and Muse is to unwind (g_muse_sw, g_muse_pick: muse_open_shelf
+ * launches it). Only a Muse the shelf opened can act on a pick; any other
+ * unwinds as before and nothing launches. */
+static sw_pick g_muse_pick;
+static bool g_muse_sw_ok;
+static bool muse_switch_unwind(app *a)
+{
+	bool powered;
+
+	if (!g_muse_sw_ok) { g_muse_sw = true; return true; }
+	if (switcher_run(a, NULL, false, &g_muse_pick, &powered)) { g_muse_sw = true; return true; }
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	ui_redraw_now();       /* the switcher's last frame is on screen */
+	return false;
+}
+
 /* A swipe or a Menu hold over a Diatom game: the switcher over its paused
  * frame. Another game ends this one (STOP: Diatom writes its Auto state on
  * the way out, as Quit does) and launch() starts the pick; the same game, B,
@@ -10577,7 +10597,11 @@ static muse_exit muse_now_screen(app *a)
 		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
+			memset(&drawn, 0, sizeof drawn);     /* the switcher drew over it */
+			continue;
+		}
 		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
 			if (how != MUSE_BACK) break;
@@ -10808,7 +10832,10 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
+			continue;
+		}
 		{
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
@@ -11105,7 +11132,10 @@ static int muse_artist_pick(app *a, int start)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); break; }
 		}
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+			if (muse_switch_unwind(a)) break;
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 
 		if (n > 0) {
@@ -11280,7 +11310,10 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) { g_muse_sw = true; break; }
+		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+			if (muse_switch_unwind(a)) break;
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] && g_muse_artists && muse_artist_filter() >= 0) {
 			/* One level up: the artist list, standing on this artist. */
 			int ar = muse_artist_filter();
@@ -12977,23 +13010,30 @@ static void game_menu(app *a, bool muse_only)
 /* The switcher from the shelf: a chosen game is put under the cursor on its
  * own shelf and launched from there, as if picked by hand. */
 static void launch(app *a);
+static void switcher_launch(app *a, const sw_pick *pk)
+{
+	a->sys_cursor = pk->sys;
+	a->view[pk->sys].cursor = pk->item;
+	a->screen = SCREEN_GAMES;
+	launch(a);
+}
+
 static void switcher_shelf(app *a)
 {
 	sw_pick pk;
 	bool powered;
 
 	if (!switcher_run(a, NULL, false, &pk, &powered)) return;
-	a->sys_cursor = pk.sys;
-	a->view[pk.sys].cursor = pk.item;
-	a->screen = SCREEN_GAMES;
-	launch(a);
+	switcher_launch(a, &pk);
 }
 
 /* Muse opened from a shelf: if Menu was held inside it, the switcher follows. */
 static void muse_open_shelf(app *a)
 {
+	g_muse_sw_ok = true;
 	muse_open(a, NULL, NULL);
-	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_shelf(a); }
+	g_muse_sw_ok = false;
+	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_launch(a, &g_muse_pick); }
 }
 
 static void respawn_resident(app *a)
