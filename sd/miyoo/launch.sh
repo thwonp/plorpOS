@@ -31,6 +31,7 @@ start_resident() {
 	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 		--save "$SD/Saves" --system "$SD/Bios" >> "$LOG" 2>&1 &
 }
+rm -f /tmp/tortos_poweroff
 cd "$DIR" || exit 1
 FAILS=0
 while :; do
@@ -41,6 +42,16 @@ while :; do
 	# A signal shows as 128 + its number (139 = SIGSEGV); the kernel here
 	# logs no user-space faults, so this line is the only record.
 	echo "launcher exited $RC" >> "$LOG"
+	# The launcher's power-off (a hold, Auto Off, or sleep with no suspend to
+	# go to) leaves this flag and exits 0. Without this check the loop just
+	# restarted it, and Games Auto-Resume put the game back: the "Quit loop"
+	# (plorpos-f1p.20). The same handshake sd/h700/launch_frontend.sh has.
+	if [ -f /tmp/tortos_poweroff ]; then
+		echo "power off" >> "$LOG"
+		killall diatom 2> /dev/null
+		sync
+		exec poweroff
+	fi
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
