@@ -32,7 +32,10 @@ but without Wi-Fi.
 4. Put your ROMs in `Roms/<console>/`. Your existing Allium `Roms/` folders keep
    working where the folder name matches.
 5. Firmware (Sega CD, PlayStation, PC Engine CD, Neo Geo) is looked for in
-   `Bios/`. Allium keeps it in `BIOS/`; copy or rename it.
+   `Bios/`. Allium keeps it in `BIOS/`: rename it to `Bios/` in two steps
+   (`BIOS` to `Bios.tmp`, then to `Bios`), because FAT treats a case-only rename
+   as no change and then cannot find the folder. Allium, if you fall back to it,
+   will no longer find its BIOS files.
 6. `MD5SUMS` lists every file in the zip. Check with `md5sum -c MD5SUMS` from
    the card root.
 7. Eject, put the card in, power on.
