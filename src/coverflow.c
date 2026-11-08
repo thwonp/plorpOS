@@ -133,6 +133,23 @@ const cf_layout CF_LAYOUT_ALBUMS_V = {
 };
 
 /* The card's height on this screen: the stage's, plus its share of the rest. */
+#if defined(PLATFORM_MIYOO)
+/* Flat cards leave the reflection's space empty, so the Flip centres the card
+ * in the free band instead: systems between the screen top and the game count,
+ * games between the title and the index line (plorpos-f1p.24). Layout units.
+ * Albums look right as they are. cf_draw and cf_focus_rect share this so hit
+ * rects and the launch zoom follow the cards. */
+static float flip_dy(const cf_layout *lay)
+{
+	/* draw_systems passes a copy (sys_layout), so match by value */
+	if (!lay->vertical && lay->center_y == CF_LAYOUT_SYSTEMS.center_y) return 26.0f;
+	if (lay == &CF_LAYOUT_GAMES)   return 33.0f;
+	return 0.0f;
+}
+#else
+#define flip_dy(lay) 0.0f
+#endif
+
 static float card_h(const cf_layout *lay, int screen_h)
 {
 	int spare = screen_h > CF_STAGE_H ? screen_h - CF_STAGE_H : 0;
@@ -148,7 +165,7 @@ void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *o
 	out->w = (int)cw;
 	out->h = (int)ch;
 	out->x = (int)(screen_w * 0.5f - cw * 0.5f);
-	out->y = (int)(top + CF_STAGE_H * lay->center_y - ch * 0.5f);
+	out->y = (int)(top + CF_STAGE_H * lay->center_y + flip_dy(lay) - ch * 0.5f);
 }
 
 /* Every move takes this long, whatever its distance. Crossing the shelf is not
@@ -692,7 +709,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 	/* Spacing counts the card's extent along the axis it is stacked on. */
 	float step = (lay->vertical ? ch : cw) * lay->step;
 	float cx = screen_w * 0.5f;
-	float cy = top + CF_STAGE_H * lay->center_y;
+	float cy = top + CF_STAGE_H * lay->center_y + flip_dy(lay);
 
 	int base = (int)floorf(cf->pos + 0.5f);
 
