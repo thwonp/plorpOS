@@ -55,9 +55,11 @@ the whole `.tmp_update/` folder.
 
 ## What is not included
 
-- **Arcade** runs on FBNeo, which needs about 45 MB of free memory to start a
-  game. The launcher frees its shelf pictures when you launch to make room.
-- **Neo Geo** runs on the small FBA 2012 Neo Geo core (FBNeo ran it at 55% speed).
+- **Arcade** is two shelves, each its own folder: `Arcade (FBA 2012)` (the
+  FBA 2012 core: CPS1, CPS2 and more) and `Arcade (MAME 2000)` (MAME 0.37 sets;
+  on the test card 122 of 152 loaded, the rest being BIOS archives, Neo Geo and
+  newer boards that core predates). A ROM set must match its core's version.
+- **Neo Geo** runs on the small FBA 2012 Neo Geo core.
 - **PlayStation**: too slow, and memory grows while it runs. Not shipped yet.
 - **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
 - Super Nintendo's Star Fox (Super FX) runs at 84% speed.
