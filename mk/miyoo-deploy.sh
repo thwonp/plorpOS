@@ -98,6 +98,10 @@ stage_package() {
 	R=$B/card; rm -rf "$R"; mkdir -p "$R/.tmp_update" "$R/TortOS/cores"
 	cp -R "$S/." "$R/TortOS/"
 	cp "$ROOT/sd/miyoo/updater" "$R/.tmp_update/updater"; chmod +x "$R/.tmp_update/updater"
+	# The Wi-Fi driver the hook loads from .tmp_update; stock firmware has no copy
+	# (it came with Allium), so a card without Allium would have no Wi-Fi.
+	$SSH 'cat /mnt/SDCARD/.tmp_update/8188fu.ko' > "$R/.tmp_update/8188fu.ko" ||
+		{ echo "no 8188fu.ko on the dev card" >&2; exit 1; }
 	for c in $(awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' "$S/systems.cfg" | sort -u); do
 		case " $SKIP " in *" $c "*) continue ;; esac
 		$SSH "cat /mnt/SDCARD/TortOS/cores/${c}_libretro.so" > "$R/TortOS/cores/${c}_libretro.so" ||

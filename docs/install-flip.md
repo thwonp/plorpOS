@@ -8,23 +8,26 @@ runs; see "What is not included".
 
 ## What this zip is
 
-An overlay for a card that **already runs Allium** (the Miyoo Mini Flip's usual
-community firmware). It takes over the boot, and falls back to Allium when it
-cannot start. It does not include or change Allium, and it needs three things
-from it: the Wi-Fi driver (`.tmp_update/8188fu.ko`), the ssh server
-(`.allium/bin/dropbear`), and your BIOS files. Without Allium the Flip boots,
-but without Wi-Fi.
+A card overlay. On a card that **already runs Allium** (the Flip's usual
+community firmware) it takes over the boot, and falls back to Allium when it
+cannot start; it does not change Allium itself. On a card without Allium it
+boots straight into plorpOS (the stock firmware starts the hook).
+
+It carries the Wi-Fi driver, `.tmp_update/8188fu.ko`, copied unmodified from
+Allium: the stock firmware has none. The driver is a Realtek module under
+GPL-2.0, so its source is that of the project it came from. The ssh server
+Allium also starts is not included. BIOS files are yours to supply.
 
 ## Install
 
 1. Back up the card. Keep a copy of `.tmp_update/` in particular.
-2. On the card, rename `.tmp_update/updater` to `.tmp_update/updater.allium`.
+2. Only if the card runs Allium: rename `.tmp_update/updater` to `.tmp_update/updater.allium`.
    **Do this first**: the zip carries its own `updater`, and without the rename
    it would overwrite Allium's, leaving nothing to fall back to.
 3. Unzip. Copy everything in it to the root of the card, merging folders.
    It adds:
    ```
-   .tmp_update/updater   the boot hook (Allium's own is the updater.allium you renamed)
+   .tmp_update/          the boot hook and the Wi-Fi driver (Allium's own updater is the updater.allium you renamed)
    TortOS/               the launcher, diatom, Muse, cores, fonts, cards
    Roms/<console>/       empty folders named as the shelves expect
    Bios/  Saves/
