@@ -1590,6 +1590,47 @@ static void texload_drain(app *a)
 	if (g_ft && ft_n) { g_ft_up_us += ft_us() - ft0; g_ft_ups += ft_n; }
 }
 
+#if defined(PLATFORM_MIYOO)
+/* The system cards the Flip keeps and asks for: those within SYS_KEEP places
+ * of the cursor, round the ring as the row draws. evict_far's rule, for the
+ * system row: it had none, so every system you scrolled past stayed resident,
+ * 2.1 MB each at 640x820, and sixteen of them walked the launcher past 80 MB
+ * into the kernel's OOM killer (measured 2026-11-08, plorpos-f1p.23). The
+ * Flip's card art is also shrunk at deploy time (mk/miyoo-deploy.sh): scaling
+ * at load cost about 10 ms a card on the frame. */
+#define SYS_KEEP 5
+static bool sys_wanted(const app *a, int i)
+{
+	int n = a->sys.count, d = abs(i - a->sys_cursor);
+
+	if (n >= CF_WINDOW) d = d > n / 2 ? n - d : d;
+	return d <= SYS_KEEP;
+}
+
+static void evict_far(sysview *v, int keep);
+
+static void sys_evict_far(app *a)
+{
+	static int last = -1;
+
+	for (int i = 0; i < a->sys.count; i++)
+		if (a->sys_tex[i] && !sys_wanted(a, i)) {
+			SDL_DestroyTexture(a->sys_tex[i]);
+			a->sys_tex[i] = NULL;
+		}
+	/* And the game covers of every other system. Landing on a system primes
+	 * its shelf's covers so that A is instant, and evict_far(TEX_KEEP_FAR)
+	 * only runs when a shelf is left, not when the row scrolls past: about
+	 * 2.2 MB stayed resident for each system visited, 35 MB for all sixteen
+	 * (measured 2026-11-08, plorpos-f1p.23). Only on a cursor move. */
+	if (a->sys_cursor != last) {
+		last = a->sys_cursor;
+		for (int s = 0; s < a->sys.count; s++)
+			if (s != a->sys_cursor) evict_far(&a->view[s], 0);
+	}
+}
+#endif
+
 static void evict_far(sysview *v, int keep)
 {
 	for (int i = 0; i < v->list.count; i++) {
@@ -1675,6 +1716,9 @@ static void prime_sys_window(app *a)
 {
 	for (int i = 0; i < a->sys.count; i++) {
 		int w, h;
+#if defined(PLATFORM_MIYOO)
+		if (!sys_wanted(a, i)) continue;
+#endif
 		sys_get_tex(a, i, &w, &h, NULL);
 	}
 }
@@ -3583,6 +3627,11 @@ static void draw_systems(app *a)
 
 	cf_focus_rect(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
+#if defined(PLATFORM_MIYOO)
+	/* Not while a long jump is cutting: the cursor is already at the far end
+	 * and the cards in view are not (evict_far's rule). */
+	if (!cf_cutting(&a->cf_sys)) sys_evict_far(a);
+#endif
 	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
 	            sys_get_tex, a, &lay))
 		ui_redraw_now();
@@ -4006,7 +4055,11 @@ static void draw_shelf(app *a)
 	 * draws none, so nothing else would ask, and a full queue turns an ask
 	 * away. Thirteen checks once they are all in. */
 	for (int i = 0; i < a->sys.count; i++)
-		if (!a->sys_tex[i]) {
+		if (!a->sys_tex[i]
+#if defined(PLATFORM_MIYOO)
+		    && sys_wanted(a, i)    /* not the ones sys_evict_far just dropped */
+#endif
+		    ) {
 			int w, h;
 			sys_get_tex(a, i, &w, &h, NULL);
 		}
@@ -15255,6 +15308,7 @@ int main(int argc, char *argv[])
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
 	bool loader;                  /* texload's threads are running */
+
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_path = argv[++i];

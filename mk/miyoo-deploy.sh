@@ -44,6 +44,18 @@ rm -rf "$S"; mkdir -p "$S"
 flip_cfg() {
 	sed 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' "$ROOT/config/systems.cfg" > "$1"
 }
+# The Flip's card art: shrink-only to the focused card's frame area. The classic
+# set is 640x820 (2.1 MB a texture) and is drawn at about 485x622, so the rest
+# was memory the shelf never showed and a stretch on every frame. 301670 =
+# cf_focus_rect for CF_LAYOUT_SYSTEMS at 752x560 (485x622). Smaller PNGs also
+# decode faster and spend less transient memory in the loader threads. The
+# fancy set is 384 or under already and is left alone (plorpos-f1p.23).
+flip_cards() { # staging dir
+	command -v magick >/dev/null || { echo "need ImageMagick to size the cards" >&2; exit 1; }
+	for f in "$1"/cards/*/*.png "$1"/cards/*.png; do
+		[ -f "$f" ] && magick "$f" -resize '301670@>' -strip PNG32:"$f.tmp" && mv "$f.tmp" "$f"
+	done
+}
 fetch_cores() { # copy each systems.cfg core the card lacks from Allium's RetroArch set
 	$SSH 'D=/mnt/SDCARD/TortOS; mkdir -p $D/cores
 		for c in $(awk -F"|" "\$1==\"sys\"{gsub(/^[ \t]+|[ \t]+$/,\"\",\$4); print \$4}" $D/systems.cfg | sort -u); do
@@ -78,8 +90,10 @@ all)
 	done
 	plorpos_files "$S" "$F"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
+	flip_cards "$S"
 	;;
-*) echo "mode: all | elf | diatom | launch | libs | cfg | hook" >&2; exit 1 ;;
+cards)  mkdir -p "$S/cards"; cp -R "$ROOT/res/cards/." "$S/cards/"; rm -rf "$S/cards/src"; flip_cards "$S" ;;
+*) echo "mode: all | elf | diatom | launch | libs | cfg | cards | hook" >&2; exit 1 ;;
 esac
 push "$S"
 case $MODE in all|cfg) fetch_cores ;; esac
