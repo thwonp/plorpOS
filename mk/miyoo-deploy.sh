@@ -47,7 +47,11 @@ rm -rf "$S"; mkdir -p "$S"
 # (user, 2026-11-04: mGBA lagged in play even at 1.2 GHz).
 flip_cfg() {
 	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' \
-	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' "$ROOT/config/systems.cfg" > "$1"
+	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' \
+	    -e '/^sys|Arcade|Arcade|fbneo|/c\
+sys|Arcade (FBA 2012)|Arcade (FBA 2012)|fbalpha2012|ARCADE|ARCADE.png|1FB4E0|zip,7z||Arcade\
+sys|Arcade (MAME 2000)|Arcade (MAME 2000)|mame2000|MAME|MAME.png|1FB4E0|zip,7z||Arcade' \
+	    "$ROOT/config/systems.cfg" > "$1"
 }
 # The Flip's card art: shrink-only to the focused card's frame area. The classic
 # set is 640x820 (2.1 MB a texture) and is drawn at about 485x622, so the rest

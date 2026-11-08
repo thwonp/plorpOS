@@ -15599,7 +15599,7 @@ static void scan_all(app *a, bool bg)
 		ports_titles(&a->sys.systems[i], &v->list);
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
-		             strcmp(a->sys.systems[i].core, "fbneo") && strncmp(a->sys.systems[i].core, "fbalpha2012", 11) ? NULL : fbneo_dat());
+		             strcmp(a->sys.systems[i].core, "fbneo") && strncmp(a->sys.systems[i].core, "fbalpha2012", 11) && strcmp(a->sys.systems[i].core, "mame2000") ? NULL : fbneo_dat());
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {

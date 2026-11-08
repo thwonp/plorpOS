@@ -897,7 +897,7 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_d
 
 		snprintf(g_sys[g_nsys].folder, CFG_STR, "%s", sys->systems[i].folder);
 		snprintf(g_sys[g_nsys].exts,   CFG_STR, "%s", sys->systems[i].exts);
-		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo") || !strncmp(sys->systems[i].core, "fbalpha2012", 11);
+		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo") || !strncmp(sys->systems[i].core, "fbalpha2012", 11) || !strcmp(sys->systems[i].core, "mame2000");
 		g_nsys++;
 	}
 	g_st.systems = g_nsys;
