@@ -157,15 +157,31 @@ void plat_present(SDL_Renderer *r)
 	SDL_RenderPresent(r);
 	if (!surf || r != ren || ioctl(fb_fd, FBIOGET_VSCREENINFO, &v) != 0) return;
 	row = (size_t)surf->w;
-	if (((size_t)v.yoffset + (size_t)surf->h) * fix.line_length > fix.smem_len) return;
+	/* DRAW OFF GLASS, THEN FLIP. Copying onto the page being scanned out tore
+	 * every scroll frame, and frames of about 27 ms against a 16.7 ms refresh
+	 * showed for one refresh then two. So the copy goes to the next page and
+	 * FBIOPAN_DISPLAY - a blocking flip that waits for vblank, as diatom
+	 * measured on this fb (port/miyoo.c) - puts it on glass: frames lock to the
+	 * panel and none is half one picture, half the other. With under two pages
+	 * it draws on glass as it did before. */
+	unsigned pages = v.yres ? v.yres_virtual / v.yres : 1;
+	unsigned front = v.yres ? v.yoffset / v.yres : 0, back = front;
+	if (pages > 3) pages = 3;
+	if (pages >= 2) back = (front + 1) % pages;
+	if ((size_t)(back * v.yres + (unsigned)surf->h) * fix.line_length > fix.smem_len) return;
 	/* The panel is mounted upside down (seen on the Flip, 2026-11-04), as on
 	 * other Miyoo Minis: the surface goes on glass turned 180 degrees - the
 	 * last row first, each row back to front. */
 	for (int y = 0; y < surf->h; y++) {
 		const uint32_t *s = (const uint32_t *)((uint8_t *)surf->pixels + (size_t)y * (size_t)surf->pitch);
-		uint32_t *d = (uint32_t *)(fb + ((size_t)v.yoffset + (size_t)(surf->h - 1 - y)) *
+		uint32_t *d = (uint32_t *)(fb + ((size_t)back * v.yres + (size_t)(surf->h - 1 - y)) *
 		                           fix.line_length) + row - 1;
 		for (size_t x = 0; x < row; x++) *d-- = s[x];
+	}
+	if (back != front) {
+		v.yoffset = back * v.yres;
+		if (ioctl(fb_fd, FBIOPAN_DISPLAY, &v) != 0)
+			ioctl(fb_fd, FBIOPUT_VSCREENINFO, &v);
 	}
 }
 
