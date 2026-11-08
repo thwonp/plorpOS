@@ -60,7 +60,8 @@ the whole `.tmp_update/` folder.
   on the test card 122 of 152 loaded, the rest being BIOS archives, Neo Geo and
   newer boards that core predates). A ROM set must match its core's version.
 - **Neo Geo** runs on the small FBA 2012 Neo Geo core.
-- **PlayStation**: too slow, and memory grows while it runs. Not shipped yet.
+- **PlayStation** runs on a pcsx_rearmed build with a smaller dynarec cache; one game
+  (Ace Combat 2) was measured at full speed, others are untested.
 - **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
 - Super Nintendo's Star Fox (Super FX) runs at 84% speed.
 - Game Boy Advance runs on gpsp, not mGBA (mGBA lagged in play).

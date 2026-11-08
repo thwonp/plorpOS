@@ -97,9 +97,8 @@ stage_package() {
 	command -v zip >/dev/null || { echo "need zip" >&2; exit 1; }
 	VER=$(sed -n 's/^VERSION ?= *//p' "$ROOT/Makefile" | head -1)
 	OUT=${OUT:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist}
-	# Cores that passed the f1p.11 gate; pcsx_rearmed (too slow, memory grows) is left
-	# out until plorpos-f1p.27. Override with SKIP_CORES.
-	SKIP=${SKIP_CORES:-pcsx_rearmed}
+	# Cores to leave out of the zip; none now. Override with SKIP_CORES.
+	SKIP=${SKIP_CORES:-}
 	R=$B/card; rm -rf "$R"; mkdir -p "$R/.tmp_update" "$R/TortOS/cores"
 	cp -R "$S/." "$R/TortOS/"
 	cp "$ROOT/sd/miyoo/updater" "$R/.tmp_update/updater"; chmod +x "$R/.tmp_update/updater"
