@@ -128,7 +128,9 @@ static bool fb_open(void)
 
 bool plat_video_init(void)
 {
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+	/* Nearest: the software renderer's linear stretch cost about 30% of a
+	 * scroll frame on the SSD202D (plorpos-f1p.14.3). */
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
 	/* No window: the offscreen driver is there only so SDL's video
 	 * subsystem (textures, surfaces) initialises. */
 	SDL_SetHint(SDL_HINT_VIDEODRIVER, "offscreen");
