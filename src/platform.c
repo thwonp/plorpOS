@@ -2155,6 +2155,14 @@ bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;
 #ifdef __linux__
+#if defined(PLATFORM_MIYOO)
+	/* The Flip has no suspend to escalate to (plat_sleep_supported is false;
+	 * real sleep is plorpos-f1p.7), so the PLAT_SUSPEND_AFTER_S wait below
+	 * only froze the screen for ten seconds before the power-off it ends in.
+	 * Say so at once; the caller powers off (plorpos-f1p.20). */
+	(void)waited_ms;
+	return false;
+#endif
 	int saved_vol = cur_vol;
 	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
 	unsigned since;

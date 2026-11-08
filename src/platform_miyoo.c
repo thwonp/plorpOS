@@ -185,9 +185,13 @@ bool plat_input_init(void)
 	if (fd_pad < 0) fd_pad = open(PAD_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	/* platform.c reads fd_power on its own and drains everything on it, so it
 	 * must never be the pad's descriptor: aliased to it, it swallowed every
-	 * press the in-game menu waited for (2026-11-04). The hall sensor's node
-	 * reports KEY_POWER too; which node the power BUTTON uses is f1p.7's. */
-	if (fd_power < 0) fd_power = open(LID_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	 * press the in-game menu waited for (2026-11-04). It is its OWN open of
+	 * the pad's node, though: the power button is on event0 (captured
+	 * 2026-11-08, nothing on the hall node's event1 for a tap), and every
+	 * open of an evdev node has its own queue, so this one sees the press
+	 * the in-game wait needs without taking it from fd_pad. The hall sensor
+	 * (event1, lid) is f1p.7's. */
+	if (fd_power < 0) fd_power = open(PAD_NODE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd_pad < 0) fprintf(stderr, "input: %s: %s\n", PAD_NODE, strerror(errno));
 	return fd_pad >= 0;
 }
