@@ -265,8 +265,18 @@ void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 	 * cubic, so at the 90ms key repeat a 240ms departure has covered about 5%
 	 * of its travel, and holding the button would leave the cards nearly
 	 * still under a title running through the list. */
+	/* ...unless the press turns the shelf round. Landing teleports `pos` to the
+	 * old destination, and with the new step pointing back the shelf would
+	 * lunge forward, then slide back: measured on the Flip, the shelf at 67.3
+	 * jumping to 72.5 under an L1 that was heading for 67. The owner read that
+	 * as the press being ignored. A turn drops the cut where the cards are
+	 * drawn and goes from there. */
+	bool moving = cf->active;
+
 	if (cf->cutting) {
-		cf->pos = cf->target;
+		bool turning = raw != 0 && ((raw > 0) != (cf->cut_to > cf->from));
+
+		if (!turning) cf->pos = cf->target;
 		cf->cutting = false;
 	}
 	cf->target += (float)raw;
@@ -321,8 +331,18 @@ void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 		float span = cf->target - cf->from;
 		float g = cf->glide > (float)CF_WARM_CARDS ? (float)CF_WARM_CARDS
 		                                           : cf->glide;
-		if (!cf->chase && g > 0.0f && (span > (float)CF_WARM_CARDS ||
-		                               span < -(float)CF_WARM_CARDS)) {
+		/* A MOVE ALREADY IN FLIGHT CUTS ONLY WHEN IT IS VERY LONG. A cut starts
+		 * its departure on ease_in, which crawls for the first 100 ms, and a
+		 * press every 90 ms - a held page button, a fast thumb - restarted that
+		 * crawl each time: measured 8.6 cards behind after the third press,
+		 * with the counter 22 ahead of the cards by the fifth. Retargeting the
+		 * ordinary ease-out keeps the shelf about two cards behind however
+		 * long the button is held. A jump from rest still cuts at the warm
+		 * window, as does anything past two of them mid-flight, so a wrap or a
+		 * letter jump does not fly a hundred empty cards past. */
+		float lim = moving ? 2.0f * (float)CF_WARM_CARDS : (float)CF_WARM_CARDS;
+
+		if (!cf->chase && g > 0.0f && (span > lim || span < -lim)) {
 			cf->cutting = true;
 			cf->cut_to = cf->from + (span > 0.0f ? g : -g);
 		}
