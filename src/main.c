@@ -1607,27 +1607,13 @@ static bool sys_wanted(const app *a, int i)
 	return d <= SYS_KEEP;
 }
 
-static void evict_far(sysview *v, int keep);
-
 static void sys_evict_far(app *a)
 {
-	static int last = -1;
-
 	for (int i = 0; i < a->sys.count; i++)
 		if (a->sys_tex[i] && !sys_wanted(a, i)) {
 			SDL_DestroyTexture(a->sys_tex[i]);
 			a->sys_tex[i] = NULL;
 		}
-	/* And the game covers of every other system. Landing on a system primes
-	 * its shelf's covers so that A is instant, and evict_far(TEX_KEEP_FAR)
-	 * only runs when a shelf is left, not when the row scrolls past: about
-	 * 2.2 MB stayed resident for each system visited, 35 MB for all sixteen
-	 * (measured 2026-11-08, plorpos-f1p.23). Only on a cursor move. */
-	if (a->sys_cursor != last) {
-		last = a->sys_cursor;
-		for (int s = 0; s < a->sys.count; s++)
-			if (s != a->sys_cursor) evict_far(&a->view[s], 0);
-	}
 }
 #endif
 
@@ -1711,6 +1697,28 @@ static void prime_toward(app *a, int s, int center)
 {
 	prime_around(a, s, center, CF_HALF_WINDOW);
 }
+
+#if defined(PLATFORM_MIYOO)
+/* At rest on the systems row, ask for the covers of the neighbours - one
+ * system per redraw, nearest first (+1, -1, +2, -2) - so a first visit one or
+ * two steps away already has its row. load_ahead only warms the system the
+ * row lands on, and a scroll that keeps moving never visits a cold one in
+ * time. Not while the row moves: the workers share two cores with the frame. */
+static void sys_prefetch(app *a)
+{
+	static int cur = -1, step;
+	int n = a->sys.count, off, s;
+
+	if (n < 2) return;
+	if (a->sys_cursor != cur) { cur = a->sys_cursor; step = 0; }
+	if (step >= 4) return;
+	off = step / 2 + 1;
+	if (step % 2) off = -off;
+	step++;
+	s = ((cur + off) % n + n) % n;
+	prime_toward(a, s, a->view[s].cursor);
+}
+#endif
 
 static void prime_sys_window(app *a)
 {
@@ -3635,6 +3643,9 @@ static void draw_systems(app *a)
 	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
 	            sys_get_tex, a, &lay))
 		ui_redraw_now();
+#if defined(PLATFORM_MIYOO)
+	else sys_prefetch(a);
+#endif
 
 	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
 	 *
