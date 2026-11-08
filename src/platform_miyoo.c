@@ -472,6 +472,12 @@ void plat_settings_init(void)
 	 * first key press moves from there rather than from full. */
 	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : 8;
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
+	/* platform.c's nudges return early while these are negative, and the Flip
+	 * has no device to open for either (volume is the resident's, brightness a
+	 * sysfs write per change), so they hold /dev/null: any non-negative fd
+	 * says "controls present". Without it neither key ever did anything. */
+	mixer_fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
+	disp_fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
 	apply_volume(cur_vol);
 	apply_brightness(cur_bright);
 }
