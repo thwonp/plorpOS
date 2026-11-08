@@ -25,7 +25,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
-        check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-btnmap check-shaderlist \
+        check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-btnmap check-shaderlist check-battery \
         check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
@@ -49,7 +49,7 @@ endif
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-gbpal \
+         check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused
 
 check:
@@ -61,7 +61,7 @@ check:
 	printf '\nok: every check passed\n'
 
 # One version number: the zip name and the About page both read it from here.
-VERSION ?= 1.7.1
+VERSION ?= 1.8
 
 # It reaches the code on the compile line, where make cannot see it change, so
 # v1.0.1 first built as a 1.0 elf. A different VERSION from the last build's
@@ -637,6 +637,17 @@ build-native/shaderlist-check: tools/shaderlist-check.c src/shaderlist.c src/sha
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/shaderlist-check.c src/shaderlist.c
+
+# plat_battery's reader (plorpos-b8b): the kernel's capacity, the cell's own
+# counters or voltage when that reads 0, the Battery node found by type. Links
+# src/battery.c only, no SDL.
+check-battery: build-native/battery-check
+	@./build-native/battery-check
+
+build-native/battery-check: tools/battery-check.c src/battery.c src/platform_dev.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
+	      -o $@ tools/battery-check.c src/battery.c
 
 # The in-game Palette list (plorpos-gkd.76): every value one mgba declares.
 check-gbpal: build-native/gbpal-check

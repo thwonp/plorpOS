@@ -479,6 +479,13 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 		set_dirs(st);
 		return true;
 	}
+	/* L2/R2, axes that only ever rest or slam: past the middle of the
+	 * range the node reports is pressed, as SDL's > 16384 is (plorpos-wjw.6
+	 * - without it no trigger could be bound here). */
+	if (ev->type == EV_ABS && (ev->code == ABS_Z || ev->code == ABS_RZ)) {
+		set_btn(st, ev->code == ABS_Z ? IN_L2 : IN_R2, plat_abs_pressed(fd_joy, ev));
+		return true;
+	}
 	if (ev->type != EV_KEY || ev->value == 2) return false;
 	for (i = 0; i < sizeof codes / sizeof codes[0]; i++)
 		if (ev->code == codes[i]) {

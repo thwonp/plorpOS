@@ -50,6 +50,10 @@ static bool    g_advanced;          /* the next track is asked for; see event() 
 static int     g_skips;             /* consecutive tracks that would not open */
 static char    g_artist[128], g_album[128];
 static mu_now  g_now;
+/* The track just asked for has no title on show until the daemon's META says
+ * the file's own tag (plorpos-974): the file's name would flash first. If META
+ * has none, or the file never opens, this name stands in. */
+static char    g_title_wait[96];
 static bool    g_book;              /* the queue is a book: in order, always */
 static double  g_start_at;          /* where the first PLAY of a queue starts */
 static bool    g_ran_out;           /* see musec_take_ran_out */
@@ -76,6 +80,21 @@ static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that que
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
+static void   (*g_on_arrive)(const char *sink);
+/* A named sink that fell back to the codec is asked for again, twice, 2.5 s
+ * apart: the usual cause is the game still letting go of a DAC (Busy), and
+ * the sound then sat on the speaker for good (plorpos-7wu.6). */
+static char     g_want[128];
+static int      g_retries;
+static unsigned g_pause_sent;       /* a toggle sent PAUSE at this time; the daemon has not said so yet */
+static bool     g_fell_back;        /* its last answer was the codec, not the sink asked for */
+static unsigned g_retry_at;
+
+/* A DAC or a headset: what btvol_set can set, and what needs the arrival cap. */
+static bool sink_named(const char *s)
+{
+	return !strncmp(s, "plughw:CARD=", 12) || !strncmp(s, "bt_", 3);
+}
 
 static void seek_to(double t);
 
@@ -197,9 +216,10 @@ static void play_current(void)
 	 * one the queue moved on to, from its beginning. */
 	sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
 	g_nch = 0;                     /* the new file says its own */
-	/* Until META says otherwise, the name the file has. */
+	/* No title until META: the tag, or the name the file has if it has none. */
 	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
-	              g_now.title, sizeof g_now.title);
+	              g_title_wait, sizeof g_title_wait);
+	g_now.title[0] = '\0';
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
@@ -280,6 +300,14 @@ static void adopt(const char *line, const char *state)
 	g_now.count = g_qn;
 }
 
+/* The name stands in for a title that did not come. */
+static void title_fallback(void)
+{
+	if (g_title_wait[0] && !g_now.title[0])
+		snprintf(g_now.title, sizeof g_now.title, "%s", g_title_wait);
+	g_title_wait[0] = '\0';
+}
+
 static void event(const char *line)
 {
 	char v[256];
@@ -297,6 +325,7 @@ static void event(const char *line)
 		if (g_advanced && !strcmp(v, "stopped")) { g_advanced = false; return; }
 		g_advanced = false;
 		g_asked = false;
+		g_pause_sent = 0;
 		g_now.state = !strcmp(v, "playing") ? MU_PLAYING
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
 		if (g_now.state == MU_PLAYING) {
@@ -325,6 +354,7 @@ static void event(const char *line)
 		 * every time - the rips carry an album tag and no artist one. */
 		field(line, "title", v, sizeof v);
 		if (v[0]) snprintf(g_now.title, sizeof g_now.title, "%s", v);
+		title_fallback();
 		field(line, "artist", v, sizeof v);
 		if (v[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", v);
 		field(line, "album", v, sizeof v);
@@ -359,8 +389,30 @@ static void event(const char *line)
 	} else if (!strncmp(line, "END", 3)) {
 		advance(false);
 	} else if (!strncmp(line, "SINK", 4)) {
+		char prev[sizeof g_sink_said];
+
+		snprintf(prev, sizeof prev, "%s", g_sink_said);
 		field(line, "device", g_sink_said, sizeof g_sink_said);
 		g_sink_waiting = false;
+		/* The sound is back on a DAC or headset after an unplanned stay on the
+		 * speaker: whatever level it was raised to there, to be heard, is not
+		 * one for that (plorpos-7wu.6). Not for the planned hand-offs - the
+		 * menu takes the DAC and gives it back - which keep the player's
+		 * level. Before the play below. */
+		if (g_on_arrive && g_fell_back && sink_named(g_sink_said) && strcmp(prev, g_sink_said))
+			g_on_arrive(g_sink_said);
+		g_fell_back = sink_named(g_sink_sent) && strcmp(g_sink_sent, g_sink_said);
+		if (g_fell_back) {
+			if (g_retries < 2) {
+				g_retries++;
+				snprintf(g_want, sizeof g_want, "%s", g_sink_sent);
+				g_retry_at = plat_now_ms() + 2500;
+				if (!g_retry_at) g_retry_at = 1;
+			}
+		} else {
+			g_retries = 0;
+			g_retry_at = 0;
+		}
 		/* Taken as the starting point only when nothing has been asked of
 		 * this daemon yet. After that, what was ASKED stands: re-asking
 		 * because Muse fell back would retry a dead headset every tick,
@@ -398,6 +450,7 @@ static void event(const char *line)
 	} else if (!strncmp(line, "ERROR", 5)) {
 		field(line, "why", v, sizeof v);
 		fprintf(stderr, "muse: %s\n", v);
+		title_fallback();
 		/* A track that will not open is skipped rather than ending the
 		 * album - but not forever: a whole album of files that fail is a
 		 * folder problem, and walking it at a frame a track says nothing. */
@@ -454,6 +507,16 @@ void musec_poll(void)
 	ssize_t got;
 
 	headset_keys();
+	if (g_retry_at && (int)(plat_now_ms() - g_retry_at) >= 0) {
+		g_retry_at = 0;
+		if (g_fd >= 0 && !g_sink_waiting && !strcmp(g_sink_sent, g_want) &&
+		    strcmp(g_sink_said, g_want)) {
+			g_sink_ms = plat_now_ms();
+			g_sink_waiting = true;
+			sendf("SINK\tdevice=%s", g_want);
+			fprintf(stderr, "muse: %s fell back; trying again (%d of 2)\n", g_want, g_retries);
+		}
+	}
 
 	/* Reconnect whenever there is a queue to look after, not only when a
 	 * play is waiting: a daemon that restarts mid-album would otherwise
@@ -687,9 +750,20 @@ void musec_pause(void)
 
 void musec_toggle(void)
 {
-	if (g_now.state == MU_PLAYING) sendf("PAUSE");
-	else if (g_now.state == MU_PAUSED) {
+	/* By what the last toggle asked for until the daemon says it happened: its
+	 * state follows a PAUSE a moment late, and a second toggle in that moment
+	 * read "playing" and paused again - a pause/play chord that would not
+	 * resume (plorpos-7wu.5). A PLAY or RESUME not yet answered is playing. */
+	bool recent = g_pause_sent && (int)(plat_now_ms() - g_pause_sent) < 1500;
+	bool playing = g_asked || (g_now.state == MU_PLAYING && !recent);
+
+	if (playing) {
+		g_asked = false;
+		g_pause_sent = plat_now_ms() | 1;
+		sendf("PAUSE");
+	} else if (g_now.state == MU_PAUSED || recent) {
 		g_asked = true;
+		g_pause_sent = 0;
 		if (g_before_heard) g_before_heard();   /* see play_current */
 		sendf("RESUME");
 	}
@@ -697,6 +771,7 @@ void musec_toggle(void)
 }
 
 void musec_on_before_heard(void (*fn)(void)) { g_before_heard = fn; }
+void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 
