@@ -157,7 +157,16 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
 		}
 	}
+#if defined(PLATFORM_MIYOO)
+	/* No glow on the Flip: ui_glow draws nothing when glow_tex is NULL. The
+	 * big alpha-modulated copies were about 80% of a scroll frame there
+	 * (122 -> 27 ms without them) and rendered as blotchy halos on the panel
+	 * (plorpos-f1p.14.3). */
+	glow_tex = NULL;
+	(void)make_glow;
+#else
 	glow_tex = make_glow(r);
+#endif
 	return fonts[UI_F_TITLE] != NULL;
 }
 
