@@ -4046,11 +4046,20 @@ static bool backdrop_cached(app *a, const SDL_Rect *focus, unsigned accent)
 	if (g_backdrop_is.tint != a->tint || g_backdrop_is.glow != !!focus ||
 	    (focus && (g_backdrop_is.accent != accent ||
 	               memcmp(&g_backdrop_is.focus, focus, sizeof *focus)))) {
+		float sx = 1.0f, sy = 1.0f;
+
+		/* SDL resets the render scale to 1 whenever the target becomes a
+		 * texture and only puts it back when the target goes to NULL. So with
+		 * `was` a texture - the Flip's half-size frame, plat_lowres - the rest
+		 * of the frame drew at the wrong scale each time this cache redrew,
+		 * which is every frame while the tint eases. Put the scale back. */
+		SDL_RenderGetScale(a->r, &sx, &sy);
 		was = SDL_GetRenderTarget(a->r);
 		if (SDL_SetRenderTarget(a->r, g_backdrop) != 0) return false;
 		draw_background(a);
 		if (focus) ui_glow(a->r, focus, accent, 100, 2.3f);
 		SDL_SetRenderTarget(a->r, was);
+		SDL_RenderSetScale(a->r, sx, sy);
 		g_backdrop_is.tint = a->tint;
 		g_backdrop_is.glow = !!focus;
 		g_backdrop_is.accent = accent;
