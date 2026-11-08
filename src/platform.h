@@ -134,6 +134,12 @@ bool plat_video_init_over_child(void);
 void plat_window_show(bool on);
 #endif
 void plat_present(SDL_Renderer *r);
+#if defined(PLATFORM_MIYOO)
+/* Draw the next frame at half size and let the present upscale it: a quarter
+ * of the pixels while a shelf moves (plorpos-f1p.14.3). Lasts for one present;
+ * ask again before every frame that wants it. */
+void plat_lowres(bool on);
+#endif
 
 bool plat_input_init(void);
 void plat_input_quit(void);

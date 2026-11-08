@@ -1463,13 +1463,23 @@ static unsigned ft_us(void)
 	return (unsigned)(t.tv_sec * 1000000u + t.tv_nsec / 1000);
 }
 
+#if defined(PLATFORM_MIYOO)
+extern unsigned plat_pan_us;   /* platform_miyoo.c: the vblank wait in present */
+#endif
 static void ft_frame(const char *where, unsigned t0, unsigned t1, unsigned t2,
                      int cursor, int count)
 {
 	if (g_ft && t2 - t0 > FT_SLOW_US)
-		fprintf(stderr, "frame: %s %u ms (update %u, draw %u), paths %u in %u ms, "
+		fprintf(stderr, "frame: %s %u ms (update %u, draw %u"
+#if defined(PLATFORM_MIYOO)
+		        ", pan %u"
+#endif
+		        "), paths %u in %u ms, "
 		        "uploads %u in %u ms, card %d/%d, at %u\n", where,
 		        (t2 - t0) / 1000, (t1 - t0) / 1000, (t2 - t1) / 1000,
+#if defined(PLATFORM_MIYOO)
+		        plat_pan_us / 1000,
+#endif
 		        g_ft_paths, g_ft_path_us / 1000, g_ft_ups, g_ft_up_us / 1000,
 		        cursor + 1, count, t2 / 1000);
 	g_ft_path_us = g_ft_paths = g_ft_up_us = g_ft_ups = 0;
@@ -4131,11 +4141,32 @@ static bool screen_draw_due(app *a, ui_pace *p, Uint32 shown)
 	return ui_draw_due(p, touched || texload_ready(), shown);
 }
 
+#if defined(PLATFORM_MIYOO)
+/* A shelf's row is moving: the systems row on the systems screen, the open
+ * system's row on the games screen. */
+static bool shelf_moving(const app *a)
+{
+	if (a->screen == SCREEN_SYSTEMS) return a->cf_sys.active;
+	if (a->screen == SCREEN_GAMES) return a->view[a->sys_cursor].cf.active;
+	return false;
+}
+#endif
+
 static void render(app *a)
 {
+#if defined(PLATFORM_MIYOO)
+	bool lo = shelf_moving(a);
+
+	plat_lowres(lo);
+#endif
 	draw_shelf(a);
 	draw_chrome(a->r);
 	plat_present(a->r);
+#if defined(PLATFORM_MIYOO)
+	/* The move ended on a half-size frame: draw the sharp one now, or the
+	 * shelf would sit soft until something else asked for a redraw. */
+	if (lo && !shelf_moving(a)) ui_redraw_now();
+#endif
 }
 
 /* Ease the background tint toward the focused system rather than snapping: the

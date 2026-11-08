@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -149,12 +150,66 @@ bool plat_video_init_over_child(void)
 	return true;
 }
 
+/* How long the last present sat in FBIOPAN_DISPLAY waiting for vblank, for the
+ * frame trace: draw minus this is what the frame itself cost. */
+unsigned plat_pan_us;
+
+static unsigned mono_us(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (unsigned)(ts.tv_sec * 1000000u + (unsigned)ts.tv_nsec / 1000u);
+}
+
+/* HALF-SIZE FRAMES. A scroll frame cost about 26 ms, nearly all of it blending
+ * and scaling roughly 600K pixels (measured 2026-11-08: dimming alone was 1.7
+ * ms of it). While a shelf moves the frame is drawn into a half-size target at
+ * render scale 0.5 - a quarter of the pixels - read back, and doubled into the
+ * page by plat_present. At rest it draws full size, so nothing stays soft. */
+static SDL_Texture *lo_tex;
+static uint32_t *lo_buf;
+static bool lo_on;
+
+void plat_lowres(bool on)
+{
+	if (!on || lo_on || !ren || !surf) return;
+	if (!lo_tex) {
+		lo_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+		                           surf->w / 2, surf->h / 2);
+		lo_buf = malloc((size_t)(surf->w / 2) * (size_t)(surf->h / 2) * 4);
+		if (!lo_tex || !lo_buf) {
+			if (lo_tex) SDL_DestroyTexture(lo_tex);
+			free(lo_buf);
+			lo_tex = NULL; lo_buf = NULL;
+			return;
+		}
+	}
+	/* The launcher lays out in a 1024x768 stage under a render scale of its own
+	 * (plat_geometry_init): halve THAT, do not replace it. SetRenderTarget
+	 * resets the scale to 1 and puts it back on the way out. */
+	float sx = 1.0f, sy = 1.0f;
+
+	SDL_RenderGetScale(ren, &sx, &sy);
+	if (SDL_SetRenderTarget(ren, lo_tex) != 0) return;
+	SDL_RenderSetScale(ren, sx * 0.5f, sy * 0.5f);
+	lo_on = true;
+}
+
 void plat_present(SDL_Renderer *r)
 {
 	struct fb_var_screeninfo v;
 	size_t row;
+	bool lo = false;
 
 	SDL_RenderPresent(r);
+	if (lo_on && r == ren) {
+		lo = SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, lo_buf,
+		                          (surf->w / 2) * 4) == 0;
+		SDL_SetRenderTarget(ren, NULL);   /* restores the full-size scale */
+		lo_on = false;
+		if (!lo) return;
+	}
 	if (!surf || r != ren || ioctl(fb_fd, FBIOGET_VSCREENINFO, &v) != 0) return;
 	row = (size_t)surf->w;
 	/* DRAW OFF GLASS, THEN FLIP. Copying onto the page being scanned out tore
@@ -172,6 +227,21 @@ void plat_present(SDL_Renderer *r)
 	/* The panel is mounted upside down (seen on the Flip, 2026-11-04), as on
 	 * other Miyoo Minis: the surface goes on glass turned 180 degrees - the
 	 * last row first, each row back to front. */
+	if (lo && row <= 2048) {
+		static uint32_t line[2048];
+		size_t sw = row / 2;
+
+		for (int y = 0; y < surf->h / 2; y++) {
+			const uint32_t *s = lo_buf + (size_t)y * sw;
+			uint8_t *d0 = fb + ((size_t)back * v.yres + (size_t)(surf->h - 1 - 2 * y)) * fix.line_length;
+			uint8_t *d1 = d0 - fix.line_length;
+
+			for (size_t x = 0; x < sw; x++)
+				line[row - 1 - 2 * x] = line[row - 2 - 2 * x] = s[x];
+			memcpy(d0, line, row * 4);
+			memcpy(d1, line, row * 4);
+		}
+	} else
 	for (int y = 0; y < surf->h; y++) {
 		const uint32_t *s = (const uint32_t *)((uint8_t *)surf->pixels + (size_t)y * (size_t)surf->pitch);
 		uint32_t *d = (uint32_t *)(fb + ((size_t)back * v.yres + (size_t)(surf->h - 1 - y)) *
@@ -179,9 +249,12 @@ void plat_present(SDL_Renderer *r)
 		for (size_t x = 0; x < row; x++) *d-- = s[x];
 	}
 	if (back != front) {
+		unsigned t0 = mono_us();
+
 		v.yoffset = back * v.yres;
 		if (ioctl(fb_fd, FBIOPAN_DISPLAY, &v) != 0)
 			ioctl(fb_fd, FBIOPUT_VSCREENINFO, &v);
+		plat_pan_us = mono_us() - t0;
 	}
 }
 
