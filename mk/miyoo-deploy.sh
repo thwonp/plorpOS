@@ -6,6 +6,10 @@
 #                               fonts, art, systems.cfg and the launch script
 #   mk/miyoo-deploy.sh elf      the launcher only
 #   mk/miyoo-deploy.sh diatom   the resident emulator only (../diatom-miyoo or DIATOM_ELF)
+#   mk/miyoo-deploy.sh package a release zip of what `all` stages, plus the boot hook, a Roms/
+#                               skeleton, the cores that passed the speed/memory gate (pulled
+#                               from the dev card over ssh), MD5SUMS and the install page.
+#                               Writes OUT/plorpOS-flip-v<VERSION>.zip; touches nothing on the card.
 #   mk/miyoo-deploy.sh hook     the boot hook (sd/miyoo/updater) into .tmp_update/, the
 #                               CFW's own updater kept as updater.allium - plorpOS
 #                               falls back to it; TortOS/.boot-allium boots it outright
@@ -63,15 +67,7 @@ fetch_cores() { # copy each systems.cfg core the card lacks from Allium's RetroA
 				echo "no Allium core $c"
 		done; sync'
 }
-case $MODE in
-elf)    cp "$B/tortos.elf" "$S/" ;;
-diatom) cp "$DIATOM" "$S/diatom" ;;
-launch) cp "$ROOT/sd/miyoo/launch.sh" "$S/" ;;
-cfg)    flip_cfg "$S/systems.cfg" ;;
-libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
-	        "$LIB"/libavformat.so.60 "$LIB"/libavcodec.so.60 "$LIB"/libavfilter.so.9 "$LIB"/libswresample.so.4 \
-	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done ;;
-all)
+stage_all() {
 	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
 	cp "$DIATOM" "$S/diatom"
 	cp "$ROOT/sd/miyoo/launch.sh" "$S/"
@@ -91,10 +87,45 @@ all)
 	plorpos_files "$S" "$F"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
 	flip_cards "$S"
-	;;
+}
+stage_package() {
+	command -v zip >/dev/null || { echo "need zip" >&2; exit 1; }
+	VER=$(sed -n 's/^VERSION ?= *//p' "$ROOT/Makefile" | head -1)
+	OUT=${OUT:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist}
+	# Cores that passed the f1p.11 gate; fbneo (45 MB BSS, cannot load) and pcsx_rearmed
+	# (too slow, memory grows) are left out. Override with SKIP_CORES.
+	SKIP=${SKIP_CORES:-fbneo pcsx_rearmed}
+	R=$B/card; rm -rf "$R"; mkdir -p "$R/.tmp_update" "$R/TortOS/cores"
+	cp -R "$S/." "$R/TortOS/"
+	cp "$ROOT/sd/miyoo/updater" "$R/.tmp_update/updater"; chmod +x "$R/.tmp_update/updater"
+	for c in $(awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' "$S/systems.cfg" | sort -u); do
+		case " $SKIP " in *" $c "*) continue ;; esac
+		$SSH "cat /mnt/SDCARD/TortOS/cores/${c}_libretro.so" > "$R/TortOS/cores/${c}_libretro.so" ||
+			{ echo "no core $c on the dev card" >&2; exit 1; }
+	done
+	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$S/systems.cfg" |
+		while read -r d; do mkdir -p "$R/Roms/$d"; done
+	mkdir -p "$R/Bios" "$R/Saves"
+	cp "$ROOT/docs/install-flip.md" "$R/INSTALL-FLIP.md"
+	( cd "$R" && find . -type f ! -name MD5SUMS | sort | xargs md5sum > MD5SUMS )
+	mkdir -p "$OUT"; Z=$OUT/plorpOS-flip-v$VER.zip; rm -f "$Z"
+	( cd "$R" && zip -qr "$Z" . -x '.DS_Store' '._*' )
+	echo "package: $Z ($(du -h "$Z" | cut -f1), $(wc -l < "$R/MD5SUMS") files)"
+}
+case $MODE in
+elf)    cp "$B/tortos.elf" "$S/" ;;
+diatom) cp "$DIATOM" "$S/diatom" ;;
+launch) cp "$ROOT/sd/miyoo/launch.sh" "$S/" ;;
+cfg)    flip_cfg "$S/systems.cfg" ;;
+libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
+	        "$LIB"/libavformat.so.60 "$LIB"/libavcodec.so.60 "$LIB"/libavfilter.so.9 "$LIB"/libswresample.so.4 \
+	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done ;;
+all)    stage_all ;;
+package) stage_all; stage_package ;;
 cards)  mkdir -p "$S/cards"; cp -R "$ROOT/res/cards/." "$S/cards/"; rm -rf "$S/cards/src"; flip_cards "$S" ;;
-*) echo "mode: all | elf | diatom | launch | libs | cfg | cards | hook" >&2; exit 1 ;;
+*) echo "mode: all | elf | diatom | launch | libs | cfg | cards | hook | package" >&2; exit 1 ;;
 esac
+[ "$MODE" = package ] && exit 0
 push "$S"
 case $MODE in all|cfg) fetch_cores ;; esac
 echo "deployed $MODE to $MIYOO:/mnt/SDCARD/TortOS ($(md5sum "$B/tortos.elf" | cut -c1-8) tortos.elf)"
