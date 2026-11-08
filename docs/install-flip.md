@@ -55,9 +55,10 @@ the whole `.tmp_update/` folder.
 
 ## What is not included
 
-- **Arcade and Neo Geo** (FBNeo): its 45 MB of working memory is more than the
-  Flip can map next to the launcher. The shelves exist; the core is not shipped.
-- **PlayStation**: too slow, and memory grows while it runs. Not shipped.
+- **Arcade** runs on FBNeo, which needs about 45 MB of free memory to start a
+  game. The launcher frees its shelf pictures when you launch to make room.
+- **Neo Geo** runs on the small FBA 2012 Neo Geo core (FBNeo ran it at 55% speed).
+- **PlayStation**: too slow, and memory grows while it runs. Not shipped yet.
 - **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
 - Super Nintendo's Star Fox (Super FX) runs at 84% speed.
 - Game Boy Advance runs on gpsp, not mGBA (mGBA lagged in play).
