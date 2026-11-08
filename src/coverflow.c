@@ -540,6 +540,26 @@ static void draw_card(SDL_Renderer *r, SDL_Texture *tex, int tw, int th,
 		}
 	}
 
+#if defined(PLATFORM_MIYOO)
+	/* Flat card: one RenderCopy, no yaw, no reflection. SDL's triangle blitter
+	 * (SDL_RenderGeometry) did 64-bit divides per pixel and was about 21% of a
+	 * scroll frame on the Flip's SSD202D (plorpos-f1p.14.3). The distance
+	 * scale and dimming stay; `ang`, `cb` and the strips are unused here. */
+	{
+		Uint8 old_a = 255;
+		SDL_Rect dst = { (int)lroundf(ox - ahw), (int)lroundf(oy - ahh),
+		                 (int)lroundf(ahw * 2.0f), (int)lroundf(ahh * 2.0f) };
+
+		(void)ang; (void)cb;
+		SDL_GetTextureAlphaMod(tex, &old_a);
+		SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(tex, alpha);
+		SDL_RenderCopy(r, tex, NULL, &dst);
+		SDL_SetTextureAlphaMod(tex, old_a);
+		return;
+	}
+#endif
+
 	cf_proj p = {
 		.ox = ox, .oy = oy,
 		.cosa = cosf(ang), .sina = sinf(ang),
