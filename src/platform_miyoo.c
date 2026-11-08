@@ -446,7 +446,21 @@ void mute_forget(void) { }
 void plat_mute_switch_lock(bool lock) { (void)lock; }
 bool plat_hold_switch(void) { return false; }
 
-void apply_brightness(int b) { cur_bright = b; }
+/* Backlight: pwm0's duty over the period the boot hook sets (800). The ladder
+ * is the H700's, scaled to that period, so no rung is black and rung 3 is the
+ * hook's own duty of 50. Unjudged on this panel (plorpos-f1p.7). */
+#define PWM_DUTY "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
+#define PWM_PERIOD 800
+void apply_brightness(int b)
+{
+	static const unsigned char ladder[] = { 2, 4, 8, 16, 32, 48, 72, 96, 128, 160, 192, 255 };
+	_Static_assert(sizeof ladder == PLAT_BRIGHT_MAX + 1, "ladder vs PLAT_BRIGHT_MAX");
+	cur_bright = b;
+	FILE *f = fopen(PWM_DUTY, "w");
+	if (!f) return;
+	fprintf(f, "%d", ladder[clampi(b, 0, PLAT_BRIGHT_MAX)] * PWM_PERIOD / 255);
+	fclose(f);
+}
 void backlight_off(void) { }
 
 void plat_settings_init(void)
@@ -459,15 +473,39 @@ void plat_settings_init(void)
 	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : 8;
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
 	apply_volume(cur_vol);
+	apply_brightness(cur_bright);
 }
 
-/* ---- sleep and battery: stubs until plorpos-f1p.7 ------------------------ */
+/* ---- sleep: a stub until plorpos-f1p.7; battery from the stock tool ------ */
 
 bool plat_sleep_supported(void) { return false; }
 bool plat_sleep(void) { return false; }
 
+/* The Flip has no power_supply node: the gauge is the stock /customer/app/axp_test,
+ * which prints {"battery":N, "voltage":mV, "charging":C} and exits (the tool
+ * Allium reads too). Read at most every 30 s, whatever the caller's rate.
+ * charging == 3 is taken as "on the charger" (unverified: seen 3 at 100 %,
+ * 4205 mV; needs an unplugged reading). */
 bool plat_battery(int *pct, bool *charging)
 {
-	(void)pct; (void)charging;
-	return false;
+	static Uint32 next;
+	static bool ok, ch;
+	static int p;
+	Uint32 now = SDL_GetTicks();
+	if (!next || (int)(now - next) >= 0) {
+		next = now + 30000;
+		FILE *f = popen("LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib /customer/app/axp_test 2>/dev/null", "r");
+		if (f) {
+			char l[128];
+			int b, v, c;
+			ok = fgets(l, sizeof l, f) &&
+			     sscanf(l, "{\"battery\":%d, \"voltage\":%d, \"charging\":%d}", &b, &v, &c) == 3;
+			if (ok) { p = clampi(b, 0, 100); ch = c == 3; }
+			pclose(f);
+		}
+	}
+	if (!ok) return false;
+	if (pct) *pct = p;
+	if (charging) *charging = ch;
+	return true;
 }
