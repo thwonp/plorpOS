@@ -1733,6 +1733,24 @@ static void evict_far(sysview *v, int keep)
 	}
 }
 
+#if defined(PLATFORM_MIYOO)
+/* Before a game goes to the resident: drop every shelf texture but the
+ * launched system's focused card. The Flip has 101 MB and no swap; FBNeo's
+ * 45 MB of zero-fill pages are only mapped while about that much is free, and
+ * a launcher grown by a long scroll (anon past 45 MB) made the Arcade shelf
+ * fail to load, and PlayStation thrash the core's pages out (plorpos-f1p.26,
+ * .27). Everything dropped decodes again on the way back, as after a cold boot. */
+static void flip_trim_for_launch(app *a, int keep)
+{
+	for (int i = 0; i < a->sys.count; i++) {
+		if (i == keep) continue;
+		if (a->sys_tex[i]) { SDL_DestroyTexture(a->sys_tex[i]); a->sys_tex[i] = NULL; }
+		evict_far(&a->view[i], -1);
+	}
+	evict_far(&a->view[keep], 0);
+}
+#endif
+
 #define PRIME_HALF_MAX (CF_HALF_WINDOW + 2)
 
 /* Ask for the cards on shelf `s` around `center`, out to `half` either side.
@@ -14230,6 +14248,9 @@ static void launch_one(app *a)
 	plat_audio_settle(5000);
 #endif
 
+#if defined(PLATFORM_MIYOO)
+	flip_trim_for_launch(a, o);
+#endif
 	t_prep = plat_now_ms();
 	if (!native && plat_resident_ready_wait()) {
 		t_ready = plat_now_ms();
@@ -15578,7 +15599,7 @@ static void scan_all(app *a, bool bg)
 		ports_titles(&a->sys.systems[i], &v->list);
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
-		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
+		             strcmp(a->sys.systems[i].core, "fbneo") && strncmp(a->sys.systems[i].core, "fbalpha2012", 11) ? NULL : fbneo_dat());
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {

@@ -46,7 +46,8 @@ rm -rf "$S"; mkdir -p "$S"
 # pick is too heavy for two 1.2 GHz Cortex-A7s - GBA on gpsp, not mGBA
 # (user, 2026-11-04: mGBA lagged in play even at 1.2 GHz).
 flip_cfg() {
-	sed 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' "$ROOT/config/systems.cfg" > "$1"
+	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' \
+	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' "$ROOT/config/systems.cfg" > "$1"
 }
 # The Flip's card art: shrink-only to the focused card's frame area. The classic
 # set is 640x820 (2.1 MB a texture) and is drawn at about 485x622, so the rest
