@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <stdint.h>
 #include <sys/stat.h>
 
 /* Disc-image extensions, in launch preference. A folder holding one of these
@@ -185,6 +186,118 @@ static void note_skip(game_list *out, const char *name)
 	out->skipped++;
 }
 
+/* ---- scan cache (see library.h) ---------------------------------------- */
+static char g_cache_dir[512];
+static bool g_cache_read;
+
+void lib_cache_dir(const char *dir)
+{
+	snprintf(g_cache_dir, sizeof g_cache_dir, "%s", dir ? dir : "");
+	if (g_cache_dir[0]) mkdir(g_cache_dir, 0755);
+}
+void lib_cache_use(bool read) { g_cache_read = read; }
+
+#define LIBC_MAGIC "LIBC0001"
+typedef struct { char magic[8]; int64_t mtime; uint32_t exts, count, skipped, entry; } libc_hdr;
+
+static uint32_t libc_hash(const char *s)
+{
+	uint32_t h = 5381;
+
+	while (s && *s) h = h * 33 + (unsigned char)*s++;
+	return h;
+}
+static void libc_path(char *out, size_t n, const char *folder, const char *suffix)
+{
+	char flat[128];
+	size_t i;
+
+	for (i = 0; folder[i] && i < sizeof flat - 1; i++) flat[i] = folder[i] == '/' ? '_' : folder[i];
+	flat[i] = '\0';
+	snprintf(out, n, "%s/%s.bin%s", g_cache_dir, flat, suffix);
+}
+
+static void libc_save(const char *folder, const char *exts, time_t mtime, const game_list *l)
+{
+	char path[640], tmp[648];
+	libc_hdr h = { LIBC_MAGIC, (int64_t)mtime, libc_hash(exts), (uint32_t)l->count, (uint32_t)l->skipped, (uint32_t)sizeof(game_entry) };
+	FILE *f;
+	int i;
+
+	if (!g_cache_dir[0]) return;
+	libc_path(path, sizeof path, folder, "");
+	libc_path(tmp, sizeof tmp, folder, ".tmp");
+	if (!(f = fopen(tmp, "wb"))) return;
+	fwrite(&h, sizeof h, 1, f);
+	fwrite(l->skipped_eg, sizeof l->skipped_eg, 1, f);
+	for (i = 0; i < l->count; i++) {
+		const game_entry *g = &l->items[i];
+
+		fwrite(g->file, strlen(g->file) + 1, 1, f);
+		fwrite(g->name, strlen(g->name) + 1, 1, f);
+		fwrite(g->title, strlen(g->title) + 1, 1, f);
+		fwrite(&g->added, sizeof g->added, 1, f);
+	}
+	if (fclose(f) != 0 || rename(tmp, path) != 0) remove(tmp);
+}
+
+/* True and `out` filled when the file matches; false on any doubt (the caller
+ * then reads the card). */
+static bool libc_load(const char *folder, const char *exts, time_t mtime, game_list *out)
+{
+	char path[640];
+	libc_hdr h;
+	FILE *f;
+	unsigned char *buf = NULL, *p, *end;
+	long len;
+	game_entry *list = NULL;
+	uint32_t i;
+
+	if (!g_cache_dir[0] || !g_cache_read) return false;
+	libc_path(path, sizeof path, folder, "");
+	if (!(f = fopen(path, "rb"))) return false;
+	if (fseek(f, 0, SEEK_END) || (len = ftell(f)) < (long)(sizeof h + sizeof out->skipped_eg) || fseek(f, 0, SEEK_SET)) goto bad;
+	if (!(buf = malloc((size_t)len))) goto bad;
+	if (fread(buf, 1, (size_t)len, f) != (size_t)len) goto bad;
+	fclose(f);
+	f = NULL;
+	memcpy(&h, buf, sizeof h);
+	if (memcmp(h.magic, LIBC_MAGIC, 8) || h.mtime != (int64_t)mtime || h.exts != libc_hash(exts)
+	    || h.entry != sizeof(game_entry) || h.count > 200000 || h.skipped > 100000) goto bad;
+	p = buf + sizeof h;
+	end = buf + len;
+	memcpy(out->skipped_eg, p, sizeof out->skipped_eg);
+	p += sizeof out->skipped_eg;
+	if (h.count && !(list = calloc(h.count, sizeof *list))) goto bad;
+	for (i = 0; i < h.count; i++) {
+		char *dst[3] = { list[i].file, list[i].name, list[i].title };
+		size_t cap[3] = { sizeof list[i].file, sizeof list[i].name, sizeof list[i].title };
+		int k;
+
+		for (k = 0; k < 3; k++) {
+			unsigned char *z = memchr(p, 0, (size_t)(end - p));
+
+			if (!z || (size_t)(z - p) >= cap[k]) goto bad;
+			memcpy(dst[k], p, (size_t)(z - p) + 1);
+			p = z + 1;
+		}
+		if ((size_t)(end - p) < sizeof list[i].added) goto bad;
+		memcpy(&list[i].added, p, sizeof list[i].added);
+		p += sizeof list[i].added;
+	}
+	free(buf);
+	out->items = list;
+	out->count = (int)h.count;
+	out->skipped = (int)h.skipped;
+	return true;
+bad:
+	if (f) fclose(f);
+	free(buf);
+	free(list);
+	memset(out->skipped_eg, 0, sizeof out->skipped_eg);
+	return false;
+}
+
 bool lib_scan(const char *roms_root, const char *folder, const char *exts,
               game_list *out)
 {
@@ -194,10 +307,15 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 	int cap = 64, n = 0, files_n;
 	game_entry *list;
 
+	struct stat dst;
+	bool have_dst;
+
 	lib_free(out);
 	out->scanned = true;
 	out->skipped = 0;
 	snprintf(dirpath, sizeof dirpath, "%s/%s", roms_root, folder);
+	have_dst = g_cache_dir[0] && stat(dirpath, &dst) == 0;
+	if (have_dst && libc_load(folder, exts, dst.st_mtime, out)) return out->count > 0;
 	d = opendir(dirpath);
 	if (!d) return false;
 	list = malloc((size_t)cap * sizeof *list);
@@ -292,9 +410,14 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 	}
 	closedir(d);
 
-	if (n == 0) { free(list); return false; }
+	if (n == 0) {
+		free(list);
+		if (have_dst) libc_save(folder, exts, dst.st_mtime, out);
+		return false;
+	}
 	qsort(list, (size_t)n, sizeof *list, game_cmp);
 	out->items = list;
 	out->count = n;
+	if (have_dst) libc_save(folder, exts, dst.st_mtime, out);
 	return true;
 }

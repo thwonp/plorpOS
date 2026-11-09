@@ -15593,13 +15593,21 @@ static void build_muse_shelf(app *a, bool bg)
 /* `bg`: Muse's library may still be being read on return - see muse_walk. */
 static void scan_all(app *a, bool bg)
 {
+	/* Where the scan's time goes, one line at the end: lib_scan (directory
+	 * reads), titles_apply (names, art lookups), the rest. */
+	Uint32 t_lib = 0, t_titles = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
+
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
+		t1 = SDL_GetTicks();
 		lib_scan(P_ROMS, a->sys.systems[i].folder, a->sys.systems[i].exts, &v->list);
+		t_lib += SDL_GetTicks() - t1;
+		t1 = SDL_GetTicks();
 		ports_titles(&a->sys.systems[i], &v->list);
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
 		             strcmp(a->sys.systems[i].core, "fbneo") && strncmp(a->sys.systems[i].core, "fbalpha2012", 11) && strcmp(a->sys.systems[i].core, "mame2000") ? NULL : fbneo_dat());
+		t_titles += SDL_GetTicks() - t1;
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {
@@ -15636,9 +15644,12 @@ static void scan_all(app *a, bool bg)
 			        names, v->list.skipped > shown ? ", and more" : "");
 		}
 	}
+	t_rest = SDL_GetTicks();
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
 	build_muse_shelf(a, bg);
+	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, shelves %u ms, total %u ms\n",
+	        t_lib, t_titles, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the
@@ -16590,7 +16601,20 @@ int main(int argc, char *argv[])
 	/* Scan every system now, not when one is opened: it is three directory
 	 * reads, it happens behind the boot animation, and it means walking into
 	 * a system is a frame rather than a wait. */
+#ifdef PLATFORM_MIYOO
+	/* Cold vfat directory reads were 2.7 s of the Flip's boot: answer from the
+	 * last scan while the folders are unchanged. A rescan (menu, upload) reads
+	 * the card and refreshes it. */
+	{
+		char cdir[CFG_STR];
+
+		snprintf(cdir, sizeof cdir, "%s/libcache", P_USERDATA);
+		lib_cache_dir(cdir);
+		lib_cache_use(true);
+	}
+#endif
 	scan_all(&a, true);
+	lib_cache_use(false);
 	t_mark("library scan");
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
