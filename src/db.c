@@ -118,6 +118,10 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
+	/* snes9x2010 ships with frameskip disabled. Star Fox (Super FX) runs at
+	 * 91.6% on the Flip without it; auto drops only the drawing of a late
+	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
+	{ "coreopt.SFC.snes9x_2010_frameskip", "auto" },
 	/* PicoDrive's own default, PAR, reports square pixels: Genesis 1.4286,
 	 * Master System 1.3333. CRT is a television's shape, within 3% of what
 	 * genesis_plus_gx reported for all three Sega systems before PicoDrive
