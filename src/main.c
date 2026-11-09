@@ -636,7 +636,7 @@ static struct { int index, count; char label[24]; } g_disc;
  * their own folder; the Brick and H700 never had another DS core. `on` says
  * which build ships the alternative; one core may have a row per build. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
-static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy; } ALT_CORES[] = {
 	/* DSperate with the PokeDaisy companion over it, chosen per game like PokeDaisy on the Game Boy shelves: it is
 	 * for the Pokemon DS games, DSperate stays every other game's. */
 	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "melondsds", ALT_ON_GKD_ROTATE, true },
@@ -644,6 +644,12 @@ static const struct { const char *core, *label, *alt, *alt_label, *bare; int on;
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
 	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
+	/* The Game Boy Advance shelf's PokeDaisy is the same companion over armGBA (a recompiler: a frame takes 4.2 ms on the
+	 * Brick against 7.1 with mGBA, EXPAND on) - plorpos-oe0.45. armGBA's Game Boy side (Gambatte, GPL-2.0 only) cannot be
+	 * in the core, so the Game Boy and Color shelves keep the mGBA one below. A tag picks the shelf; the row comes first. A
+	 * game already turned to "PokeDaisy" (engine.GBA/<file> = pokedaisy) stays so: `legacy` is its old name. Its own
+	 * name gives it its own states folder: a state is its emulator's, and mGBA's does not load in armGBA. */
+	{ "mgba", "mGBA", "pokedaisy_armgba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy" },
 	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
 };
 
@@ -662,7 +668,8 @@ static int alt_core(const system_cfg *s)
 	/* A Core row would offer a core that is not there (plorpos-reo.21.11): only
 	 * the build that carries the alternative lists it. */
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
-		if (!strcmp(s->core, ALT_CORES[k].core) && (ALT_CORES[k].on & here))
+		if (!strcmp(s->core, ALT_CORES[k].core) && (ALT_CORES[k].on & here) &&
+		    (!ALT_CORES[k].tag || !strcmp(s->tag, ALT_CORES[k].tag)))
 			return (int)k;
 	return -1;
 }
@@ -693,7 +700,8 @@ static const char *shelf_core(app *a, int sys, const char *file)
 
 		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
-		return db_get_str(db_dev(), key, name, sizeof name, NULL) && !strcmp(name, ALT_CORES[k].alt)
+		return db_get_str(db_dev(), key, name, sizeof name, NULL) &&
+		       (!strcmp(name, ALT_CORES[k].alt) || (ALT_CORES[k].legacy && !strcmp(name, ALT_CORES[k].legacy)))
 		       ? ALT_CORES[k].alt : s->core;
 	}
 	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;

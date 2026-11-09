@@ -72,7 +72,7 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA | - |
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA | - |
-| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA | Optional: `gba_bios.bin` |
+| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA, or PokeDaisy over armGBA (per game) | Optional: `gba_bios.bin` |
 | Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
 | Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm | - |
