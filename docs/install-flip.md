@@ -53,6 +53,15 @@ Allium. To remove plorpOS, delete `TortOS/`, then rename
 `.tmp_update/updater`.** The firmware reads that as a failed update and deletes
 the whole `.tmp_update/` folder.
 
+## Optional: faster boot
+
+A separate download, **plorpOS Flip fast boot**, makes the Flip start about 4
+seconds sooner by flashing one partition of its internal storage. It is not
+needed and not part of this zip. Its own guide (`FAST-BOOT.md`, in that
+download) has the steps: the update starts only when you hold MENU while
+plugging in the USB cable with the Flip off. It is for the stock firmware
+build 202510011046 only.
+
 ## What is not included
 
 - **Arcade** is two shelves, each its own folder: `Arcade (FBA 2012)` (the

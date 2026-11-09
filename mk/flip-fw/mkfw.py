@@ -32,11 +32,19 @@ def stock_customer(path):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--extract-customer", metavar="OUT", help="write the stock image's /customer squashfs to OUT and exit (needs --stock)")
     ap.add_argument("--customer", help="squashfs to write to /customer")
     ap.add_argument("--stock", help="take the /customer payload from this stock image instead")
-    ap.add_argument("--build", required=True, help="build id, digits (stock is 202510011046)")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--build", help="build id, 12 digits (stock is 202510011046)")
+    ap.add_argument("--out")
     a = ap.parse_args()
+    if a.extract_customer:
+        if not a.stock:
+            sys.exit("--extract-customer needs --stock")
+        open(a.extract_customer, "wb").write(stock_customer(a.stock))
+        return
+    if not a.build or not a.out:
+        sys.exit("--build and --out are required")
     if bool(a.customer) == bool(a.stock):
         sys.exit("give exactly one of --customer / --stock")
     if not re.fullmatch(r"\d{12}", a.build):
