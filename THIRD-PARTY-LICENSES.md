@@ -74,14 +74,14 @@ Core source: the libretro organization and each core's upstream repository
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
 https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
-https://github.com/thwonp/pokedaisy-plorp (its `libretro/` core, plus our commits,
+https://github.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
 commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
 
 ## PokeDaisy DS (`pokedaisy_ds_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
-(https://github.com/thwonp/pokedaisy-plorp, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
+(https://github.com/thwonp/pokedaisy-lr, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
 (https://github.com/beebono/DSperate, GPL-3.0) in our libretro wrapper https://github.com/thwonp/dsperate-lr,
 at the commits the fork pins, built by `mk/build-pokedaisy-ds-core.sh`. The DS shelf's Core row offers it per game.
 
