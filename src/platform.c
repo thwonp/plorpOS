@@ -1573,8 +1573,15 @@ bool plat_resident_send(const plat_game *g)
 		bri = plat_brightness_get();
 		if (vol >= 0) dsend("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
 		                    vol, PLAT_VOL_MAX + 1);
+#ifndef PLATFORM_MIYOO
+		/* Not on the Flip: brightness is the launcher's pwm0 and diatom's
+		 * port has no brightness level, so this only drew `bad_level` on
+		 * every launch (plorpos-f1p.34). The duty keeps its value in a game. */
 		if (bri >= 0) dsend("SETLEVEL\tkind=brightness\tindex=%d\tcount=%d",
 		                    bri, PLAT_BRIGHT_MAX + 1);
+#else
+		(void)bri;
+#endif
 		/* And the mute, ON EVERY RUN and not only when it changes. A state
 		 * sent only on transition is wrong exactly once - the first time -
 		 * which here means a game started with the switch already down comes
