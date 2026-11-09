@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,7 @@
 #include <time.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "platform_dev.h"
 
@@ -480,6 +482,7 @@ void plat_settings_init(void)
 	disp_fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
 	apply_volume(cur_vol);
 	apply_brightness(cur_bright);
+	plat_battery(NULL, NULL);   /* the first read starts now, so the first draw has it */
 }
 
 /* ---- sleep: a stub until plorpos-f1p.7; battery from the stock tool ------ */
@@ -491,27 +494,69 @@ bool plat_sleep(void) { return false; }
  * which prints {"battery":N, "voltage":mV, "charging":C} and exits (the tool
  * Allium reads too). Read at most every 30 s, whatever the caller's rate.
  * charging == 3 is taken as "on the charger" (unverified: seen 3 at 100 %,
- * 4205 mV; needs an unplugged reading). */
+ * 4205 mV; needs an unplugged reading).
+ *
+ * The read runs on its own thread and plat_battery only returns the last
+ * answer (plorpos-f1p.44). popen() forked the launcher and waited for the tool
+ * on the render thread: 12-17 ms (a lost frame) at 30 MB, and 108 ms once
+ * while the launcher was busy browsing. posix_spawn shares the address space
+ * instead of copying the page tables of a launcher that can be 55 MB. */
+static SDL_atomic_t batt_state = { -1 };   /* -1 unknown, else pct | charging << 8 */
+static SDL_atomic_t batt_busy;
+
+static int batt_read(void *arg)
+{
+	static char *const argv[] = { "axp_test", NULL };
+	static char *const envp[] = { "LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib", NULL };
+	char l[128] = "";
+	int fds[2], b, v, c, st = -1;
+
+	(void)arg;
+	if (pipe2(fds, O_CLOEXEC) == 0) {
+		posix_spawn_file_actions_t fa;
+		pid_t pid;
+
+		posix_spawn_file_actions_init(&fa);
+		posix_spawn_file_actions_adddup2(&fa, fds[1], 1);
+		posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+		if (posix_spawn(&pid, "/customer/app/axp_test", &fa, NULL, argv, envp) == 0) {
+			size_t n = 0;
+			ssize_t r;
+
+			close(fds[1]);
+			fds[1] = -1;
+			while (n < sizeof l - 1 && (r = read(fds[0], l + n, sizeof l - 1 - n)) > 0)
+				n += (size_t)r;
+			l[n] = '\0';
+			waitpid(pid, NULL, 0);
+			if (sscanf(l, "{\"battery\":%d, \"voltage\":%d, \"charging\":%d}", &b, &v, &c) == 3)
+				st = clampi(b, 0, 100) | (c == 3 ? 1 << 8 : 0);
+		}
+		posix_spawn_file_actions_destroy(&fa);
+		close(fds[0]);
+		if (fds[1] >= 0) close(fds[1]);
+	}
+	SDL_AtomicSet(&batt_state, st);
+	SDL_AtomicSet(&batt_busy, 0);
+	return 0;
+}
+
 bool plat_battery(int *pct, bool *charging)
 {
 	static Uint32 next;
-	static bool ok, ch;
-	static int p;
 	Uint32 now = SDL_GetTicks();
-	if (!next || (int)(now - next) >= 0) {
+	int s;
+
+	if ((!next || (int)(now - next) >= 0) && SDL_AtomicCAS(&batt_busy, 0, 1)) {
+		SDL_Thread *t = SDL_CreateThread(batt_read, "battery", NULL);
+
 		next = now + 30000;
-		FILE *f = popen("LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib /customer/app/axp_test 2>/dev/null", "r");
-		if (f) {
-			char l[128];
-			int b, v, c;
-			ok = fgets(l, sizeof l, f) &&
-			     sscanf(l, "{\"battery\":%d, \"voltage\":%d, \"charging\":%d}", &b, &v, &c) == 3;
-			if (ok) { p = clampi(b, 0, 100); ch = c == 3; }
-			pclose(f);
-		}
+		if (t) SDL_DetachThread(t);
+		else SDL_AtomicSet(&batt_busy, 0);
 	}
-	if (!ok) return false;
-	if (pct) *pct = p;
-	if (charging) *charging = ch;
+	s = SDL_AtomicGet(&batt_state);
+	if (s < 0) return false;
+	if (pct) *pct = s & 0xff;
+	if (charging) *charging = (s >> 8) & 1;
 	return true;
 }
