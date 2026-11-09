@@ -38,6 +38,18 @@ static const char *curl_bin(void)
 	for (i = 0; i < sizeof tried / sizeof tried[0]; i++) {
 		if (access(tried[i], X_OK) == 0) { found = tried[i]; return found; }
 	}
+	/* A device with no curl of its own (the Miyoo Flip) ships one beside the
+	 * CA bundle: <TortOS>/curl. Only tried once net_set_ca_path has run. */
+	if (g_ca[0]) {
+		static char bundled[544];
+		const char *slash = strrchr(g_ca, '/');
+
+		if (slash && snprintf(bundled, sizeof bundled, "%.*s/curl", (int)(slash - g_ca), g_ca) < (int)sizeof bundled
+		    && access(bundled, X_OK) == 0) {
+			found = bundled;
+			return found;
+		}
+	}
 	return NULL;
 }
 

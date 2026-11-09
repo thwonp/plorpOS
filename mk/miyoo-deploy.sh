@@ -24,6 +24,7 @@ MIYOO=${MIYOO:-root@192.168.0.73}
 B=$ROOT/build/miyoo
 LIB=$ROOT/sysroot-miyoo/usr/lib
 DIATOM=${DIATOM_ELF:-$ROOT/../diatom-miyoo/build/miyoo/diatom}
+FLIP_CURL=${FLIP_CURL:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/curl-build/curl-flip}
 SSH="ssh -o ConnectTimeout=5 $MIYOO"
 for f in tortos.elf muse musectl; do
 	[ -f "$B/$f" ] || { echo "no $B/$f; run: make PLATFORM=miyoo" >&2; exit 1; }
@@ -75,6 +76,9 @@ fetch_cores() { # copy each systems.cfg core the card lacks from Allium's RetroA
 stage_all() {
 	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
 	cp "$DIATOM" "$S/diatom"
+	# The firmware has no curl (plorpos-f1p.36): ours, built by mk/flip-cores/build-curl.sh.
+	[ -f "$FLIP_CURL" ] || { echo "no curl at $FLIP_CURL (run mk/flip-cores/build-curl.sh, or set FLIP_CURL)" >&2; exit 1; }
+	cp "$FLIP_CURL" "$S/curl"; chmod +x "$S/curl"
 	cp "$ROOT/sd/miyoo/launch.sh" "$S/"
 	flip_cfg "$S/systems.cfg"
 	mkdir -p "$S/lib"

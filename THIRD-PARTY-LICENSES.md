@@ -208,6 +208,13 @@ by this project's MIT license. If the author objects, it will be removed.
 GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
 the list itself, is this project's (MIT).
 
+## Network tools (Miyoo Mini Flip only)
+
+- `TortOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
+  (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
+  `mk/flip-cores/build-curl.sh`, which pins both source tarballs by sha256; HTTP/HTTPS only.
+  The Flip's firmware has no curl; other devices use their system one.
+
 ## Certificates
 
 - `res/ssl/cacert.pem` - Mozilla's root CA list as published by the curl
