@@ -15,8 +15,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gba-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-78fdb432} # feat/armgba-core (set to the full hash once pushed)
-SHA=${PD_SHA:-} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-b9518c90963d02ad09b815969d218049b209dd7b} # feat/armgba-core: dev 9c9fd173 + Keegan's open PRs #564 #565 #566 (+ #525) + the owner's fixes + the armGBA core, 2026-11-09
+SHA=${PD_SHA:-cd5577b701a5c5b21d3f377c3747fa737a68e1406be91c9eef7c00fc623ec4e6} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
