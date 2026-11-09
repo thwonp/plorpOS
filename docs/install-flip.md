@@ -60,10 +60,14 @@ the whole `.tmp_update/` folder.
   on the test card 122 of 152 loaded, the rest being BIOS archives, Neo Geo and
   newer boards that core predates). A ROM set must match its core's version.
 - **Neo Geo** runs on the small FBA 2012 Neo Geo core.
-- **PlayStation** runs on a pcsx_rearmed build with a smaller dynarec cache; one game
-  (Ace Combat 2) was measured at full speed, others are untested.
+- **PlayStation** runs on a pcsx_rearmed build with a smaller dynarec cache. It is
+  **experimental**: some launches run faster than real time (audio then drops out),
+  others are at normal speed, and we have not found the cause yet.
+- **Online features** (RetroAchievements sign-in, art and name downloads) use a curl
+  bundled in `TortOS/` because the Flip's firmware has none. They need Wi-Fi set up;
+  RetroAchievements sign-in has not been tested end to end.
 - **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
-- Super Nintendo's Star Fox (Super FX) runs at 84% speed.
+- Super Nintendo's Star Fox (Super FX) runs at about 92% speed.
 - Game Boy Advance runs on gpsp, not mGBA (mGBA lagged in play).
 
 Measured per console in plorpos-f1p.11; the table is in that bead.
