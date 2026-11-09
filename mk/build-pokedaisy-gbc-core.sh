@@ -1,22 +1,23 @@
 #!/bin/sh
-# Build PokeDaisy as a libretro core for every port: mGBA's own libretro core with the PokeDaisy companion
-# layered over it (thwonp/pokedaisy-lr, libretro/). One core for Game Boy, Game Boy Color and Game Boy Advance,
-# offered in the Core row of those three shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
+# Build pokedaisy_gbc, PokeDaisy for the Game Boy and Game Boy Color shelves, as a libretro core for every port: mGBA's own
+# libretro core with the PokeDaisy companion layered over it (thwonp/pokedaisy-lr, libretro/), built from the same fork commit
+# as pokedaisy_gba (mk/build-pokedaisy-gba-core.sh). The mGBA core also runs Game Boy Advance games, but the Game Boy Advance
+# shelf offers pokedaisy_gba. Offered in the Core row of the Game Boy and Game Boy Color shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols): the Brick's firmware glibc is 2.33.
 # The same file runs on the H700 (BaseOS glibc 2.35), GKD (2.40) and Rotate (2.41); it is installed to
 # vendor/cores-brick only, and every payload (mk/payload.sh, mk/rotate-deploy.sh) ships it from there as an
 # extra core: no systems.cfg names it, the Core row of the Game Boy shelves switches to it (plorpos-uvs.1).
 #
-#   mk/build-pokedaisy-core.sh     build, install to vendor/cores-brick
+#   mk/build-pokedaisy-gbc-core.sh     build, install to vendor/cores-brick
 #   POKEDAISY_SRC=/path ...        use that checkout (with third_party/mgba) instead of cloning the pin
 #
 # Needs: docker (podman), the tortos-toolchain image (make toolchain), network for the first clone. ~2 minutes.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
+SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gbc-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-5d6e92f430f5959f2fda354e7013f73c65f4864f} # feat/libretro-core: GB quick menu / HUD / MAP, ORIGINAL 4x on GB, touch, 2026-11-05
-SHA=${PD_SHA:-7c97d4a80fc1d0ae1e224d778e6c091d22d43edb49001530d540f00e94aa73ae} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-78fdb432} # feat/armgba-core: the same commit as pokedaisy_gba (set to the full hash once pushed)
+SHA=${PD_SHA:-} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -28,7 +29,7 @@ if [ -z "$POKEDAISY_SRC" ]; then
 	git -C "$SRC" clean -qfdx -e third_party/mgba
 fi
 [ -f "$SRC/third_party/mgba/CMakeLists.txt" ] || { echo "!! $SRC has no third_party/mgba" >&2; exit 1; }
-OUT=${POKEDAISY_OUT:-$HOME/.cache/tortos-pokedaisy-core-out}
+OUT=${POKEDAISY_GBC_OUT:-$HOME/.cache/tortos-pokedaisy-gbc-core-out}
 mkdir -p "$OUT"
 
 docker run --rm -v "$SRC:/src:z" -v "$OUT:/out:z" -w /src $IMAGE sh -c '
@@ -52,11 +53,11 @@ SO=$OUT/pokedaisy_libretro.stripped.so
 [ -f "$SO" ] || { echo "!! build failed (see $OUT/build.log)" >&2; exit 1; }
 GOT=$(sha256sum "$SO" | cut -d' ' -f1)
 if [ -n "$SHA" ] && [ "$SHA" != "-" ] && [ "$GOT" != "$SHA" ]; then
-	echo "!! pokedaisy core sha256 $GOT, expected $SHA" >&2
+	echo "!! pokedaisy_gbc core sha256 $GOT, expected $SHA" >&2
 	echo "  The toolchain image or the source changed. Verify the core, then update PD_SHA here." >&2
 	exit 1
 fi
 mkdir -p "$ROOT/vendor/cores-brick"
-cp "$SO" "$ROOT/vendor/cores-brick/pokedaisy_libretro.so"
-echo "  built  pokedaisy core ($(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo local)) for Brick"
+cp "$SO" "$ROOT/vendor/cores-brick/pokedaisy_gbc_libretro.so"
+echo "  built  pokedaisy_gbc core ($(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo local)) for Brick"
 echo "  sha256 $GOT"

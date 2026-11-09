@@ -70,23 +70,23 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
-## PokeDaisy (`pokedaisy_libretro.so`, `vendor/cores-brick/`)
+## PokeDaisy for Game Boy and Game Boy Color (`pokedaisy_gbc_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
 https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
 https://github.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
-commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
+commit the fork pins, built by `mk/build-pokedaisy-gbc-core.sh`. The Game Boy and Color shelves' Core row offers it per game.
 
-## PokeDaisy over armGBA (`pokedaisy_armgba_libretro.so`, `vendor/cores-brick/`)
+## PokeDaisy for Game Boy Advance, over armGBA (`pokedaisy_gba_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
 (https://github.com/thwonp/pokedaisy-lr, its `libretro/armgba/` core, **GPL-3.0**) with the Game Boy Advance run by
 armGBA, https://github.com/MagnominusGit/armGBA (v1.5; **MPL-2.0** for its own code, carrying Jeffrey Pfau's and mGBA
 contributors' MPL-2.0 notices where it follows mGBA's, built with libretro.h (MIT), RetroArch's libretro-common and the LZMA
-SDK (MIT, public domain)) and zlib (zlib License), at the commits the fork pins, built by `mk/build-pokedaisy-armgba-core.sh`.
+SDK (MIT, public domain)) and zlib (zlib License), at the commits the fork pins, built by `mk/build-pokedaisy-gba-core.sh`.
 armGBA's Game Boy side (Gambatte, GPL-2.0 only) is NOT built into it. The Game Boy Advance shelf's Core row offers it per game
-as "PokeDaisy"; the Game Boy and Color shelves keep the mGBA-based core above.
+as "PokeDaisy"; the Game Boy and Color shelves keep `pokedaisy_gbc` above.
 
 ## PokeDaisy DS (`pokedaisy_ds_libretro.so`, `vendor/cores-brick/`)
 

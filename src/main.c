@@ -636,7 +636,7 @@ static struct { int index, count; char label[24]; } g_disc;
  * their own folder; the Brick and H700 never had another DS core. `on` says
  * which build ships the alternative; one core may have a row per build. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
-static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy; } ALT_CORES[] = {
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy, *folder; } ALT_CORES[] = {
 	/* DSperate with the PokeDaisy companion over it, chosen per game like PokeDaisy on the Game Boy shelves: it is
 	 * for the Pokemon DS games, DSperate stays every other game's. */
 	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "melondsds", ALT_ON_GKD_ROTATE, true },
@@ -644,13 +644,15 @@ static const struct { const char *core, *label, *alt, *alt_label, *bare; int on;
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
 	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
-	/* The Game Boy Advance shelf's PokeDaisy is the same companion over armGBA (a recompiler: a frame takes 4.2 ms on the
-	 * Brick against 7.1 with mGBA, EXPAND on) - plorpos-oe0.45. armGBA's Game Boy side (Gambatte, GPL-2.0 only) cannot be
-	 * in the core, so the Game Boy and Color shelves keep the mGBA one below. A tag picks the shelf; the row comes first. A
-	 * game already turned to "PokeDaisy" (engine.GBA/<file> = pokedaisy) stays so: `legacy` is its old name. Its own
-	 * name gives it its own states folder: a state is its emulator's, and mGBA's does not load in armGBA. */
-	{ "mgba", "mGBA", "pokedaisy_armgba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy" },
-	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
+	/* PokeDaisy is two cores, one per job (plorpos-oe0.45). The Game Boy Advance shelf's pokedaisy_gba is the companion over
+	 * armGBA (a recompiler: a frame takes 4.2 ms on the Brick against 7.1 with mGBA, EXPAND on); its Game Boy side (Gambatte,
+	 * GPL-2.0 only) cannot be in the core, so the Game Boy and Color shelves' pokedaisy_gbc is the companion over mGBA. A tag
+	 * picks the shelf (the Game Boy Advance row comes first). Both cores were once called "pokedaisy": a game already set to
+	 * that name (or pokedaisy_armgba, which a pre-release build wrote) keeps PokeDaisy: `legacy` lists the old names. A state is its emulator's, and mGBA's does not load in armGBA,
+	 * so the armGBA core has its own states folder, named after it; pokedaisy_gbc is the same engine as before and keeps
+	 * the folder "pokedaisy" its states are in (`folder`). */
+	{ "mgba", "mGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL },
+	{ "mgba", "mGBA", "pokedaisy_gbc", "PokeDaisy", "mgba", ALT_ON_ALL, true, NULL, "pokedaisy", "pokedaisy" },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
@@ -687,6 +689,21 @@ static const char *cursor_file(app *a, int sys)
 	return v->list.count ? v->list.items[v->cursor].file : NULL;
 }
 
+/* Whether `name` is one of the comma-separated names in `list` (NULL = none). */
+static bool name_listed(const char *list, const char *name)
+{
+	size_t n = strlen(name);
+
+	while (list && *list) {
+		const char *e = strchr(list, ',');
+		size_t len = e ? (size_t)(e - list) : strlen(list);
+
+		if (len == n && !strncmp(list, name, n)) return true;
+		list = e ? e + 1 : NULL;
+	}
+	return false;
+}
+
 /* The core a game launches with: its shelf's own, or the alternative the shelf
  * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
 static const char *shelf_core(app *a, int sys, const char *file)
@@ -701,7 +718,7 @@ static const char *shelf_core(app *a, int sys, const char *file)
 		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
 		return db_get_str(db_dev(), key, name, sizeof name, NULL) &&
-		       (!strcmp(name, ALT_CORES[k].alt) || (ALT_CORES[k].legacy && !strcmp(name, ALT_CORES[k].legacy)))
+		       (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name))
 		       ? ALT_CORES[k].alt : s->core;
 	}
 	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
@@ -1371,7 +1388,8 @@ static const char *persist_folder(app *a, int s, const char *file)
 	int k = alt_core(sc);
 
 	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
-	snprintf(buf, sizeof buf, "%s/%s", sc->folder, core);
+	snprintf(buf, sizeof buf, "%s/%s", sc->folder,
+	         !strcmp(core, ALT_CORES[k].alt) && ALT_CORES[k].folder ? ALT_CORES[k].folder : core);
 	return buf;
 }
 

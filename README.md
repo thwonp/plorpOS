@@ -70,8 +70,8 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 |---|---|---|---|---|
 | PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano uses `pico_dyn` instead of `pico8_64`) |
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
-| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA | - |
-| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA | - |
+| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA, or PokeDaisy (per game) | - |
+| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA, or PokeDaisy (per game) | - |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA, or PokeDaisy over armGBA (per game) | Optional: `gba_bios.bin` |
 | Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
 | Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |

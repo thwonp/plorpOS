@@ -161,16 +161,16 @@ fi
 # for the DS shelf's Core row (plorpos-oe0.44).
 if [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
-	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy pokedaisy_armgba pokedaisy_ds"
+	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds"
 elif [ "$PLATFORM" = brick ]; then
 	[ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
 		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
-	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy pokedaisy_armgba pokedaisy_ds"
+	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds"
 else
 	# The H700 loads the Brick's DSperate: GCC 10, glibc 2.17 symbols, BaseOS has 2.35.
 	[ "$PLATFORM" != h700 ] || [ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
 		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
-	if [ "$PLATFORM" = h700 ]; then plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy pokedaisy_armgba pokedaisy_ds"
+	if [ "$PLATFORM" = h700 ]; then plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds"
 	else plorpos_files "$P" "$ROOT/vendor/cores"; fi
 fi
 cp "$DIATOM_ELF" "$P/diatom"

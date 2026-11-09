@@ -1431,7 +1431,7 @@ bool plat_resident_send(const plat_game *g)
 		 * is this launch's only: the shelf's own setting is not touched, and mGBA's
 		 * launch keeps it. */
 		const char *mode = g->mode ? g->mode : "";
-		if (g->core && (strstr(g->core, "pokedaisy_libretro") || strstr(g->core, "pokedaisy_armgba_libretro"))) {
+		if (g->core && (strstr(g->core, "pokedaisy_gbc_libretro") || strstr(g->core, "pokedaisy_gba_libretro"))) {
 			mode = "integer";
 			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
 			/* The core now picks its own canvas from the panel (EXPAND at the game's whole scale, ZOOM OUT one
@@ -1514,7 +1514,7 @@ bool plat_resident_send(const plat_game *g)
 		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
 		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
 		d_turbo_gba = tag && !strcmp(tag, "GBA") &&
-		              !(g->core && (strstr(g->core, "pokedaisy_libretro") || strstr(g->core, "pokedaisy_armgba_libretro")));
+		              !(g->core && (strstr(g->core, "pokedaisy_gbc_libretro") || strstr(g->core, "pokedaisy_gba_libretro")));
 		d_turbo_send();
 
 		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
