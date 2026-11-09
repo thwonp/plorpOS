@@ -77,7 +77,7 @@ case $WHAT in boot)
 esac
 case $WHAT in vendor)
 	put "$ROOT/vendor/cores/"* "$GKD:$P/cores/"
-	# The GKD's own builds (mk/build-melondsds.sh, mk/build-dsperate.sh).
+	# The GKD's own builds (mk/build-dsperate.sh).
 	put "$ROOT/vendor/cores-gkd/"* "$GKD:$P/cores/"
 	echo "  + cores"
 esac

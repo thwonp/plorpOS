@@ -1438,6 +1438,10 @@ bool plat_resident_send(const plat_game *g)
 			 * less); the canvas above is the fallback for a panel the core does not list. */
 			dsend("SETOPT\tkey=pokedaisy_panel\tvalue=%dx%d", plat_panel_w, plat_panel_h);
 		}
+		/* PokeDaisy DS composes the DS screens, the companion and the HUD into one 512x384 frame itself (its own
+		 * DS LAYOUT), so the shelf's DS display mode (a split of two screens) has nothing to place: the frame is
+		 * fitted whole, as the panel allows (plorpos-oe0.44). */
+		if (g->core && strstr(g->core, "pokedaisy_ds_libretro")) mode = "aspect";
 
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
 		 * (its ADR-0032), so sent first it is in force from the game's first

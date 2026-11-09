@@ -627,14 +627,20 @@ static struct { int index, count; char label[24]; } g_disc;
 
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
- * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
- * mGBA on every port's three Game Boy shelves (plorpos-oe0.22). `bare` is the core whose states
- * live in the shelf's own .tortos folder - the one that was there first -
- * whichever is the default now (plorpos-3yv.105). `on` says which build ships
- * the alternative. */
+ * that ship are listed: PokeDaisy beside mGBA on every port's three Game Boy
+ * shelves (plorpos-oe0.22), and PokeDaisy DS beside DSperate on the DS shelf
+ * (plorpos-oe0.44; melonDS DS, which the GKD and Rotate used to offer, is gone).
+ * `bare` is the core whose states live in the shelf's own .tortos folder - the
+ * one that was there first - whichever is the default now (plorpos-3yv.105):
+ * on the GKD and Rotate that is still melonDS DS, so DSperate's states stay in
+ * their own folder; the Brick and H700 never had another DS core. `on` says
+ * which build ships the alternative; one core may have a row per build. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
 static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
+	/* DSperate with the PokeDaisy companion over it, chosen per game like PokeDaisy on the Game Boy shelves: it is
+	 * for the Pokemon DS games, DSperate stays every other game's. */
+	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "melondsds", ALT_ON_GKD_ROTATE, true },
+	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "dsperate", ALT_ON_BRICK | ALT_ON_H700, true },
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
 	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
@@ -648,7 +654,7 @@ static int alt_core(const system_cfg *s)
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	const int here = ALT_ON_GKD_ROTATE;
 #elif defined(PLATFORM_H700)
-	const int here = ALT_ON_H700; /* DSperate is its only DS core */
+	const int here = ALT_ON_H700;
 #else
 	const int here = ALT_ON_BRICK;
 #endif
@@ -656,8 +662,8 @@ static int alt_core(const system_cfg *s)
 	/* A Core row would offer a core that is not there (plorpos-reo.21.11): only
 	 * the build that carries the alternative lists it. */
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
-		if (!strcmp(s->core, ALT_CORES[k].core))
-			return (ALT_CORES[k].on & here) ? (int)k : -1;
+		if (!strcmp(s->core, ALT_CORES[k].core) && (ALT_CORES[k].on & here))
+			return (int)k;
 	return -1;
 }
 

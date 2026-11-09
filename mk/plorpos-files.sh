@@ -70,7 +70,7 @@ plorpos_files() {
 	done
 	if [ -n "$_missing" ]; then
 		echo "payload: systems.cfg needs cores that vendor/ does not have:$_missing" >&2
-		echo "payload: run mk/fetch-vendor.sh" >&2
+		echo "payload: run mk/fetch-vendor.sh (pokedaisy: mk/build-pokedaisy-core.sh, pokedaisy_ds: mk/build-pokedaisy-ds-core.sh)" >&2
 		exit 1
 	fi
 }

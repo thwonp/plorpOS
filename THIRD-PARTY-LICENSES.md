@@ -52,7 +52,6 @@ carries its own; see Runtime libraries.
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 | `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without PGO: DSperate's committed profile needs GCC 13, and its GCC 10.5 profile applies to our compiler but measured no gain on the Brick; the frame skip (`dsperate_frameskip`) is nelynes's slotPlus design, https://github.com/nelynes/slotPlus, `cores/dsperate/wrapper-0001-frameskip.patch`, folded into the wrapper) |
-| `melondsds_libretro.so` (RG Rotate only, `vendor/cores-rotate/`) | Nintendo DS | GPL-3.0 (melonDS DS, https://github.com/JesseTG/melonds-ds v1.4.0, on melonDS, https://github.com/JesseTG/melonDS at the commit it pins; built with two patches of ours, `mk/patches/melondsds-plorpos.patch` and `mk/patches/melonds-plorpos.patch`, which are GPL-3.0 like the code they change - `mk/build-melondsds.sh`) |
 
 The GKD card ships all nine. The Brick card ships the first six only - no
 pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
@@ -78,6 +77,13 @@ https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
 https://github.com/thwonp/pokedaisy-plorp (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
 commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
+
+## PokeDaisy DS (`pokedaisy_ds_libretro.so`, `vendor/cores-brick/`)
+
+A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
+(https://github.com/thwonp/pokedaisy-plorp, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
+(https://github.com/beebono/DSperate, GPL-3.0) in our libretro wrapper https://github.com/thwonp/dsperate-lr,
+at the commits the fork pins, built by `mk/build-pokedaisy-ds-core.sh`. The DS shelf's Core row offers it per game.
 
 ---
 
