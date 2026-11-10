@@ -14584,9 +14584,6 @@ static void launch_one(app *a)
 	 * than a shutdown. Everything above leaves the marker standing, which is
 	 * what makes the next boot able to tell them apart. */
 	bookmarks_finish();
-#if !defined(PLATFORM_MIYOO)
-	playing_clear();
-#endif
 
 	/* Straight to the shelf, no fade. The card decode inside this render is
 	 * the only real cost left on the way back, and a fade laid over the top of
@@ -14600,11 +14597,10 @@ static void launch_one(app *a)
 	 * is waiting on, so they happen once the shelf is up rather than while it
 	 * is still black. The two paths above that leave without reaching here do
 	 * it themselves. */
-#if defined(PLATFORM_MIYOO)
-	/* The marker's unlink on the card took 9-57 ms of the first frame back
-	 * (plorpos-f1p.42), so on the Flip it follows the frame like the LEDs. */
+	/* The marker's unlink on the card took 9-57 ms of the first frame back on
+	 * the Flip (plorpos-f1p.42); it follows the frame like the LEDs on every
+	 * port (plorpos-bbw.2). Rotate: 14 ms either way, so no gain there, no cost. */
 	playing_clear();
-#endif
 	plat_leds_off();
 }
 
