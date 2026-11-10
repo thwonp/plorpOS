@@ -801,6 +801,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		bool lid_tap = false;
 #endif
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+#if defined(PLATFORM_MIYOO)
+			if (ev.type == EV_KEY) plat_note_key(ev.code, ev.value);
+#endif
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
 			/* The Rotate's volume keys share POWER's node (platform_rotate.c
@@ -2174,9 +2177,13 @@ static int diatom_wait(void)
 		{
 			struct input_event ev;
 			while (fd_power >= 0 &&
-			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+#if defined(PLATFORM_MIYOO)
+				if (ev.type == EV_KEY) plat_note_key(ev.code, ev.value);
+#endif
 				if (ev.type == EV_KEY && ev.code == KEY_POWER)
 					pwr_down = ev.value != 0;
+			}
 
 			/* plat_input_poll isn't running - the game owns input - so this
 			 * is the only place watching the level at all; checked every
@@ -2356,6 +2363,31 @@ static int flip_sleep_s = 120;            /* Sleep Poweroff; main.c sets it */
 void plat_set_sleep_timeout(int seconds) { if (seconds > 0) flip_sleep_s = seconds; }
 static bool flip_lid_sleep = true;        /* Lid Close: sleep / nothing */
 void plat_set_lid_sleep(bool on) { flip_lid_sleep = on; }
+
+/* The hall sensor on this hardware reports a closed lid by itself (f1p.61). A
+ * closed lid covers the face buttons and the D-pad, so one of those pressed
+ * means the lid is open: that is how a false close is told from a real one.
+ * Shoulder buttons, Start, Select and Menu are not counted: a bag presses
+ * them through a closed lid. */
+static bool face_key(int code)
+{
+	return code == KEY_SPACE || code == KEY_LEFTCTRL || code == KEY_LEFTSHIFT ||
+	       code == KEY_LEFTALT || code == KEY_LEFT || code == KEY_RIGHT ||
+	       code == KEY_UP || code == KEY_DOWN;
+}
+static unsigned flip_face_ms;             /* the last such press, 0 never */
+static unsigned lid_pending;              /* a close edge waiting out LID_DWELL_MS, 0 none */
+static bool     lid_sleep_pending;        /* the sleep about to start came from the lid */
+#define LID_DWELL_MS 1000u
+
+void plat_note_key(int code, int value)
+{
+	if (value == 1 && face_key(code)) {
+		unsigned t = plat_now_ms();
+
+		flip_face_ms = t ? t : 1;
+	}
+}
 bool plat_lid_closed(void);               /* platform_miyoo.c: the hall sensor */
 static int lid_state = -1;                /* -1 not read yet, 0 open, 1 closed */
 
@@ -2386,23 +2418,41 @@ static bool lid_closed_edge(void)
 	s = hall_filter(plat_lid_closed());
 	edge = lid_state == 0 && s == 1;
 	lid_state = s;
-	return edge && flip_lid_sleep;
+	if (edge) {
+		/* Not yet: the lid must stay closed LID_DWELL_MS with no face button or
+		 * D-pad pressed. A press in that time says the lid is open (f1p.61), and
+		 * lid_state stays closed, so no second edge until the sensor has read
+		 * open again. */
+		lid_pending = now ? now : 1;
+		return false;
+	}
+	if (!lid_pending) return false;
+	if (s == 0) { lid_pending = 0; return false; }                 /* it opened again */
+	if (flip_face_ms && (int)(flip_face_ms - lid_pending) >= 0) {
+		lid_pending = 0;
+		fprintf(stderr, "lid: closed but a button was pressed, ignored\n");
+		return false;
+	}
+	if (now - lid_pending < LID_DWELL_MS) return false;
+	lid_pending = 0;
+	return flip_lid_sleep;
 }
 
 /* One 200 ms slice of the wait in plat_light_sleep: 1 = woken (a power release
  * or the lid opened), -1 = the button was held POWER_HOLD_MS (power off now),
  * 0 = nothing. *down_at is the press time, 0 when not pressed. */
-static int flip_wake_wait(unsigned *down_at)
+static int flip_wake_wait(unsigned *down_at, bool by_lid)
 {
 	struct pollfd pfd;
 	struct input_event ev;
 	int r = 0;
+	bool button = false;
 
 	if (fd_power < 0) usleep(200000);
 	else {
 		pfd.fd = fd_power;
 		pfd.events = POLLIN;
-		if (poll(&pfd, 1, 200) > 0)
+		if (poll(&pfd, 1, 200) > 0) {
 			while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 				if (ev.type == EV_KEY && ev.code == KEY_POWER) {
 					if (ev.value == 1) {
@@ -2411,8 +2461,11 @@ static int flip_wake_wait(unsigned *down_at)
 						*down_at = t ? t : 1;   /* never t|1: that can be ahead of now */
 					}
 					else if (ev.value == 0) r = 1;
-				}
+				} else if (by_lid && ev.type == EV_KEY && ev.value == 1 && face_key(ev.code))
+					button = true;       /* a closed lid covers these: it is not closed */
+		}
 	}
+	if (button && !r) { fprintf(stderr, "lid sleep: button, wake\n"); return 1; }
 	if (*down_at && plat_now_ms() - *down_at >= POWER_HOLD_MS) {
 		fprintf(stderr, "power: hold in sleep -> power off\n");
 		return -1;
@@ -2473,6 +2526,9 @@ bool plat_light_sleep(unsigned waited_ms)
 	 * timer (f1p.55); plat_sleep() is false, so the caller powers off. */
 	int timeout_ms = flip_sleep_s * 1000;
 	unsigned flip_down = 0;
+	bool by_lid = lid_sleep_pending;      /* this sleep came from the lid */
+
+	lid_sleep_pending = false;
 #else
 	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
 #endif
@@ -2500,7 +2556,7 @@ bool plat_light_sleep(unsigned waited_ms)
 		if (g_terminating) break;
 #if defined(PLATFORM_MIYOO)
 		{
-			int w = flip_wake_wait(&flip_down);
+			int w = flip_wake_wait(&flip_down, by_lid);
 
 			if (w > 0) break;
 			if (w < 0) { awake = false; break; }
@@ -2583,6 +2639,7 @@ pwr_action plat_power_tap_or_hold(bool down)
 	/* A closed lid is a tap that needs no release (f1p.55). */
 	if (lid_closed_edge()) {
 		pwr_since = 0;
+		lid_sleep_pending = true;
 		fprintf(stderr, "power: lid closed -> sleep\n");
 		return PWR_SLEEP;
 	}

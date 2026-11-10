@@ -388,6 +388,9 @@ bool plat_light_sleep(unsigned waited_ms);
 void plat_set_sleep_timeout(int seconds);
 /* Whether closing the lid sleeps the unit (Lid Close, f1p.61); waking on open stays. */
 void plat_set_lid_sleep(bool on);
+/* Every key event a reader of the pad's node sees, so a press of a face button
+ * or the D-pad (not a shoulder button) is known to the lid code (f1p.61). */
+void plat_note_key(int code, int value);
 #endif
 
 /* END PolyForm-Noncommercial-1.0.0 */

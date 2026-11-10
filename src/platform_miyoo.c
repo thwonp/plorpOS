@@ -405,9 +405,11 @@ void plat_input_poll(in_state *st)
 		if (e.type == SDL_QUIT) st->quit_requested = true;
 	pad_read(st);
 	/* fd_power (the lid's node): KEY_POWER as POWER; the lid itself is f1p.7's. */
-	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_KEY) plat_note_key(ev.code, ev.value);   /* the lid code (f1p.61) */
 		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value != 2)
 			set_btn(st, IN_POWER, ev.value == 1);
+	}
 }
 
 void plat_leds_off(void) { }
