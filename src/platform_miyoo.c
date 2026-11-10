@@ -451,19 +451,19 @@ void mute_forget(void) { }
 void plat_mute_switch_lock(bool lock) { (void)lock; }
 bool plat_hold_switch(void) { return false; }
 
-/* Backlight: pwm0's duty over the period the boot hook sets (800). The ladder
- * is the H700's, scaled to that period, so no rung is black and rung 3 is the
- * hook's own duty of 50. Unjudged on this panel (plorpos-f1p.7). */
+/* Backlight: pwm0's duty over the period the boot hook sets (800). Judged by
+ * eye on the Flip (plorpos-f1p.53): the panel is at full light by duty ~75-100
+ * and readable down to 3, so the twelve rungs are raw duties spanning 3..100,
+ * roughly geometric. diatom's bright_apply carries the same table. */
 #define PWM_DUTY "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
-#define PWM_PERIOD 800
 void apply_brightness(int b)
 {
-	static const unsigned char ladder[] = { 2, 4, 8, 16, 32, 48, 72, 96, 128, 160, 192, 255 };
+	static const unsigned char ladder[] = { 3, 5, 8, 12, 17, 24, 33, 44, 56, 70, 85, 100 };
 	_Static_assert(sizeof ladder == PLAT_BRIGHT_MAX + 1, "ladder vs PLAT_BRIGHT_MAX");
 	cur_bright = b;
 	FILE *f = fopen(PWM_DUTY, "w");
 	if (!f) return;
-	fprintf(f, "%d", ladder[clampi(b, 0, PLAT_BRIGHT_MAX)] * PWM_PERIOD / 255);
+	fprintf(f, "%d", ladder[clampi(b, 0, PLAT_BRIGHT_MAX)]);
 	fclose(f);
 }
 void backlight_off(void) { }
