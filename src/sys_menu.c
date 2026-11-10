@@ -29,7 +29,9 @@ int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
 	if (!books) out[n++] = SMM_ART;
 	out[n++] = SMM_DISPLAY;
 	out[n++] = SMM_RESCAN;
+#if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
+#endif
 	return n;
 }
 

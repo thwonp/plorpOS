@@ -3687,10 +3687,12 @@ static bool idle_due(app *a)
 	 * shortest is long. Never is the screen on for as long as music plays. A
 	 * new timer is a new countdown: an album that ended after five minutes
 	 * untouched must not fire Auto Sleep the moment it stops. */
-	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
 #if defined(PLATFORM_MIYOO)
-	                       : a->auto_off;     /* Sleep Poweroff is no idle clock */
+	/* Auto Sleep alone, music or not: Muse's Screen Off is gone here (f1p.58),
+	 * and Sleep Poweroff is no idle clock. */
+	secs = a->auto_off;
 #else
+	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
 	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
 #endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
