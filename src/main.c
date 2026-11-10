@@ -1752,6 +1752,31 @@ static void evict_far(sysview *v, int keep)
 	}
 }
 
+/* The same rule while a letter jump is cutting, which evict_far waits out
+ * (the departure is still on screen). A held Up/Down is a jump per repeat, so
+ * "waits" never ended: every landing's cards (1.3 MB slabs on a shelf with no
+ * art) piled up until the kernel killed the launcher, 51 -> 82 MB in 2 s on the
+ * Flip (plorpos-f1p.43). Keep what the departure draws (around `from`) and the
+ * landing's window (around the cursor); everything else goes. */
+static void evict_cut(sysview *v, int cursor_keep, int from_keep)
+{
+	int n = v->list.count, f = (int)floorf(v->cf.from + 0.5f);
+
+	if (n <= 0) return;
+	f %= n; if (f < 0) f += n;
+	for (int i = 0; i < n; i++) {
+		int dc = abs(i - v->cursor), df = abs(i - f);
+		if (n >= CF_WINDOW) {
+			if (dc > n / 2) dc = n - dc;
+			if (df > n / 2) df = n - df;
+		}
+		if (v->tex[i] && dc > cursor_keep && df > from_keep) {
+			SDL_DestroyTexture(v->tex[i]);
+			v->tex[i] = NULL;
+		}
+	}
+}
+
 #if defined(PLATFORM_MIYOO)
 /* Before a game goes to the resident: drop every shelf texture but the
  * launched system's focused card. The Flip has 101 MB and no swap; FBNeo's
@@ -4226,6 +4251,7 @@ static void draw_games(app *a)
 		if (land >= 0) prime_toward(a, a->sys_cursor, land);
 	}
 	if (!cf_cutting(&v->cf)) evict_far(v, TEX_KEEP_NEAR);
+	else evict_cut(v, PRIME_HALF_MAX, CF_HALF_WINDOW + 1);
 
 	draw_game_text(a, v, s, v->cursor);
 	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
