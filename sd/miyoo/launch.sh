@@ -4,8 +4,8 @@
 # H700. Started by the card's .tmp_update/updater once plorpos-f1p.12 installs
 # it; until then by hand, with Allium stopped.
 #
-# Not here yet: Wi-Fi bring-up (Allium's wpa_supplicant runs meanwhile),
-# sleep and power-off (plorpos-f1p.7).
+# Wi-Fi comes up below, from boot.env's WIFI.
+# Not here yet: sleep and power-off (plorpos-f1p.7).
 SD=/mnt/SDCARD
 DIR=$SD/TortOS
 export TORTOS_USERDATA=$SD/.userdata/miyooflip
@@ -22,6 +22,28 @@ echo "plorpOS on the Miyoo Mini Flip, uptime $(cut -d' ' -f1 /proc/uptime)" > "$
 # Full clock: ondemand held 1.0 GHz while mGBA fell behind in play
 # (2026-11-04). Until the Flip has a real power policy (plorpos-f1p.7).
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2> /dev/null
+
+# Wi-Fi as the player left it (boot.env, which the launcher writes on every
+# change; plorpos-f1p.21): join the saved networks in the background, so the
+# shelf never waits for the radio. Off, the radio is not even powered. The
+# launcher's own wifi_up (src/wifi.c) does the same later from the menu.
+# The commands are the boot hook's old ones, unchanged.
+WIFI=0
+[ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
+WPA_CONF=/appconfigs/wpa_supplicant.conf
+if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
+	echo "wifi: up at boot (setting on)" >> "$LOG"
+	(
+		grep -q 8188fu /proc/modules || insmod "$SD/.tmp_update/8188fu.ko"
+		/customer/app/axp_test wifion
+		sleep 2
+		ifconfig wlan0 up
+		/customer/app/wpa_supplicant -B -D nl80211 -iwlan0 -c "$WPA_CONF"
+		udhcpc -i wlan0 -s /etc/init.d/udhcpc.script
+	) > /dev/null 2>&1 &
+else
+	echo "wifi: off at boot (WIFI=$WIFI)" >> "$LOG"
+fi
 
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {

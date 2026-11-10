@@ -26,16 +26,11 @@ cat /proc/ls > /dev/null
 # The stock telnetd: Allium kills it too, and ssh replaces it below.
 killall telnetd 2> /dev/null
 
-# Wi-Fi and ssh in the background, the commands Allium's wifi-on.sh and
-# ssh-on.sh use (development; plorpOS's own Wi-Fi settings come later).
+# ssh in the background, the commands Allium's ssh-on.sh uses (development).
+# Wi-Fi is not here: TortOS/launch.sh brings it up from boot.env's WIFI
+# (plorpos-f1p.21).
 (
-	grep -q 8188fu /proc/modules || insmod "$T/8188fu.ko"
 	ifconfig lo up
-	/customer/app/axp_test wifion
-	sleep 2
-	ifconfig wlan0 up
-	/customer/app/wpa_supplicant -B -D nl80211 -iwlan0 -c /appconfigs/wpa_supplicant.conf
-	udhcpc -i wlan0 -s /etc/init.d/udhcpc.script > /dev/null 2>&1 &
 	if [ -x "$ROOT/.allium/bin/dropbear" ]; then
 		mount | grep -q " /etc/passwd " || mount -o bind "$ROOT/.allium/etc/passwd" /etc/passwd
 		"$ROOT/.allium/bin/dropbear" -R -B -p 22
