@@ -2352,9 +2352,22 @@ static unsigned resume_at;
 /* The Flip (plorpos-f1p.55): a 2 s hold powers off; a tap or a closed lid
  * sleeps for FLIP_SLEEP_S and then powers off (no suspend here). */
 #define POWER_HOLD_MS 2000u
-#define FLIP_SLEEP_S  120
+static int flip_sleep_s = 120;            /* Sleep Poweroff; main.c sets it */
+void plat_set_sleep_timeout(int seconds) { if (seconds > 0) flip_sleep_s = seconds; }
 bool plat_lid_closed(void);               /* platform_miyoo.c: the hall sensor */
 static int lid_state = -1;                /* -1 not read yet, 0 open, 1 closed */
+
+/* The hall level, debounced (f1p.61): a change counts only once a second read
+ * agrees, so one bad read cannot start or end a sleep. Returns the settled
+ * state; the first read is taken as is. */
+static int hall_filter(bool c)
+{
+	static int differ;
+
+	if (lid_state < 0 || c == lid_state) { differ = 0; return c; }
+	if (++differ >= 2) { differ = 0; return c; }
+	return lid_state;
+}
 
 /* True once when the lid goes from open to closed. The first read only sets the
  * baseline, so a unit switched on with the lid shut does not sleep by itself.
@@ -2363,13 +2376,14 @@ static bool lid_closed_edge(void)
 {
 	static unsigned next;
 	unsigned now = plat_now_ms();
-	bool c, edge;
+	int s;
+	bool edge;
 
 	if ((int)(now - next) < 0) return false;
 	next = now + 250;
-	c = plat_lid_closed();
-	edge = lid_state == 0 && c;
-	lid_state = c;
+	s = hall_filter(plat_lid_closed());
+	edge = lid_state == 0 && s == 1;
+	lid_state = s;
 	return edge;
 }
 
@@ -2403,10 +2417,10 @@ static int flip_wake_wait(unsigned *down_at)
 	}
 	if (r) return 1;
 	{
-		bool c = plat_lid_closed();
+		int s = hall_filter(plat_lid_closed());
 
-		if (lid_state == 1 && !c) { lid_state = 0; fprintf(stderr, "lid: open, wake\n"); return 1; }
-		lid_state = c;
+		if (lid_state == 1 && s == 0) { lid_state = 0; fprintf(stderr, "lid: open, wake\n"); return 1; }
+		lid_state = s;
 	}
 	return 0;
 }
@@ -2455,7 +2469,7 @@ bool plat_light_sleep(unsigned waited_ms)
 #if defined(PLATFORM_MIYOO)
 	/* No suspend to escalate to (f1p.7): the wait is the 2 minute power-off
 	 * timer (f1p.55); plat_sleep() is false, so the caller powers off. */
-	int timeout_ms = FLIP_SLEEP_S * 1000;
+	int timeout_ms = flip_sleep_s * 1000;
 	unsigned flip_down = 0;
 #else
 	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;

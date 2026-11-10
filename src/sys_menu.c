@@ -190,7 +190,13 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
 #if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
+#if defined(PLATFORM_MIYOO)
+	/* The Flip has no suspend: how long a sleeping unit waits before it powers
+	 * off, whatever started the sleep (f1p.56). */
+	out[ST_AUTO_OFF] = (menu_row){ "Sleep Poweroff",  b->a, true };
+#else
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
+#endif
 #endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };

@@ -383,6 +383,10 @@ bool plat_sleep(void);
  * time the screen has already been dark (main.c's music_dark, after the
  * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
+#if defined(PLATFORM_MIYOO)
+/* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
+void plat_set_sleep_timeout(int seconds);
+#endif
 
 /* END PolyForm-Noncommercial-1.0.0 */
 /* The backlight alone, off or back at the player's level - no mute, no input

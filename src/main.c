@@ -2069,14 +2069,26 @@ static void auto_off_save(int seconds)
  * shape rather than sharing it - mutually exclusive with Auto Sleep above,
  * matching NextUI, so the two get independent ladders and db keys even
  * though today they hold the same values. */
-#if !defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_MIYOO)
+/* The Flip (f1p.56): "Sleep Poweroff", how long a sleeping unit waits before
+ * it powers off - idle, tap or lid alike. Independent of Auto Sleep, no Never. */
+static const int AUTO_POWEROFF[] = { 30, 60, 120, 300, 600 };
+#define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+#elif !defined(PLATFORM_ROTATE)
 static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
 #define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
 #endif
 
 static int auto_poweroff_load(void)
 {
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_MIYOO)
+	int v = db_get_int(db_dev(), "sleeppoweroff", 120);
+	int k;
+
+	for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
+		if (AUTO_POWEROFF[k] == v) return v;
+	return 120;
+#elif defined(PLATFORM_ROTATE)
 	return 0;     /* no Auto Off on the Rotate, whatever an old card saved (plorpos-3yv.100) */
 #else
 	int v = db_get_int(db_dev(), "autopoweroff", -1);
@@ -2086,7 +2098,12 @@ static int auto_poweroff_load(void)
 
 static void auto_poweroff_save(int seconds)
 {
+#if defined(PLATFORM_MIYOO)
+	db_set_int(db_dev(), "sleeppoweroff", seconds);
+	plat_set_sleep_timeout(seconds);
+#else
 	db_set_int(db_dev(), "autopoweroff", seconds);
+#endif
 }
 
 
@@ -3611,6 +3628,7 @@ static bool battery_low(void)
  *
  * plat_battery leaves its out-parameter alone when it fails, so the answer is
  * written before the call rather than after it. */
+#if !defined(PLATFORM_MIYOO)   /* the Flip's idle clock ignores the charger (f1p.56) */
 static bool keep_awake(void)
 {
 	static unsigned last;
@@ -3630,6 +3648,7 @@ static bool keep_awake(void)
 	}
 	return awake;
 }
+#endif
 /* END PolyForm-Noncommercial-1.0.0 */
 
 /* Has the player been away long enough for the armed idle action - Auto
@@ -3669,7 +3688,11 @@ static bool idle_due(app *a)
 	 * new timer is a new countdown: an album that ended after five minutes
 	 * untouched must not fire Auto Sleep the moment it stops. */
 	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
+#if defined(PLATFORM_MIYOO)
+	                       : a->auto_off;     /* Sleep Poweroff is no idle clock */
+#else
 	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
+#endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
 	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
@@ -3679,7 +3702,13 @@ static bool idle_due(app *a)
 	 * somebody using the device with nobody touching it, so running out
 	 * during one turns only the screen off - music_dark - and whatever the
 	 * clock was armed for waits until the music stops. */
+#if defined(PLATFORM_MIYOO)
+	/* The charger does not hold the idle clock on the Flip: a charging unit
+	 * sleeps and powers off like any other (f1p.56). */
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, false);
+#else
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, keep_awake());
+#endif
 }
 
 /* The keyboard takes callbacks rather than an app - it is deliberately
@@ -8739,10 +8768,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		auto_off_save(a->auto_off);
 		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
 		 * escalation ladder, so at most one of the pair is ever armed. */
+#if !defined(PLATFORM_MIYOO)
 		if (a->auto_off && a->auto_poweroff) {
 			a->auto_poweroff = 0;
 			auto_poweroff_save(0);
 		}
+#endif
 		/* From now, not from whenever the last countdown began: choosing 30s
 		 * should not inherit two minutes of an old one already spent. */
 		a->idle.since_ms = plat_now_ms();
@@ -8761,11 +8792,13 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
 		a->auto_poweroff = AUTO_POWEROFF[at];
 		auto_poweroff_save(a->auto_poweroff);
+#if !defined(PLATFORM_MIYOO)
 		if (a->auto_poweroff && a->auto_off) {
 			a->auto_off = 0;
 			auto_off_save(0);
 		}
 		a->idle.since_ms = plat_now_ms();
+#endif
 		return MENU_STAY;
 	}
 #endif
@@ -12768,7 +12801,11 @@ static pwr_action power_check(app *a)
 	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
 
 	if (pa == PWR_NONE && idle_due(a)) {
+#if defined(PLATFORM_MIYOO)
+		pa = PWR_SLEEP;                    /* the power-off is the sleep's timer */
+#else
 		pa = a->auto_poweroff ? PWR_POWEROFF : PWR_SLEEP;
+#endif
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
@@ -16627,6 +16664,9 @@ int main(int argc, char *argv[])
 		 * device has no trust store of its own - res/ssl/README.md. */
 		a.auto_off = auto_off_load();
 		a.auto_poweroff = auto_poweroff_load();
+#if defined(PLATFORM_MIYOO)
+		plat_set_sleep_timeout(a.auto_poweroff);
+#endif
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
