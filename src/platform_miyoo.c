@@ -198,6 +198,23 @@ void plat_lowres(bool on)
 	lo_on = true;
 }
 
+/* The stage's scale (plat_geometry_init) leaves the last column of the 752 px
+ * panel past the stage's edge: 1031 units at 0.729 reach 751.8 px, so the clear
+ * and every draw in stage units stop at column 750, and column 751 keeps what
+ * was last drawn there - black from before the first frame, or a slice of an
+ * earlier screen drawn at another scale. That was the 1 px stripe on the right
+ * of the shelf and menus (plorpos-f1p.60). Repeat the last column that was
+ * reached into the rest: a few hundred pixel copies a frame. */
+static void edge_fill(uint32_t *px, int pitch_px, int w, int h, int reached)
+{
+	if (reached < 1 || reached >= w) return;
+	for (int y = 0; y < h; y++) {
+		uint32_t *line = px + (size_t)y * (size_t)pitch_px;
+
+		for (int x = reached; x < w; x++) line[x] = line[reached - 1];
+	}
+}
+
 void plat_present(SDL_Renderer *r)
 {
 	struct fb_var_screeninfo v;
@@ -214,6 +231,12 @@ void plat_present(SDL_Renderer *r)
 	}
 	if (!surf || r != ren || ioctl(fb_fd, FBIOGET_VSCREENINFO, &v) != 0) return;
 	row = (size_t)surf->w;
+	if (lo)
+		edge_fill(lo_buf, surf->w / 2, surf->w / 2, surf->h / 2,
+		          (int)((float)plat_screen_w * plat_scale() * 0.5f));
+	else
+		edge_fill((uint32_t *)surf->pixels, surf->pitch / 4, surf->w, surf->h,
+		          (int)((float)plat_screen_w * plat_scale()));
 	/* DRAW OFF GLASS, THEN FLIP. Copying onto the page being scanned out tore
 	 * every scroll frame, and frames of about 27 ms against a 16.7 ms refresh
 	 * showed for one refresh then two. So the copy goes to the next page and
