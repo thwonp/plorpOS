@@ -39,7 +39,9 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
+#if !defined(PLATFORM_MIYOO)   /* the Flip has no Bluetooth (f1p.57) */
 	PM_BT,
+#endif
 	PM_AUDIO,
 	PM_SYSTEM, PM_UI, PM_GAME,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS

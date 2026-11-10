@@ -7615,6 +7615,9 @@ static void bt_await_route(const char *mac)
 	}
 }
 
+#if defined(PLATFORM_MIYOO)
+__attribute__((unused))   /* no Bluetooth row on the Flip (f1p.57) */
+#endif
 static void bt_screen(app *a)
 {
 	bt_ui u = { 0 };
@@ -9135,7 +9138,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 	case PM_GAME:         game_settings_screen(a); break;
+#if !defined(PLATFORM_MIYOO)
 	case PM_BT:           bt_screen(a); break;
+#endif
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
 	case PM_ABOUT:        about_screen(a); break;
