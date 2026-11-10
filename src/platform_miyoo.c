@@ -394,11 +394,14 @@ static void pad_read(in_state *st)
 	}
 }
 
+static void lid_poll(void);
+
 void plat_input_poll(in_state *st)
 {
 	SDL_Event e;
 	struct input_event ev;
 
+	lid_poll();
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
 	while (SDL_PollEvent(&e))
@@ -464,6 +467,44 @@ void apply_brightness(int b)
 	fclose(f);
 }
 void backlight_off(void) { }
+
+/* The lid (plorpos-f1p.7): the hall sensor's level, read four times a second
+ * (the level, not event1's key events, whose sense is unknown). Closed is 0:
+ * 1 was read with the lid open. Closed blanks the backlight and mutes; open
+ * puts both back. No suspend and no power-off: the Flip has neither yet, and
+ * a lid misread must never end a session. diatom does the same in a game. */
+#define HALL_VALUE "/sys/devices/soc0/soc/soc:hall-mh248/hallvalue"
+static void lid_poll(void)
+{
+	static unsigned next;
+	static bool closed;
+	static int saved_vol = -1;
+	unsigned now = plat_now_ms();
+	char buf[8] = "";
+	int fd;
+	bool c;
+
+	if ((int)(now - next) < 0) return;
+	next = now + 250;
+	if ((fd = open(HALL_VALUE, O_RDONLY | O_CLOEXEC)) < 0) return;
+	if (read(fd, buf, sizeof buf - 1) <= 0) { close(fd); return; }
+	close(fd);
+	c = buf[0] == '0';
+	if (c == closed) return;
+	closed = c;
+	fprintf(stderr, "lid: %s (hall %c)\n", c ? "closed" : "open", buf[0]);
+	if (c) {
+		saved_vol = cur_vol;
+		if (mixer_fd >= 0) apply_volume(0);
+		{
+			FILE *f = fopen(PWM_DUTY, "w");
+			if (f) { fputs("0", f); fclose(f); }
+		}
+	} else {
+		apply_brightness(cur_bright);
+		if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+	}
+}
 
 void plat_settings_init(void)
 {
