@@ -1598,13 +1598,32 @@ static SDL_Texture *game_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 		char art[LIB_PATH * 3], prev[LIB_PATH * 3];
 		unsigned ft0 = g_ft ? ft_us() : 0;
 
-		card_art_path(&a->sys.systems[o], &v->list.items[i],
-		              art, sizeof art);
+		bool has_art = card_art_path(&a->sys.systems[o], &v->list.items[i],
+		                             art, sizeof art);
 		preview_path(a, o, &v->list.items[i], prev, sizeof prev);
 		if (g_ft) { g_ft_path_us += ft_us() - ft0; g_ft_paths++; }
+#if defined(PLATFORM_MIYOO)
+		/* THE FOCUSED CARD OF A GAME WITH NO ART, made right here. Its worker
+		 * job could only fail twice and send the slab back to be made on the
+		 * main thread anyway; the round trip (request next frame, wake, result,
+		 * drain on a later frame) added 1-3 frames and put one cold letter
+		 * jump in eight over the 100 ms budget on a shelf with no covers
+		 * (FBA, plorpos-f1p.43). The slab costs ~6 ms, once, and only for the
+		 * card being looked at; its neighbours still go through the worker.
+		 * A game with a preview (an Auto state) is not "no art": it goes to
+		 * the worker as before. */
+		if (!has_art && i == v->cursor && access(prev, F_OK) != 0) {
+			v->tex[i] = ui_make_card(a->r, v->list.items[i].title,
+			                         a->sys.systems[o].accent,
+			                         &v->tw[i], &v->th[i]);
+			v->cb[i] = 1.0f;
+		}
+#else
+		(void)has_art;
+#endif
 		/* Hand it to the worker and draw nothing this frame. Asking is cheap
 		 * and ignores a card already in hand, so callers ask every frame. */
-		if (!texload_want(s, i, art, prev)) {
+		if (!v->tex[i] && !texload_want(s, i, art, prev)) {
 			/* No worker. Exactly what this did before, on the frame. */
 			v->tex[i] = load_image(a->r, art, &v->tw[i], &v->th[i], &v->cb[i]);
 			if (!v->tex[i])
