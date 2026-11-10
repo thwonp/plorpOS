@@ -5727,6 +5727,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 			u.clock = clk;
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
+		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -8808,6 +8809,16 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 #endif
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
+#if defined(PLATFORM_MIYOO)
+	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
+	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
+		bool on = db_get_int(db_dev(), "lidclose", 1) == 0;
+
+		db_set_int(db_dev(), "lidclose", on);
+		plat_set_lid_sleep(on);
+		return MENU_STAY;
+	}
+#endif
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
@@ -16673,6 +16684,7 @@ int main(int argc, char *argv[])
 		a.auto_poweroff = auto_poweroff_load();
 #if defined(PLATFORM_MIYOO)
 		plat_set_sleep_timeout(a.auto_poweroff);
+		plat_set_lid_sleep(db_get_int(db_dev(), "lidclose", 1) != 0);
 #endif
 		g_aout_policy = aout_load();
 

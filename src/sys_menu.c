@@ -198,6 +198,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* The Flip has no suspend: how long a sleeping unit waits before it powers
 	 * off, whatever started the sleep (f1p.56). */
 	out[ST_AUTO_OFF] = (menu_row){ "Sleep Poweroff",  b->a, true };
+	/* The hall sensor can read closed with the lid open beside a magnet (f1p.61), so
+	 * the lid's sleep can be turned off; the power button and Auto Sleep stay. */
+	out[ST_LID]      = (menu_row){ "Lid Close",       u->lid_sleep ? "sleep" : "nothing", true };
 #else
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
 #endif

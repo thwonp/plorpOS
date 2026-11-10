@@ -2354,6 +2354,8 @@ static unsigned resume_at;
 #define POWER_HOLD_MS 2000u
 static int flip_sleep_s = 120;            /* Sleep Poweroff; main.c sets it */
 void plat_set_sleep_timeout(int seconds) { if (seconds > 0) flip_sleep_s = seconds; }
+static bool flip_lid_sleep = true;        /* Lid Close: sleep / nothing */
+void plat_set_lid_sleep(bool on) { flip_lid_sleep = on; }
 bool plat_lid_closed(void);               /* platform_miyoo.c: the hall sensor */
 static int lid_state = -1;                /* -1 not read yet, 0 open, 1 closed */
 
@@ -2384,7 +2386,7 @@ static bool lid_closed_edge(void)
 	s = hall_filter(plat_lid_closed());
 	edge = lid_state == 0 && s == 1;
 	lid_state = s;
-	return edge;
+	return edge && flip_lid_sleep;
 }
 
 /* One 200 ms slice of the wait in plat_light_sleep: 1 = woken (a power release

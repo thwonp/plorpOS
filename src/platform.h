@@ -386,6 +386,8 @@ bool plat_light_sleep(unsigned waited_ms);
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
 void plat_set_sleep_timeout(int seconds);
+/* Whether closing the lid sleeps the unit (Lid Close, f1p.61); waking on open stays. */
+void plat_set_lid_sleep(bool on);
 #endif
 
 /* END PolyForm-Noncommercial-1.0.0 */

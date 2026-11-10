@@ -61,7 +61,7 @@ typedef enum {
 typedef enum {
 	ST_CLOCK,
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
-	ST_SLEEP, ST_AUTO_OFF, ST_BATTPCT,
+	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
 #else
 #if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
 	ST_AUTO_OFF,
@@ -203,6 +203,7 @@ typedef struct {
 	const char *clock;       /* now, as Date & Time's row shows it */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
+	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
