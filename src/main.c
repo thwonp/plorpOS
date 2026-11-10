@@ -22,6 +22,7 @@
 #include "stats.h"
 #include "sort.h"
 #include "titles.h"
+#include "setmap.h"
 #include "coverflow.h"
 #include "chdread.h"
 #include "library.h"
@@ -15655,9 +15656,17 @@ static void scan_all(app *a, bool bg)
 		t_lib += SDL_GetTicks() - t1;
 		t1 = SDL_GetTicks();
 		ports_titles(&a->sys.systems[i], &v->list);
-		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
-		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
-		             strcmp(a->sys.systems[i].core, "fbneo") && strncmp(a->sys.systems[i].core, "fbalpha2012", 11) && strcmp(a->sys.systems[i].core, "mame2000") ? NULL : fbneo_dat());
+		/* Arcade shelves are named by set: fbneo's two from FBNeo's table, mame2000
+		 * and fbalpha2012 from their own romset maps (setmap.h). */
+		{
+			char mp[CFG_STR * 2], res[CFG_STR * 2];
+			const char *core = a->sys.systems[i].core, *map;
+
+			snprintf(res, sizeof res, "%s/res", P_ROOT);
+			map = setmap_path(res, core, mp, sizeof mp);
+			titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
+			             strcmp(core, "fbneo") && strncmp(core, "fbalpha2012", 11) && strcmp(core, "mame2000") ? NULL : fbneo_dat(), map);
+		}
 		t_titles += SDL_GetTicks() - t1;
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);

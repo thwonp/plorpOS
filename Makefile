@@ -457,7 +457,7 @@ build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscr
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
 	      -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/urlenc.c src/fbneodat.c
+	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/urlenc.c src/fbneodat.c src/setmap.c
 
 # Replace fetches over a cover rather than deleting it first. The real scraper
 # against a stubbed network, so a hit and a miss are both pinned with no device
@@ -469,7 +469,7 @@ build-native/artrun-check: tools/artrun-check.c src/artscrape.c src/artscrape.h 
                            src/fbneodat.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc -DSS_BUSY_WAIT=0 -DART_QUIET \
-	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c src/fbneodat.c
+	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c src/fbneodat.c src/setmap.c
 
 # The two hashers - one C for the device, one Python for the host tools - over
 # every ROM in the library. A wrong rule does not crash; it produces a hash RA
@@ -710,7 +710,7 @@ build-native/titles-check: tools/titles-check.c src/titles.c src/titles.h src/fb
                            src/library.c src/library.h src/db.c src/db.h src/atomic.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
-	      -o $@ tools/titles-check.c src/titles.c src/fbneodat.c src/library.c src/db.c \
+	      -o $@ tools/titles-check.c src/titles.c src/fbneodat.c src/setmap.c src/library.c src/db.c \
 	         src/atomic.c
 
 build-native/sort-check: tools/sort-check.c src/sort.h src/library.h src/stats.c \

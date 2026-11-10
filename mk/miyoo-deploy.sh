@@ -94,6 +94,9 @@ stage_all() {
 		: > "$F/${c}_libretro.so"
 	done
 	plorpos_files "$S" "$F"
+	# The mame2000 and fbalpha2012 shelves are named, and their art asked for,
+	# by those cores' own romset maps (src/setmap.c), the Nano port's.
+	mkdir -p "$S/res/maps"; cp "$ROOT/res/nano/maps/"*.txt "$S/res/maps/"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders
 	flip_cards "$S"
 }

@@ -87,7 +87,7 @@ int main(void)
 	add(&arcade, "unknown.zip");
 	titled(d, "Arcade", "mk3.zip", "MK3 from a gamelist");
 	titled(d, "Neo Geo", "1943.zip", "from the wrong folder");
-	titles_apply(&arcade, d, "Arcade", DAT);
+	titles_apply(&arcade, d, "Arcade", DAT, NULL);
 	ck(!strcmp(title_of(&arcade, "mk3.zip"), "MK3 from a gamelist"),
 	   "a gamelist's name beats FBNeo's");
 	ck(!strcmp(title_of(&arcade, "1943.zip"), "1943: The Battle of Midway"),
@@ -100,13 +100,39 @@ int main(void)
 	   !strcmp(arcade.items[2].file, "mk3.zip") &&
 	   !strcmp(arcade.items[3].file, "unknown.zip"), "sorted by the shown title");
 
+	/* A mame2000 / fbalpha2012 shelf: its own romset's map first (res/maps), FBNeo's
+	 * table for a set the map lacks, and a "." title leaves a BIOS set off. */
+	{
+		game_entry m_items[8];
+		game_list m = { m_items, 0, true, 0, {{0}} };
+		FILE *f = fopen("/tmp/tortos-titles-check-map.txt", "w");
+
+		ck(f != NULL, "write a scratch map");
+		if (f) {
+			fputs("mk3.zip\tMK3 from the map\nneogeo.zip\t.Neo Geo BIOS\nJOUST.zip\tJoust (map)\n", f);
+			fclose(f);
+			add(&m, "mk3.zip");
+			add(&m, "neogeo.zip");
+			add(&m, "joust.zip");
+			add(&m, "1943.zip");
+			add(&m, "unknown.zip");
+			titles_apply(&m, d, "Arcade (MAME 2000)", DAT, "/tmp/tortos-titles-check-map.txt");
+			ck(!strcmp(title_of(&m, "mk3.zip"), "MK3 from the map"), "the set map's title beats FBNeo's");
+			ck(!strcmp(title_of(&m, "joust.zip"), "Joust (map)"), "a map set is found whatever its case");
+			ck(!strcmp(title_of(&m, "1943.zip"), "1943: The Battle of Midway"), "a set the map lacks falls back to FBNeo's table");
+			ck(!strcmp(title_of(&m, "unknown.zip"), "unknown"), "a set in neither keeps its filename");
+			ck(m.count == 4 && !strcmp(title_of(&m, "neogeo.zip"), "(not on the shelf)"), "a BIOS set (title '.') is not on the shelf");
+			remove("/tmp/tortos-titles-check-map.txt");
+		}
+	}
+
 	/* No table for a shelf that is not on fbneo, even with a set's name. */
 	add(&snes, "Contra (USA).sfc");
 	add(&snes, "mk3.sfc");
 	add(&snes, "Contra (Japan).sfc");
 	add(&snes, "Axelay (USA).sfc");
 	titled(d, "SNES", "Axelay (USA).sfc", "Zzz Axelay");
-	titles_apply(&snes, d, "SNES", NULL);
+	titles_apply(&snes, d, "SNES", NULL, NULL);
 	ck(!strcmp(title_of(&snes, "mk3.sfc"), "mk3"), "no FBNeo titles off an fbneo shelf");
 	ck(!strcmp(title_of(&snes, "Axelay (USA).sfc"), "Zzz Axelay"),
 	   "a gamelist's name on any shelf, as the list wrote it");
@@ -126,7 +152,7 @@ int main(void)
 		ck(db_game_rename(d, "Arcade", "unknown.zip", "Aaa Mystery"),
 		   "and one nothing has a row for");
 		add(&l, "mk3.zip"); add(&l, "1943.zip"); add(&l, "unknown.zip");
-		titles_apply(&l, d, "Arcade", DAT);
+		titles_apply(&l, d, "Arcade", DAT, NULL);
 		ck(!strcmp(title_of(&l, "mk3.zip"), "My MK"), "the rename beats the gamelist's name");
 		ck(!strcmp(title_of(&l, "unknown.zip"), "Aaa Mystery"), "and the filename");
 		ck(!strcmp(l.items[0].file, "1943.zip") && !strcmp(l.items[1].file, "unknown.zip") &&
@@ -145,7 +171,7 @@ int main(void)
 		   "with all of it");
 		l.count = 0;
 		add(&l, "mk3.zip"); add(&l, "unknown.zip");
-		titles_apply(&l, d, "Arcade", DAT);
+		titles_apply(&l, d, "Arcade", DAT, NULL);
 		ck(!strcmp(title_of(&l, "mk3.zip"), "My MK") && !strcmp(title_of(&l, "unknown.zip"), "Aaa Mystery"),
 		   "and neither import undid a rename");
 
@@ -153,7 +179,7 @@ int main(void)
 		ck(db_game_rename(d, "Arcade", "unknown.zip", NULL), "and so does none");
 		l.count = 0;
 		add(&l, "mk3.zip"); add(&l, "unknown.zip");
-		titles_apply(&l, d, "Arcade", DAT);
+		titles_apply(&l, d, "Arcade", DAT, NULL);
 		ck(!strcmp(title_of(&l, "mk3.zip"), "MK3 again"), "back to the gamelist's name");
 		ck(!strcmp(title_of(&l, "unknown.zip"), "Mystery from a list"), "both of them");
 	}
