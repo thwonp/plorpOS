@@ -11,10 +11,11 @@
  * frozen child, here the only way. Our SDL2 is offscreen-only
  * (mk/fetch-miyoo-sysroot.sh).
  *
- * Not here yet, by plan (plorpos-f1p.7): volume (MI_AO, not ALSA - ALSA and
- * OSS play at half rate on this device, f1p.3), brightness (pwm0), battery,
- * sleep and the lid (event1, "hall wake key"). Until then they are stubs that
- * say so. */
+ * Volume is the resident diatom's (MI_AO, not ALSA - ALSA and OSS play at half
+ * rate on this device, f1p.3). Brightness is pwm0, the battery is the stock
+ * axp_test, and the lid is the hall sensor's level (platform.c turns it into a
+ * sleep; see plorpos-f1p.55, .61). There is no suspend: a sleep is the dark,
+ * muted wait that ends in a power-off (plat_sleep is false on purpose). */
 #include "atomic.h"
 #include "db.h"
 #include "platform.h"
@@ -437,8 +438,7 @@ void plat_input_poll(in_state *st)
 
 void plat_leds_off(void) { }
 
-/* ---- volume: the resident diatom's (it owns MI_AO); brightness a stub until
- * plorpos-f1p.7 ----------------------------------------------------------- */
+/* ---- volume: the resident diatom's (it owns MI_AO); brightness is pwm0 ---- */
 
 #define VOL_MAX    PLAT_VOL_MAX
 #define BRIGHT_MAX PLAT_BRIGHT_MAX
@@ -532,7 +532,7 @@ void plat_settings_init(void)
 	plat_battery(NULL, NULL);   /* the first read starts now, so the first draw has it */
 }
 
-/* ---- sleep: a stub until plorpos-f1p.7; battery from the stock tool ------ */
+/* ---- sleep: none to suspend into (f1p.7); battery from the stock tool ---- */
 
 bool plat_sleep_supported(void) { return false; }
 bool plat_sleep(void) { return false; }
