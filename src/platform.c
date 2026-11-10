@@ -1214,7 +1214,19 @@ static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 	char *l;
 	unsigned t0;
 
-	if (dsock >= 0) return true;
+	if (dsock >= 0) {
+		/* A connection the resident has closed since: it re-execs itself
+		 * between games when a core left megabytes behind (plorpos-f1p.45),
+		 * and a launcher that trusted the old descriptor ran the next game
+		 * of a switcher chain standalone, where Menu ends the game. EOF or a
+		 * reset means reconnect; a quiet socket is a live one. */
+		char c;
+		ssize_t n = recv(dsock, &c, 1, MSG_PEEK | MSG_DONTWAIT);
+
+		if (n > 0 || (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)))
+			return true;
+		dclose();
+	}
 	if (!path) return false;
 
 	/* A new socket may be a new Diatom, which starts on its default output.
