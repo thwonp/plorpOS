@@ -214,6 +214,21 @@ the list itself, is this project's (MIT).
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
   `mk/flip-cores/build-curl.sh`, which pins both source tarballs by sha256; HTTP/HTTPS only.
   The Flip's firmware has no curl; other devices use their system one.
+- `TortOS/bin/dropbear`, `TortOS/bin/dropbearkey` - **Dropbear SSH** (MIT-style licence, Matt Johnston
+  and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
+  from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
+  Off until switched on in Network Services; key login only.
+
+## Wi-Fi driver (Miyoo Mini Flip only)
+
+- `TortOS/8188fu.ko` - **Realtek RTL8188FU wireless driver**, `version=v5.7.4.2_36687.20200421`,
+  `author=Realtek Semiconductor Corp.`, `license=GPL` (the module's own `modinfo`), built by Miyoo for the
+  Flip's kernel (`vermagic=4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8`). md5
+  `085ee00a031c401ea7d5a6a6b2ed2b0c`. Shipped unmodified, because the Flip's stock firmware loads the radio
+  driver from the SD card and has no copy of its own. **GPL-2.0** (the kernel's `GPL` tag): it is
+  Realtek's out-of-tree `rtl8188FU` Linux driver at that version, built against Miyoo's kernel tree;
+  this project did not build it and holds no build tree for it beyond that version string. It will be
+  removed if its GPL source obligations cannot be met.
 
 ## Miyoo firmware component (optional fast-boot image, Flip only)
 

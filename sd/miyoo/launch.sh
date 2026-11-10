@@ -1,10 +1,9 @@
 #!/bin/sh
 # plorpOS's session on the Miyoo Mini Flip (plorpos-f1p): the resident diatom
 # and the launcher in a loop, as sd/h700/launch_frontend.sh runs them on the
-# H700. Started by the card's .tmp_update/updater once plorpos-f1p.12 installs
-# it; until then by hand, with Allium stopped.
+# H700. Started by the card's boot hook, .tmp_update/updater.
 #
-# Wi-Fi comes up below, from boot.env's WIFI.
+# Wi-Fi and ssh come up below, from boot.env's WIFI and SSH.
 # Not here yet: sleep and power-off (plorpos-f1p.7).
 SD=/mnt/SDCARD
 DIR=$SD/TortOS
@@ -27,14 +26,13 @@ echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2> /dev
 # change; plorpos-f1p.21): join the saved networks in the background, so the
 # shelf never waits for the radio. Off, the radio is not even powered. The
 # launcher's own wifi_up (src/wifi.c) does the same later from the menu.
-# The commands are the boot hook's old ones, unchanged.
-WIFI=0
+WIFI=0 SSH=0
 [ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
 WPA_CONF=/appconfigs/wpa_supplicant.conf
 if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	echo "wifi: up at boot (setting on)" >> "$LOG"
 	(
-		grep -q 8188fu /proc/modules || insmod "$SD/.tmp_update/8188fu.ko"
+		grep -q 8188fu /proc/modules || insmod "$DIR/8188fu.ko"
 		/customer/app/axp_test wifion
 		sleep 2
 		ifconfig wlan0 up
@@ -43,6 +41,11 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	) > /dev/null 2>&1 &
 else
 	echo "wifi: off at boot (WIFI=$WIFI)" >> "$LOG"
+fi
+# ssh (plorpos-f1p.62.2), off unless switched on in Network Services.
+if [ "$SSH" = 1 ]; then
+	echo "ssh: on at boot (setting on)" >> "$LOG"
+	sh "$DIR/ssh.sh" start
 fi
 
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock

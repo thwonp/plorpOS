@@ -1,0 +1,16 @@
+--- a/src/svr-authpubkey.c
++++ b/src/svr-authpubkey.c
+@@ -590,6 +590,13 @@ static int checkpubkeyperms() {
+ 			TRACE(("checkpubkeyperms: bad perm on %s", path))
+ 			ret = DROPBEAR_FAILURE;
+ 		}
++		/* plorpOS (Miyoo Mini Flip): with -D, the key folder is the boundary.
++		 * The Flip's / is group-writable on a read-only rootfs and root's
++		 * home does not exist, so the walk below it can never pass; the
++		 * folder and the file themselves are still checked. */
++		if (strcmp(svr_opts.authorized_keys_dir, "~/.ssh") != 0) {
++			break;
++		}
+ 		if (strcmp(path, ses.authstate.pw_dir) == 0 || strcmp(path, "/") == 0) {
+ 			break;
+ 		}

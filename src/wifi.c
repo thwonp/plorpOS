@@ -79,8 +79,7 @@ static int run(char *const argv[], char *out, size_t cap)
 /* The Miyoo Mini Flip (plorpos-f1p.21): the stock firmware's supplicant, under
  * /customer/app, with no /run, no /sbin/ip and no default udhcpc script. The
  * RTL8188FU driver is loaded here, not by the OS as on BaseOS. Saved networks
- * stay in the firmware's /appconfigs conf, which the boot hook's own
- * supplicant (and Allium) already use. */
+ * stay in the firmware's /appconfigs conf, the stock firmware's own. */
 #define WPA_CLI   "/customer/app/wpa_cli"
 #define WPA_SUPP  "/customer/app/wpa_supplicant"
 #define WPA_CONF  "/appconfigs/wpa_supplicant.conf"
@@ -223,11 +222,11 @@ bool wifi_up(void)
 
 #if defined(WPA_CONF)
 		snprintf(conf, sizeof conf, "%s", WPA_CONF);
-		/* The driver first: the hook loads it at boot, but Wi-Fi switched
-		 * off and on later, or a hook that never ran, leaves no wlan0. */
+		/* The driver first: launch.sh loads it at boot, but Wi-Fi switched
+		 * off and on later, or Wi-Fi off at boot, leaves no wlan0. */
 		if (access("/sys/class/net/" WLAN, F_OK) != 0) {
 			char *drv[] = { (char *)"/bin/sh", (char *)"-c", (char *)
-				"grep -q 8188fu /proc/modules || insmod /mnt/SDCARD/.tmp_update/8188fu.ko;"
+				"grep -q 8188fu /proc/modules || insmod /mnt/SDCARD/TortOS/8188fu.ko;"
 				" /customer/app/axp_test wifion; sleep 2", NULL };
 			run(drv, NULL, 0);
 		}
@@ -760,6 +759,28 @@ bool wifi_svc_set(wifi_svc s, bool on)
 }
 #endif
 
+#if defined(PLATFORM_MIYOO) && defined(__linux__)
+#include "db.h"
+/* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
+ * fresh card. The switch is the "ssh" setting, which boot.env carries to
+ * launch.sh so it is still on after a reboot; TortOS/ssh.sh starts and stops
+ * it for both. Key login only, from TortOS/ssh/authorized_keys. */
+bool wifi_svc_on(wifi_svc s)
+{
+	return s == WIFI_SSH && db_get_int(db_dev(), "ssh", 0);
+}
+
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"/mnt/SDCARD/TortOS/ssh.sh",
+	                 on ? (char *)"start" : (char *)"stop", NULL };
+	if (s != WIFI_SSH || !db_set_int(db_dev(), "ssh", on ? 1 : 0)) return false;
+	db_write_boot_env();
+	run(argv, NULL, 0);
+	return true;
+}
+#endif
+
 #else  /* PLATFORM_GKD: ROCKNIX's ConnMan, driven the way ROCKNIX drives it */
 
 /* ROCKNIX keeps the network in system.cfg, not in ConnMan. At every boot, and
@@ -1181,7 +1202,7 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD) && !(defined(PLATFORM_ROTATE) && defined(__linux__))
+#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO)) && defined(__linux__))
 /* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }

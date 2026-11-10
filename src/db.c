@@ -710,6 +710,14 @@ bool db_write_boot_env(void)
 	             db_get_int(g_dev, "bluetooth", 0) ? 1 : 0,
 	             strchr(tz, '\'') ? "UTC" : tz);
 	if (n < 0 || n >= (int)sizeof body) return false;
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's ssh switch (plorpos-f1p.62.2): launch.sh starts dropbear. */
+	{
+		int m = snprintf(body + n, sizeof body - (size_t)n, "SSH='%d'\n",
+		                 db_get_int(g_dev, "ssh", 0) ? 1 : 0);
+		if (m < 0 || m >= (int)sizeof body - n) return false;
+	}
+#endif
 
 	/* NOTHING TO DO IF NOTHING CHANGED, and this is not an optimization for
 	 * its own sake. levels_save calls this on every nudge of the volume
