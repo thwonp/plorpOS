@@ -3,6 +3,9 @@
 #include "pcm.h"
 
 #include <dlfcn.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -11,6 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef MUSE_PCM_DIATOM
 /* libasound's own values, which are ABI and have not moved in two decades. */
 #define SND_PCM_STREAM_PLAYBACK       0
 #define SND_PCM_FORMAT_S16_LE         2
@@ -30,6 +34,9 @@ static int         (*a_close)(snd_pcm_t *);
 static const char *(*a_strerror)(int);
 
 static snd_pcm_t *g_pcm;
+#else
+static int        g_sock = -1;   /* the resident diatom's music socket */
+#endif
 static char       g_err[128];
 static int        g_last;        /* the last open's error, 0 when it worked */
 
@@ -94,7 +101,8 @@ long pcm_in_write_ms(void)
 	return since ? now_ms() - since : 0;
 }
 
-static bool bind(void)
+#ifndef MUSE_PCM_DIATOM
+static bool alsa_bind(void)
 {
 	static void *h;
 
@@ -136,7 +144,7 @@ bool pcm_open(const char *device)
 {
 	int r;
 
-	if (!bind()) return false;
+	if (!alsa_bind()) return false;
 	pcm_close();
 	r = a_open(&g_pcm, device, SND_PCM_STREAM_PLAYBACK, 0);
 	g_last = r < 0 ? r : 0;
@@ -268,3 +276,123 @@ const char *pcm_error(void) { return g_err; }
 bool pcm_is_open(void) { return g_pcm != NULL; }
 
 bool pcm_busy(void) { return g_last == -EBUSY; }
+#else   /* MUSE_PCM_DIATOM */
+
+/* The Flip's sound is MI_AO, which has one owner: the resident diatom, which
+ * keeps it open for its whole life (plorpos-f1p.9). Muse hands its PCM to it
+ * over a unix socket - 48 kHz S16 stereo, raw - and diatom plays it in place
+ * of the game's audio, so a game is silent while music plays, as on every
+ * other port. The socket's backpressure paces this process: a write returns
+ * as diatom drains its ring, as a blocking ALSA write would.
+ *
+ * Disconnecting is how Muse drops what is queued: diatom empties its ring when
+ * a client goes. diatom re-execs between games, which also ends the
+ * connection; a write that finds it closed reconnects for a few seconds
+ * rather than failing a track that was fine. */
+#define MUSIC_SOCK   "/tmp/diatom-music.sock"
+#define MUSIC_RING   4096        /* diatom's ring, frames: its fill is ~all of it */
+#define RECONNECT_MS 3000
+
+static bool dconnect(void)
+{
+	struct sockaddr_un a;
+	int fd, sz = 16384;          /* ~85 ms in the socket, so "heard" stays close */
+
+	g_last = 0;
+	if ((fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {
+		g_last = -errno;
+		snprintf(g_err, sizeof g_err, "socket: %s", strerror(errno));
+		return false;
+	}
+	memset(&a, 0, sizeof a);
+	a.sun_family = AF_UNIX;
+	snprintf(a.sun_path, sizeof a.sun_path, "%s", MUSIC_SOCK);
+	if (connect(fd, (struct sockaddr *)&a, sizeof a) < 0) {
+		g_last = -errno;
+		snprintf(g_err, sizeof g_err, "connect %s: %s", MUSIC_SOCK, strerror(errno));
+		close(fd);
+		return false;
+	}
+	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz);
+	g_sock = fd;
+	return true;
+}
+
+bool pcm_open(const char *device)
+{
+	(void)device;                /* one sink: the speaker */
+	pcm_close();
+	if (!dconnect()) { pcm_note("%s", g_err); return false; }
+	pcm_note("open diatom: ok");
+	g_written = 0;
+	return true;
+}
+
+void pcm_close(void)
+{
+	if (g_sock >= 0) {
+		pcm_note("close");
+		close(g_sock);
+	}
+	g_sock = -1;
+}
+
+bool pcm_write(const int16_t *frames, int n)
+{
+	const char *p = (const char *)frames;
+	size_t left = (size_t)n * 4;
+
+	while (g_sock >= 0 && left > 0) {
+		long t0 = now_ms();
+		ssize_t w;
+
+		g_write_since = t0;
+		w = send(g_sock, p, left, MSG_NOSIGNAL);
+		g_write_since = 0;
+		if (w < 0 && errno == EINTR) continue;
+		if (w <= 0) {
+			/* diatom went away, as it does between games: wait for the next
+			 * one to listen, then go on with what is left. */
+			long until = now_ms() + RECONNECT_MS;
+
+			pcm_note("write: %s, reconnecting", w < 0 ? strerror(errno) : "closed");
+			pcm_close();
+			while (now_ms() < until && !dconnect()) usleep(100000);
+			if (g_sock < 0) return false;
+			continue;
+		}
+		p += w;
+		left -= (size_t)w;
+		g_written += w / 4;
+	}
+	return g_sock >= 0;
+}
+
+void pcm_drop(void)
+{
+	/* A disconnect is the drop: diatom empties its ring when a client goes. */
+	if (g_sock < 0 || !g_written) return;
+	pcm_note("drop: reconnect");
+	pcm_close();
+	dconnect();
+	g_written = 0;
+}
+
+long pcm_queued(void)
+{
+	int out = 0;
+
+	if (g_sock < 0 || ioctl(g_sock, TIOCOUTQ, &out) < 0) return 0;
+	/* What is still in the socket, and diatom's ring, which holds about all of
+	 * it while music is flowing - an estimate within one 10 ms chunk or so. */
+	return out / 4 + MUSIC_RING - 512;
+}
+
+const char *pcm_error(void) { return g_err; }
+
+bool pcm_is_open(void) { return g_sock >= 0; }
+
+/* Diatom not up yet, or between execs: worth the second Muse waits for it. */
+bool pcm_busy(void) { return g_last == -ECONNREFUSED || g_last == -ENOENT; }
+
+#endif

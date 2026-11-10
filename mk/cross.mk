@@ -47,7 +47,9 @@ ifeq ($(PLATFORM),miyoo)
 # (src/platform_miyoo.c). One opener at a time on its sound (MI_AO), so Muse
 # takes it only to play, as on the H700.
 CFLAGS += -DPLATFORM_H700 -DPLATFORM_MIYOO
-MUSE_DEFS := -DMUSE_HANDOVER
+# Its MI_AO is owned by the resident diatom, so Muse plays into diatom's music
+# socket rather than ALSA (src/muse/pcm.c, plorpos-f1p.9).
+MUSE_DEFS := -DMUSE_HANDOVER -DMUSE_PCM_DIATOM
 endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
