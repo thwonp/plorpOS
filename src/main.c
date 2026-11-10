@@ -12728,13 +12728,24 @@ static bool sleep_cycle(app *a)
 	 * (plorpos-2wl.12). */
 	if (a->game_on) plat_screen_off();
 	checkpoint_game(a);
+#if defined(PLATFORM_MIYOO)
+	/* The Flip (f1p.55): music is paused and muted for the sleep, not played on
+	 * in the dark; it resumes on a wake. */
+	bool paused_music = musec_playing();
+
+	if (paused_music) musec_pause();
+#else
 	if (musec_playing()) {
 		dark_end end = music_dark(a, &waited);
 
 		if (end != DARK_STOPPED) return end == DARK_WOKE;
 	}
+#endif
 	t0 = plat_now_ms();
 	awake = plat_light_sleep(waited);
+#if defined(PLATFORM_MIYOO)
+	if (paused_music && awake) musec_toggle();
+#endif
 	fprintf(stderr, "sleep: %s after %us%s\n",
 	        awake ? "awake" : "no suspend, powering off",
 	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");

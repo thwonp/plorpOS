@@ -761,6 +761,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool term_killed = false;   /* its game KILLed, the script let finish */
 	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
+#if defined(PLATFORM_MIYOO)
+#define FLIP_NO_DARK 1          /* the Flip pauses and mutes music in sleep (f1p.55) */
+#else
+#define FLIP_NO_DARK 0
+#endif
 	bool dark = false;               /* a power tap while Muse plays: screen off, music on */
 	unsigned dark_t0 = 0, dark_stopped = 0;   /* when it began; when the music stopped, 0 playing */
 	lv_down[0] = lv_down[1] = lv_moved[0] = lv_moved[1] = lv_muse = false;
@@ -856,7 +861,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 						if (!awake) pa = PWR_POWEROFF;
 					}
 				}
-			} else if (pa == PWR_SLEEP && lv_muse) {
+			} else if (pa == PWR_SLEEP && lv_muse && !FLIP_NO_DARK) {
 				/* Suspend is where the sound would stop (the DAC goes with
 				 * it): the screen off, the child frozen, Muse playing on. */
 				group_kill(pid, SIGSTOP);
@@ -2343,6 +2348,72 @@ static unsigned pwr_since;
  * power button press (just resumed)"). 0 until the first sleep. */
 static unsigned resume_at;
 
+#if defined(PLATFORM_MIYOO)
+/* The Flip (plorpos-f1p.55): a 2 s hold powers off; a tap or a closed lid
+ * sleeps for FLIP_SLEEP_S and then powers off (no suspend here). */
+#define POWER_HOLD_MS 2000u
+#define FLIP_SLEEP_S  120
+bool plat_lid_closed(void);               /* platform_miyoo.c: the hall sensor */
+static int lid_state = -1;                /* -1 not read yet, 0 open, 1 closed */
+
+/* True once when the lid goes from open to closed. The first read only sets the
+ * baseline, so a unit switched on with the lid shut does not sleep by itself.
+ * Rate-limited; every caller of plat_power_tap_or_hold runs it. */
+static bool lid_closed_edge(void)
+{
+	static unsigned next;
+	unsigned now = plat_now_ms();
+	bool c, edge;
+
+	if ((int)(now - next) < 0) return false;
+	next = now + 250;
+	c = plat_lid_closed();
+	edge = lid_state == 0 && c;
+	lid_state = c;
+	return edge;
+}
+
+/* One 200 ms slice of the wait in plat_light_sleep: 1 = woken (a power release
+ * or the lid opened), -1 = the button was held POWER_HOLD_MS (power off now),
+ * 0 = nothing. *down_at is the press time, 0 when not pressed. */
+static int flip_wake_wait(unsigned *down_at)
+{
+	struct pollfd pfd;
+	struct input_event ev;
+	int r = 0;
+
+	if (fd_power < 0) usleep(200000);
+	else {
+		pfd.fd = fd_power;
+		pfd.events = POLLIN;
+		if (poll(&pfd, 1, 200) > 0)
+			while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+				if (ev.type == EV_KEY && ev.code == KEY_POWER) {
+					if (ev.value == 1) {
+						unsigned t = plat_now_ms();
+
+						*down_at = t ? t : 1;   /* never t|1: that can be ahead of now */
+					}
+					else if (ev.value == 0) r = 1;
+				}
+	}
+	if (*down_at && plat_now_ms() - *down_at >= POWER_HOLD_MS) {
+		fprintf(stderr, "power: hold in sleep -> power off\n");
+		return -1;
+	}
+	if (r) return 1;
+	{
+		bool c = plat_lid_closed();
+
+		if (lid_state == 1 && !c) { lid_state = 0; fprintf(stderr, "lid: open, wake\n"); return 1; }
+		lid_state = c;
+	}
+	return 0;
+}
+#else
+#define POWER_HOLD_MS 400u
+#endif
+
 
 /* NextUI's PWR_sleep, whole: PWR_enterSleep, PWR_waitForWake, PWR_exitSleep
  * (api.c:4262-4380), for every way into sleep - a tap, Auto Sleep's idle,
@@ -2380,16 +2451,15 @@ bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;
 #ifdef __linux__
-#if defined(PLATFORM_MIYOO)
-	/* The Flip has no suspend to escalate to (plat_sleep_supported is false;
-	 * real sleep is plorpos-f1p.7), so the PLAT_SUSPEND_AFTER_S wait below
-	 * only froze the screen for ten seconds before the power-off it ends in.
-	 * Say so at once; the caller powers off (plorpos-f1p.20). */
-	(void)waited_ms;
-	return false;
-#endif
 	int saved_vol = cur_vol;
+#if defined(PLATFORM_MIYOO)
+	/* No suspend to escalate to (f1p.7): the wait is the 2 minute power-off
+	 * timer (f1p.55); plat_sleep() is false, so the caller powers off. */
+	int timeout_ms = FLIP_SLEEP_S * 1000;
+	unsigned flip_down = 0;
+#else
 	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
+#endif
 	unsigned since;
 
 	plat_input_flush();                   /* PAD_reset */
@@ -2404,24 +2474,40 @@ bool plat_light_sleep(unsigned waited_ms)
 
 	since = plat_now_ms() - waited_ms;    /* already dark that long */
 	for (;;) {
+#if !defined(PLATFORM_MIYOO)
 		bool charging = false;
+#endif
 
 		/* A SIGTERM ends the wait (its poll returns EINTR): a restart or a
 		 * shutdown during sleep waited systemd's 90 s for the SIGKILL
 		 * (plorpos-3yv.87). The caller sees quit_requested next poll. */
 		if (g_terminating) break;
+#if defined(PLATFORM_MIYOO)
+		{
+			int w = flip_wake_wait(&flip_down);
+
+			if (w > 0) break;
+			if (w < 0) { awake = false; break; }
+		}
+#else
 		if (power_key_within(200, 0)) break;
+#endif
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
+#if !defined(PLATFORM_MIYOO)             /* the Flip powers off on a charger too */
 		plat_battery(NULL, &charging);
 		if (charging || plat_usb_host()) {
 			since += 60000;               /* check again in a minute */
 			continue;
 		}
+#endif
 		awake = plat_sleep();
 		break;
 	}
 
+#if defined(PLATFORM_MIYOO)
+	if (awake)    /* going on to power off: stay dark, no flash of the shelf */
+#endif
 	apply_brightness(cur_bright);
 #if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
@@ -2472,13 +2558,19 @@ bool plat_usb_host(void)
 }
 
 
-#define POWER_HOLD_MS 400u
-
 pwr_action plat_power_tap_or_hold(bool down)
 {
 	static bool spurious;             /* this press began just after a wake */
 	unsigned now = plat_now_ms();
 
+#if defined(PLATFORM_MIYOO)
+	/* A closed lid is a tap that needs no release (f1p.55). */
+	if (lid_closed_edge()) {
+		pwr_since = 0;
+		fprintf(stderr, "power: lid closed -> sleep\n");
+		return PWR_SLEEP;
+	}
+#endif
 	/* NextUI's resume_tick check: a press that starts inside a second of
 	 * waking is dropped whole - neither its hold nor its release counts. */
 	if (down && !pwr_since && !spurious && resume_at &&
