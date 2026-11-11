@@ -239,7 +239,7 @@ GPL core is that tarball plus the patches named there), by
 - `TortOS/bin/dropbear`, `TortOS/bin/dropbearkey` - **Dropbear SSH** (MIT-style licence, Matt Johnston
   and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
   from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
-  Off until switched on in Network Services; key login only.
+  Off until switched on in Network Services; login plorpos / plorpos or a key.
 
 ## Wi-Fi driver (Miyoo Mini Flip only)
 
@@ -249,8 +249,8 @@ GPL core is that tarball plus the patches named there), by
   `085ee00a031c401ea7d5a6a6b2ed2b0c`. Shipped unmodified, because the Flip's stock firmware loads the radio
   driver from the SD card and has no copy of its own. **GPL-2.0** (the kernel's `GPL` tag): it is
   Realtek's out-of-tree `rtl8188FU` Linux driver at that version, built against Miyoo's kernel tree;
-  this project did not build it and holds no build tree for it beyond that version string. It will be
-  removed if its GPL source obligations cannot be met.
+  this project did not build it and holds no build tree for it beyond that version string; its source
+  is Realtek's rtl8188FU driver at that version, as distributed by Miyoo with the Flip's firmware.
 
 ## Miyoo firmware component (optional fast-boot image, Flip only)
 

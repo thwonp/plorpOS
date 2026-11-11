@@ -47,13 +47,15 @@ Miyoo's MainUI.
 ## Wi-Fi and ssh
 
 Wi-Fi is switched on in the plorpOS menu, Network Services. Its **SSH** row
-starts an ssh server on port 22 and is **off** on a fresh card. It accepts
-**keys only**, never a password: before switching it on, put your public key
-(for example the contents of `~/.ssh/id_ed25519.pub`) in
-`TortOS/ssh/authorized_keys` on the card, one key per line. The server's own
-host key is made the first time it starts and kept in `TortOS/ssh/`. Log in as
-`root`. The setting survives a reboot. The card has no sftp server, so `scp`
-fails; copy with `ssh root@<flip> 'cat > /path' < file`.
+starts an ssh server on port 22 and is **off** on a fresh card. Log in as
+**`plorpos`**, password **`plorpos`** (a root account; it starts in the card's
+root folder). Keys work too: put your public key (for example the contents of
+`~/.ssh/id_ed25519.pub`) in `TortOS/ssh/authorized_keys` on the card, one key
+per line, and log in as `plorpos` or `root`. Anyone on your network who knows
+the default password can log in while SSH is on, so switch it off when you do
+not need it. The server's own host key is made the first time it starts and
+kept in `TortOS/ssh/`. The setting survives a reboot. The card has no sftp
+server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 
 ## If plorpOS cannot start
 
