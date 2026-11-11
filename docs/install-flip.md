@@ -8,46 +8,64 @@ runs; see "What is not included".
 
 ## What this zip is
 
-A card overlay. On a card that **already runs Allium** (the Flip's usual
-community firmware) it takes over the boot, and falls back to Allium when it
-cannot start; it does not change Allium itself. On a card without Allium it
-boots straight into plorpOS (the stock firmware starts the hook).
+A complete card: the boot hook, plorpOS, its cores, ssh and the Wi-Fi driver.
+Nothing else is needed on the card besides Miyoo's stock firmware on the Flip
+itself, which starts the hook (`.tmp_update/updater`) at power-on in place of
+Miyoo's MainUI.
 
-It carries the Wi-Fi driver, `.tmp_update/8188fu.ko`, copied unmodified from
-Allium: the stock firmware has none. The driver is a Realtek module under
-GPL-2.0, so its source is that of the project it came from. The ssh server
-Allium also starts is not included. BIOS files are yours to supply.
+- **Cores** are built from pinned upstream source for the Flip
+  (`mk/flip-cores/cores.lock` in the source tree lists each one's commit and
+  licence; `TortOS/THIRD-PARTY-LICENSES.md` on the card).
+- **Wi-Fi driver**: `TortOS/8188fu.ko`, Miyoo's own Realtek RTL8188FU module
+  for the Flip's kernel, unmodified. The stock firmware loads the radio driver
+  from the SD card and has none of its own.
+- **ssh** (dropbear), off until you switch it on (see "ssh").
+- BIOS files are yours to supply.
 
 ## Install
 
-1. Back up the card. Keep a copy of `.tmp_update/` in particular.
-2. Only if the card runs Allium: rename `.tmp_update/updater` to `.tmp_update/updater.allium`.
-   **Do this first**: the zip carries its own `updater`, and without the rename
-   it would overwrite Allium's, leaving nothing to fall back to.
-3. Unzip. Copy everything in it to the root of the card, merging folders.
+1. Start from an empty FAT32 card, or back up the card you have. If it has a
+   `.tmp_update/` folder from another firmware, that firmware stops booting:
+   the zip replaces its `updater`.
+2. Unzip. Copy everything in it to the root of the card, merging folders.
    It adds:
    ```
-   .tmp_update/          the boot hook and the Wi-Fi driver (Allium's own updater is the updater.allium you renamed)
-   TortOS/               the launcher, diatom, Muse, cores, fonts, cards
+   .tmp_update/updater   the boot hook
+   TortOS/               the launcher, diatom, Muse, cores, ssh, the Wi-Fi driver, fonts, cards
    Roms/<console>/       empty folders named as the shelves expect
    Bios/  Saves/
    ```
-4. Put your ROMs in `Roms/<console>/`. Your existing Allium `Roms/` folders keep
-   working where the folder name matches.
-5. Firmware (Sega CD, PlayStation, PC Engine CD, Neo Geo) is looked for in
-   `Bios/`. Allium keeps it in `BIOS/`: rename it to `Bios/` in two steps
-   (`BIOS` to `Bios.tmp`, then to `Bios`), because FAT treats a case-only rename
-   as no change and then cannot find the folder. Allium, if you fall back to it,
-   will no longer find its BIOS files.
-6. `MD5SUMS` lists every file in the zip. Check with `md5sum -c MD5SUMS` from
+3. Put your ROMs in `Roms/<console>/`.
+4. Firmware (Sega CD, PlayStation, PC Engine CD, Neo Geo) is looked for in
+   `Bios/`. If your card has a `BIOS/` folder, rename it to `Bios/` in two
+   steps (`BIOS` to `Bios.tmp`, then to `Bios`), because FAT treats a
+   case-only rename as no change and then cannot find the folder.
+5. `MD5SUMS` lists every file in the zip. Check with `md5sum -c MD5SUMS` from
    the card root.
-7. Eject, put the card in, power on.
+6. Eject, put the card in, power on.
 
-## Back to Allium
+## Wi-Fi and ssh
 
-Create an empty file `TortOS/.boot-allium` on the card; the next boot starts
-Allium. To remove plorpOS, delete `TortOS/`, then rename
-`.tmp_update/updater.allium` to `.tmp_update/updater`.
+Wi-Fi is switched on in the plorpOS menu, Network Services. Its **SSH** row
+starts an ssh server on port 22 and is **off** on a fresh card. It accepts
+**keys only**, never a password: before switching it on, put your public key
+(for example the contents of `~/.ssh/id_ed25519.pub`) in
+`TortOS/ssh/authorized_keys` on the card, one key per line. The server's own
+host key is made the first time it starts and kept in `TortOS/ssh/`. Log in as
+`root`. The setting survives a reboot. The card has no sftp server, so `scp`
+fails; copy with `ssh root@<flip> 'cat > /path' < file`.
+
+## If plorpOS cannot start
+
+When `TortOS/launch.sh` is missing, or the launcher fails five times in a row,
+the hook hands the Flip back to Miyoo's stock MainUI and renames itself to
+`.tmp_update.off` (the stock firmware would otherwise delete it). To boot
+plorpOS again, fix the card from a PC and rename `.tmp_update.off` back to
+`.tmp_update`. An empty file `TortOS/.boot-idle` makes the hook wait instead
+(useful with ssh on).
+
+To remove plorpOS, delete `TortOS/` and `.tmp_update/`; the Flip then boots
+Miyoo's MainUI.
 
 **Never kill the process that stock `/customer/main` started from
 `.tmp_update/updater`.** The firmware reads that as a failed update and deletes
@@ -80,4 +98,5 @@ build 202510011046 only.
   frame draw (about 4% of frames in testing); the emulation itself runs at stock speed.
 - Game Boy Advance runs on gpsp, not mGBA (mGBA lagged in play).
 
-Measured per console in plorpos-f1p.11; the table is in that bead.
+Measured per console in plorpos-f1p.11 and again for the from-source cores in
+plorpos-f1p.62.3; the tables are in those beads.

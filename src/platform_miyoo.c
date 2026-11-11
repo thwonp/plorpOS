@@ -538,8 +538,8 @@ bool plat_sleep_supported(void) { return false; }
 bool plat_sleep(void) { return false; }
 
 /* The Flip has no power_supply node: the gauge is the stock /customer/app/axp_test,
- * which prints {"battery":N, "voltage":mV, "charging":C} and exits (the tool
- * Allium reads too). Read at most every 30 s, whatever the caller's rate.
+ * which prints {"battery":N, "voltage":mV, "charging":C} and exits. Read at
+ * most every 30 s, whatever the caller's rate.
  * charging == 3 is taken as "on the charger" (unverified: seen 3 at 100 %,
  * 4205 mV; needs an unplugged reading).
  *
