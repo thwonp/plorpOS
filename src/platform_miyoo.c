@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
+#include <pthread.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -478,11 +479,14 @@ bool plat_hold_switch(void) { return false; }
  * and readable down to 3, so the twelve rungs are raw duties spanning 3..100,
  * roughly geometric. diatom's bright_apply carries the same table. */
 #define PWM_DUTY "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
+static const unsigned char ladder[] = { 3, 5, 8, 12, 17, 24, 33, 44, 56, 70, 85, 100 };
+_Static_assert(sizeof ladder == PLAT_BRIGHT_MAX + 1, "ladder vs PLAT_BRIGHT_MAX");
+static volatile bool bl_dark;   /* backlight_off's 0 is ours, not a stray write */
+
 void apply_brightness(int b)
 {
-	static const unsigned char ladder[] = { 3, 5, 8, 12, 17, 24, 33, 44, 56, 70, 85, 100 };
-	_Static_assert(sizeof ladder == PLAT_BRIGHT_MAX + 1, "ladder vs PLAT_BRIGHT_MAX");
 	cur_bright = b;
+	bl_dark = false;
 	FILE *f = fopen(PWM_DUTY, "w");
 	if (!f) return;
 	fprintf(f, "%d", ladder[clampi(b, 0, PLAT_BRIGHT_MAX)]);
@@ -492,8 +496,42 @@ void apply_brightness(int b)
  * apply_brightness puts the level back. */
 void backlight_off(void)
 {
+	bl_dark = true;
 	FILE *f = fopen(PWM_DUTY, "w");
 	if (f) { fputs("0", f); fclose(f); }
+}
+
+/* The firmware's panel bring-up writes duty 40 once, ~4.7 s after power-on
+ * and whether plorpOS is up or not - after plat_settings_init has applied the
+ * saved level (~3.9 s), so a boot came up bright until the first brightness
+ * key (plorpos-f1p.65). After a boot, watch the duty until the first foreign
+ * value and put the level back; give up at BOOT_WATCH_END_S of uptime. A
+ * launcher restart later on never sees the write and starts no watch. */
+#define BOOT_WATCH_END_S 15
+static double uptime_s(void)
+{
+	struct timespec ts;
+	return clock_gettime(CLOCK_BOOTTIME, &ts) == 0 ? ts.tv_sec + ts.tv_nsec / 1e9 : 1e9;
+}
+static void *boot_bright_watch(void *arg)
+{
+	(void)arg;
+	while (uptime_s() < BOOT_WATCH_END_S) {
+		char buf[16] = "";
+		int fd = open(PWM_DUTY, O_RDONLY | O_CLOEXEC), duty;
+		ssize_t n = fd >= 0 ? read(fd, buf, sizeof buf - 1) : -1;
+
+		if (fd >= 0) close(fd);
+		duty = n > 0 ? atoi(buf) : -1;
+		if (duty >= 0 && !bl_dark && duty != ladder[clampi(cur_bright, 0, PLAT_BRIGHT_MAX)]) {
+			fprintf(stderr, "backlight: firmware set duty %d at %.2f s, level %d restored\n",
+			        duty, uptime_s(), cur_bright);
+			apply_brightness(cur_bright);
+			break;
+		}
+		usleep(100000);
+	}
+	return NULL;
 }
 
 /* The lid (plorpos-f1p.7, f1p.55): the hall sensor's level, closed = 0 (1 was
@@ -529,6 +567,10 @@ void plat_settings_init(void)
 	disp_fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
 	apply_volume(cur_vol);
 	apply_brightness(cur_bright);
+	if (uptime_s() < BOOT_WATCH_END_S) {
+		pthread_t t;
+		if (pthread_create(&t, NULL, boot_bright_watch, NULL) == 0) pthread_detach(t);
+	}
 	plat_battery(NULL, NULL);   /* the first read starts now, so the first draw has it */
 }
 
