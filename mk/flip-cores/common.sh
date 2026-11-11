@@ -35,12 +35,28 @@ fetch() {
 }
 
 # dk <workdir-under-/w> <script>: run in the toolchain image, 25 min cap.
-dk() { timeout 1500 docker run --rm -e XFLAGS="$XFLAGS" -v "$W":/w:z -w "/w/$1" "$IMG" sh -c "$2"; }
+# Profile-guided builds (as the RG Nano port's picoarch does): PGO=gen makes an
+# instrumented core that writes .gcda files to /tmp/pgo/<core> on the Flip when
+# it exits (mk/flip-cores/pgo-train.sh); they are checked in under
+# pgo/<core>/, and every later build of that core uses them (PGO=off to skip).
+# PGO_SUB: a core whose objects are built as ../../x.o sets it (two levels) so
+# the profiles land inside /tmp/pgo/<core> instead of beside it.
+CORE=${CORE:-$(basename "$0" .sh | sed 's/^build-//')}
+mkdir -p "$R/mk/flip-cores/pgo"
+pgo() {
+  case ${PGO:-use} in
+  gen) echo "-fprofile-generate=/tmp/pgo/$CORE${PGO_SUB:+/$PGO_SUB} -fprofile-update=single" ;;
+  off) ;;
+  *) [ -d "$R/mk/flip-cores/pgo/$CORE" ] && mkdir -p "$R/mk/flip-cores/pgo/$CORE/$PGO_SUB" && echo "-fprofile-use=/pgo/$CORE${PGO_SUB:+/$PGO_SUB} -fprofile-correction" ;;
+  esac
+}
+# SOURCE_DATE_EPOCH: __DATE__/__TIME__ (pcsx_rearmed prints a build time) stay fixed, so builds repeat.
+dk() { timeout 1500 docker run --rm -e XFLAGS="$XFLAGS $(pgo)" -e SOURCE_DATE_EPOCH=1700000000 -v "$W":/w:z -v "$R/mk/flip-cores/pgo":/pgo:z -w "/w/$1" "$IMG" sh -c "$2"; }
 
 # mk <name> <srcdir-under-src> <make args...>: clean + build, log to logs/<name>.log
 mk() {
   n=$1 d=$2; shift 2
-  echo "build $n: XFLAGS=$XFLAGS make $*"
+  echo "build $n: XFLAGS=$XFLAGS $(pgo) make $*"
   dk "src/$d" "make $* clean >/dev/null 2>&1; make -j4 $*" > "$W/logs/$n.log" 2>&1 \
     || { tail -20 "$W/logs/$n.log"; echo "RESULT $n FAILED"; exit 1; }
 }

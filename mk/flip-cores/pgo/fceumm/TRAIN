@@ -1,0 +1,2 @@
+# PGO=gen sh mk/flip-cores/build-fceumm.sh && sh mk/flip-cores/pgo-train.sh fceumm 900 \
+"NES/Super Mario Bros 3.nes" "NES/Kirby's Adventure.nes" "NES/Super Mario Bros.nes" "NES/Castlevania.nes" "NES/Castlevania III - Dracula's Curse.nes" "NES/Mega Man II.nes" "NES/Legend of Zelda, The.nes" "NES/Contra.nes" "NES/Final Fantasy III.nes" "NES/Bubble Bobble.nes"
