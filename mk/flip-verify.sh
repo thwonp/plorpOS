@@ -9,6 +9,7 @@
 set -u
 Z=$1 LOCK=$2 DRV=$3 OLD=${4:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist-inputs/backup-2026-11/cores.md5}
 [ -f "$Z" ] || { echo "no zip $Z" >&2; exit 1; }
+Z=$(readlink -f "$Z") LOCK=$(readlink -f "$LOCK")   # the checks below run inside the unzipped folder
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 unzip -q "$Z" -d "$W" || { echo "FAIL unzip"; exit 1; }
 F=0
