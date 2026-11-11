@@ -1,8 +1,5 @@
 # Installing on a Miyoo Mini Flip
 
-plorpOS on the Flip is **work in progress** (plorpos-f1p): it runs, but sleep,
-the lid, brightness keys and Muse's audio hand-over are not finished.
-
 The Flip has 128 MB of RAM (about 101 MB usable) and no swap. That decides what
 runs; see "What is not included".
 
