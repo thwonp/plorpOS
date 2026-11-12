@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build PokeDaisy as a libretro core for every port: mGBA's own libretro core with the PokeDaisy companion
-# layered over it (thwonp/pokedaisy-plorp, libretro/). One core for Game Boy, Game Boy Color and Game Boy Advance,
+# layered over it (thwonp/pokedaisy-lr, libretro/). One core for Game Boy, Game Boy Color and Game Boy Advance,
 # offered in the Core row of those three shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols): the Brick's firmware glibc is 2.33.
 # The same file runs on the H700 (BaseOS glibc 2.35), GKD (2.40) and Rotate (2.41); it is installed to
@@ -14,7 +14,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-core}
-REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-plorp.git}
+REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
 PD=${PD_COMMIT:-5d6e92f430f5959f2fda354e7013f73c65f4864f} # feat/libretro-core: GB quick menu / HUD / MAP, ORIGINAL 4x on GB, touch, 2026-11-05
 SHA=${PD_SHA:-7c97d4a80fc1d0ae1e224d778e6c091d22d43edb49001530d540f00e94aa73ae} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}

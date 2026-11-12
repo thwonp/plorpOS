@@ -75,7 +75,7 @@ Core source: the libretro organization and each core's upstream repository
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
 https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
-https://github.com/thwonp/pokedaisy-plorp (its `libretro/` core, plus our commits,
+https://github.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
 commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
 
