@@ -1,0 +1,53 @@
+diff --git a/source/hostCommonFunctions.cpp b/source/hostCommonFunctions.cpp
+index 96b255f..6ca10cf 100644
+--- a/source/hostCommonFunctions.cpp
++++ b/source/hostCommonFunctions.cpp
+@@ -186,7 +186,7 @@ void Host::saveSettingsIni(){
+ 
+     std::string iniPath = _logFilePrefix + "settings.ini";
+ 
+-    FILE * file = freopen(iniPath.c_str(), "w", stderr);
++    FILE * file = fopen(iniPath.c_str(), "w");
+     if( file != NULL ) {
+ 		//Initialize data
+         fprintf(file, "%s", settingsIniStr.c_str());
+@@ -206,7 +206,7 @@ std::string Host::getCartDataFileContents(std::string cartDataKey) {
+ }
+ 
+ void Host::saveCartData(std::string cartDataKey, std::string contents) {
+-    FILE * file = freopen(getCartDataFile(cartDataKey).c_str(), "w", stderr);
++    FILE * file = fopen(getCartDataFile(cartDataKey).c_str(), "w");
+     if( file != NULL ) {
+ 		//Initialize data
+         fprintf(file, "%s", contents.c_str());
+@@ -220,7 +220,7 @@ void Host::saveCartData(std::string cartDataKey, std::string contents) {
+ size_t Host::getFileContents(std::string fileName, char* buffer) {
+ 	std::string absPath = _logFilePrefix + "cdata/" + fileName;
+     //get_file_bin_contents(absPath, buffer, length);
+-	FILE * file = freopen(absPath.c_str(), "rb", stderr);
++	FILE * file = fopen(absPath.c_str(), "rb");
+     if( file != NULL ) {
+ 		//Initialize data
+ 		size_t len;
+@@ -237,7 +237,7 @@ size_t Host::getFileContents(std::string fileName, char* buffer) {
+ 
+ void Host::writeBufferToFile(std::string fileName, char* buffer, size_t length) {
+ 	std::string absPath = _logFilePrefix + "cdata/" + fileName;
+-    FILE * file = freopen(absPath.c_str(), "w", stderr);
++    FILE * file = fopen(absPath.c_str(), "w");
+     if( file != NULL ) {
+ 		//Initialize data
+ 		fwrite(&length, sizeof(length), 1, file);
+diff --git a/source/logger.cpp b/source/logger.cpp
+index 630b134..c0c04b5 100644
+--- a/source/logger.cpp
++++ b/source/logger.cpp
+@@ -16,7 +16,7 @@ void Logger_Initialize(const char* pathPrefix)
+     #if LOGGER_ENABLED
+     std::string buf(pathPrefix);
+     buf.append("pico.log");
+-    m_file = freopen(buf.c_str(), "w", stderr);
++    m_file = fopen(buf.c_str(), "w");
+     m_enabled = true;
+     #endif
+ }

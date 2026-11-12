@@ -34,6 +34,13 @@
 #   not fit makes the save fail before anything is written, and a load checks
 #   every size the state claims before restoring any of it.
 #
+#   fake08-stderr.patch - fake08 opened its files (settings.ini, cart data,
+#   pico.log) with freopen(path, mode, stderr) and then fclose'd them, which
+#   closes the HOST's stderr: after the first PICO-8 game every diatom log line
+#   on stderr went nowhere, or into whatever took fd 2 next (seen on the Flip:
+#   /dev/fb0, so the text was written into the framebuffer). fopen instead
+#   (TortOS plorpos-f1p.69).
+#
 # The pin is the commit ROCKNIX ships (fake08-lr package.mk), which is also
 # upstream master as of 2026-10-01. z8lua is a submodule.
 #
@@ -56,6 +63,7 @@ git submodule update -q --init --recursive
 git apply "$ROOT/mk/patches/fake08-load.patch"
 git apply "$ROOT/mk/patches/fake08-states.patch"
 git apply "$ROOT/mk/patches/fake08-bound-lua.patch"
+git apply "$ROOT/mk/patches/fake08-stderr.patch"
 EPOCH=$(git log -1 --format=%ct)
 
 # Flags through the environment: the Makefile appends to CFLAGS and CXXFLAGS.
