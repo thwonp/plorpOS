@@ -222,7 +222,7 @@ GPL core is that tarball plus the patches named there), by
 | `mgba_libretro.so` | Game Boy, Game Boy Color | libretro/mgba @ 7a12d6d | MPL-2.0 |
 | `gpsp_libretro.so` | Game Boy Advance | libretro/gpsp @ 5819380 | GPL-2.0 |
 | `mednafen_pce_fast_libretro.so` | TurboGrafx-16 | libretro/beetle-pce-fast-libretro @ 2de1ce1 | GPL-2.0 |
-| `snes9x2010_libretro.so` | SNES | libretro/snes9x2010 @ fe690dd + `mk/flip-cores/patches/snes9x2010-flip-buffers.patch` | **Non-commercial** (Snes9x licence in the source headers) |
+| `snes9x2005_plus_libretro.so` | SNES | libretro/snes9x2005 @ a79dfe9, built with `USE_BLARGG_APU=1` | **Non-commercial** (Snes9x licence, `copyright` in the repo; its ndssfc port layer GPL-2.0-or-later, libretro glue MIT) |
 | `race_libretro.so` | Neo Geo Pocket (Color) | libretro/RACE @ c7810dd | GPL-2.0-or-later |
 | `fbalpha2012_neogeo_libretro.so` | Neo Geo | libretro/fbalpha2012_neogeo @ e092097 | **Non-commercial** (FB Alpha licence) |
 | `fbalpha2012_libretro.so` | Arcade (FBA 2012) | libretro/fbalpha2012 @ 0ce3153 | **Non-commercial** (FB Alpha licence, plus MAME's) |

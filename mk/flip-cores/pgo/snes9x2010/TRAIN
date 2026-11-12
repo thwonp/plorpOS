@@ -1,2 +1,0 @@
-# PGO=gen sh mk/flip-cores/build-snes9x2010.sh && sh mk/flip-cores/pgo-train.sh snes9x2010 600 \
-"SNES/Donkey Kong Country.smc" "SNES/Star Fox.smc" "SNES/Super Mario World 2 - Yoshi's Island.smc" "SNES/Super Mario World.smc" "SNES/Legend of Zelda, The - A Link to the Past.smc" "SNES/F-Zero.smc" "SNES/Super Mario Kart.smc" "SNES/Chrono Trigger.smc"

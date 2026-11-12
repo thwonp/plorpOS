@@ -122,6 +122,8 @@ static const db_default library_defaults[] = {
 	 * 91.6% on the Flip without it; auto drops only the drawing of a late
 	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
 	{ "coreopt.SFC.snes9x_2010_frameskip", "auto" },
+	/* The Flip's SNES core (plorpos-f1p.70): the same auto frameskip, under its own key. */
+	{ "coreopt.SFC.snes9x_2005_frameskip", "auto" },
 	/* PicoDrive's own default, PAR, reports square pixels: Genesis 1.4286,
 	 * Master System 1.3333. CRT is a television's shape, within 3% of what
 	 * genesis_plus_gx reported for all three Sega systems before PicoDrive
