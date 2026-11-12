@@ -67,6 +67,7 @@ flip_cfg() {
 	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' \
 	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' \
 	    -e 's/^\(sys|Neo Geo Pocket[^|]*|[^|]*|\)mednafen_ngp|/\1race|/' \
+	    -e 's/^\(sys|SNES|[^|]*|\)snes9x2010|/\1snes9x2005_plus|/' \
 	    -e '/^sys|Arcade|Arcade|fbneo|/c\
 sys|Arcade (FBA 2012)|Arcade (FBA 2012)|fbalpha2012|ARCADE|FBA2012.png|1FB4E0|zip,7z||Arcade\
 sys|Arcade (MAME 2000)|Arcade (MAME 2000)|mame2000|MAME|MAME2000.png|129C50|zip,7z||Arcade' \

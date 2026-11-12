@@ -6,7 +6,7 @@ W=../../build/flip-cores
 mkdir -p "$W/logs"
 : > "$W/logs/all.out"
 for c in fbalpha2012 fbalpha2012_neogeo mednafen_pce_fast mgba \
-         picodrive snes9x2010 fceumm gpsp fake08 race mame2000 pcsx dropbear; do
+         picodrive snes9x2005_plus fceumm gpsp fake08 race mame2000 pcsx dropbear; do
   s=$(date +%s)
   ./build-$c.sh > "$W/logs/all-$c.out" 2>&1 && st=ok || st=FAILED
   echo "$c $st $(( $(date +%s) - s ))s" >> "$W/logs/all.out"

@@ -25,7 +25,7 @@ each was gated against the community prebuilt it replaced: per-frame cost with
 a CC wrapper appends `-marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
 -Ofast -mtune=cortex-a7` after each Makefile's own flags. Where HEAD was slower,
 the script says what closes the gap: LTO plus profile-guided optimisation
-(fceumm, snes9x2010, fake08), as the RG Nano port's picoarch does.
+(fceumm, fake08), as the RG Nano port's picoarch does.
 
 PGO: `PGO=gen sh mk/flip-cores/build-<core>.sh` makes an instrumented core,
 `mk/flip-cores/pgo-train.sh <core> FRAMES ROM...` runs it on the Flip with
@@ -43,9 +43,9 @@ Notes:
   `dir_list_new`.
 - `dropbear`: `patches/dropbear-keydir.patch` (with `-D`, the key folder ends
   the permission walk: the Flip's `/` is group-writable on a read-only rootfs).
-- `snes9x2010`: `patches/snes9x2010-flip-buffers.patch` (-DPLORPOS_FLIP): HEAD sized
-  every screen buffer for 1024-px 4x Mode 7 and HD packs; the Flip keeps the NTSC
-  width, runs 4x Mode 7 as 2x and loads no HD packs.
+- `snes9x2005_plus`: `USE_BLARGG_APU=1` (blargg's SNES_SPC sound). Replaced snes9x2010
+  as the SNES core (plorpos-f1p.70): lighter per frame, so heavy games hold the panel
+  lock. snes9x2010's recipe, buffer patch and PGO profile are in git history.
 - `fake08`: plorpOS's save state / rewind fixes (`../patches/fake08-states.patch`,
   `fake08-bound-lua.patch`, never merged upstream) and `fake08-load.patch`.
 - `fceumm`: `HAVE_HDPACK=0`, as on the RG Nano.
