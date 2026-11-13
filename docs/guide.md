@@ -296,7 +296,8 @@ on the tab you left it on.
   under the cursor, and held it shows only the favorites, from any tab.
 - **Playlists** lists your playlists with how many tracks each has; A opens
   one. MENU on a playlist renames it (on the keyboard) or deletes it, asked
-  first; MENU on one of its tracks removes that track from it.
+  first. In a playlist, X removes the track under the cursor, and L2 and R2
+  move it up and down a place.
 
 A on an album opens its tracks, the same list with the album's cover. With
 something playing, SELECT opens Now Playing and B goes back to that album's

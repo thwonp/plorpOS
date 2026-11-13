@@ -13,7 +13,8 @@
  * ("../Artist/Album/01 Track.flac"), which is what an .m3u beside the music
  * means. Reading also takes "../../x" (card-relative), an absolute path under
  * the card, and a bare name (beside the playlist). Comment lines (#EXTM3U,
- * #EXTINF, ...) are kept on a rewrite; blank lines are not.
+ * #EXTINF, ...) are kept on a rewrite, an entry's with the entry; blank lines
+ * are not.
  *
  * Rewrites go to a temporary file and are renamed over the old one, so a
  * power cut leaves the old playlist or the new one, never half of either. */
@@ -39,8 +40,11 @@ void pl_free(char **v, int n);
 
 /* Append a card-relative track, creating the folder and the file. */
 bool pl_add(const char *dir, const char *name, const char *track);
-/* Drop the `index`-th entry (as pl_read numbers them). */
+/* Drop the `index`-th entry (as pl_read numbers them), and the comment lines
+ * above it (#EXTINF) that describe it. */
 bool pl_remove_at(const char *dir, const char *name, int index);
+/* Trade the places of entries `a` and `b`, their comment lines with them. */
+bool pl_swap(const char *dir, const char *name, int a, int b);
 /* False when `to` exists or either name is not a good one. */
 bool pl_rename(const char *dir, const char *from, const char *to);
 bool pl_delete(const char *dir, const char *name);

@@ -161,32 +161,117 @@ bool pl_add(const char *dir, const char *name, const char *track)
 	return fclose(fp) == 0 && ok;
 }
 
-bool pl_remove_at(const char *dir, const char *name, int index)
+/* A playlist file as lines, and where each entry's block is: the entry line
+ * and the comment lines right above it (#EXTINF, which describes it), so a
+ * move or a removal takes them along. #EXTM3U is the file's, not an entry's.
+ * Blank lines are dropped. */
+typedef struct { char **ln; int n; int *es, *ee, ne; } pl_doc;
+
+static void doc_free(pl_doc *d)
 {
-	char f[PL_PATH_MAX], tmp[PL_PATH_MAX + 8], line[PL_PATH_MAX], path[PL_PATH_MAX];
-	FILE *in, *out;
-	int k = 0;
-	bool ok = true;
+	for (int i = 0; i < d->n; i++) free(d->ln[i]);
+	free(d->ln);
+	free(d->es);
+	free(d->ee);
+	memset(d, 0, sizeof *d);
+}
 
-	pl_file(dir, name, f, sizeof f);
-	snprintf(tmp, sizeof tmp, "%s.tmp", f);
-	if (!(in = fopen(f, "r"))) return false;
-	if (!(out = fopen(tmp, "w"))) { fclose(in); return false; }
-	while (fgets(line, sizeof line, in)) {
+static bool doc_load(const char *f, pl_doc *d)
+{
+	char line[PL_PATH_MAX], path[PL_PATH_MAX];
+	FILE *fp = fopen(f, "r");
+	int cap = 0, first = -1;
+
+	memset(d, 0, sizeof *d);
+	if (!fp) return false;
+	while (fgets(line, sizeof line, fp)) {
 		size_t len = strlen(line);
-		bool entry = pl_entry(line, NULL, path, sizeof path);
 
-		if (entry && k++ == index) continue;
-		if (!entry && line[strspn(line, " \t\r\n")] == '\0') continue;   /* blank */
-		if (len && line[len - 1] != '\n') { if (fprintf(out, "%s\n", line) < 0) ok = false; }
-		else if (fputs(line, out) < 0) ok = false;
+		if (line[strspn(line, " \t\r\n")] == '\0') continue;           /* blank */
+		while (len && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
+		if (d->n == cap) {
+			int nc = cap ? cap * 2 : 32;
+			char **nl = realloc(d->ln, sizeof *nl * (size_t)nc);
+			int *ns = realloc(d->es, sizeof *ns * (size_t)nc), *ne;
+
+			if (nl) d->ln = nl;
+			if (ns) d->es = ns;
+			ne = realloc(d->ee, sizeof *ne * (size_t)nc);
+			if (ne) d->ee = ne;
+			if (!nl || !ns || !ne) { fclose(fp); doc_free(d); return false; }
+			cap = nc;
+		}
+		if (!(d->ln[d->n] = strdup(line))) { fclose(fp); doc_free(d); return false; }
+		if (pl_entry(line, NULL, path, sizeof path)) {
+			d->es[d->ne] = first >= 0 ? first : d->n;
+			d->ee[d->ne] = d->n;
+			d->ne++;
+			first = -1;
+		} else if (strncmp(line, "#EXTM3U", 7) && first < 0) {
+			first = d->n;                    /* a comment that may be the next entry's */
+		}
+		d->n++;
 	}
-	fclose(in);
+	fclose(fp);
+	return true;
+}
+
+/* Write `d` back with block `drop` left out (or -1), and blocks `a` and `b`
+ * trading places (or -1), through a temporary file. */
+static bool doc_write(const char *f, const pl_doc *d, int drop, int a, int b)
+{
+	char tmp[PL_PATH_MAX + 8];
+	FILE *out;
+	bool ok = true;
+	int i = 0, k = 0;
+
+	snprintf(tmp, sizeof tmp, "%s.tmp", f);
+	if (!(out = fopen(tmp, "w"))) return false;
+	while (i < d->n) {
+		if (k < d->ne && i == d->es[k]) {
+			int src = k == a ? b : k == b ? a : k;
+
+			if (k != drop)
+				for (int j = d->es[src]; j <= d->ee[src]; j++)
+					if (fprintf(out, "%s\n", d->ln[j]) < 0) ok = false;
+			i = d->ee[k] + 1;
+			k++;
+			continue;
+		}
+		if (fprintf(out, "%s\n", d->ln[i]) < 0) ok = false;
+		i++;
+	}
 	ok = fflush(out) == 0 && ok;
 	fsync(fileno(out));
 	ok = fclose(out) == 0 && ok;
-	if (!ok || k <= index || rename(tmp, f) != 0) { unlink(tmp); return false; }
+	if (!ok || rename(tmp, f) != 0) { unlink(tmp); return false; }
 	return true;
+}
+
+bool pl_remove_at(const char *dir, const char *name, int index)
+{
+	char f[PL_PATH_MAX];
+	pl_doc d;
+	bool ok;
+
+	pl_file(dir, name, f, sizeof f);
+	if (!doc_load(f, &d)) return false;
+	ok = index >= 0 && index < d.ne && doc_write(f, &d, index, -1, -1);
+	doc_free(&d);
+	return ok;
+}
+
+bool pl_swap(const char *dir, const char *name, int a, int b)
+{
+	char f[PL_PATH_MAX];
+	pl_doc d;
+	bool ok;
+
+	pl_file(dir, name, f, sizeof f);
+	if (!doc_load(f, &d)) return false;
+	ok = a >= 0 && b >= 0 && a < d.ne && b < d.ne && a != b && doc_write(f, &d, -1, a, b);
+	doc_free(&d);
+	return ok;
 }
 
 bool pl_rename(const char *dir, const char *from, const char *to)

@@ -111,6 +111,30 @@ int main(void)
 	snprintf(f, sizeof f, "%s/Mixed.m3u.tmp", dir);
 	CHECK(access(f, F_OK) != 0, "and leaves no temporary file");
 
+	printf("moving:\n");
+	{
+		FILE *fp;
+
+		snprintf(f, sizeof f, "%s/Order.m3u", dir);
+		fp = fopen(f, "w");
+		fprintf(fp, "#EXTM3U\n../A/1.mp3\n#EXTINF:5,Two\n../A/2.mp3\n../A/3.mp3\n");
+		fclose(fp);
+	}
+	CHECK(pl_swap(dir, "Order", 0, 1), "the first two trade places");
+	slurp(f, body, sizeof body);
+	CHECK(!strcmp(body, "#EXTM3U\n#EXTINF:5,Two\n../A/2.mp3\n../A/1.mp3\n../A/3.mp3\n"),
+	      "the EXTINF goes with its track: [%s]", body);
+	CHECK(pl_swap(dir, "Order", 1, 2), "a later pair");
+	slurp(f, body, sizeof body);
+	CHECK(!strcmp(body, "#EXTM3U\n#EXTINF:5,Two\n../A/2.mp3\n../A/3.mp3\n../A/1.mp3\n"),
+	      "and the rest stays put: [%s]", body);
+	CHECK(!pl_swap(dir, "Order", 2, 3), "past the end is refused");
+	CHECK(pl_remove_at(dir, "Order", 0), "removing an entry with an EXTINF");
+	slurp(f, body, sizeof body);
+	CHECK(!strcmp(body, "#EXTM3U\n../A/3.mp3\n../A/1.mp3\n"),
+	      "takes the EXTINF too: [%s]", body);
+	CHECK(pl_delete(dir, "Order"), "tidy up");
+
 	printf("rename and delete:\n");
 	CHECK(!pl_rename(dir, "Mixed", "Road Trip"), "not over another playlist");
 	CHECK(pl_rename(dir, "Mixed", "mixed"), "a change of case only");

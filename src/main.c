@@ -11951,7 +11951,8 @@ static const char *muse_name_noyear(const char *name)
 }
 
 static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
-static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "MENU", "Remove" };
+static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "X", "Remove",
+                                            "L2/R2", "Move" };
 
 static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
                                   const mu_now *mn, bool loaded, const char *playing)
@@ -11970,7 +11971,7 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
 	L.wide_header = true;
 	L.help = ts->pl ? MTL_HELP_PL : MTL_HELP;
-	L.nhelp = ts->pl ? 3 : 2;
+	L.nhelp = ts->pl ? 4 : 2;
 	L.n = ts->n;
 	L.cur = sel;
 	L.accent = MUSE_ACCENT;
@@ -12147,35 +12148,52 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			muse_add_to_playlist(a, ts->trk[sel]);
 			continue;
 		}
-		/* After a rescan the library `ts` points into is gone: not one more
-		 * frame from it. A playlist's MENU offers removing the track first. */
-		if (a->in.pressed[IN_MENU]) {
-			if (ts->pl && items > 0) {
-				static const char *const OPTS[] = { "Remove from Playlist", "Muse Menu" };
-				int k = muse_pick_run(a, ts->pl, OPTS, 2);
+		/* A playlist's own keys (owner): X takes the track out, L2 and R2
+		 * move it up and down a place, the cursor going with it. */
+		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
+			char d[CFG_STR * 2 + 32];
 
-				if (k == 0) {
-					char d[CFG_STR * 2 + 32];
+			muse_pl_dir(d, sizeof d);
+			if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
+				int gone = ts->ent[sel];
 
-					muse_pl_dir(d, sizeof d);
-					if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
-						int gone = ts->ent[sel];
-
-						for (i = sel; i + 1 < ts->n; i++) {
-							ts->trk[i] = ts->trk[i + 1];
-							ts->ent[i] = ts->ent[i + 1];
-						}
-						ts->n--;
-						for (i = 0; i < ts->n; i++) if (ts->ent[i] > gone) ts->ent[i]--;
-						g_npls = -1;
-						muse_toast("Removed");
-					} else {
-						muse_toast("Could not remove");
-					}
-					continue;
+				for (i = sel; i + 1 < ts->n; i++) {
+					ts->trk[i] = ts->trk[i + 1];
+					ts->ent[i] = ts->ent[i + 1];
 				}
-				if (k != 1) continue;
+				ts->n--;
+				for (i = 0; i < ts->n; i++) if (ts->ent[i] > gone) ts->ent[i]--;
+				g_npls = -1;
+				muse_toast("Removed");
+			} else {
+				muse_toast("Could not remove");
 			}
+			continue;
+		}
+		if (ts->pl && items > 1 && (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2))) {
+			int j = sel + (in_repeat(&a->in, IN_R2) ? 1 : -1);
+			char d[CFG_STR * 2 + 32];
+
+			muse_pl_dir(d, sizeof d);
+			if (j >= 0 && j < items) {
+				/* The file's entries trade places; the rows' entry numbers
+				 * stay with the rows, so only the tracks swap here. */
+				if (pl_swap(d, ts->pl, ts->ent[sel], ts->ent[j])) {
+					int t = ts->trk[sel];
+
+					ts->trk[sel] = ts->trk[j];
+					ts->trk[j] = t;
+					sel = j;
+					ui_redraw_now();
+				} else {
+					muse_toast("Could not move");
+				}
+			}
+			continue;
+		}
+		/* After a rescan the library `ts` points into is gone: not one more
+		 * frame from it. */
+		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
 			if (how != MUSE_BACK) break;
 			continue;
