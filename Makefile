@@ -61,6 +61,12 @@ check:
 	printf '\nok: every check passed\n'
 
 # One version number: the zip name and the About page both read it from here.
+# The Miyoo Mini Flip's releases count on their own, from 1.0 (plorpos-f1p.64):
+# mk/miyoo-deploy.sh names its zip from FLIP_VERSION.
+FLIP_VERSION ?= 1.0
+ifeq ($(PLATFORM),miyoo)
+VERSION ?= $(FLIP_VERSION)
+endif
 VERSION ?= 1.8
 
 # It reaches the code on the compile line, where make cannot see it change, so
