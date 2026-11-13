@@ -88,7 +88,8 @@ EmulationStation, and it would show up as a broken cart. It doesn't turn off
 Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
 
 **Nintendo DS:** put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core
-row picks DSperate-lr (the default) or melonDS DS. The in-game Layout row has
+row picks DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the Pokemon games'
+companion: Party, Dex, Map, Bag and Guide from the game). The in-game Layout row has
 **Focus Top**, **Focus Bottom**, **Even Split**, **Top Overlay** and **Bottom
 Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
 through them. The Display row under it sets the Overlays' big screen to

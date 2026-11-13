@@ -1451,13 +1451,17 @@ bool plat_resident_send(const plat_game *g)
 		 * is this launch's only: the shelf's own setting is not touched, and mGBA's
 		 * launch keeps it. */
 		const char *mode = g->mode ? g->mode : "";
-		if (g->core && strstr(g->core, "pokedaisy_libretro")) {
+		if (g->core && (strstr(g->core, "pokedaisy_gbc_libretro") || strstr(g->core, "pokedaisy_gba_libretro"))) {
 			mode = "integer";
 			dsend("SETOPT\tkey=pokedaisy_canvas\tvalue=%dx%d", plat_panel_w / 3, plat_panel_h / 3);
 			/* The core now picks its own canvas from the panel (EXPAND at the game's whole scale, ZOOM OUT one
 			 * less); the canvas above is the fallback for a panel the core does not list. */
 			dsend("SETOPT\tkey=pokedaisy_panel\tvalue=%dx%d", plat_panel_w, plat_panel_h);
 		}
+		/* PokeDaisy DS composes the DS screens, the companion and the HUD into one 512x384 frame itself (its own
+		 * DS LAYOUT), so the shelf's DS display mode (a split of two screens) has nothing to place: the frame is
+		 * fitted whole, as the panel allows (plorpos-oe0.44). */
+		if (g->core && strstr(g->core, "pokedaisy_ds_libretro")) mode = "aspect";
 
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN
 		 * (its ADR-0032), so sent first it is in force from the game's first
@@ -1529,7 +1533,8 @@ bool plat_resident_send(const plat_game *g)
 		d_turbo_load();
 		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
 		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
-		d_turbo_gba = tag && !strcmp(tag, "GBA") && !(g->core && strstr(g->core, "pokedaisy_libretro"));
+		d_turbo_gba = tag && !strcmp(tag, "GBA") &&
+		              !(g->core && (strstr(g->core, "pokedaisy_gbc_libretro") || strstr(g->core, "pokedaisy_gba_libretro")));
 		d_turbo_send();
 
 		/* Same reasoning as the SETMAP above: AFTER RUN, which resets

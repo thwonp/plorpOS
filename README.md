@@ -56,7 +56,7 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 - **Fifteen shader presets**, Game Boy palettes, and Aspect, Stretch or Integer scaling.
 - **RetroAchievements,** signed in on the device. A game's set downloads once and then works offline; unlocks made offline are sent later.
 
-- **Nintendo DS** runs full speed **on every device** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with melonDS DS as an option on the RG Rotate and GKD.
+- **Nintendo DS** runs full speed **on every device** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with PokeDaisy DS (its Pokemon companion: Party, Dex, Map, Bag, Guide) as a per-game option.
     - Multiple Layout / Scaling options, Stylus emulation (and touch support), Microphone emulation.
 
 - **Portmaster** (UNOFFICIALLY SUPPORTED) on every device. Most games seem to run great but this is experimental. Report problems to plorpOS, NOT the PortMaster team.
@@ -70,10 +70,10 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 |---|---|---|---|---|
 | PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano uses `pico_dyn` instead of `pico8_64`) |
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
-| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA | - |
-| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA | - |
-| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA | Optional: `gba_bios.bin` |
-| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or melonDS DS | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
+| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA, or PokeDaisy (per game) | - |
+| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA, or PokeDaisy (per game) | - |
+| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA, or PokeDaisy over armGBA (per game) | Optional: `gba_bios.bin` |
+| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
 | Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm | - |
 | Sega Genesis, 32X | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip`  | PicoDrive | - |

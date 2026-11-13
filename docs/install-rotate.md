@@ -99,7 +99,8 @@ pauses when the headset goes. Its own buttons play/pause and skip in Muse.
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks DSperate-lr (the default) or
-melonDS DS. The in-game Layout row has **Focus Top**, **Focus Bottom**, **Even Split**, **Top
+PokeDaisy DS for the game under the cursor (the Pokemon games' companion: Party, Dex, Map, Bag and
+Guide from the game). The in-game Layout row has **Focus Top**, **Focus Bottom**, **Even Split**, **Top
 Overlay** and **Bottom Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
 through them. The Display row under it sets the Overlays' big screen to **Aspect**, **Stretch** or
 **Integer**.

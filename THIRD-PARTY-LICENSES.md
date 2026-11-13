@@ -52,7 +52,6 @@ carries its own; see Runtime libraries.
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 | `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without PGO: DSperate's committed profile needs GCC 13, and its GCC 10.5 profile applies to our compiler but measured no gain on the Brick; the frame skip (`dsperate_frameskip`) is nelynes's slotPlus design, https://github.com/nelynes/slotPlus, `cores/dsperate/wrapper-0001-frameskip.patch`, folded into the wrapper) |
-| `melondsds_libretro.so` (RG Rotate only, `vendor/cores-rotate/`) | Nintendo DS | GPL-3.0 (melonDS DS, https://github.com/JesseTG/melonds-ds v1.4.0, on melonDS, https://github.com/JesseTG/melonDS at the commit it pins; built with two patches of ours, `mk/patches/melondsds-plorpos.patch` and `mk/patches/melonds-plorpos.patch`, which are GPL-3.0 like the code they change - `mk/build-melondsds.sh`) |
 
 The GKD card ships all nine. The Brick card ships the first six only - no
 pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
@@ -71,13 +70,30 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
-## PokeDaisy (`pokedaisy_libretro.so`, `vendor/cores-brick/`)
+## PokeDaisy for Game Boy and Game Boy Color (`pokedaisy_gbc_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
 https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
 https://github.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
-commit the fork pins, built by `mk/build-pokedaisy-core.sh`.
+commit the fork pins, built by `mk/build-pokedaisy-gbc-core.sh`. The Game Boy and Color shelves' Core row offers it per game.
+
+## PokeDaisy for Game Boy Advance, over armGBA (`pokedaisy_gba_libretro.so`, `vendor/cores-brick/`)
+
+A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
+(https://github.com/thwonp/pokedaisy-lr, its `libretro/armgba/` core, **GPL-3.0**) with the Game Boy Advance run by
+armGBA, https://github.com/MagnominusGit/armGBA (v1.5; **MPL-2.0** for its own code, carrying Jeffrey Pfau's and mGBA
+contributors' MPL-2.0 notices where it follows mGBA's, built with libretro.h (MIT), RetroArch's libretro-common and the LZMA
+SDK (MIT, public domain)) and zlib (zlib License), at the commits the fork pins, built by `mk/build-pokedaisy-gba-core.sh`.
+armGBA's Game Boy side (Gambatte, GPL-2.0 only) is NOT built into it. The Game Boy Advance shelf's Core row offers it per game
+as "PokeDaisy"; the Game Boy and Color shelves keep `pokedaisy_gbc` above.
+
+## PokeDaisy DS (`pokedaisy_ds_libretro.so`, `vendor/cores-brick/`)
+
+A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
+(https://github.com/thwonp/pokedaisy-lr, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
+(https://github.com/beebono/DSperate, GPL-3.0) in our libretro wrapper https://github.com/thwonp/dsperate-lr,
+at the commits the fork pins, built by `mk/build-pokedaisy-ds-core.sh`. The DS shelf's Core row offers it per game.
 
 ---
 
