@@ -116,10 +116,7 @@ next Reset. PICO-8's own pause menu is on **Start**. Buttons: **B** is O,
 `Saves/Pico-8/`, where fake-08 keeps its cart data too, so the two share them.
 
 Limits of native PICO-8: no save states, rewind or fast-forward (PICO-8 has
-its own cart saves); no Scanline Filter; carts made for 60 fps run at 30,
-because PICO-8 lowers the frame rate itself on a CPU this size (its
-`host_framerate_control` setting in `Saves/Pico-8/config.txt`); fake-08 is
-the faster choice for those.
+its own cart saves); no Scanline Filter.
 
 ## Wi-Fi and ssh
 
