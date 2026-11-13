@@ -92,7 +92,9 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
 	SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
+	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
+	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */
+	SM_ROWS
 } sm_row;
 
 /* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
@@ -230,7 +232,8 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
-	const char *palette;     /* a Game Boy shelf's Default Palette (the Flip's), in SM_FILL's place; NULL elsewhere */
+	const char *palette;     /* a Game Boy shelf's Default Palette, in SM_FILL's place; NULL elsewhere */
+	bool        overrides;   /* games here keep their own display settings: Reset Display Overrides is listed */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not

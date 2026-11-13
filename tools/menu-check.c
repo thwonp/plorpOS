@@ -432,10 +432,19 @@ static void system_menu(void)
 	u.game_count = 412;
 	u.dmode = "Sharp";
 	u.shader = "Scanlines"; u.shader_live = true;
+	u.overrides = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("system menu:\n");
 	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
+	ck(!strcmp(rows[n - 1].label, "Reset Display Overrides") && rows[n - 1].live,
+	   "Reset Display Overrides is the last row, and live (plorpos-36e)");
+	u.overrides = false;
+	ck(sys_menu_build(&u, rows, &b, &heading) == SM_ROWS - 2 &&
+	   !strcmp(rows[SM_ROWS - 3].label, "Rescan Folder"),
+	   "a shelf diatom does not play (Ports) has no Reset row");
+	u.overrides = true;
+	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
 	for (int r = 0; r < n; r++)
 		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
@@ -654,11 +663,13 @@ static void cursor_reaches(void)
 	u.sys_name = "NES"; u.sys_core = "nestopia";
 	u.game_count = 3; u.dmode = "Native";
 	u.shader = "None"; u.shader_live = true;
+	u.overrides = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
 	printf("system menu, what the cursor can reach:\n");
-	ck(k == 5, "five rows, not seven");
+	ck(k == 6, "six rows, not eight");
+	ck(holds(got, k, sm_index(false, SM_RESET)), "Reset Display Overrides");
 	ck(holds(got, k, SM_DISPLAY), "Display Mode");
 	ck(holds(got, k, sm_index(false, SM_SHADER)), "Shader");
 	/* Live since sorting stopped being alphabetical-only. It was a

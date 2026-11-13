@@ -409,6 +409,20 @@ bool db_set_int(db *d, const char *key, int val)
 	return db_set_str(d, key, buf);
 }
 
+bool db_del_prefix(db *d, const char *prefix)
+{
+	sqlite3_stmt *st = NULL;
+	bool ok;
+
+	if (!d || !prefix || !*prefix) return false;
+	if (sq_prepare(d->h, "DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1;", -1, &st, NULL) != SQ_OK)
+		return false;
+	sq_bind_text(st, 1, prefix, -1, SQ_TRANSIENT);
+	ok = sq_step(st) == SQ_DONE;
+	sq_finalize(st);
+	return ok;
+}
+
 bool db_del(db *d, const char *key)
 {
 	sqlite3_stmt *st = NULL;

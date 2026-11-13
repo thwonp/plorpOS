@@ -127,13 +127,16 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
-		if (!u->fill && !u->palette) {
-			int i;
+		out[SM_RESET]   = (menu_row){ "Reset Display Overrides", NULL, true };
+		{
+			int i, n = u->overrides ? SM_ROWS : SM_ROWS - 1;   /* Reset is last: dropped by not counting it */
 
-			for (i = SM_FILL; i < SM_ROWS - 1; i++) out[i] = out[i + 1];
-			return SM_ROWS - 1;
+			if (!u->fill && !u->palette) {
+				for (i = SM_FILL; i < n - 1; i++) out[i] = out[i + 1];
+				n--;
+			}
+			return n;
 		}
-		return SM_ROWS;
 	}
 
 	*heading = "plorpOS";

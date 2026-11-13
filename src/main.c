@@ -5901,6 +5901,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
 		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
+		u.overrides  = !is_ports(sc);
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -6042,17 +6043,26 @@ static bool menu_leaving(app *a)
 /* ...and its general form: `n` answers, then Cancel. Returns the answer's
  * index, or -1 for Cancel and everything confirm_panel counts as "not that".
  * Settings > Scraping's import is the caller with two (TortOS-mh0). */
-static int pick_panel(app *a, const char *heading, const char *msg,
-                      const char *const *opts, int n)
+static int pick_panel_ex(app *a, const char *heading, const char *msg,
+                         const char *const *opts, int n, const char *no_label)
 {
-	menu_row rows[4];
-	int sel, i;
+	menu_row rows[6];
+	char lines[3][160];
+	int sel, i, m = 0;
 
 	if (n > 2) n = 2;
-	rows[0] = (menu_row){ msg, NULL, false };
-	for (i = 0; i < n; i++) rows[1 + i] = (menu_row){ opts[i], NULL, true };
-	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
-	sel = 1 + n;
+	/* The question: one row per line of msg, up to three (a "\n" breaks it). */
+	for (const char *p = msg; p && m < 3; m++) {
+		const char *e = m < 2 ? strchr(p, '\n') : NULL;
+		size_t len = e ? (size_t)(e - p) : strlen(p);
+
+		snprintf(lines[m], sizeof lines[m], "%.*s", (int)len, p);
+		rows[m] = (menu_row){ lines[m], NULL, false };
+		p = e ? e + 1 : NULL;
+	}
+	for (i = 0; i < n; i++) rows[m + i] = (menu_row){ opts[i], NULL, true };
+	rows[m + n] = (menu_row){ no_label, NULL, true };
+	sel = m + n;
 
 	ui_pace pace = {0};
 
@@ -6065,10 +6075,10 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		}
 		if (menu_leaving(a)) return -1;
 
-		/* Only the answerable rows are reachable; row 0 is the question. */
-		if (in_repeat(&a->in, IN_UP))   sel = sel > 1 ? sel - 1 : 1 + n;
-		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
-		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
+		/* Only the answerable rows are reachable; the first m are the question. */
+		if (in_repeat(&a->in, IN_UP))   sel = sel > m ? sel - 1 : m + n;
+		if (in_repeat(&a->in, IN_DOWN)) sel = sel < m + n ? sel + 1 : m;
+		if (a->in.pressed[IN_ACCEPT]) return sel < m + n ? sel - m : -1;
 
 		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
@@ -6076,10 +6086,44 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
-		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
+		menu_draw(a, heading, rows, m + n + 1, sel, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
 	}
+}
+
+static int pick_panel(app *a, const char *heading, const char *msg,
+                      const char *const *opts, int n)
+{
+	return pick_panel_ex(a, heading, msg, opts, n, "Cancel");
+}
+
+/* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
+ * wrote (display/shader/dsfill/dsswap.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
+ * themselves stay. Asked first, No selected. */
+static void display_overrides_reset(app *a, int sys)
+{
+	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap" };
+	static const char *const YES[] = { "Yes" };
+	const char *tag = a->sys.systems[sys].tag;
+	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
+	char key[CFG_STR + 16];
+
+	if (pick_panel_ex(a, "Reset Display Overrides",
+	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nand Shader preferences"
+	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nand Shader preferences"
+	                  : "Are you sure? This will reset\nper-game Display Mode and\nShader preferences",
+	                  YES, 1, "No") != 0)
+		return;
+	for (size_t k = 0; k < sizeof KINDS / sizeof *KINDS; k++) {
+		snprintf(key, sizeof key, "%s.%s.", KINDS[k], tag);
+		db_del_prefix(db_dev(), key);
+	}
+	if (pal) {
+		snprintf(key, sizeof key, "palette.%s.", tag);
+		db_del_prefix(db_lib(), key);
+	}
+	fprintf(stderr, "display overrides: %s reset\n", tag);
 }
 
 static bool confirm_panel(app *a, const char *heading, const char *msg,
@@ -9350,6 +9394,10 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			 * just lost the system it was built for. Acting and closing is
 			 * also what pressing it means. */
 			return MENU_DONE;
+		}
+		if (sel == SM_RESET) {
+			display_overrides_reset(a, a->sys_cursor);
+			return MENU_STAY;
 		}
 		return MENU_STAY;
 	}
