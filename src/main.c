@@ -388,6 +388,8 @@ static muse_exit muse_tracks(app *a, int album, bool now);
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
+static int  muse_tab(void);
+enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS };
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static ml_order muse_sort_shown(int sort)
 {
@@ -4493,6 +4495,8 @@ typedef struct {
 	char under[GL_UNDER_MAX][160];
 	const char *const *tabs; /* footer, ntabs names, tab the current one */
 	int ntabs, tab;
+	unsigned phase;          /* the focused title's marquee clock */
+	const char *empty;       /* said when there are no rows */
 } gl_list;
 
 /* Fit-cache keys for lists that are not a shelf. */
@@ -4632,9 +4636,7 @@ static void gl_draw(app *a, const gl_list *L)
 	                 (Uint8)L->accent, 255 };
 	gl_geom g;
 	char buf[192];
-	/* Every frame, as draw_game_text does: the marquee clock restarts on a
-	 * cursor change only if it is asked on the frames in between. */
-	unsigned phase = title_phase(a);
+	unsigned phase = L->phase;
 
 	gl_geometry(&g, L);
 	/* Header. Where you are in the list goes under the art. */
@@ -4648,6 +4650,8 @@ static void gl_draw(app *a, const gl_list *L)
 	first = cur - g.rows / 2;
 	if (first > n - g.rows) first = n - g.rows;
 	if (first < 0) first = 0;
+	if (n == 0 && L->empty)
+		ui_text(a->r, fm, L->empty, GL_PAD, g.top + (g.row_h - mline) / 2, -1, UI_TEXT_DIM);
 	for (i = first; i < n && i < first + g.rows; i++) {
 		const char *title = L->title(L->ctx, i);
 		const char *val = L->value ? L->value(L->ctx, i) : NULL;
@@ -4787,6 +4791,9 @@ static void gl_games_list(app *a, gl_list *L)
 	L->title = gl_game_title;
 	L->fav = gl_game_fav;
 	L->art = gl_game_art;
+	/* Every frame, as draw_game_text does: the marquee clock restarts on a
+	 * cursor change only if it is asked on the frames in between. */
+	L->phase = title_phase(a);
 	gl_geometry(&g, L);
 	if (GAMELISTS[g_gl].meta && L->n > 0) {
 		gl_facts(a, v, L->cur, g.pane_w);
@@ -6262,7 +6269,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_display_list = u.muse && g_muse_listmode;
-		u.muse_list = u.muse_display_list && muse_artist_filter() < 0;
+		u.muse_list = u.muse_display_list && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -12011,8 +12018,6 @@ static void muse_set_filter(sysview *v, int ar, int album)
 	ui_redraw_now();
 }
 
-enum { MP_LEAVE = -1, MP_FLAT = -2 };
-
 /* The initial an artist is listed under, for the jump. */
 static int muse_initial(int ar)
 {
@@ -12021,46 +12026,248 @@ static int muse_initial(int ar)
 	return isalpha(c) ? toupper(c) : '#';
 }
 
-/* The artist list: one row per artist of the kind shown, with how many albums
- * it has. A picks one (its index), B and SELECT leave Muse (MP_LEAVE), and
- * MENU is Muse's menu, which may turn Display back to Coverflow (MP_FLAT).
- * `start` is the artist to stand on, or -1. Built once, and again after a
- * Rescan; a frame draws only the rows in view and only when something moved. */
-static int muse_artist_pick(app *a, int start)
+/* ---- Muse: Display, List (plorpos-era) -------------------------------------
+ *
+ * Three tabs, L2 and R2 between them and the footer naming them (owner,
+ * 2026-11-13): Artists, as the old Artist List but drawn as a list; Albums,
+ * every album with its cover and year as a Detailed List shows a game; and
+ * Playlists. A on an artist opens that artist's albums the same way, and B
+ * comes back to the artist. Showing audiobooks the tabs are Authors and Books.
+ *
+ * Albums are Muse's own view (the coverflow's): its order, its favorites
+ * filter, its artist filter and its covers, so the list and the coverflow
+ * can never disagree about what is on the shelf. */
+static int g_muse_tab = -1;              /* -1: not read from the db yet */
+
+static int muse_ntabs(void)
 {
-	int *ix = NULL, n = 0, sel = 0, ret = MP_LEAVE, i;
-	menu_row *rows = NULL;
-	char (*vals)[12] = NULL;
-	bool build = true, books = muse_books_shown();
+	return muse_books_shown() ? 2 : 3;
+}
+
+/* The tab Muse is on, remembered across visits (owner). */
+static int muse_tab(void)
+{
+	if (g_muse_tab < 0) g_muse_tab = db_get_int(db_dev(), "muse.tab", MT_ARTISTS);
+	if (g_muse_tab < 0 || g_muse_tab >= muse_ntabs()) g_muse_tab = MT_ARTISTS;
+	return g_muse_tab;
+}
+
+static void muse_tab_set(int t)
+{
+	g_muse_tab = t;
+	db_set_int(db_dev(), "muse.tab", t);
+}
+
+/* The artists of the kind shown, with their album counts. Built again when
+ * the library or the kind changes. */
+static struct { int *ix; char (*val)[12]; int n, gen; bool books; } g_mar;
+
+static void muse_artists_build(void)
+{
+	bool books = muse_books_shown();
+	int i, cnt = 0;
+
+	if (g_mar.ix && g_mar.gen == g_muse_gen && g_mar.books == books) return;
+	free(g_mar.ix);
+	free(g_mar.val);
+	memset(&g_mar, 0, sizeof g_mar);
+	for (i = 0; i < g_muse.nartists; i++)
+		if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
+	g_mar.ix = calloc((size_t)cnt + 1, sizeof *g_mar.ix);
+	g_mar.val = calloc((size_t)cnt + 1, sizeof *g_mar.val);
+	if (!g_mar.ix || !g_mar.val) return;
+	for (i = 0; i < g_muse.nartists; i++) {
+		if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
+		snprintf(g_mar.val[g_mar.n], sizeof g_mar.val[0], "%d", g_muse.artists[i].n);
+		g_mar.ix[g_mar.n++] = i;
+	}
+	g_mar.gen = g_muse_gen;
+	g_mar.books = books;
+	gl_fit_forget(GL_KEY_ARTISTS);
+}
+
+static int muse_artist_row(int ar)
+{
+	for (int i = 0; i < g_mar.n; i++)
+		if (g_mar.ix[i] == ar) return i;
+	return 0;
+}
+
+static const char *mar_title(void *ctx, int i) { (void)ctx; return g_muse.artists[g_mar.ix[i]].name; }
+static const char *mar_value(void *ctx, int i) { (void)ctx; return g_mar.val[i]; }
+
+static const char *mal_title(void *ctx, int i)
+{
+	app *a = ctx;
+
+	return a->view[a->sys_cursor].list.items[i].title;
+}
+
+static bool mal_fav(void *ctx, int i)
+{
+	app *a = ctx;
+
+	return muse_fav_is(a->view[a->sys_cursor].list.items[i].file);
+}
+
+static const char *const MUSE_TABS[] = { "Artists", "Albums", "Playlists" };
+static const char *const MUSE_TABS_BOOKS[] = { "Authors", "Books" };
+
+/* What a List-display Muse screen shows: the artists, or the albums (all,
+ * favorites, or one artist's). `asel` is the artist row. */
+static void muse_list_describe(app *a, sysview *v, int asel, gl_list *L)
+{
+	bool books = muse_books_shown();
+	int tab = muse_tab(), ar = muse_artist_filter();
+
+	memset(L, 0, sizeof *L);
+	L->accent = MUSE_ACCENT;
+	L->ctx = a;
+	L->tabs = books ? MUSE_TABS_BOOKS : MUSE_TABS;
+	L->ntabs = muse_ntabs();
+	L->tab = tab;
+	if (tab == MT_ARTISTS && ar < 0) {
+		L->key = GL_KEY_ARTISTS;
+		L->header = books ? "Authors" : "Artists";
+		L->n = g_mar.n;
+		L->cur = asel;
+		L->title = mar_title;
+		L->value = mar_value;
+		L->empty = "Nothing here";
+		L->phase = mq_phase(MQ_SHELF, -2, asel);
+		return;
+	}
+	if (tab == MT_PLAYLISTS) {
+		L->key = GL_KEY_PLAYLISTS;
+		L->header = "Playlists";
+		L->empty = "No playlists yet";
+		return;
+	}
+	/* Albums: the view. */
+	L->key = a->sys_cursor + 1;
+	L->header = ar >= 0 ? g_muse.artists[ar].name : g_muse_favs ? "Favorites"
+	          : books ? "Books" : "Albums";
+	L->n = v->list.count;
+	L->cur = v->cursor;
+	L->title = mal_title;
+	L->fav = mal_fav;
+	L->art = gl_game_art;
+	L->empty = "Nothing here";
+	L->phase = title_phase(a);
+	if (L->n > 0 && v->album) {
+		int al = v->album[v->cursor], y = g_year && g_year[al] > 0 ? g_year[al] : 0;
+		const char *who = ar < 0 ? g_muse.artists[muse_artist_of(al)].name : "";
+		char line[160];
+
+		/* The year, and on a list of every artist's albums whose they are. */
+		if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
+		else if (y)    snprintf(line, sizeof line, "%d", y);
+		else           snprintf(line, sizeof line, "%s", who);
+		if (*line) {
+			gl_geom g;
+
+			gl_geometry(&g, L);
+			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+		}
+	}
+	if (SDL_GetTicks() < g_muse_note_until) {
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "No favorite albums");
+		ui_redraw_at(g_muse_note_until);
+	} else if (L->n > 0) {
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
+	}
+}
+
+static void muse_list_draw(app *a, sysview *v, int asel)
+{
+	gl_list L;
+
+	texload_drain(a);
+	muse_list_describe(a, v, asel, &L);
+	draw_background(a);
+	if (L.art) {
+		SDL_Rect r;
+
+		/* Not while a long jump is cutting: the covers in view are the
+		 * cursor's (evict_far's rule, as the coverflow). */
+		prime_toward(a, a->sys_cursor, v->cursor);
+		evict_far(v, TEX_KEEP_NEAR);
+		gl_art_rect(&L, &r, NULL);
+		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+	}
+	gl_draw(a, &L);
+	draw_chrome(a->r);
+	plat_present(a->r);
+}
+
+/* The artist row's letter jump: the next initial, or the top of this one,
+ * else the top of the one before. */
+static int muse_artist_jump(int sel, int dir)
+{
+	int n = g_mar.n, i;
+
+	if (n <= 0) return 0;
+	if (dir > 0) {
+		int c0 = muse_initial(g_mar.ix[sel]);
+
+		for (i = 1; i < n; i++)
+			if (muse_initial(g_mar.ix[(sel + i) % n]) != c0) return (sel + i) % n;
+		return sel;
+	}
+	{
+		int s = sel;
+
+		while (s > 0 && muse_initial(g_mar.ix[s - 1]) == muse_initial(g_mar.ix[sel])) s--;
+		if (s != sel) return s;
+		sel = sel > 0 ? sel - 1 : n - 1;
+		while (sel > 0 && muse_initial(g_mar.ix[sel - 1]) == muse_initial(g_mar.ix[sel])) sel--;
+		return sel;
+	}
+}
+
+typedef enum { ML_LEAVE, ML_FLAT } ml_ret;
+
+/* Muse with Display on List, until it closes (ML_LEAVE) or its menu turns
+ * Display to Coverflow (ML_FLAT). `*vp` is found again after a rescan.
+ * `now` with `playing`: straight to that album's tracks, over its artist's
+ * albums, which B comes back to (owner). */
+static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
+{
+	sysview *v = *vp;
+	int asel = 0;
+	bool y_down = false, y_spent = false;
+	ml_ret ret = ML_LEAVE;
 	ui_pace pace = {0};
 
+	muse_artists_build();
+	if (playing >= 0 && g_muse.albums[playing].book == muse_books_shown()) {
+		int pa = muse_artist_of(playing);
+
+		asel = muse_artist_row(pa);
+		if (now) {
+			muse_exit how;
+
+			muse_tab_set(MT_ARTISTS);
+			muse_set_filter(v, pa, playing);
+			how = muse_tracks(a, playing, true);
+			if (how == MUSE_CLOSE || g_muse_gone) return ML_LEAVE;
+			if (how == MUSE_REBUILT) {
+				if (!(v = muse_shelf_refind(a))) return ML_LEAVE;
+				muse_artists_build();
+			}
+		}
+	}
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
-	while (!want_quit && a->running) {
-		if (build) {
-			int cnt = 0;
 
-			free(ix); free(rows); free(vals);
-			books = muse_books_shown();
-			for (i = 0; i < g_muse.nartists; i++)
-				if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
-			ix = calloc((size_t)cnt + 1, sizeof *ix);
-			rows = calloc((size_t)cnt + 1, sizeof *rows);
-			vals = calloc((size_t)cnt + 1, sizeof *vals);
-			if (!ix || !rows || !vals) break;
-			for (i = 0, n = 0; i < g_muse.nartists; i++) {
-				if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
-				ix[n] = i;
-				snprintf(vals[n], sizeof vals[n], "%d", g_muse.artists[i].n);
-				rows[n] = (menu_row){ g_muse.artists[i].name, vals[n], true };
-				if (i == start) sel = n;
-				n++;
-			}
-			if (n == 0) { rows[0] = (menu_row){ "Nothing here", "", false }; }
-			if (sel >= n) sel = n ? n - 1 : 0;
-			build = false;
-			ui_redraw_now();
-		}
+	while (!want_quit && a->running) {
+		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
+		bool albums = tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
+		bool artists = tab == MT_ARTISTS && !drilled;
+		int n = albums ? v->list.count : artists ? g_mar.n : 0;
+		int *cur = albums ? &v->cursor : &asel;
+		gl_list L;
+
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
@@ -12073,91 +12280,104 @@ static int muse_artist_pick(app *a, int start)
 			if (muse_switch_unwind(a)) break;
 			continue;
 		}
+		if (a->in.pressed[IN_BACK] && drilled && tab == MT_ARTISTS) {
+			/* One level up: the artists, standing on this one. */
+			asel = muse_artist_row(muse_artist_filter());
+			muse_set_filter(v, -1, -1);
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+		if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2)) {
+			int d = in_repeat(&a->in, IN_R2) ? 1 : -1, nt = muse_ntabs();
 
+			if (drilled) muse_set_filter(v, -1, -1);
+			muse_tab_set((tab + d + nt) % nt);
+			ui_redraw_now();
+			continue;
+		}
+		muse_list_describe(a, v, asel, &L);
 		if (n > 0) {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
-			if (in_repeat(&a->in, IN_L1))   sel = ((sel - 8) % n + n) % n;
-			if (in_repeat(&a->in, IN_R1))   sel = (sel + 8) % n;
-			if (in_repeat(&a->in, IN_RIGHT)) {
-				int c0 = muse_initial(ix[sel]);
+			int page = gl_rows(&L);
 
-				for (i = 1; i < n; i++)
-					if (muse_initial(ix[(sel + i) % n]) != c0) { sel = (sel + i) % n; break; }
-			}
-			if (in_repeat(&a->in, IN_LEFT)) {
-				/* The top of this initial, else the top of the one before. */
-				int s = sel;
-
-				while (s > 0 && muse_initial(ix[s - 1]) == muse_initial(ix[sel])) s--;
-				if (s == sel) {
-					sel = sel > 0 ? sel - 1 : n - 1;
-					while (sel > 0 && muse_initial(ix[sel - 1]) == muse_initial(ix[sel])) sel--;
-				} else sel = s;
-			}
+			if (*cur >= n) *cur = n - 1;
+			if (in_repeat(&a->in, IN_UP))   *cur = (*cur + n - 1) % n;
+			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
+			if (in_repeat(&a->in, IN_L1))   *cur = ((*cur - page) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1))   *cur = (*cur + page) % n;
+			if (in_repeat(&a->in, IN_RIGHT))
+				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
+			if (in_repeat(&a->in, IN_LEFT))
+				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
+			if (albums) cf_reset(&v->cf, v->cursor);
 		}
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
-		if (a->in.pressed[IN_ACCEPT] && n > 0) { ret = ix[sel]; break; }
-		if (a->in.pressed[IN_MENU]) {
-			muse_exit how;
+		/* Y as on the coverflow: a tap marks the album, held the
+		 * Favorites view - from any tab, which it opens on Albums. */
+		if (a->in.down[IN_Y] && !y_spent &&
+		    SDL_GetTicks() - a->in.down_since[IN_Y] >= MUSE_FAV_HOLD_MS) {
+			y_spent = true;
+			if (tab != MT_ALBUMS) {
+				if (drilled) muse_set_filter(v, -1, -1);
+				muse_tab_set(MT_ALBUMS);
+			}
+			muse_fav_hold(v);
+		}
+		if ((y_down || a->in.pressed[IN_Y]) && !a->in.down[IN_Y]) {
+			if (!y_spent && albums) muse_fav_tap(v);
+			y_spent = false;
+		}
+		y_down = a->in.down[IN_Y];
 
-			start = n > 0 ? ix[sel] : -1;
-			how = muse_menu(a);
+		if (a->in.pressed[IN_ACCEPT] && n > 0) {
+			if (artists) {
+				muse_set_filter(v, g_mar.ix[asel], -1);
+			} else if (albums) {
+				muse_exit how = muse_album(a, v, v->cursor);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					muse_artists_build();
+				}
+			}
+			ui_redraw_now();
+			continue;
+		}
+		if (a->in.pressed[IN_MENU]) {
+			muse_exit how = muse_menu(a);
+
 			if (how == MUSE_CLOSE) break;
-			if (!muse_shelf_refind(a)) break;
-			if (!g_muse_listmode) { ret = MP_FLAT; break; }
-			if (how == MUSE_REBUILT || books != muse_books_shown()) { build = true; sel = 0; }
+			if (!(v = muse_shelf_refind(a))) break;
+			if (!g_muse_listmode) { ret = ML_FLAT; break; }
+			muse_artists_build();
+			if (asel >= g_mar.n) asel = 0;
 			ui_redraw_now();
 			continue;
 		}
 
-		/* Nothing but the cursor changes what is drawn. */
-		if (!screen_draw_due(a, &pace, (unsigned)sel + 1u)) {
+		if (screen_draw_due(a, &pace, (Uint32)(tab * 7919 + *cur * 31 + drilled * 3 +
+		                                      g_muse_favs + n * 131)))
+			muse_list_draw(a, v, asel);
+		else
 			SDL_Delay(IDLE_POLL_MS);
-			continue;
-		}
-		muse_backdrop(a);
-		g_menu_full = true;
-		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
-		          TORTOS_SCREEN_W - menu_pad() * 2, MUSE_ACCENT);
-		g_menu_full = false;
-		draw_chrome(a->r);
-		plat_present(a->r);
 	}
-	free(ix); free(rows); free(vals);
+	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
+	*vp = v;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	return ret;
 }
 
-/* The artist list, then the shelf onto what it chose. False when Muse is to
- * close. `*v` is found again, a menu inside the list may have rescanned. */
-static bool muse_to_picker(app *a, sysview **v, int start, int album)
-{
-	int ar = muse_artist_pick(a, start);
-	sysview *nv;
-
-	if (ar == MP_LEAVE || want_quit || !a->running || g_muse_gone || g_muse_sw) return false;
-	if (!(nv = muse_shelf_refind(a))) return false;
-	*v = nv;
-	muse_set_filter(nv, ar >= 0 ? ar : -1, album);
-	return true;
-}
-
 /* After the menu (or anything that rebuilds the library): the shelf is to be
- * what Display says - the artist list when it is on and no artist is chosen,
- * all albums when it is off. False when Muse is to close. */
+ * what Display says - the List screens when it is List, all albums as a
+ * coverflow when it is not. False when Muse is to close. */
 static bool muse_display_sync(app *a, sysview **v)
 {
-	if (g_muse_listmode && muse_artist_filter() < 0) {
-		muse_set_filter(*v, -1, -1);
-		return muse_to_picker(a, v, -1, -1);
-	}
-	if (!g_muse_listmode && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
+	if (muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
+	if (g_muse_listmode) return muse_list_screen(a, v, false, -1) == ML_FLAT;
 	return true;
 }
 
@@ -12204,15 +12424,12 @@ static void muse_shelf_screen(app *a, bool now)
 
 		if (k >= 0) { v->cursor = k; cf_reset(&v->cf, k); }
 	}
-	/* Display: Artist List. Opened on the playing album's artist when music
-	 * is on, whose coverflow B then returns to; otherwise the list first. */
+	/* Display: List. Its own screens until Muse closes, or until its menu
+	 * turns Display to Coverflow, which carries on below. */
 	g_muse_artist = -1;
 	if (g_muse_listmode) {
-		int pa = playing >= 0 && g_muse.albums[playing].book == muse_books_shown()
-		         ? muse_artist_of(playing) : -1;
-
-		if (now && pa >= 0) muse_set_filter(v, pa, playing);
-		else if (!muse_to_picker(a, &v, pa, playing)) done = true;
+		if (muse_list_screen(a, &v, now, playing) == ML_LEAVE) done = true;
+		now = false;
 	}
 	if (!done && now && playing >= 0) {
 		muse_exit how = muse_tracks(a, playing, true);
@@ -12247,14 +12464,6 @@ static void muse_shelf_screen(app *a, bool now)
 		 * button in, the same button out, and B for the level below. */
 		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
 			if (muse_switch_unwind(a)) break;
-			continue;
-		}
-		if (a->in.pressed[IN_BACK] && g_muse_listmode && muse_artist_filter() >= 0) {
-			/* One level up: the artist list, standing on this artist. */
-			int ar = muse_artist_filter();
-
-			muse_set_filter(v, -1, -1);
-			if (!muse_to_picker(a, &v, ar, -1)) break;
 			continue;
 		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
