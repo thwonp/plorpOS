@@ -219,7 +219,7 @@ static void tortos_menu_offline(void)
 	memset(&u, 0, sizeof u);
 	u.wifi = WIFI_OFF;
 	u.cards = "Plain Jane";
-	u.cards_dir = "Horizontal";
+	u.gamelist = "Coverflow";
 	u.sys_order = "Year";
 	u.auto_off = 120;
 	n = sys_menu_build(&u, rows, &b, &heading);
@@ -257,8 +257,8 @@ static void tortos_menu_offline(void)
 	n = sys_menu_ui_build(&u, rows, &heading);
 	ck(n == US_ROWS, "with a Ports shelf, one row more");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
-	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
-	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
+	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
+	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
 	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
 	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
@@ -432,21 +432,31 @@ static void system_menu(void)
 	u.game_count = 412;
 	u.dmode = "Sharp";
 	u.shader = "Scanlines"; u.shader_live = true;
+	u.overrides = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("system menu:\n");
 	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
+	ck(!strcmp(rows[n - 1].label, "Reset Display Overrides") && rows[n - 1].live,
+	   "Reset Display Overrides is the last row, and live (plorpos-36e)");
+	u.overrides = false;
+	ck(sys_menu_build(&u, rows, &b, &heading) == SM_ROWS - 2 &&
+	   !strcmp(rows[SM_ROWS - 3].label, "Rescan Folder"),
+	   "a shelf diatom does not play (Ports) has no Reset row");
+	u.overrides = true;
+	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
-	ck(!strcmp(val(&rows[SM_GAMES]), "412"), "the count is the real one");
+	for (int r = 0; r < n; r++)
+		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
-	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Shader"),
+	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Default Shader"),
 	   "Shader sits under Display Mode");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Display Mode"), "Display Mode keeps its name off the DS");
+	ck(!strcmp(rows[SM_DISPLAY].label, "Default Display Mode"), "Default Display Mode off the DS");
 	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
 	   "and carries the system's shader");
 	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
-	ck(!rows[SM_GAMES].live && !rows[SM_CORE].live, "reported facts are not rows to press");
+	ck(!rows[SM_CORE].live, "reported facts are not rows to press");
 	ck(rows[sm_index(false, SM_BOXART)].live, "Box Art is live on a network");
 
 	/* The same menu with the radio down. Only Box Art changes. */
@@ -468,16 +478,16 @@ static void system_menu(void)
 	u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
 	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(n == SM_ROWS, "DS: every row, Display included");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
+	ck(!strcmp(rows[SM_DISPLAY].label, "Default Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
 	   "DS: the layout row is Layout");
-	ck(!strcmp(rows[SM_FILL].label, "Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
+	ck(!strcmp(rows[SM_FILL].label, "Default Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
 	   "DS: Display under it, with its value");
-	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
+	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Default Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
 	   "DS: Shader under Display");
 	u.fill = NULL;
 	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Layout")
-	   && !strcmp(rows[SM_FILL].label, "Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
+	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Default Layout")
+	   && !strcmp(rows[SM_FILL].label, "Default Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
 	   "DS on a 4:3 panel: Layout, no Display row, the rows below one higher");
 	u.nds = false; u.dmode = "Sharp";
 
@@ -497,9 +507,8 @@ static void system_menu(void)
 		f.sys_core = "";
 		fn = sys_menu_build(&f, frows, &fb, &fhead);
 		printf("the Favorites shelf's menu:\n");
-		ck(fn == SM_FAV_ROWS, "two rows and a count, not six");
-		ck(!strcmp(frows[0].label, "Games"), "how many are on it");
-		ck(!strcmp(frows[1].label, "Sort By"), "and what order they are in");
+		ck(fn == SM_FAV_ROWS, "one row, not six");
+		ck(!strcmp(frows[0].label, "Sort By"), "what order they are in");
 		for (k = 0; k < fn; k++) {
 			ck(strcmp(frows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(frows[k].label, "Display Mode") != 0,
@@ -654,11 +663,13 @@ static void cursor_reaches(void)
 	u.sys_name = "NES"; u.sys_core = "nestopia";
 	u.game_count = 3; u.dmode = "Native";
 	u.shader = "None"; u.shader_live = true;
+	u.overrides = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
 	printf("system menu, what the cursor can reach:\n");
-	ck(k == 5, "five rows, not seven");
+	ck(k == 6, "six rows, not eight");
+	ck(holds(got, k, sm_index(false, SM_RESET)), "Reset Display Overrides");
 	ck(holds(got, k, SM_DISPLAY), "Display Mode");
 	ck(holds(got, k, sm_index(false, SM_SHADER)), "Shader");
 	/* Live since sorting stopped being alphabetical-only. It was a
@@ -666,7 +677,7 @@ static void cursor_reaches(void)
 	ck(holds(got, k, SM_SORT), "Sort By");
 	ck(holds(got, k, sm_index(false, SM_BOXART)), "Box Art");
 	ck(holds(got, k, sm_index(false, SM_RESCAN)), "Rescan Folder");
-	ck(!holds(got, k, SM_GAMES) && !holds(got, k, SM_CORE),
+	ck(!holds(got, k, SM_CORE),
 	   "the reported facts are not stops");
 
 	memset(&u, 0, sizeof u);
@@ -1175,19 +1186,18 @@ static void card_sets(void)
 	ck(cards_index("") == 0, "so does an empty one");
 	ck(cards_index(NULL) == 0, "and so does none at all");
 
-	printf("which way the shelves run:\n");
-	ck(CARD_DIR_COUNT == 2, "two directions");
-	ck(!strcmp(CARD_DIRS[0].id, CARDS_DIR_DEFAULT),
-	   "the first is the default one");
-	ck(!CARD_DIRS[0].vertical, "which is the horizontal row the shelf has always been");
-	ck(CARD_DIRS[1].vertical, "and the other one actually differs");
-	ck(cards_dir_index("vertical") == 1, "a known id selects its direction");
+	printf("gamelist layouts:\n");
+	ck(GAMELIST_COUNT == 3, "three layouts");
+	ck(!strcmp(GAMELISTS[0].id, GAMELIST_DEFAULT), "the first is the default one");
+	ck(!GAMELISTS[0].list, "which is the coverflow the shelf has always been");
+	ck(GAMELISTS[1].list && GAMELISTS[1].meta, "Detailed List shows the facts");
+	ck(GAMELISTS[2].list && !GAMELISTS[2].meta, "Art List does not");
+	ck(gamelist_index("artlist") == 2, "a known id selects its layout");
 	/* Same rule as the themes: the setting outlives what it names. */
-	ck(cards_dir_index("sideways") == 0, "an unknown id falls back to horizontal");
-	ck(cards_dir_index(NULL) == 0, "and so does none at all");
-	ck(cards_dir_index("both") == 0, "a stored Cubic reads as horizontal");
-	ck(cards_dir_step(0, 1) == 1 && cards_dir_step(1, 1) == 0, "stepping wraps");
-	ck(cards_dir_step(0, -1) == CARD_DIR_COUNT - 1, "in both directions");
+	ck(gamelist_index("vertical") == 0, "a stored Vertical reads as Coverflow");
+	ck(gamelist_index(NULL) == 0, "and so does none at all");
+	ck(gamelist_step(2, 1) == 0, "stepping wraps");
+	ck(gamelist_step(0, -1) == GAMELIST_COUNT - 1, "in both directions");
 
 	printf("stepping through them:\n");
 	ck(cards_step(0, 1) == 1, "forward");

@@ -72,18 +72,16 @@ The PIN is new every time you open Over The Hare.
 
 ## Nintendo DS
 
-Put `.nds` files in `Roms/Nintendo DS/`. The Brick has six layouts, in the
-in-game menu's Layout row: **Top Only** (the default) and **Bottom Only**,
-one screen fullscreen; **Top Focus** and **Bottom Focus**, one screen at
-three times the size of the other, which sits against its right edge (the
-bottom screen at the bottom-right of Top Focus, the top screen at the top-right
-of Bottom Focus); and **Top Overlay** and **Bottom Overlay**, one screen
-filling the display and the other, 80% opaque, over its bottom-right corner.
+Put `.nds` files in `Roms/Nintendo DS/`. The Brick has three layouts: **Overlay**,
+one screen filling the display and the other, 80% opaque, over its bottom-right
+corner; **Single Screen**, one screen fullscreen; and **Hybrid**, one screen at
+three times the size of the other, which sits against its right edge. The shelf
+menu's **Default Layout** sets the shelf's; the in-game **Layout** row sets the
+game's own. The **Swap Screens** hotkey puts the other screen in the big place and is remembered for each game; **Screen Layout** steps through the layouts and keeps the screen you swapped to. The shelf menu's **Reset Display Overrides**
+puts every game back on the shelf's defaults.
 (The other handhelds' Aspect/Stretch/Integer Display row would change nothing
 on the Brick's 1024x768 panel, where 4x is the whole screen, so it is not
 shown.)
-The **Screen Layout ->** and **Screen Layout <-** hotkeys go round them in
-that order, so two buttons can flip between neighbouring layouts.
 
 The Brick has no touch screen, so the D-pad can be the stylus. In
 Hotkeys, bind **Stylus Mode** (turns the D-pad into a cursor over the bottom

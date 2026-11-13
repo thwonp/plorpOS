@@ -101,7 +101,7 @@ static const db_default device_defaults[] = {
 	{ "font",       "quicksand" },   /* UI Settings > Body Font (plorpos-8m1.3) */
 	{ "headfont",   "fredoka" },     /* UI Settings > Header Font (plorpos-3yv.60) */
 	{ "cards",      CARDS_DEFAULT },
-	{ "cards_dir",  CARDS_DIR_DEFAULT },
+	{ "gamelist_layout", GAMELIST_DEFAULT },
 	{ "sys_order",  "year" },  /* SYS_ORDER_DEFAULT, config.h */
 };
 
@@ -118,11 +118,10 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
-#if defined(PLATFORM_MIYOO)
-	/* The Flip's Game Boy core is Gambatte (plorpos-f1p.77). Its own default corrects GBC colors; the
-	 * picture mgba drew was uncorrected, so that stays. The palette is sent at every launch (palette.<TAG>.<file>). */
+	/* The Game Boy and Color shelves' core is Gambatte (plorpos-f1p.77, plorpos-ssa). Its own default corrects GBC
+	 * colors; the picture mgba drew was uncorrected, so that stays. The palette is sent at every launch
+	 * (palette.<TAG>.<file>). */
 	{ "coreopt..gambatte_gbc_color_correction", "disabled" },
-#endif
 	/* snes9x2010 ships with frameskip disabled. Star Fox (Super FX) runs at
 	 * 91.6% on the Flip without it; auto drops only the drawing of a late
 	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
@@ -408,6 +407,20 @@ bool db_set_int(db *d, const char *key, int val)
 	char buf[32];
 	snprintf(buf, sizeof buf, "%d", val);
 	return db_set_str(d, key, buf);
+}
+
+bool db_del_prefix(db *d, const char *prefix)
+{
+	sqlite3_stmt *st = NULL;
+	bool ok;
+
+	if (!d || !prefix || !*prefix) return false;
+	if (sq_prepare(d->h, "DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1;", -1, &st, NULL) != SQ_OK)
+		return false;
+	sq_bind_text(st, 1, prefix, -1, SQ_TRANSIENT);
+	ok = sq_step(st) == SQ_DONE;
+	sq_finalize(st);
+	return ok;
 }
 
 bool db_del(db *d, const char *key)

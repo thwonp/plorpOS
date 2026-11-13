@@ -70,15 +70,15 @@ int hk_trig_from(int input, int mod)
 const char *const HK_ACTION_LABEL[] = {
 	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Screenshot",
 	"Turbo Assign",  /* plorpos-tkh, Diatom's ADR-0045 */
-	"Screen Layout ->", /* the DS's Display Mode, last so other shelves drop it (plorpos-3yv.47, .62) */
-	"Screen Layout <-", /* the same round the other way, where there are four layouts (plorpos-reo.21) */
+	"Screen Layout",  /* the DS's next layout, last so other shelves drop it (plorpos-3yv.47, .62) */
+	"Swap Screens",   /* the DS's: the other screen big, kept per game (plorpos-jcj) */
 	"Stylus Tap",    /* the DS's on a port with no panel (the GKD's cursor, plorpos-46o.4) */
 	"Stylus Mode",   /* the DS's on a port with neither panel nor stick: d-pad as cursor (plorpos-reo.21) */
 	"Blow Into Mic", /* the DS's everywhere: held, noise into the mic (plorpos-6ei.3) */
 	"HUD Focus"      /* PokeDaisy's: the cursor onto its HUD, D-pad / A press it (plorpos-l22.4) */
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapback", "stylus", "stylusmode", "blow", "hud"
+	"ff", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapscreens", "stylus", "stylusmode", "blow", "hud"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from
@@ -123,7 +123,9 @@ void hk_parse(const char *spec, int trig_for_row[HK_ROW_COUNT], int mod_for_row[
 			if (!strcmp(in, HK_TRIG_WIRE[b])) break;
 		if (b == HK_TRIG_COUNT || (m >= 0 && !hk_trig_mod(b))) continue;
 		for (r = 0; r < HK_ROW_COUNT; r++)
-			if (!strcmp(colon + 1, HK_ACTION_WIRE[r])) break;
+			if (!strcmp(colon + 1, HK_ACTION_WIRE[r]) ||
+			    /* Screen Layout <- went for Swap Screens (plorpos-jcj): its key carries over */
+			    (!strcmp(colon + 1, "swapback") && !strcmp(HK_ACTION_WIRE[r], "swapscreens"))) break;
 		if (r == HK_ROW_COUNT) continue;
 		trig_for_row[r] = b;
 		if (mod_for_row) mod_for_row[r] = m;

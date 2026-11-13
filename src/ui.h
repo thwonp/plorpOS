@@ -80,6 +80,7 @@ typedef enum {
 	UI_F_META,    /* counts, timestamps -- the quiet line */
 	UI_F_CARD,
 	UI_F_BADGE,   /* the battery's number, small enough for the corner */
+	UI_F_LIST,    /* a game shelf's rows on the Gamelist Layout lists */
 	UI_F_COUNT
 } ui_font_role;
 
@@ -266,11 +267,6 @@ typedef unsigned (*ui_rail_hue)(void *ctx, int index);
  * its system's accent. */
 void ui_rail(SDL_Renderer *r, int screen_w, int screen_h, float index, int count,
              unsigned rgb, ui_rail_hue hue, void *ctx);
-/* The same, down the left edge, for a row that runs vertically. A horizontal
- * bar under a vertical stack says the wrong thing: the eye reads it as the
- * axis the cards move along. */
-void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int count,
-               unsigned rgb, ui_rail_hue hue, void *ctx);
 
 /* A filled rounded rectangle. SDL has no such primitive; this is the middle as
  * one rect and the two caps as one inset row each, so a panel costs a few

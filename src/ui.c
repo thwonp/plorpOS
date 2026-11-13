@@ -9,7 +9,13 @@
 #include <unistd.h>
 
 #define GLOW_SIZE 192      /* the glow is drawn stretched; small is enough */
-#define TEXT_CACHE 12
+/* 24, not 12: a Gamelist Layout list frame draws ~16 strings (ten rows, the
+ * header, the facts), and an LRU smaller than one frame misses every time -
+ * 30-44 ms list frames on the Brick (plorpos-gwf). */
+#define TEXT_CACHE 24
+#ifndef UI_LIST_PT
+#define UI_LIST_PT 40
+#endif
 
 /* The type scale: one base size and a multiplier per role. The panel is
  * 1024x768 across about three inches, so the base is set for reading at arm's
@@ -58,6 +64,9 @@ static const float font_mul[UI_F_COUNT] = {
 	[UI_F_META]  = 1.00f,   /* 32 */
 	[UI_F_CARD]  = 1.94f,   /* 62, in card pixels - the title IS the card */
 	[UI_F_BADGE] = 0.63f,   /* 20 */
+	/* The list rows: the menu's size read too large there (owner, plorpos-gwf),
+	 * so UI_LIST_PT of the menu's 48 on the Brick, scaled like the rest. */
+	[UI_F_LIST]  = 1.34f * UI_LIST_PT / 48.0f,
 };
 
 static TTF_Font *fonts[UI_F_COUNT];
@@ -948,37 +957,6 @@ void ui_rail(SDL_Renderer *r, int screen_w, int screen_h, float index, int count
 	if (off > track_w - seg_w)
 		rail_seg(r, &track, (SDL_Rect){ track_x + off - lap, y, seg_w, h },
 		         false, step, blend, count, rgb, hue, ctx);
-}
-
-void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int count,
-               unsigned rgb, ui_rail_hue hue, void *ctx)
-{
-	int w = UI_BAR_H, x = 23;
-	int track_y = 90, track_h = screen_h - track_y * 2;
-	SDL_Rect track;
-	int seg_h, off, lap;
-	float o, fl, step, blend;
-
-	(void)screen_w;
-	if (count <= 1) return;
-	seg_h = track_h / count;
-	if (seg_h < 18) seg_h = 18;
-	o = rail_at(index, count, track_h, seg_h, &fl);
-	off = (int)(o + 0.5f);
-	lap = (int)(fl + 0.5f);
-	step = fl / (float)count;
-	blend = rail_blend(index);
-	/* Top-down, like the shelf beside it: the first item at the top. */
-	track = (SDL_Rect){ x, track_y, w, track_h };
-
-	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-	SDL_SetRenderDrawColor(r, 255, 255, 255, 16);
-	SDL_RenderFillRect(r, &track);
-	rail_seg(r, &track, (SDL_Rect){ x, track_y + off, w, seg_h },
-	         true, step, blend, count, rgb, hue, ctx);
-	if (off > track_h - seg_h)
-		rail_seg(r, &track, (SDL_Rect){ x, track_y + off - lap, w, seg_h },
-		         true, step, blend, count, rgb, hue, ctx);
 }
 
 void ui_round_rect(SDL_Renderer *r, const SDL_Rect *q, int radius, SDL_Color col)

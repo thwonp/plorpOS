@@ -11,6 +11,8 @@ mk/fetch-sysroot.sh  # the device's SDL2  -> sysroot/           (once, needs adb
 make            # the launcher            -> build/tortos.elf
 make vendor     # five libretro cores     -> vendor/
 mk/build-mgba-bridge.sh  # the sixth      -> vendor/            (see below)
+mk/build-gambatte-core.sh  # Game Boy/Color -> vendor/cores-brick (libretro pin, hash-pinned)
+mk/fetch-armgba-core.sh    # Game Boy Advance -> vendor/cores-brick (armGBA v1.6 release, hash-pinned)
 make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v$(VERSION).zip
 make native     # host build of the launcher, for working on how it looks
 make boot       # regenerate the boot animation
@@ -24,8 +26,9 @@ mgba-emu/mgba#3859 and fixed upstream the same day, but in no downloadable core
 because libretro builds mGBA from a fork that has not synced.
 `mk/build-mgba-bridge.sh` builds that same pinned tree with only upstream's own
 fix applied, hardened to match the official build. Without it `make payload`
-refuses the card rather than shipping one whose Game Boy, Game Boy Color and
-Game Boy Advance shelves open onto nothing. Restore the fetch and delete the
+refuses the card rather than shipping one without mGBA, which every aarch64
+card carries as the Game Boy, Color and Advance shelves' third Core (Gambatte
+and armGBA are their defaults). Restore the fetch and delete the
 script the day that fork syncs.
 
 `make payload` needs a built diatom binary (`DIATOM_ELF`, defaulting to a

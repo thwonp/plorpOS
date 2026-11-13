@@ -58,6 +58,8 @@ bool db_has(db *d, const char *key);
 bool db_set_str(db *d, const char *key, const char *val);
 bool db_set_int(db *d, const char *key, int val);
 bool db_del(db *d, const char *key);
+/* Every key that starts with `prefix` (plain text, not a LIKE pattern). */
+bool db_del_prefix(db *d, const char *prefix);
 
 /* Every key under a prefix, in key order, until the callback returns false.
  *

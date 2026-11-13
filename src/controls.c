@@ -39,8 +39,8 @@ static int moving(ctl_dir dir, menu_row *out)
 {
 	int n = 0;
 
-	/* Which axis does what is the whole of UI Direction. */
-	if (dir == CTL_VERTICAL) {
+	/* A list steps down the column; the coverflow along the row. */
+	if (dir == CTL_LIST) {
 		out[n++] = (menu_row){ "Up/Down",    "Move",           false };
 		out[n++] = (menu_row){ "Left/Right", "Jump by letter", false };
 	} else {

@@ -49,8 +49,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * nothing else - not even the enum's order, since Core sits between
 		 * them and it has none. See SM_FAV_ROWS. */
 		if (u->fav) {
-			out[0] = (menu_row){ "Games",   b->a,                      false };
-			out[1] = (menu_row){ "Sort By", u->sort ? u->sort : "Name", true };
+			out[0] = (menu_row){ "Sort By", u->sort ? u->sort : "Name", true };
 			return SM_FAV_ROWS;
 		}
 		if (u->muse) {
@@ -91,15 +90,16 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 				}
 			return n;
 		}
-		out[SM_GAMES]   = (menu_row){ "Games",         b->a,        false };
 		out[SM_CORE]    = (menu_row){ "Core", u->engine ? u->engine : b->b,
 		                              u->engine != NULL };
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
-		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
+		/* Defaults: a game set from the in-game menu keeps its own
+		 * (plorpos-0xv, plorpos-1a6). */
+		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
 		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
-		                             : (menu_row){ "Display",         u->fill,    true };
-		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
+		                             : (menu_row){ "Default Display", u->fill,    true };
+		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row
@@ -127,13 +127,16 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
-		if (!u->fill && !u->palette) {
-			int i;
+		out[SM_RESET]   = (menu_row){ "Reset Display Overrides", NULL, true };
+		{
+			int i, n = u->overrides ? SM_ROWS : SM_ROWS - 1;   /* Reset is last: dropped by not counting it */
 
-			for (i = SM_FILL; i < SM_ROWS - 1; i++) out[i] = out[i + 1];
-			return SM_ROWS - 1;
+			if (!u->fill && !u->palette) {
+				for (i = SM_FILL; i < n - 1; i++) out[i] = out[i + 1];
+				n--;
+			}
+			return n;
 		}
-		return SM_ROWS;
 	}
 
 	*heading = "plorpOS";
@@ -230,7 +233,7 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	 * Size stood here until the band it offered turned out to be too narrow
 	 * to matter - src/ui.c. */
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
-	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
+	out[US_DIR]   = (menu_row){ "Gamelist Layout", u->gamelist, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
 	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };

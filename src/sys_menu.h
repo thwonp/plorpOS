@@ -91,8 +91,10 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * side - Diatom has per-system display modes and core-supplied button labels -
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
-	SM_GAMES, SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
+	SM_CORE, SM_SORT,
+	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
+	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */
+	SM_ROWS
 } sm_row;
 
 /* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
@@ -112,9 +114,10 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * and its display mode through the shelf it was started from. Setting one here
  * would give a game a different aspect depending on which shelf launched it.
  *
- * Games and Sort By are both true of a shelf of favorites, so those are what
- * it gets. Eric's call, 2026-09-17. */
-#define SM_FAV_ROWS 2
+ * Sort By is true of a shelf of favorites, so that is what it gets (Eric's
+ * call, 2026-09-17; the Games count row went from every shelf menu,
+ * plorpos-9jo - the shelf itself shows the count). */
+#define SM_FAV_ROWS 1
 
 /* What Muse's shelf menu is: how many albums, Show - music or audiobooks,
  * the two kinds its one shelf holds - Sort By - by artist or by album, its own
@@ -191,7 +194,7 @@ typedef struct {
 	bool        ss_in;
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
-	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
+	const char *gamelist;    /* how game shelves draw, from GAMELISTS */
 	const char *font;        /* the body face's name (plorpos-8m1.3) */
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
@@ -229,7 +232,8 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
-	const char *palette;     /* a Game Boy shelf's Default Palette (the Flip's), in SM_FILL's place; NULL elsewhere */
+	const char *palette;     /* a Game Boy shelf's Default Palette, in SM_FILL's place; NULL elsewhere */
+	bool        overrides;   /* games here keep their own display settings: Reset Display Overrides is listed */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not
