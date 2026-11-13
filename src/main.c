@@ -644,18 +644,13 @@ static void game_fill_save(app *a, int sys, const game_entry *g, int v)
  * per system (plorpos-gkd.76), so it travels with the card the way favorites
  * do. Keyed on the file name, as save states are, so renaming a ROM loses it.
  * -1 for a game that has no palette to pick; no row is the shelf's Default
- * Palette (palettedef.<TAG>, the Flip's), or Auto where there is none. A game
+ * Palette (palettedef.<TAG>), or Auto where there is none. A game
  * that has a row keeps it however the default changes later. */
 static bool gb_palette_tag(const char *tag)
 {
-	return !strcmp(tag, "GB")
-#if defined(PLATFORM_MIYOO)
-	    || !strcmp(tag, "GBC")
-#endif
-	    ;
+	return !strcmp(tag, "GB") || !strcmp(tag, "GBC");
 }
 
-#if defined(PLATFORM_MIYOO)
 /* A Game Boy Color game colors itself: byte 0x143 of a plain ROM is 0x80 or 0xC0. Only a game that
  * has none has a palette to pick (a zipped ROM is taken to be one that has). */
 static bool rom_is_cgb(const char *path)
@@ -672,19 +667,13 @@ static bool rom_is_cgb(const char *path)
 	fclose(f);
 	return b == 0x80 || b == 0xC0;
 }
-#endif
 
 static int palette_default_of(const char *tag)
 {
-#if defined(PLATFORM_MIYOO)
 	char key[40], name[CFG_STR];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
 	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
-#else
-	(void)tag;
-	return 0;
-#endif
 }
 
 static void palette_default_save(const char *tag, int i)
@@ -701,14 +690,12 @@ static int palette_of(app *a, int sys, const game_entry *g)
 	const char *base, *tag = a->sys.systems[sys].tag;
 
 	if (!gb_palette_tag(tag)) return -1;
-#if defined(PLATFORM_MIYOO)
 	{
 		char rom[LIB_PATH * 2];
 
 		snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
 		if (rom_is_cgb(rom)) return -1;
 	}
-#endif
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
 	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : palette_default_of(tag);
@@ -723,15 +710,11 @@ static void palette_save(const char *tag, const game_entry *g, int i)
 	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or on the Flip a Game Boy shelf's
+/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy shelf's
  * Default Palette. */
 static bool sm_extra_shown(const char *tag)
 {
-	return ds_fill_shown(tag)
-#if defined(PLATFORM_MIYOO)
-	    || gb_palette_tag(tag)
-#endif
-	    ;
+	return ds_fill_shown(tag) || gb_palette_tag(tag);
 }
 
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
@@ -5913,9 +5896,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
-#if defined(PLATFORM_MIYOO)
 		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
-#endif
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -7562,9 +7543,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
-#if defined(PLATFORM_MIYOO)
 static void default_palette_screen(app *a, int sys);
-#endif
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -8559,14 +8538,12 @@ static int menu_shelf_width(app *a)
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
-#if defined(PLATFORM_MIYOO)
 		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
 			int mw;
 			rows[SM_FILL].value = gbpal_label(k);
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
-#endif
 		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
 			int mw;
 			rows[SM_CORE].value = ENGINE_LABEL(k);
@@ -9273,7 +9250,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* The DS's Display: left and right step it, A steps forward, saved
 		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-#if defined(PLATFORM_MIYOO)
 			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
 			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
 				const char *tg = a->sys.systems[a->sys_cursor].tag;
@@ -9282,7 +9258,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				else default_palette_screen(a, a->sys_cursor);
 				return MENU_STAY;
 			}
-#endif
 			ds_fill_step(d ? d : 1);
 			return MENU_STAY;
 		}
@@ -13266,8 +13241,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 	menu_run(a, &st, pal_build, pal_key, &c);
 }
 
-#if defined(PLATFORM_MIYOO)
-/* A Game Boy shelf's Default Palette, from its system menu: the in-game Palette's list, kept for the
+/* A Game Boy shelf's Default Palette, from its system menu (the Flip's, plorpos-f1p.77; every port's, plorpos-ktq): the in-game Palette's list, kept for the
  * shelf. Only a game that has not chosen its own follows it. A keeps the choice; the next launch
  * draws with it. */
 typedef struct { app *a; int sys; } dp_ctx;
@@ -13300,7 +13274,6 @@ static void default_palette_screen(app *a, int sys)
 
 	menu_run(a, &st, dp_build, dp_key, &c);
 }
-#endif
 
 /* The in-game Disc list (plorpos-gkd.47), an .m3u game's own. Same shape as
  * the Palette list above; the disc is kept per game for the next launch. */
