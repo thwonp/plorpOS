@@ -559,10 +559,10 @@ static void system_menu(void)
 		   "Album Art says why it cannot, off the network");
 		ck(mrows[1].live && mrows[4].live,
 		   "and neither Sort By nor Rescan Folder needs one");
-		m.muse_artists = true;
+		m.muse_display_list = true;
 		sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(!strcmp(val(&mrows[3]), "Artist List"), "Display, on the artist list");
-		m.muse_artists = false;
+		ck(!strcmp(val(&mrows[3]), "List"), "Display, on the list");
+		m.muse_display_list = false;
 		for (k = 0; k < mn; k++) {
 			ck(strcmp(mrows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(mrows[k].label, "Display Mode") != 0, "no Display Mode");

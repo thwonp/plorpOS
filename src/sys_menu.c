@@ -79,7 +79,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_DISPLAY:
 					out[k] = (menu_row){ "Display",
-					                     u->muse_artists ? "Artist List" : "Coverflow", true };
+					                     u->muse_display_list ? "List" : "Coverflow", true };
 					break;
 				case SMM_RESCAN:
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };

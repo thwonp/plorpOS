@@ -1221,7 +1221,7 @@ static bool g_muse_favs;
  * it opens and drawn by menu_draw, which paints the visible rows only. Books
  * work the same (authors); the Favorites view filters inside one artist.
  * Show clears the filter. The filter survives a Rescan by artist name. */
-static bool g_muse_artists;           /* Display is Artist List */
+static bool g_muse_listmode;          /* Display is List (plorpos-era) */
 static int g_muse_artist = -1;        /* the artist whose albums are shown, or -1 */
 static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
 static char g_muse_artist_name[128];
@@ -4462,65 +4462,249 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 	}
 }
 
-/* GAMELIST LAYOUT: THE LISTS (plorpos-gwf). Detailed List and Art List draw a
- * game shelf as a column of titles on the left and the focused game's box art
- * on the right, EmulationStation's Detailed theme in this launcher's clothes:
- * the same black backdrop, the accent glow behind the art instead of behind a
- * card, the heart in its fixed seat. Detailed List says the scrape's facts
- * under the art; Art List gives the art the whole height. Muse keeps the
- * coverflow (plorpos-era).
+/* THE LISTS (plorpos-gwf, plorpos-era). One drawer for every list screen:
+ * Gamelist Layout's Detailed List and Art List, and Muse's List display.
+ * A column of rows on the left and, when the list has art, the focused item's
+ * art on the right with a few lines under it - EmulationStation's Detailed
+ * theme in this launcher's clothes: the same black backdrop, the accent glow
+ * behind the art, the heart in its seat. Without art the column is the
+ * screen. A list with tabs (Muse) names them in a footer, L2 and R2 at its
+ * ends.
  *
  * The art is the coverflow's own texture for the card, so the decode stays on
  * the workers and the cache, priming and eviction are the coverflow's too:
  * moving never decodes on the input path, and art that is not in yet leaves
  * the pane empty for the frames it takes. */
 #define GL_PAD (TORTOS_SCREEN_W / 40)
+#define GL_UNDER_MAX 3
 
-/* Year and genre, one line (owner: developer, publisher and players left out). */
-#define GL_FACTS 1
+typedef struct {
+	int key;                 /* the fit cache's: a shelf index + 1, or GL_KEY_* */
+	const char *header;
+	int n, cur;
+	unsigned accent;
+	void *ctx;
+	const char *(*title)(void *ctx, int i);
+	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
+	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
+	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
+	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
+	int nunder;              /* lines under the art; the last one dim */
+	char under[GL_UNDER_MAX][160];
+	const char *const *tabs; /* footer, ntabs names, tab the current one */
+	int ntabs, tab;
+} gl_list;
+
+/* Fit-cache keys for lists that are not a shelf. */
+enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
+       GL_KEY_PICK = -4 };
 
 typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
 
-/* What sits under the art: a gap, then on Detailed List the facts, and on
- * both lists the shelf position, "11 / 156". */
-static int gl_under_lines(void)
+static int gl_footer_h(const gl_list *L)
 {
-	return (GAMELISTS[g_gl].meta ? GL_FACTS : 0) + 1;
+	return L->ntabs > 0 ? ui_font_line(UI_F_META) + GL_PAD / 2 : 0;
 }
 
-static int gl_under_h(void)
-{
-	return GL_PAD / 2 + gl_under_lines() * ui_font_line(UI_F_META);
-}
-
-/* The art box's height: what the pane has left above the lines under it. */
-static int gl_art_h(const gl_geom *g)
-{
-	return g->bottom - g->top - gl_under_h();
-}
-
-static void gl_geometry(gl_geom *g)
+static void gl_geometry(gl_geom *g, const gl_list *L)
 {
 	int head = ui_font_line(UI_F_TITLE);
 
 	g->top = GL_PAD + head + GL_PAD / 2;
-	g->bottom = TORTOS_SCREEN_H - GL_PAD;
+	g->bottom = TORTOS_SCREEN_H - GL_PAD - gl_footer_h(L);
 	g->row_h = ui_font_line(UI_F_LIST) * 4 / 3;
 	g->rows = (g->bottom - g->top) / g->row_h;
 	if (g->rows < 1) g->rows = 1;
-	g->col_w = TORTOS_SCREEN_W * 52 / 100 - GL_PAD * 2;
-	g->pane_x = TORTOS_SCREEN_W * 52 / 100;
-	g->pane_w = TORTOS_SCREEN_W - g->pane_x - GL_PAD;
+	if (L->art) {
+		g->col_w = TORTOS_SCREEN_W * 52 / 100 - GL_PAD * 2;
+		g->pane_x = TORTOS_SCREEN_W * 52 / 100;
+		g->pane_w = TORTOS_SCREEN_W - g->pane_x - GL_PAD;
+	} else {
+		g->col_w = TORTOS_SCREEN_W - GL_PAD * 2;
+		g->pane_x = g->pane_w = 0;
+	}
 }
 
 /* L1/R1's screenful on a list: the rows in view. */
-static int gl_page(void)
+static int gl_rows(const gl_list *L)
 {
 	gl_geom g;
 
-	gl_geometry(&g);
+	gl_geometry(&g, L);
 	return g.rows;
 }
+
+/* What sits under the art: a gap, then its lines. */
+static int gl_under_h(const gl_list *L)
+{
+	return GL_PAD / 2 + L->nunder * ui_font_line(UI_F_META);
+}
+
+/* Where the art sits: its own aspect, fitted to the box above the lines under
+ * it, and the art with those lines centred as one block between the top and
+ * bottom of the screen. Without a texture yet, the whole box - which is also
+ * where the glow goes. */
+static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
+{
+	gl_geom g;
+	int bh, dw, dh, block, w = 0, h = 0;
+	SDL_Texture *t = NULL;
+
+	gl_geometry(&g, L);
+	bh = g.bottom - g.top - gl_under_h(L);
+	dw = g.pane_w;
+	dh = bh;
+	if (L->art && L->n > 0) t = L->art(L->ctx, L->cur, &w, &h);
+	if (t && w > 0 && h > 0) {
+		float k = fminf((float)g.pane_w / w, (float)bh / h);
+
+		dw = (int)(w * k);
+		dh = (int)(h * k);
+	}
+	block = dh + gl_under_h(L);
+	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2,
+	                   (TORTOS_SCREEN_H - gl_footer_h(L) - block) / 2, dw, dh };
+	if (tex) *tex = t;
+}
+
+/* A row's title as it fits, kept: fitting measures the title once per
+ * character it trims, and ten rows of that every frame was most of a frame.
+ * Direct-mapped on the index; a slot is good for one list and width. */
+static struct { int key, idx, w; bool used; char s[192]; } g_gl_fit[64];
+
+static const char *gl_fit(int key, int idx, const char *title, int w)
+{
+	int k = idx & 63;
+
+	if (!g_gl_fit[k].used || g_gl_fit[k].key != key || g_gl_fit[k].idx != idx ||
+	    g_gl_fit[k].w != w) {
+		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
+		g_gl_fit[k].used = true;
+		g_gl_fit[k].key = key;
+		g_gl_fit[k].idx = idx;
+		g_gl_fit[k].w = w;
+	}
+	return g_gl_fit[k].s;
+}
+
+/* A list whose rows changed under the same key (a rename, a rescan, a playlist
+ * edited) has its fitted titles dropped. */
+static void gl_fit_forget(int key)
+{
+	for (int k = 0; k < 64; k++)
+		if (g_gl_fit[k].key == key) g_gl_fit[k].used = false;
+}
+
+/* The tabs: "L2", the names with the current one lit, "R2". */
+static void gl_draw_footer(app *a, const gl_list *L)
+{
+	TTF_Font *f = ui_font(UI_F_META);
+	int y = TORTOS_SCREEN_H - GL_PAD - ui_font_line(UI_F_META);
+	int gap = GL_PAD * 2, total = 0, x, i;
+	SDL_Color ac = { (Uint8)(L->accent >> 16), (Uint8)(L->accent >> 8),
+	                 (Uint8)L->accent, 255 };
+
+	ui_text(a->r, f, "L2", GL_PAD, y, -1, UI_TEXT_DIM);
+	ui_text(a->r, f, "R2", TORTOS_SCREEN_W - GL_PAD, y, 1, UI_TEXT_DIM);
+	for (i = 0; i < L->ntabs; i++) total += ui_text_width(f, L->tabs[i]) + (i ? gap : 0);
+	x = (TORTOS_SCREEN_W - total) / 2;
+	for (i = 0; i < L->ntabs; i++) {
+		int w = ui_text_width(f, L->tabs[i]);
+
+		ui_text(a->r, f, L->tabs[i], x, y, -1, i == L->tab ? ac : UI_TEXT_DIM);
+		if (i == L->tab) {
+			SDL_Rect u = { x, y + ui_font_line(UI_F_META), w, 3 };
+
+			SDL_SetRenderDrawColor(a->r, ac.r, ac.g, ac.b, 255);
+			SDL_RenderFillRect(a->r, &u);
+		}
+		x += w + gap;
+	}
+}
+
+static void gl_draw(app *a, const gl_list *L)
+{
+	TTF_Font *fm = ui_font(UI_F_LIST), *fv = ui_font(UI_F_META);
+	int mline = ui_font_line(UI_F_LIST);
+	int hrad = mline * 2 / 7;
+	int n = L->n, cur = L->cur, first, i;
+	SDL_Color ac = { (Uint8)(L->accent >> 16), (Uint8)(L->accent >> 8),
+	                 (Uint8)L->accent, 255 };
+	gl_geom g;
+	char buf[192];
+	/* Every frame, as draw_game_text does: the marquee clock restarts on a
+	 * cursor change only if it is asked on the frames in between. */
+	unsigned phase = title_phase(a);
+
+	gl_geometry(&g, L);
+	/* Header. Where you are in the list goes under the art. */
+	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf, g.col_w);
+	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+
+	/* The column. The cursor rides the middle row once the list is long
+	 * enough to scroll, so there is always as much ahead as behind. Titles
+	 * start under the header's first letter; a favorite's heart goes there
+	 * instead and pushes only that row's title right (owner). */
+	first = cur - g.rows / 2;
+	if (first > n - g.rows) first = n - g.rows;
+	if (first < 0) first = 0;
+	for (i = first; i < n && i < first + g.rows; i++) {
+		const char *title = L->title(L->ctx, i);
+		const char *val = L->value ? L->value(L->ctx, i) : NULL;
+		int y = g.top + (i - first) * g.row_h;
+		int ty = y + (g.row_h - mline) / 2;
+		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
+		bool fav = L->fav && L->fav(L->ctx, i);
+		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
+		int tw = g.col_w - (tx - GL_PAD);
+
+		if (i == cur) {
+			SDL_Color hc = ac;
+
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			hc.a = 210;
+			ui_round_rect(a->r, &row, g.row_h / 4, hc);
+		}
+		if (fav)
+			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
+			           (float)hrad, i == cur ? UI_TEXT : ac);
+		if (val && *val) {
+			int vw = ui_text_width(fv, val);
+
+			ui_text(a->r, fv, val, GL_PAD + g.col_w, y + (g.row_h - ui_font_line(UI_F_META)) / 2,
+			        1, i == cur ? UI_TEXT : UI_TEXT_DIM);
+			tw -= vw + GL_PAD;
+		}
+		if (i == cur && ui_text_width(fm, title) > tw) {
+			ui_text_marquee(a->r, fm, title, tx, ty, tw, phase, UI_TEXT);
+		} else {
+			ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1,
+			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
+		}
+		/* A tap on a row brings it into focus, as a tap on a card does. */
+		if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+	}
+
+	/* The art and the lines under it, the last one dim. */
+	if (L->art) {
+		SDL_Rect art;
+		SDL_Texture *tex;
+		int y, fl = ui_font_line(UI_F_META), cx = g.pane_x + g.pane_w / 2;
+
+		gl_art_rect(L, &art, &tex);
+		if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
+		y = art.y + art.h + GL_PAD / 2;
+		for (i = 0; i < L->nunder; i++, y += fl)
+			ui_text(a->r, fv, L->under[i], cx, y, 0,
+			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
+	}
+	if (L->ntabs > 0) gl_draw_footer(a, L);
+}
+
+/* ---- Gamelist Layout: a game shelf as a list (plorpos-gwf) ---- */
+
+/* Year and genre, one line (owner: developer, publisher and players left out). */
+#define GL_FACTS 1
 
 static bool gl_active(const app *a)
 {
@@ -4528,40 +4712,12 @@ static bool gl_active(const app *a)
 	       !is_muse(&a->sys.systems[a->sys_cursor]);
 }
 
-/* Where the art sits: its own aspect, fitted to the box above the lines under
- * it, and the art with those lines centred as one block between the top and
- * bottom of the screen. Without a
- * texture yet, the whole box - which is also where the glow goes. */
-static void gl_art_rect(app *a, SDL_Rect *out, SDL_Texture **tex)
-{
-	gl_geom g;
-	sysview *v = &a->view[a->sys_cursor];
-	int bh, dw, dh, block, w = 0, h = 0;
-	float cb = 0.0f;
-	SDL_Texture *t = NULL;
-
-	gl_geometry(&g);
-	bh = gl_art_h(&g);
-	dw = g.pane_w;
-	dh = bh;
-
-	if (v->list.count > 0) t = game_get_tex(a, v->cursor, &w, &h, &cb);
-	if (t && w > 0 && h > 0) {
-		float k = fminf((float)g.pane_w / w, (float)bh / h);
-
-		dw = (int)(w * k);
-		dh = (int)(h * k);
-	}
-	block = dh + gl_under_h();
-	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2, (TORTOS_SCREEN_H - block) / 2, dw, dh };
-	if (tex) *tex = t;
-}
-
 /* The facts, read once per focused game rather than per frame: one row from
- * the card's games table, kept until the cursor or the shelf moves. */
+ * the card's games table, kept until the cursor or the shelf moves. Fitted to
+ * `w` when read. */
 static struct { int sys, idx, n; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, { "" } };
 
-static void gl_facts(app *a, sysview *v, int idx)
+static void gl_facts(app *a, sysview *v, int idx, int w)
 {
 	game_meta *m;
 	const system_cfg *gs;
@@ -4581,119 +4737,86 @@ static void gl_facts(app *a, sysview *v, int idx)
 	}
 	if (!n) snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Not scraped yet");
 	g_gl_facts.n = n;
-	{
-		gl_geom g;
+	for (int i = 0; i < n; i++) {
 		char fit[160];
 
-		gl_geometry(&g);
-		for (int i = 0; i < n; i++) {
-			ui_fit_text(ui_font(UI_F_META), g_gl_facts.line[i], fit, sizeof fit, g.pane_w);
-			memcpy(g_gl_facts.line[i], fit, sizeof fit);
-		}
+		ui_fit_text(ui_font(UI_F_META), g_gl_facts.line[i], fit, sizeof fit, w);
+		memcpy(g_gl_facts.line[i], fit, sizeof fit);
 	}
 	free(m);
 }
 
-/* A row's title as it fits the column, kept: fitting measures the title once
- * per character it trims, and ten rows of that every frame was most of a
- * frame. Direct-mapped on the index; a slot is good for one shelf and width. */
-static struct { int sys, idx, w; char s[192]; } g_gl_fit[64];
-
-static const char *gl_fit(app *a, int idx, const char *title, int w)
+static const char *gl_game_title(void *ctx, int i)
 {
-	int k = idx & 63;
+	app *a = ctx;
 
-	if (g_gl_fit[k].sys != a->sys_cursor + 1 || g_gl_fit[k].idx != idx ||
-	    g_gl_fit[k].w != w) {
-		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
-		g_gl_fit[k].sys = a->sys_cursor + 1;      /* 0 = empty slot */
-		g_gl_fit[k].idx = idx;
-		g_gl_fit[k].w = w;
+	return a->view[a->sys_cursor].list.items[i].title;
+}
+
+static bool gl_game_fav(void *ctx, int i)
+{
+	app *a = ctx;
+	const system_cfg *gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, i)];
+
+	return fav_is(gs->tag, a->view[a->sys_cursor].list.items[i].file);
+}
+
+static SDL_Texture *gl_game_art(void *ctx, int i, int *w, int *h)
+{
+	float cb = 0.0f;
+
+	return game_get_tex(ctx, i, w, h, &cb);
+}
+
+/* The game shelf under the cursor as a list. The facts are read here, so a
+ * caller that only wants the art's place (draw_shelf's glow) pays one lookup
+ * per focused game, the same one the draw makes. */
+static void gl_games_list(app *a, gl_list *L)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	const system_cfg *s = &a->sys.systems[a->sys_cursor];
+	gl_geom g;
+
+	memset(L, 0, sizeof *L);
+	L->key = a->sys_cursor + 1;
+	L->header = s->name;
+	L->n = v->list.count;
+	L->cur = v->cursor;
+	L->accent = s->accent;
+	L->ctx = a;
+	L->title = gl_game_title;
+	L->fav = gl_game_fav;
+	L->art = gl_game_art;
+	gl_geometry(&g, L);
+	if (GAMELISTS[g_gl].meta && L->n > 0) {
+		gl_facts(a, v, L->cur, g.pane_w);
+		for (int i = 0; i < g_gl_facts.n; i++)
+			memcpy(L->under[L->nunder++], g_gl_facts.line[i], sizeof L->under[0]);
 	}
-	return g_gl_fit[k].s;
+	snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
+}
+
+/* L1/R1's screenful on a game list. */
+static int gl_page(app *a)
+{
+	gl_list L;
+
+	gl_games_list(a, &L);
+	return gl_rows(&L);
 }
 
 static void draw_games_list(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
-	const system_cfg *s = &a->sys.systems[a->sys_cursor];
-	int n = v->list.count, cur = v->cursor, first, i;
-	TTF_Font *fm = ui_font(UI_F_LIST);
-	int mline = ui_font_line(UI_F_LIST);
-	int hrad = mline * 2 / 7;
-	/* Titles start under the header's first letter; a favorite's heart goes
-	 * there instead and pushes only that row's title right (owner). */
-	gl_geom g;
-	SDL_Rect art;
-	SDL_Texture *tex;
-	char buf[192];
-	/* Every frame, as draw_game_text does: the marquee clock restarts on a
-	 * cursor change only if it is asked on the frames in between. */
-	unsigned phase = title_phase(a);
+	gl_list L;
 
-	gl_geometry(&g);
 	/* The coverflow is not drawn, so it is held at the cursor: nothing waits
 	 * on a move it will never finish, and Coverflow picks up where this is. */
-	cf_reset(&v->cf, cur);
-	prime_toward(a, a->sys_cursor, cur);
+	cf_reset(&v->cf, v->cursor);
+	prime_toward(a, a->sys_cursor, v->cursor);
 	evict_far(v, TEX_KEEP_NEAR);
-
-	/* Header: the shelf. Where you are in it goes under the art. */
-	ui_fit_text(ui_font(UI_F_TITLE), s->name, buf, sizeof buf, g.col_w);
-	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
-
-	/* The column. The cursor rides the middle row once the list is long
-	 * enough to scroll, so there is always as much ahead as behind. */
-	first = cur - g.rows / 2;
-	if (first > n - g.rows) first = n - g.rows;
-	if (first < 0) first = 0;
-	for (i = first; i < n && i < first + g.rows; i++) {
-		game_entry *e = &v->list.items[i];
-		const system_cfg *gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, i)];
-		int y = g.top + (i - first) * g.row_h;
-		int ty = y + (g.row_h - mline) / 2;
-		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
-		SDL_Color ac = { (Uint8)(s->accent >> 16), (Uint8)(s->accent >> 8),
-		                 (Uint8)s->accent, 255 };
-		bool fav = fav_is(gs->tag, e->file);
-		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
-		int tw = g.col_w - (tx - GL_PAD);
-
-		if (i == cur) {
-			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			ac.a = 210;
-			ui_round_rect(a->r, &row, g.row_h / 4, ac);
-			ac.a = 255;
-		}
-		if (fav)
-			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
-			           (float)hrad, i == cur ? UI_TEXT : ac);
-		if (i == cur && ui_text_width(fm, e->title) > tw) {
-			ui_text_marquee(a->r, fm, e->title, tx, ty, tw, phase, UI_TEXT);
-		} else {
-			ui_text(a->r, fm, gl_fit(a, i, e->title, tw), tx, ty, -1,
-			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
-		}
-		/* A tap on a row brings it into focus, as a tap on a card does. */
-		if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
-	}
-
-	/* The art; under it, on Detailed List what the scrape says, then where
-	 * you are in the shelf. */
-	gl_art_rect(a, &art, &tex);
-	if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
-	{
-		int y = art.y + art.h + GL_PAD / 2;
-		int fl = ui_font_line(UI_F_META), cx = g.pane_x + g.pane_w / 2;
-
-		if (GAMELISTS[g_gl].meta && n > 0) {
-			gl_facts(a, v, cur);
-			for (i = 0; i < g_gl_facts.n; i++, y += fl)
-				ui_text(a->r, ui_font(UI_F_META), g_gl_facts.line[i], cx, y, 0, UI_TEXT_SOFT);
-		}
-		snprintf(buf, sizeof buf, "%d / %d", cur + 1, n);
-		ui_text(a->r, ui_font(UI_F_META), buf, cx, y, 0, UI_TEXT_DIM);
-	}
+	gl_games_list(a, &L);
+	gl_draw(a, &L);
 }
 
 static void draw_games(app *a)
@@ -4828,7 +4951,7 @@ static void draw_shelf(app *a)
 		/* The glow behind the focused card. */
 		if (games) {
 			accent = a->sys.systems[a->sys_cursor].accent;
-			if (gl_active(a)) gl_art_rect(a, &focus, NULL);
+			if (gl_active(a)) { gl_list L; gl_games_list(a, &L); gl_art_rect(&L, &focus, NULL); }
 			else
 			cf_focus_rect(is_muse(&a->sys.systems[a->sys_cursor]) ? &CF_LAYOUT_ALBUMS
 			              : &CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
@@ -6138,8 +6261,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
-		u.muse_artists = u.muse && g_muse_artists;
-		u.muse_list = u.muse_artists && muse_artist_filter() < 0;
+		u.muse_display_list = u.muse && g_muse_listmode;
+		u.muse_list = u.muse_display_list && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -8789,7 +8912,7 @@ static int menu_shelf_width(app *a)
 			if (disp >= 0) {
 				int mw;
 
-				rows[disp].value = "Artist List";
+				rows[disp].value = "Coverflow";
 				mw = menu_measure(rows, n, heading);
 				if (mw > w) w = mw;
 			}
@@ -9507,8 +9630,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				 * shelf under the menu follows when it closes
 				 * (muse_display_sync). */
 				if (d || key == IN_ACCEPT) {
-					g_muse_artists = !g_muse_artists;
-					db_set_str(db_dev(), "muse.display", g_muse_artists ? "artists" : "coverflow");
+					g_muse_listmode = !g_muse_listmode;
+					db_set_str(db_dev(), "muse.display", g_muse_listmode ? "list" : "coverflow");
 				}
 				return MENU_STAY;
 			} else {
@@ -11850,7 +11973,7 @@ static void muse_fav_hold(sysview *v)
 	muse_refilter(v, al);
 }
 
-/* ---- Muse: Display, Artist List (plorpos-mn1; design at g_muse_artists) ------ */
+/* ---- Muse: Display, Artist List (plorpos-mn1; design at g_muse_listmode) ------ */
 
 /* The artist the shelf is filtered to, or -1. A Rescan renumbers the library,
  * so an index from an older one is found again by name, and given up when the
@@ -11986,7 +12109,7 @@ static int muse_artist_pick(app *a, int start)
 			how = muse_menu(a);
 			if (how == MUSE_CLOSE) break;
 			if (!muse_shelf_refind(a)) break;
-			if (!g_muse_artists) { ret = MP_FLAT; break; }
+			if (!g_muse_listmode) { ret = MP_FLAT; break; }
 			if (how == MUSE_REBUILT || books != muse_books_shown()) { build = true; sel = 0; }
 			ui_redraw_now();
 			continue;
@@ -12030,11 +12153,11 @@ static bool muse_to_picker(app *a, sysview **v, int start, int album)
  * all albums when it is off. False when Muse is to close. */
 static bool muse_display_sync(app *a, sysview **v)
 {
-	if (g_muse_artists && muse_artist_filter() < 0) {
+	if (g_muse_listmode && muse_artist_filter() < 0) {
 		muse_set_filter(*v, -1, -1);
 		return muse_to_picker(a, v, -1, -1);
 	}
-	if (!g_muse_artists && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
+	if (!g_muse_listmode && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
 	return true;
 }
 
@@ -12084,7 +12207,7 @@ static void muse_shelf_screen(app *a, bool now)
 	/* Display: Artist List. Opened on the playing album's artist when music
 	 * is on, whose coverflow B then returns to; otherwise the list first. */
 	g_muse_artist = -1;
-	if (g_muse_artists) {
+	if (g_muse_listmode) {
 		int pa = playing >= 0 && g_muse.albums[playing].book == muse_books_shown()
 		         ? muse_artist_of(playing) : -1;
 
@@ -12126,7 +12249,7 @@ static void muse_shelf_screen(app *a, bool now)
 			if (muse_switch_unwind(a)) break;
 			continue;
 		}
-		if (a->in.pressed[IN_BACK] && g_muse_artists && muse_artist_filter() >= 0) {
+		if (a->in.pressed[IN_BACK] && g_muse_listmode && muse_artist_filter() >= 0) {
 			/* One level up: the artist list, standing on this artist. */
 			int ar = muse_artist_filter();
 
@@ -15486,7 +15609,7 @@ static void update_games(app *a)
 	 * three games the obvious `(cursor - CF_WINDOW + n*2) % n` lands on -1 and
 	 * the draw walks off the front of the list. */
 	{
-		int page = vert ? gl_page() : CF_WINDOW;
+		int page = vert ? gl_page(a) : CF_WINDOW;
 
 		if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - page) % n + n) % n;
 		if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + page) % n;
@@ -16299,7 +16422,8 @@ static void build_muse_shelf(app *a, bool bg)
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
 		g_muse_books = !strcmp(show, "books");
 		db_get_str(db_dev(), "muse.display", show, sizeof show, "coverflow");
-		g_muse_artists = !strcmp(show, "artists");
+		/* "artists" is Artist List, which List replaced (plorpos-era). */
+		g_muse_listmode = !strcmp(show, "list") || !strcmp(show, "artists");
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;

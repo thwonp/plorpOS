@@ -133,8 +133,8 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
 typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_DISPLAY, SMM_RESCAN,
                SMM_SETTINGS } sm_muse_row;
 #define SM_MUSE_ROWS 7
-/* Display (plorpos-mn1): Coverflow, the shelf of albums, or Artist List, a
- * list of artists whose A opens that artist's albums as a coverflow. */
+/* Display (plorpos-mn1, plorpos-era): Coverflow, the shelf of albums, or
+ * List: Artists, Albums and Playlists tabs drawn as lists, L2/R2 between. */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has
  * both. Returns how many. The build and the key handler both ask this, so the
@@ -178,7 +178,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	bool muse_both;          /* and the card has both kinds */
-	bool muse_artists;       /* and its Display is Artist List */
+	bool muse_display_list;  /* and its Display is List */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
