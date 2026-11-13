@@ -72,39 +72,8 @@ const cf_layout CF_LAYOUT_SINGLE = {
 /* The games row: box art, so the cards are taller and there are more of them
  * in view. The title is drawn above the row, which is why it sits slightly
  * lower than the systems row. */
-/* Vertical: ONE CARD AT A TIME, sliding in from off the edge.
- *
- * 768 of height against 1024 of width means a stack cannot show three cards
- * the way the horizontal row does, so it stops trying and gives the whole
- * screen to one. The neighbors are not shrunk or faded, they are simply put
- * past the edge by a step wider than the screen - the same thing
- * CF_LAYOUT_SINGLE does, on the other axis.
- *
- * The card frame is taller than the art is: 0.88 is 668px tall and 0.78 aspect
- * makes it 521 wide, and a square console photograph contained in that ends at
- * y=609, which is what keeps it clear of the system name at 618. The frame
- * overlapping that line costs nothing because the bottom of the frame is
- * empty. */
-const cf_layout CF_LAYOUT_SYSTEMS_V = {
-	.size = 0.88f, .aspect = 0.78f, .step = 1.30f, .side_scale = 1.00f,
-	.center_y = 0.45f, .tilt = 0.0f, .reflect = 1.34f,
-	.vertical = true, .side_alpha = 255, .strips = 16, .wide_area = 1.00f,
-};
-
 /* Both games layouts' share of the screen beyond the stage (cf_layout.grow). */
 #define GAMES_GROW 0.60f
-
-/* Box art at the SAME SIZE the horizontal row uses, unlike the systems row
- * above. A console is one of eleven and can afford to dominate the screen; box
- * art is one of hundreds, and blown up to match it just looks oversized. The
- * step has to grow to compensate - it counts card heights, so a smaller card
- * needs more of them to put the neighbors past a 768 screen. */
-const cf_layout CF_LAYOUT_GAMES_V = {
-	.size = 0.60f, .aspect = 0.72f, .step = 1.50f, .side_scale = 1.00f,
-	.center_y = 0.47f, .tilt = 0.0f, .reflect = 1.52f,
-	.vertical = true, .side_alpha = 255, .strips = 16,
-	.equal_area = true, .grow = GAMES_GROW,
-};
 
 const cf_layout CF_LAYOUT_GAMES = {
 	.size = 0.60f, .aspect = 0.72f, .step = 0.74f, .side_scale = 0.62f,
@@ -126,12 +95,6 @@ const cf_layout CF_LAYOUT_ALBUMS = {
 	.side_alpha = 150, .strips = 16,
 };
 
-const cf_layout CF_LAYOUT_ALBUMS_V = {
-	.size = 0.60f, .aspect = 1.00f, .step = 1.50f, .side_scale = 1.00f,
-	.center_y = 0.54f, .tilt = 0.0f, .reflect = 1.52f,
-	.vertical = true, .side_alpha = 255, .strips = 16,
-};
-
 /* The card's height on this screen: the stage's, plus its share of the rest. */
 #if defined(PLATFORM_MIYOO)
 /* Flat cards leave the reflection's space empty, so the Flip centres the card
@@ -142,7 +105,7 @@ const cf_layout CF_LAYOUT_ALBUMS_V = {
 static float flip_dy(const cf_layout *lay)
 {
 	/* draw_systems passes a copy (sys_layout), so match by value */
-	if (!lay->vertical && lay->center_y == CF_LAYOUT_SYSTEMS.center_y) return 26.0f;
+	if (lay->center_y == CF_LAYOUT_SYSTEMS.center_y) return 26.0f;
 	if (lay == &CF_LAYOUT_GAMES)   return 33.0f;
 	return 0.0f;
 }
@@ -366,65 +329,6 @@ void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 	}
 	cf->t0 = cf_now();
 	cf->active = true;
-}
-
-float cf_label(const coverflow *cf, int count, int *index)
-{
-	float u, ms;
-	float where;
-	int i;
-
-	if (index) *index = 0;
-	if (count <= 0) return 0.0f;
-
-	/* FROM TIME, NOT FROM POSITION. The first version read the fade off
-	 * `pos`, which is the eased position - and Vertical eases with
-	 * smoothstep, so the shelf crawls at both ends and races through the
-	 * middle. The alpha inherited that shape: it hung near full while nothing
-	 * moved, fell off a cliff, then POPPED back to full and crept the rest of
-	 * the way. The fade out looked slow and the fade in did not look like a
-	 * fade at all.
-	 *
-	 * `u` is the same linear clock step_anim measures the ease against, so
-	 * the crossfade is even whatever curve the cards are riding.
-	 *
-	 * It also fixes something the position version got wrong for free: a move
-	 * across several cards is ONE fade, out and back, rather than a flash per
-	 * card crossed. Holding the d-pad strobed the label before. */
-	if (!cf->active) {
-		where = cf->pos;
-		u = -1.0f;
-	} else {
-		ms = cf->anim_ms > 0.0f ? cf->anim_ms : ANIM_MS;
-		u = (float)(cf_now() - cf->t0) / ms;
-		if (u < 0.0f) u = 0.0f;
-		if (u > 1.0f) u = 1.0f;
-		/* The name swaps at the halfway mark, where it is invisible. */
-		where = u < 0.5f ? cf->from : cf->target;
-	}
-
-	i = (int)floorf(where + 0.5f) % count;
-	if (i < 0) i += count;
-	if (index) *index = i;
-
-	if (u < 0.0f) return 1.0f;
-
-	/* GONE BEFORE THE CARD ARRIVES, BACK AFTER IT HAS LEFT.
-	 *
-	 * Spanning the whole move was wrong for the reason Eric spotted: Vertical
-	 * slides the console straight through y=618, where the name is. The text
-	 * is drawn over the card, but a third of its opacity over a lit console
-	 * reads as being behind it, and the fade-in finished while the card was
-	 * still crossing - so the name never appeared to arrive, it just resolved
-	 * out of a smear.
-	 *
-	 * So the crossfade lives in the first and last CF_LABEL_EDGE of the move
-	 * and the middle is empty. The card crosses an empty strip, the swap
-	 * happens where nothing is drawn anyway, and the new name fades up on a
-	 * clear background once the card has gone by. */
-	if (u <= CF_LABEL_EDGE)        return 1.0f - u / CF_LABEL_EDGE;
-	if (u >= 1.0f - CF_LABEL_EDGE) return (u - (1.0f - CF_LABEL_EDGE)) / CF_LABEL_EDGE;
-	return 0.0f;
 }
 
 void cf_stage(coverflow *cf, float from, float to, float u)
@@ -706,8 +610,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 	int top = (screen_h - CF_STAGE_H) / 2;
 	float ch = card_h(lay, screen_h);
 	float cw = ch * lay->aspect;
-	/* Spacing counts the card's extent along the axis it is stacked on. */
-	float step = (lay->vertical ? ch : cw) * lay->step;
+	float step = cw * lay->step;
 	float cx = screen_w * 0.5f;
 	float cy = top + CF_STAGE_H * lay->center_y + flip_dy(lay);
 
@@ -775,8 +678,8 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 		int tw = 0, th = 0;
 		float cb = 1.0f;
 		SDL_Texture *tex = get_tex(ctx, slots[a].item, &tw, &th, &cb);
-		float x = lay->vertical ? cx : cx + d * step;
-		float y = lay->vertical ? cy + d * step : cy;
+		float x = cx + d * step;
+		float y = cy;
 		float hw = cw * 0.5f * scale, hh = ch * 0.5f * scale;
 		if (!tex) continue;
 		draw_card(r, tex, tw, th, cb, x, y, hw, hh, ang, alpha, lay);
@@ -787,8 +690,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 			int n = (int)lroundf(d + cf->pos - cf->target);
 			SDL_Rect hr = { (int)(x - hw), (int)(y - hh), (int)(hw * 2), (int)(hh * 2) };
 
-			ui_hit(&hr, lay->vertical ? (n < 0 ? IN_UP : IN_DOWN)
-			                          : (n < 0 ? IN_LEFT : IN_RIGHT), n < 0 ? -n : n);
+			ui_hit(&hr, n < 0 ? IN_LEFT : IN_RIGHT, n < 0 ? -n : n);
 		}
 	}
 	return cf->active;

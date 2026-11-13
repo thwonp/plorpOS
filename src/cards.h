@@ -95,53 +95,46 @@ static inline int cards_step(int i, int d)
 	return i < 0 ? i + n : i;
 }
 
-/* THE ORIGIN IS THE TOP LEFT, and the index grows rightward and downward:
- * index 0 at the left of the row, and at the top of the vertical shelf, so
- * down advances there the way right does here. cf_draw, ui_rail_v and the
- * d-pad all follow it.
+/* Gamelist Layout (UI Settings): how a game shelf is drawn. The systems shelf
+ * is always the coverflow; Muse keeps its own (plorpos-era).
  *
- * Until 2026-09-30 (plorpos-gkd.45) the vertical keys and rail ran bottom-up,
- * a rule left over from when Vertical was a cube, while cf_draw had long
- * stacked the cards top-down - so the next card came in from below on UP,
- * which read as inverted. Anything that reads as backwards in one direction
- * should be checked against this rule before being corrected.
+ * Coverflow is the angled row. The two lists put the games in a column on the
+ * left and the focused game's box art on the right; Detailed List adds the
+ * scrape's facts under the art, Art List leaves them out. Each list is one row
+ * here and nothing else, so dropping one is deleting its row (plorpos-gwf).
  *
- * Which way a shelf runs. Its own setting rather than more entries in the
- * table above, because it is orthogonal to the art: all three themes read
- * sensibly either way, so folding it in would mean six presets to name and
- * keep consistent instead of three plus a direction. Applies to the games
- * shelf as well as the systems one. */
-#define CARDS_DIR_DEFAULT "horizontal"
+ * "horizontal"/"vertical" (UI Direction, removed 2026-11-13) and Cubic's
+ * "both" before it are unknown ids now and read as the default. */
+#define GAMELIST_DEFAULT "coverflow"
 
 typedef struct {
 	const char *id;
 	const char *name;
-	bool vertical;
-} card_dir;
+	bool list;     /* the column + art pane rather than the coverflow */
+	bool meta;     /* facts under the art */
+} gamelist_layout;
 
-static const card_dir CARD_DIRS[] = {
-	{ "horizontal", "Horizontal", false },
-	{ "vertical",   "Vertical",   true  },
-	/* "both" (Cubic) was removed 2026-09-30 (plorpos-gkd.29). A stored "both"
-	 * is an unknown id and reads as the default, Horizontal. */
+static const gamelist_layout GAMELISTS[] = {
+	{ "coverflow", "Coverflow",     false, false },
+	{ "detailed",  "Detailed List", true,  true  },
+	{ "artlist",   "Art List",      true,  false },
 };
-#define CARD_DIR_COUNT ((int)(sizeof CARD_DIRS / sizeof CARD_DIRS[0]))
+#define GAMELIST_COUNT ((int)(sizeof GAMELISTS / sizeof GAMELISTS[0]))
 
-static inline int cards_dir_index(const char *id)
+static inline int gamelist_index(const char *id)
 {
 	int i;
 
 	if (id && *id)
-		for (i = 0; i < CARD_DIR_COUNT; i++)
-			if (!strcmp(CARD_DIRS[i].id, id)) return i;
+		for (i = 0; i < GAMELIST_COUNT; i++)
+			if (!strcmp(GAMELISTS[i].id, id)) return i;
 	return 0;
 }
 
-static inline int cards_dir_step(int i, int d)
+static inline int gamelist_step(int i, int d)
 {
-	int n = CARD_DIR_COUNT;
+	int n = GAMELIST_COUNT;
 
-	if (n <= 0) return 0;
 	i = (i + d) % n;
 	return i < 0 ? i + n : i;
 }

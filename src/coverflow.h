@@ -44,11 +44,6 @@
  * and whatever the screen has beyond it is split above and below. */
 #define CF_STAGE_H 768
 
-/* How much of a move the label's crossfade uses at each end, leaving the
- * middle empty. See cf_label: the card crosses where the text is, so the text
- * has to be gone before it gets there. */
-#define CF_LABEL_EDGE 0.30f
-
 typedef struct {
 	float size;       /* card height as a fraction of screen height */
 	float aspect;     /* card width / card height */
@@ -63,11 +58,6 @@ typedef struct {
 	 * screen's. A reflection that touches reads as the object continuing;
 	 * a small gap reads as a surface it is standing on. */
 	float reflect_gap;
-	/* Lay the row down the screen instead of across it. The cards, the
-	 * scaling and the reflections are unchanged - only which axis the
-	 * neighbors are offset along, and `step` then counts card HEIGHTS rather
-	 * than widths, because that is the direction they are spaced in. */
-	bool vertical;
 	/* Size the art to a constant AREA from its own aspect, instead of
 	 * containing it inside the frame. See draw_card. Games only: the console
 	 * photos all share one squared canvas, so there is nothing for it to fix
@@ -93,12 +83,6 @@ typedef struct {
 } cf_layout;
 
 extern const cf_layout CF_LAYOUT_SYSTEMS;
-/* The same two rows stood on end, for the Vertical direction. Separate tables
- * rather than a flag applied to the others: the screen is 1024x768, so a card
- * sized to fill the width leaves no room above and below, and every number has
- * to be chosen again rather than reused. */
-extern const cf_layout CF_LAYOUT_SYSTEMS_V;
-extern const cf_layout CF_LAYOUT_GAMES_V;
 extern const cf_layout CF_LAYOUT_GAMES;
 /* The systems row again, one at a time and flat. Systems only: box art keeps
  * the angled row. */
@@ -106,7 +90,6 @@ extern const cf_layout CF_LAYOUT_SINGLE;
 /* Muse's shelf, row and column: square frames for album covers.
  * See coverflow.c. */
 extern const cf_layout CF_LAYOUT_ALBUMS;
-extern const cf_layout CF_LAYOUT_ALBUMS_V;
 
 /* Where the focused card sits on screen, so the caller can put a glow behind
  * it and lay text out against it without duplicating the geometry. */
@@ -174,22 +157,6 @@ typedef struct {
  * uses it to decode that window while the departure is still being drawn, so
  * the move lands on a card that is already there. */
 int cf_landing(const coverflow *cf, int count);
-
-/* Which item a label under the shelf should be describing right now, and how
- * visible it should be: 1.0 at rest, falling to 0 at the midpoint of a move.
- *
- * A LABEL DRAWN FROM THE CURSOR ARRIVES BEFORE THE SHELF DOES. The cursor
- * changes the instant a button is pressed and the cards take ANIM_MS to catch
- * up, so the name of the system you are moving TO sits under the card you are
- * still looking at. The horizontal row hides it - seven cards move at once and
- * the eye is on them - but Vertical shows one card filling the screen, and
- * there the text is the only thing that jumps.
- *
- * Stateless, which is the point: the item is whatever `pos` is nearest, so it
- * changes at the halfway mark, and the alpha is zero exactly there. Nothing
- * has to remember the name it was showing, and a move interrupted halfway
- * needs no unwinding. */
-float cf_label(const coverflow *cf, int count, int *index);
 
 /* Catch a move `u` of the way through, from `from` to `to`. For the shot
  * harness: a still frame cannot show anything that only exists DURING a move,

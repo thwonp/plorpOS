@@ -1140,7 +1140,7 @@ static SDL_Texture *load_image(SDL_Renderer *r, const char *path, int *w, int *h
  * runs per card per frame and the shelf should not ask the database how to
  * draw itself. */
 static int g_cards;
-static int g_dir;
+static int g_gl;     /* Gamelist Layout, an index into GAMELISTS */
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
 /* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
@@ -4104,33 +4104,10 @@ static void draw_background(app *a)
  * feel immediate. */
 static void shelf_pacing(coverflow *cf)
 {
-	if (CARD_DIRS[g_dir].vertical) {
-		/* THE DURATION IS FIXED BUT THE DISTANCE IS NOT. ANIM_MS is 240ms
-		 * whatever the travel, and Vertical shows one card at a time, so a
-		 * step moves 878px where the horizontal row moves 400. At the shared
-		 * default that is 2.2x the speed, which reads as too fast AND as
-		 * jerky - the frame rate is unchanged, so covering twice the ground
-		 * means half as many frames per pixel.
-		 *
-		 * 360ms is 2.4 px/ms against the horizontal row's 1.7 - deliberately
-		 * quicker than matching, because one card filling the screen carries
-		 * no neighbors to read on the way past and the travel is dead time.
-		 * 420 matched the row exactly and felt sluggish. Smooth rather than
-		 * out-cubic because out-cubic spends its speed at the start, and over
-		 * a throw this long that is a lurch before the settle. */
-		cf->anim_ms = 360.0f;
-		cf->ease = CF_EASE_SMOOTH;
-		cf->chase = false;
-		/* Two, not the row's eight. Vertical puts ONE card on the screen at a
-		 * time, so a card of travel is a whole screen of travel; eight would
-		 * be a full-screen blur rather than a departure. */
-		cf->glide = 2.0f;
-	} else {
-		cf->anim_ms = 0.0f;
-		cf->ease = CF_EASE_OUT_CUBIC;
-		cf->chase = false;
-		cf->glide = (float)CF_WARM_CARDS;
-	}
+	cf->anim_ms = 0.0f;
+	cf->ease = CF_EASE_OUT_CUBIC;
+	cf->chase = false;
+	cf->glide = (float)CF_WARM_CARDS;
 }
 
 /* A systems layout carrying the theme's reflection gap.
@@ -4181,9 +4158,7 @@ static void draw_systems(app *a)
 	/* Systems only. The games shelf keeps the angled row whatever this says:
 	 * box art is a wall of many, and one cover per screen would turn picking
 	 * a game into paging through a catalog. */
-	/* Vertical stacks the same row down the screen. */
-	cf_layout lay = sys_layout(CARD_DIRS[g_dir].vertical
-	                           ? &CF_LAYOUT_SYSTEMS_V : &CF_LAYOUT_SYSTEMS);
+	cf_layout lay = sys_layout(&CF_LAYOUT_SYSTEMS);
 
 	cf_focus_rect(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
@@ -4199,28 +4174,10 @@ static void draw_systems(app *a)
 	else sys_prefetch(a);
 #endif
 
-	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
-	 *
-	 * Vertical crossfades them: one card fills the screen there, so a name
-	 * that changed the instant the button went down sat under a console that
-	 * had not started moving - the only thing on screen ahead of the motion.
-	 * cf_label answers both questions from the shelf's own position, so the
-	 * name swaps while it is invisible and nothing has to remember the old
-	 * one. The horizontal row keeps the cursor and the instant change: seven
-	 * cards move at once there and the eye is on them, and fading the name
-	 * would be a second thing happening for no reason.
-	 *
-	 * The count follows the name, not the cursor, or a move would show the
-	 * old system's name over the new system's game count. */
+	/* The system the words below describe: the cursor's, changing the instant
+	 * the button goes down - seven cards move at once and the eye is on them. */
 	const system_cfg *label = s;
 	float label_a = 1.0f;
-
-	if (CARD_DIRS[g_dir].vertical) {
-		int li = 0;
-
-		label_a = cf_label(&a->cf_sys, a->sys.count, &li);
-		if (li >= 0 && li < a->sys.count) label = &a->sys.systems[li];
-	}
 
 	/* Art that does not name itself gets named here, in the gap between the
 	 * card and the count, which is where the classic cards carry it. */
@@ -4264,9 +4221,8 @@ static void draw_systems(app *a)
 	}
 	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0,
 	        ui_fade(UI_TEXT_DIM, label_a));
-	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
-		(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
-		 s->accent, rail_sys_hue, a);
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
+	        s->accent, rail_sys_hue, a);
 }
 
 /* Milliseconds since the focused game last changed.
@@ -4494,12 +4450,8 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			snprintf(count, sizeof count, "Favorites  \xC2\xB7  %d / %d", idx + 1, v->list.count);
 		else
 			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
-		if (CARD_DIRS[g_dir].vertical)
-			ui_text(a->r, ui_font(UI_F_META), count, 24, STAGE_Y + 700,
-			        -1, UI_TEXT_DIM);
-		else
-			ui_text(a->r, ui_font(UI_F_META), count,
-			        TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0, UI_TEXT_DIM);
+		ui_text(a->r, ui_font(UI_F_META), count,
+		        TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0, UI_TEXT_DIM);
 	} else {
 		char nfit[192];
 
@@ -4521,9 +4473,7 @@ static void draw_games(app *a)
 	const cf_layout *row = albums ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
 
 	if (cf_draw(&v->cf, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->list.count,
-	            game_get_tex, a,
-	            !CARD_DIRS[g_dir].vertical ? row
-	            : albums ? &CF_LAYOUT_ALBUMS_V : &CF_LAYOUT_GAMES_V))
+	            game_get_tex, a, row))
 		ui_redraw_now();
 	/* Warm where the move is about to cut to, one card per frame, underneath
 	 * the departure that is still being drawn. Eviction waits: the cursor is
@@ -4537,9 +4487,8 @@ static void draw_games(app *a)
 	else evict_cut(v, PRIME_HALF_MAX, CF_HALF_WINDOW + 1);
 
 	draw_game_text(a, v, s, v->cursor);
-	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
-		(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
-		 s->accent, NULL, NULL);
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
+	        s->accent, NULL, NULL);
 }
 
 /* The shelf, without presenting it: the options menu draws over a live one, so
@@ -5964,7 +5913,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.ss_in     = ss_signed_in();
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
 		u.cards     = CARD_SETS[g_cards].name;
-		u.cards_dir = CARD_DIRS[g_dir].name;
+		u.gamelist  = GAMELISTS[g_gl].name;
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
@@ -8452,11 +8401,10 @@ static void about_screen(app *a)
 }
 
 /* Which page the shelf's controls are described on. See controls.h: the page
- * follows UI Direction, because which axis moves is what that setting does. */
+ * follows Gamelist Layout, because which axis moves is what that setting does. */
 static ctl_dir controls_dir(void)
 {
-	if (CARD_DIRS[g_dir].vertical) return CTL_VERTICAL;
-	return CTL_HORIZONTAL;
+	return GAMELISTS[g_gl].list ? CTL_LIST : CTL_COVERFLOW;
 }
 
 /* MENU > Controls: what every button does, a page per place. Read-only like
@@ -9196,8 +9144,8 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	/* Which way both shelves run. Only the cards' positions change, not the
 	 * textures, so nothing is dropped and there is nothing to rebuild. */
 	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
-		g_dir = cards_dir_step(g_dir, d ? d : 1);
-		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		g_gl = gamelist_step(g_gl, d ? d : 1);
+		db_set_str(db_dev(), "gamelist_layout", GAMELISTS[g_gl].id);
 		return MENU_STAY;
 	}
 
@@ -11873,9 +11821,7 @@ static bool muse_display_sync(app *a, sysview **v)
 static void muse_shelf_screen(app *a, bool now)
 {
 	int prev_screen = a->screen, prev_sys = a->sys_cursor;
-	bool vert = CARD_DIRS[g_dir].vertical;
-	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
-	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
+	in_button back = IN_LEFT, fwd = IN_RIGHT, jup = IN_UP, jdn = IN_DOWN;
 	sysview *v;
 	int muse = -1, i, playing;
 	bool done = false, y_down = false, y_spent = false;
@@ -15179,10 +15125,7 @@ static void update_systems(app *a)
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
 	 * directions, and only the press says which. */
-	/* The d-pad axis follows the shelf. Vertically the list runs down the
-	 * screen, first at the top, so down advances - see cards.h. */
-	in_button back = CARD_DIRS[g_dir].vertical ? IN_UP : IN_LEFT;
-	in_button fwd  = CARD_DIRS[g_dir].vertical ? IN_DOWN : IN_RIGHT;
+	in_button back = IN_LEFT, fwd = IN_RIGHT;
 	int dir = 0;
 
 	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
@@ -15292,7 +15235,7 @@ static void update_games(app *a)
 	 * reassigned onto the other: stepping always runs along the row, and the
 	 * letter jump always runs across it. Turning the shelf turns the d-pad
 	 * with it and nothing is left doing two jobs. */
-	bool vert = CARD_DIRS[g_dir].vertical;
+	bool vert = GAMELISTS[g_gl].list;
 	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	int dir = 0;
@@ -16331,8 +16274,7 @@ static const char *shot_cheevos_game = "Hagane: The Final Conflict";
 static int shot_syn;       /* --synopsis: the card a scraped game opens */
 static int shot_info;
 /* --controls [page] draws MENU > Controls, page 0-3, over whichever screen
- * --screen asked for: the page follows UI Direction, so this is the only way
- * to look at all three without setting the device three times. */
+ * --screen asked for: the page follows Gamelist Layout. */
 static int shot_controls = -1;
 static int shot_art;
 static const char *shot_art_now = "Legend of Zelda, The - A Link to the Past (USA)";
@@ -17193,8 +17135,8 @@ int main(int argc, char *argv[])
 		char set[CFG_STR];
 		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
 		g_cards = cards_index(set);
-		db_get_str(db_dev(), "cards_dir", set, sizeof set, CARDS_DIR_DEFAULT);
-		g_dir = cards_dir_index(set);
+		db_get_str(db_dev(), "gamelist_layout", set, sizeof set, GAMELIST_DEFAULT);
+		g_gl = gamelist_index(set);
 	}
 	a.sys_cursor = 0;
 	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");

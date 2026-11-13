@@ -950,37 +950,6 @@ void ui_rail(SDL_Renderer *r, int screen_w, int screen_h, float index, int count
 		         false, step, blend, count, rgb, hue, ctx);
 }
 
-void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int count,
-               unsigned rgb, ui_rail_hue hue, void *ctx)
-{
-	int w = UI_BAR_H, x = 23;
-	int track_y = 90, track_h = screen_h - track_y * 2;
-	SDL_Rect track;
-	int seg_h, off, lap;
-	float o, fl, step, blend;
-
-	(void)screen_w;
-	if (count <= 1) return;
-	seg_h = track_h / count;
-	if (seg_h < 18) seg_h = 18;
-	o = rail_at(index, count, track_h, seg_h, &fl);
-	off = (int)(o + 0.5f);
-	lap = (int)(fl + 0.5f);
-	step = fl / (float)count;
-	blend = rail_blend(index);
-	/* Top-down, like the shelf beside it: the first item at the top. */
-	track = (SDL_Rect){ x, track_y, w, track_h };
-
-	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-	SDL_SetRenderDrawColor(r, 255, 255, 255, 16);
-	SDL_RenderFillRect(r, &track);
-	rail_seg(r, &track, (SDL_Rect){ x, track_y + off, w, seg_h },
-	         true, step, blend, count, rgb, hue, ctx);
-	if (off > track_h - seg_h)
-		rail_seg(r, &track, (SDL_Rect){ x, track_y + off - lap, w, seg_h },
-		         true, step, blend, count, rgb, hue, ctx);
-}
-
 void ui_round_rect(SDL_Renderer *r, const SDL_Rect *q, int radius, SDL_Color col)
 {
 	SDL_RendererInfo info;

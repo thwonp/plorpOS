@@ -101,7 +101,7 @@ static const db_default device_defaults[] = {
 	{ "font",       "quicksand" },   /* UI Settings > Body Font (plorpos-8m1.3) */
 	{ "headfont",   "fredoka" },     /* UI Settings > Header Font (plorpos-3yv.60) */
 	{ "cards",      CARDS_DEFAULT },
-	{ "cards_dir",  CARDS_DIR_DEFAULT },
+	{ "gamelist_layout", GAMELIST_DEFAULT },
 	{ "sys_order",  "year" },  /* SYS_ORDER_DEFAULT, config.h */
 };
 

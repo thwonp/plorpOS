@@ -194,7 +194,7 @@ typedef struct {
 	bool        ss_in;
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
-	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
+	const char *gamelist;    /* how game shelves draw, from GAMELISTS */
 	const char *font;        /* the body face's name (plorpos-8m1.3) */
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */

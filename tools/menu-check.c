@@ -219,7 +219,7 @@ static void tortos_menu_offline(void)
 	memset(&u, 0, sizeof u);
 	u.wifi = WIFI_OFF;
 	u.cards = "Plain Jane";
-	u.cards_dir = "Horizontal";
+	u.gamelist = "Coverflow";
 	u.sys_order = "Year";
 	u.auto_off = 120;
 	n = sys_menu_build(&u, rows, &b, &heading);
@@ -257,8 +257,8 @@ static void tortos_menu_offline(void)
 	n = sys_menu_ui_build(&u, rows, &heading);
 	ck(n == US_ROWS, "with a Ports shelf, one row more");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
-	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
-	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
+	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
+	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
 	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
 	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
@@ -1186,19 +1186,18 @@ static void card_sets(void)
 	ck(cards_index("") == 0, "so does an empty one");
 	ck(cards_index(NULL) == 0, "and so does none at all");
 
-	printf("which way the shelves run:\n");
-	ck(CARD_DIR_COUNT == 2, "two directions");
-	ck(!strcmp(CARD_DIRS[0].id, CARDS_DIR_DEFAULT),
-	   "the first is the default one");
-	ck(!CARD_DIRS[0].vertical, "which is the horizontal row the shelf has always been");
-	ck(CARD_DIRS[1].vertical, "and the other one actually differs");
-	ck(cards_dir_index("vertical") == 1, "a known id selects its direction");
+	printf("gamelist layouts:\n");
+	ck(GAMELIST_COUNT == 3, "three layouts");
+	ck(!strcmp(GAMELISTS[0].id, GAMELIST_DEFAULT), "the first is the default one");
+	ck(!GAMELISTS[0].list, "which is the coverflow the shelf has always been");
+	ck(GAMELISTS[1].list && GAMELISTS[1].meta, "Detailed List shows the facts");
+	ck(GAMELISTS[2].list && !GAMELISTS[2].meta, "Art List does not");
+	ck(gamelist_index("artlist") == 2, "a known id selects its layout");
 	/* Same rule as the themes: the setting outlives what it names. */
-	ck(cards_dir_index("sideways") == 0, "an unknown id falls back to horizontal");
-	ck(cards_dir_index(NULL) == 0, "and so does none at all");
-	ck(cards_dir_index("both") == 0, "a stored Cubic reads as horizontal");
-	ck(cards_dir_step(0, 1) == 1 && cards_dir_step(1, 1) == 0, "stepping wraps");
-	ck(cards_dir_step(0, -1) == CARD_DIR_COUNT - 1, "in both directions");
+	ck(gamelist_index("vertical") == 0, "a stored Vertical reads as Coverflow");
+	ck(gamelist_index(NULL) == 0, "and so does none at all");
+	ck(gamelist_step(2, 1) == 0, "stepping wraps");
+	ck(gamelist_step(0, -1) == GAMELIST_COUNT - 1, "in both directions");
 
 	printf("stepping through them:\n");
 	ck(cards_step(0, 1) == 1, "forward");

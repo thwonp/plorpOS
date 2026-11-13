@@ -233,7 +233,7 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	 * Size stood here until the band it offered turned out to be too narrow
 	 * to matter - src/ui.c. */
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
-	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
+	out[US_DIR]   = (menu_row){ "Gamelist Layout", u->gamelist, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
 	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };
