@@ -271,17 +271,20 @@ static int ds_fill_now(void)
 
 static const char *ds_fill_label(void) { return FILL_LABEL[ds_fill_now()]; }
 
-/* Stepped from a menu: saved, and sent to a game that is running. */
-static void ds_fill_step(int d, bool live)
+/* The step through this panel's fills from cur. */
+static int ds_fill_next(int cur, int d)
 {
-	int o[3], n = ds_fill_opts(o), cur = ds_fill_now(), i = 0;
+	int o[3], n = ds_fill_opts(o), i = 0;
 
 	while (i < n && o[i] != cur) i++;
-	db_set_int(db_dev(), "dsfill", o[((i + d) % n + n) % n]);
-	if (live) {
-		plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[ds_fill_now()]);
-		plat_resident_sync_rect(150);
-	}
+	return o[((i + d) % n + n) % n];
+}
+
+/* The shelf's Default Display, stepped from its menu. A game's own is
+ * gm_fill_step's. */
+static void ds_fill_step(int d)
+{
+	db_set_int(db_dev(), "dsfill", ds_fill_next(ds_fill_now(), d));
 }
 
 static int dmode_step(const char *tag, int cur, int d)
@@ -555,15 +558,86 @@ static void shader_save(app *a, int sys)
  * SETDISPLAY fields: "" for None, NULL when there is no list to choose from.
  * Diatom keeps a chain across RUN, as it keeps the mode, so a launch always
  * says one; plat_resident_send sends it before RUN, with None first. */
-static const char *shader_fields(app *a, int sys, char *f, size_t cap)
+static const char *shader_fields(app *a, int i, char *f, size_t cap)
 {
 	char dir[CFG_STR * 2];
-	int i = a->view[sys].shader;
 
 	if (a->shaders.count <= 1) return NULL;
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
 	if (i == 0 || !sl_fields(&a->shaders, i, dir, f, cap)) return "";
 	return f;
+}
+
+/* ---------- per-game display overrides (plorpos-0xv, plorpos-1a6) ---------
+ *
+ * The shelf menu sets a system's defaults - display.<TAG>, shader.<TAG>, the
+ * DS's dsfill. The in-game menu sets the one game's: <kind>.<TAG>.<file>
+ * beside them in the device database (a mode is the panel's business, as the
+ * defaults are), keyed on the file name as palettes are. A game without a row
+ * of its own plays at the default, whatever that is by then. */
+static void ovr_key(char *key, size_t n, const char *kind, app *a, int sys,
+                    const game_entry *g)
+{
+	const char *base = strrchr(g->file, '/');
+
+	snprintf(key, n, "%s.%s.%s", kind, a->sys.systems[sys].tag, base ? base + 1 : g->file);
+}
+
+static int game_dmode(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[CFG_STR];
+
+	ovr_key(key, sizeof key, "display", a, sys, g);
+	if (db_get_str(db_dev(), key, name, sizeof name, NULL))
+		for (int k = 0; k < DMODE_COUNT; k++)
+			if (!strcmp(DMODES[k].name, name))
+				return dmode_step(a->sys.systems[sys].tag, k, 0);
+	return a->view[sys].dmode;
+}
+
+static void game_dmode_save(app *a, int sys, const game_entry *g, int k)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "display", a, sys, g);
+	db_set_str(db_dev(), key, DMODES[k].name);
+}
+
+static int game_shader(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[SL_NAME];
+
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	return db_get_str(db_dev(), key, name, sizeof name, NULL)
+	       ? sl_find(&a->shaders, name) : a->view[sys].shader;
+}
+
+static void game_shader_save(app *a, int sys, const game_entry *g, int i)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	db_set_str(db_dev(), key, a->shaders.e[i].name);
+}
+
+/* The DS's Display: the game's when this panel offers it, else the shelf's. */
+static int game_fill(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48];
+	int o[3], n = ds_fill_opts(o), v;
+
+	ovr_key(key, sizeof key, "dsfill", a, sys, g);
+	v = db_get_int(db_dev(), key, -1);
+	for (int i = 0; i < n; i++) if (o[i] == v) return v;
+	return ds_fill_now();
+}
+
+static void game_fill_save(app *a, int sys, const game_entry *g, int v)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "dsfill", a, sys, g);
+	db_set_int(db_dev(), key, v);
 }
 
 /* palette.<TAG>.<file>, in the library database: a choice per game rather than
@@ -1593,6 +1667,16 @@ static sysview *owner_view(app *a)
 	sysview *v = &a->view[a->sys_cursor];
 
 	return &a->view[shelf_owner(a, a->sys_cursor, v->cursor)];
+}
+
+/* The game under the cursor - the one playing, while an in-game menu is up -
+ * and in *sys the system it belongs to, whose defaults it falls back to. */
+static const game_entry *playing(app *a, int *sys)
+{
+	sysview *v = &a->view[a->sys_cursor];
+
+	*sys = shelf_owner(a, a->sys_cursor, v->cursor);
+	return &v->list.items[v->cursor];
 }
 
 /* Where a game's box art lives.
@@ -9169,7 +9253,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				return MENU_STAY;
 			}
 #endif
-			ds_fill_step(d ? d : 1, false);
+			ds_fill_step(d ? d : 1);
 			return MENU_STAY;
 		}
 		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
@@ -10133,13 +10217,15 @@ static void game_switch(app *a)
 /* The mode the paused game is drawn in: Diatom's word for it when it has
  * said, since the DS's Display Mode hotkey changes it for that run only
  * (plorpos-3yv.62); else the saved one. */
-static int gm_dmode_now(const sysview *v)
+static int gm_dmode_now(app *a)
 {
 	const char *m = plat_resident_mode();
+	int sys;
+	const game_entry *g = playing(a, &sys);
 
 	for (int k = 0; m && k < DMODE_COUNT; k++)
 		if (!strcmp(DMODES[k].name, m)) return k;
-	return v->dmode;
+	return game_dmode(a, sys, g);
 }
 
 static void gm_cycle_display(app *a, int d)
@@ -10148,13 +10234,27 @@ static void gm_cycle_display(app *a, int d)
 	 * system that game belongs to - which is what a per-system mode means.
 	 * Set on the Favorites shelf it would have been filed under FAV and worn
 	 * by every game launched from there, whatever machine it came from. */
-	sysview *v = owner_view(a);
+	int sys, k;
+	const game_entry *g = playing(a, &sys);
 
 	/* From what is on screen, which a DS's Display Mode hotkey may have
-	 * moved on from the saved one (plorpos-3yv.62). */
-	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, gm_dmode_now(v), d);
-	display_save(a);
-	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[v->dmode].name);
+	 * moved on from the saved one (plorpos-3yv.62). This game's own from
+	 * now on; the shelf's default stays as it was (plorpos-1a6). */
+	k = dmode_step(a->sys.systems[sys].tag, gm_dmode_now(a), d);
+	game_dmode_save(a, sys, g, k);
+	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[k].name);
+	plat_resident_sync_rect(150);
+}
+
+/* The DS's Display for this game alone, sent to it at once. */
+static void gm_fill_step(app *a, int d)
+{
+	int sys, v;
+	const game_entry *g = playing(a, &sys);
+
+	v = ds_fill_next(game_fill(a, sys, g), d);
+	game_fill_save(a, sys, g, v);
+	plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[v]);
 	plat_resident_sync_rect(150);
 }
 
@@ -10167,10 +10267,15 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	/* The owner's, the mode gm_cycle_display changes: on Favorites the
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
-	u.dmode  = DMODES[gm_dmode_now(owner_view(a))].label;
-	u.nds    = is_nds_tag(a->sys.systems[owner_view(a) - a->view].tag);
-	u.fill   = ds_fill_shown(a->sys.systems[owner_view(a) - a->view].tag) ? ds_fill_label() : NULL;
-	u.shader  = a->shaders.e[owner_view(a)->shader].name;
+	{
+		int sys;
+		const game_entry *g = playing(a, &sys);
+
+		u.dmode  = DMODES[gm_dmode_now(a)].label;
+		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
+		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
+		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+	}
 	u.shaders = a->shaders.count > 1;
 	{
 		sysview *sv = &a->view[a->sys_cursor];
@@ -12977,8 +13082,23 @@ static pwr_action power_check(app *a)
 typedef struct {
 	app    *a;
 	gm_ctx *gm;        /* NULL from the shelf menu: no game to show it on */
-	int     sys;       /* the owner's: a per-system choice, as Display is */
+	int     sys;       /* the owner's, whose default a game falls back to */
+	const game_entry *g; /* the game playing; NULL from the shelf menu */
 } sh_ctx;
+
+/* The game's shader in-game, the shelf's default from its menu. */
+static int sh_cur(app *a, const sh_ctx *c)
+{
+	return c->g ? game_shader(a, c->sys, c->g) : a->view[c->sys].shader;
+}
+
+static sh_ctx sh_game(app *a, gm_ctx *gm)
+{
+	sh_ctx c = { a, gm, 0, NULL };
+
+	c.g = playing(a, &c.sys);
+	return c;
+}
 
 static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -12988,8 +13108,8 @@ static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 
 	for (i = 0; i < n; i++)
 		rows[i] = (menu_row){ a->shaders.e[i].name,
-		                      i == a->view[c->sys].shader ? "Current" : NULL, true };
-	*heading = SHADER_LABEL;
+		                      i == sh_cur(a, c) ? "Current" : NULL, true };
+	*heading = c->g ? SHADER_LABEL : "Default " SHADER_LABEL;
 	return n;
 }
 
@@ -13003,7 +13123,7 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 	char f[1024], dir[CFG_STR * 2];
 
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (sel == a->view[c->sys].shader) return MENU_DONE;
+	if (sel == sh_cur(a, c)) return MENU_DONE;
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
 	if (!sl_fields(&a->shaders, sel, dir, f, sizeof f)) return MENU_DONE;
 	plat_resident_line("SETDISPLAY\t%s", f);
@@ -13013,8 +13133,7 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
 		return MENU_DONE;
 	}
-	a->view[c->sys].shader = sel;
-	shader_save(a, c->sys);
+	game_shader_save(a, c->sys, c->g, sel);
 	return MENU_DONE;
 }
 
@@ -13023,13 +13142,13 @@ static menu_result sh_power(app *a, void *ctx) { return gm_power(a, ((sh_ctx *)c
 
 static void shader_screen(app *a, gm_ctx *gm)
 {
-	sh_ctx c = { a, gm, (int)(owner_view(a) - a->view) };
+	sh_ctx c = sh_game(a, gm);
 	menu_style st = gm->st;
 
 	st.fixed_w  = 0;
 	st.backdrop = sh_backdrop;
 	st.on_power = sh_power;
-	st.start    = a->view[c.sys].shader;
+	st.start    = sh_cur(a, &c);
 	menu_run(a, &st, sh_build, sh_key, &c);
 }
 
@@ -13047,7 +13166,7 @@ static menu_result shs_key(app *a, void *ctx, in_button key, int sel)
 
 static void shelf_shader_screen(app *a, int sys)
 {
-	sh_ctx c = { a, NULL, sys };
+	sh_ctx c = { a, NULL, sys, NULL };
 	menu_style st = { .accent = MENU_ACCENT, .follow_tint = true,
 	                  .start = a->view[sys].shader };
 
@@ -13253,16 +13372,16 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 #if defined(PLATFORM_MIYOO)
 	/* The Flip's Scanline Filter is On / Off: left and right turn it over, as they do in the shelf menu. */
 	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT)) {
-		sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+		sh_ctx sc = sh_game(a, c);
 
-		sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		sh_key(a, &sc, IN_ACCEPT, (sh_cur(a, &sc) + 1) % a->shaders.count);
 		return MENU_STAY;
 	}
 #endif
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		ds_fill_step(key == IN_LEFT ? -1 : 1, true);
+		gm_fill_step(a, key == IN_LEFT ? -1 : 1);
 		return MENU_STAY;
 	}
 	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
@@ -13319,9 +13438,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_SHADER:
 #if defined(PLATFORM_MIYOO)
 		{	/* On / Off: A toggles, through the list screen's own apply-and-save */
-			sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+			sh_ctx sc = sh_game(a, c);
 
-			sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+			sh_key(a, &sc, IN_ACCEPT, (sh_cur(a, &sc) + 1) % a->shaders.count);
 		}
 #else
 		shader_screen(a, c);
@@ -13625,15 +13744,17 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		return n;
 	}
 	{
-		sysview *v = owner_view(c->a);
+		int sys;
+		const game_entry *g = playing(c->a, &sys);
+		int k = game_dmode(c->a, sys, g);
 
 		for (int i = 0; i < GMN_ROWS; i++) c->ids[i] = i;
 		/* Flags are read at PICO-8's start, so a change waits for a Reset:
 		 * said in the heading's place for as long as it differs from the
 		 * run's own (plorpos-zoq). */
-		if (strcmp(DMODES[v->dmode].name, c->a->pico8_dmode))
+		if (strcmp(DMODES[k].name, c->a->pico8_dmode))
 			*heading = "Reset game to apply";
-		return gm_native_rows(c->in_splore, DMODES[v->dmode].label, rows);
+		return gm_native_rows(c->in_splore, DMODES[k].label, rows);
 	}
 }
 
@@ -13664,11 +13785,11 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 
 	sel = c->ids[sel];
 	if (sel == GMN_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
-		sysview *v = owner_view(a);
+		int sys;
+		const game_entry *g = playing(a, &sys);
 
-		v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode,
-		                      key == IN_RIGHT ? 1 : -1);
-		display_save(a);
+		game_dmode_save(a, sys, g, dmode_step(a->sys.systems[sys].tag, game_dmode(a, sys, g),
+		                                      key == IN_RIGHT ? 1 : -1));
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
@@ -14592,12 +14713,13 @@ static void launch_one(app *a)
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
-			.shader = shader_fields(a, o, shf, sizeof shf),
+			.shader = shader_fields(a, game_shader(a, o, &v->list.items[v->cursor]), shf, sizeof shf),
 			/* The mode is Diatom's own global and survives from the last
 			 * game, so a system never set would otherwise inherit whatever
 			 * the previous one chose; on RUN so the first frame has it. */
-			.mode   = DMODES[a->view[o].dmode].name,
-			.fill   = is_nds_tag(a->sys.systems[o].tag) ? FILL_NAME[ds_fill_now()] : NULL,
+			.mode   = DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name,
+			.fill   = is_nds_tag(a->sys.systems[o].tag)
+			          ? FILL_NAME[game_fill(a, o, &v->list.items[v->cursor])] : NULL,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -14762,7 +14884,7 @@ static void launch_one(app *a)
 			stats_begin(s->tag, splore ? SPLORE : from, plat_now_ms());
 			fprintf(stderr, "pico8_64 exited %d\n",
 			        run_pico8(a, pico8, s->folder, rom, splore,
-			                  DMODES[a->view[o].dmode].name));
+			                  DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name));
 			stats_asleep(plat_run_asleep_ms());
 			stats_end(NULL, plat_now_ms());
 			if (!a->running) return;
@@ -14799,7 +14921,7 @@ static void launch_one(app *a)
 		argv[n++] = (char *)"--save";            argv[n++] = save;
 		argv[n++] = (char *)"--system";          argv[n++] = bios;
 		argv[n++] = (char *)"--display";
-		argv[n++] = (char *)DMODES[a->view[o].dmode].name;
+		argv[n++] = (char *)DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name;
 		if (gs_auto_resume()) { argv[n++] = (char *)"--load-state"; argv[n++] = st; }
 		argv[n++] = (char *)"--state-on-exit";   argv[n++] = st;
 		if (disc >= 0) {

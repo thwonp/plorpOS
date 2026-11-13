@@ -94,10 +94,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		                              u->engine != NULL };
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
-		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
+		/* Defaults: a game set from the in-game menu keeps its own
+		 * (plorpos-0xv, plorpos-1a6). */
+		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
 		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
-		                             : (menu_row){ "Display",         u->fill,    true };
-		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
+		                             : (menu_row){ "Default Display", u->fill,    true };
+		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row

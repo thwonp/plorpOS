@@ -441,9 +441,9 @@ static void system_menu(void)
 		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
-	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Shader"),
+	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Default Shader"),
 	   "Shader sits under Display Mode");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Display Mode"), "Display Mode keeps its name off the DS");
+	ck(!strcmp(rows[SM_DISPLAY].label, "Default Display Mode"), "Default Display Mode off the DS");
 	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
 	   "and carries the system's shader");
 	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
@@ -469,16 +469,16 @@ static void system_menu(void)
 	u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
 	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(n == SM_ROWS, "DS: every row, Display included");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
+	ck(!strcmp(rows[SM_DISPLAY].label, "Default Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
 	   "DS: the layout row is Layout");
-	ck(!strcmp(rows[SM_FILL].label, "Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
+	ck(!strcmp(rows[SM_FILL].label, "Default Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
 	   "DS: Display under it, with its value");
-	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
+	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Default Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
 	   "DS: Shader under Display");
 	u.fill = NULL;
 	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Layout")
-	   && !strcmp(rows[SM_FILL].label, "Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
+	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Default Layout")
+	   && !strcmp(rows[SM_FILL].label, "Default Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
 	   "DS on a 4:3 panel: Layout, no Display row, the rows below one higher");
 	u.nds = false; u.dmode = "Sharp";
 
