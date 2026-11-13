@@ -166,22 +166,25 @@ static const struct { const char *name, *label; } DMODES[] = {
 	/* Display Mode (plorpos-3yv.62): the top screen big, the bottom one
 	 * big, or the two the same size. Ids are Diatom's and are what is
 	 * saved, so a card set to the old Layout A/B keeps its choice. */
-	{ "ds-a",      "Focus Top" },
-	{ "ds-a-swap", "Focus Bottom" },
+	/* One name per pair since Swap Screens (plorpos-jcj): the hotkey picks
+	 * which screen is the big one, kept per game; Layout picks the shape.
+	 * Focus is Offset now. */
+	{ "ds-a",      "Offset" },
+	{ "ds-a-swap", "Offset" },
 	{ "ds-b",      "Even Split" },
 	/* One screen fullscreen, or one big and one small: the DS on the Brick
 	 * and H700, which draw no split (plorpos-reo.21). The slice those two
 	 * offer, in the order the layout hotkeys round them. */
-	{ "ds-top",    "Top Only" },
-	{ "ds-bottom", "Bottom Only" },
+	{ "ds-top",    "Single Screen" },
+	{ "ds-bottom", "Single Screen" },
 	/* Both screens: one big at the left at a whole multiple, the other in
 	 * the width left over at its right (plorpos-6ei.4). */
-	{ "ds-topfocus",    "Top Focus" },
-	{ "ds-bottomfocus", "Bottom Focus" },
+	{ "ds-topfocus",    "Hybrid" },
+	{ "ds-bottomfocus", "Hybrid" },
 	/* One screen filling the panel, the other over its bottom-right corner,
 	 * 80% opaque: every device (plorpos-6ei.5). */
-	{ "ds-topoverlay",    "Top Overlay" },
-	{ "ds-bottomoverlay", "Bottom Overlay" },
+	{ "ds-topoverlay",    "Overlay" },
+	{ "ds-bottomoverlay", "Overlay" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -214,15 +217,29 @@ static void font_apply(bool head, int k)
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   4
 #define DMODE_INTOVER 3
-/* The DS's layouts, in DMODES order of their own: the split ones where the
- * port draws a split, the cropped/composed ones on the Brick and H700, the
- * two Overlays last on both (plorpos-6ei.5). Diatom's layout_step rings
- * match. */
+/* The DS's layouts, one per pair (plorpos-jcj), each named by its top-screen
+ * member: Overlay, Offset, Even Split, Single Screen where the port draws a
+ * split; Overlay, Single Screen, Hybrid on the Brick and H700. Diatom's
+ * layout_step rings match. */
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
-static const int DS_RING[] = { 4, 5, 6, 11, 12 };
+static const int DS_RING[] = { 11, 4, 6, 7 };
 #else
-static const int DS_RING[] = { 7, 8, 9, 10, 11, 12 };
+static const int DS_RING[] = { 11, 7, 9 };
 #endif
+
+/* A DS layout's other screen: ds-a/ds-a-swap, ds-top/ds-bottom, the Focuses and
+ * the Overlays pair up; Even Split is its own. */
+static int ds_partner(int k)
+{
+	switch (k) {
+	case 4: return 5;   case 5: return 4;
+	case 7: return 8;   case 8: return 7;
+	case 9: return 10;  case 10: return 9;
+	case 11: return 12; case 12: return 11;
+	default: return k;
+	}
+}
+static bool ds_bottom(int k) { return k == 5 || k == 8 || k == 10 || k == 12; }
 #define DS_RING_N ((int)(sizeof DS_RING / sizeof DS_RING[0]))
 _Static_assert(DMODE_COUNT == 13, "DS_RING indexes DMODES");
 
@@ -303,8 +320,14 @@ static int dmode_step(const char *tag, int cur, int d)
 		if (cur < 0 || cur >= DMODE_DS_A) return 0;
 		return (cur + d + n) % n;
 	}
+	/* By the top-screen member, keeping which screen is big: Swap Screens'
+	 * choice outlives a change of layout. */
 	for (i = 0; i < DS_RING_N; i++)
-		if (DS_RING[i] == cur) return DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+		if (DS_RING[i] == (ds_bottom(cur) ? ds_partner(cur) : cur)) {
+			int k = DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+
+			return ds_bottom(cur) ? ds_partner(k) : k;
+		}
 	return DS_RING[0];
 }
 
@@ -587,12 +610,35 @@ static int game_dmode(app *a, int sys, const game_entry *g)
 {
 	char key[LIB_PATH + 48], name[CFG_STR];
 
+	int k = a->view[sys].dmode, sw;
+
 	ovr_key(key, sizeof key, "display", a, sys, g);
 	if (db_get_str(db_dev(), key, name, sizeof name, NULL))
-		for (int k = 0; k < DMODE_COUNT; k++)
-			if (!strcmp(DMODES[k].name, name))
-				return dmode_step(a->sys.systems[sys].tag, k, 0);
-	return a->view[sys].dmode;
+		for (int j = 0; j < DMODE_COUNT; j++)
+			if (!strcmp(DMODES[j].name, name)) { k = dmode_step(a->sys.systems[sys].tag, j, 0); break; }
+	/* The DS: which screen is big is the game's own once Swap Screens has
+	 * been pressed in it (dsswap.<TAG>.<file>, plorpos-jcj); until then the
+	 * layout's own. */
+	if (!is_nds_tag(a->sys.systems[sys].tag)) return k;
+	ovr_key(key, sizeof key, "dsswap", a, sys, g);
+	sw = db_get_int(db_dev(), key, -1);
+	if (sw >= 0 && (sw == 1) != ds_bottom(k)) k = ds_partner(k);
+	return k;
+}
+
+/* After a DS game: keep the screen it ended on as the game's own, when the
+ * layout it ended in has two (a hotkey's layout change lasts the run only). */
+static void game_dsswap_note(app *a, int sys, const game_entry *g, const char *mode)
+{
+	char key[LIB_PATH + 48];
+	int k;
+
+	if (!mode || !is_nds_tag(a->sys.systems[sys].tag)) return;
+	for (k = 0; k < DMODE_COUNT && strcmp(DMODES[k].name, mode); k++) ;
+	if (k == DMODE_COUNT || ds_partner(k) == k) return;
+	if (ds_bottom(k) == ds_bottom(game_dmode(a, sys, g))) return;
+	ovr_key(key, sizeof key, "dsswap", a, sys, g);
+	db_set_int(db_dev(), key, ds_bottom(k));
 }
 
 static void game_dmode_save(app *a, int sys, const game_entry *g, int k)
@@ -12522,15 +12568,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[320];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
-	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
-	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
+	/* Screen Layout and Swap Screens are the DS's (plorpos-jcj), Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
 	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
-	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
+	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPSCREENS, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
 		bool shown = i < R_SWAP;
 #if defined(PLATFORM_MIYOO)
@@ -12539,9 +12584,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 #endif
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
-			shown = i == R_SWAP || i == R_BLOW;
+			shown = i == R_SWAP || i == R_SWAPSCREENS || i == R_BLOW;
 #elif defined(PLATFORM_GKD)
-			shown = i == R_SWAP || i == R_STYLUS || i == R_BLOW;
+			shown = i == R_SWAP || i == R_SWAPSCREENS || i == R_STYLUS || i == R_BLOW;
 #else
 			/* a stick's cursor is always on: no Stylus Mode (plorpos-6ei.1) */
 			shown = !(plat_two_sticks() && i == R_STYLUSMODE);
@@ -14879,6 +14924,8 @@ static void launch_one(app *a)
 			 * on the path where the player is waiting for the shelf rather
 			 * than for a game to start. */
 			stats_end(NULL, plat_now_ms());
+			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj). */
+			game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
 
 			/* Whatever was earned is sent now, behind the shelf rather than in
 			 * front of it - see ra_flush_start. It used to be sent right here,
