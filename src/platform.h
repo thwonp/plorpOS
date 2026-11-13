@@ -134,6 +134,12 @@ bool plat_video_init_over_child(void);
 void plat_window_show(bool on);
 #endif
 void plat_present(SDL_Renderer *r);
+#if defined(PLATFORM_MIYOO)
+/* Draw the next frame at half size and let the present upscale it: a quarter
+ * of the pixels while a shelf moves (plorpos-f1p.14.3). Lasts for one present;
+ * ask again before every frame that wants it. */
+void plat_lowres(bool on);
+#endif
 
 bool plat_input_init(void);
 void plat_input_quit(void);
@@ -377,6 +383,15 @@ bool plat_sleep(void);
  * time the screen has already been dark (main.c's music_dark, after the
  * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
+#if defined(PLATFORM_MIYOO)
+/* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
+void plat_set_sleep_timeout(int seconds);
+/* Whether closing the lid sleeps the unit (Lid Close, f1p.61); waking on open stays. */
+void plat_set_lid_sleep(bool on);
+/* Every key event a reader of the pad's node sees, so a press of a face button
+ * or the D-pad (not a shoulder button) is known to the lid code (f1p.61). */
+void plat_note_key(int code, int value);
+#endif
 
 /* END PolyForm-Noncommercial-1.0.0 */
 /* The backlight alone, off or back at the player's level - no mute, no input

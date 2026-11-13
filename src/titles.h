@@ -13,8 +13,13 @@
  * arcade zip is named for its set, and "mk3" is not a title. Pass NULL for any
  * other shelf. Otherwise the title lib_scan already gave it from the filename.
  *
+ * A shelf on mame2000 or fbalpha2012 is named from `map` first (setmap.h: the
+ * core's own romset, not FBNeo's), `dat` for a set the map does not list or
+ * when the card has no map, and a set the map titles "." is left off the shelf
+ * (a BIOS set). `map` is NULL for any other shelf.
+ *
  * A missing table is not an error: those shelves show set names, as they did
  * before it existed. */
-void titles_apply(game_list *l, db *d, const char *folder, const char *dat);
+void titles_apply(game_list *l, db *d, const char *folder, const char *dat, const char *map);
 
 #endif

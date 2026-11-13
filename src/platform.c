@@ -761,6 +761,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool term_killed = false;   /* its game KILLed, the script let finish */
 	termed ending;              /* what the TERM went to (group_term) */
 	lv_hold hold = { 0 };
+#if defined(PLATFORM_MIYOO)
+#define FLIP_NO_DARK 1          /* the Flip pauses and mutes music in sleep (f1p.55) */
+#else
+#define FLIP_NO_DARK 0
+#endif
 	bool dark = false;               /* a power tap while Muse plays: screen off, music on */
 	unsigned dark_t0 = 0, dark_stopped = 0;   /* when it began; when the music stopped, 0 playing */
 	lv_down[0] = lv_down[1] = lv_moved[0] = lv_moved[1] = lv_muse = false;
@@ -796,6 +801,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		bool lid_tap = false;
 #endif
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+#if defined(PLATFORM_MIYOO)
+			if (ev.type == EV_KEY) plat_note_key(ev.code, ev.value);
+#endif
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
 			/* The Rotate's volume keys share POWER's node (platform_rotate.c
@@ -856,7 +864,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 						if (!awake) pa = PWR_POWEROFF;
 					}
 				}
-			} else if (pa == PWR_SLEEP && lv_muse) {
+			} else if (pa == PWR_SLEEP && lv_muse && !FLIP_NO_DARK) {
 				/* Suspend is where the sound would stop (the DAC goes with
 				 * it): the screen off, the child frozen, Muse playing on. */
 				group_kill(pid, SIGSTOP);
@@ -1214,7 +1222,19 @@ static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 	char *l;
 	unsigned t0;
 
-	if (dsock >= 0) return true;
+	if (dsock >= 0) {
+		/* A connection the resident has closed since: it re-execs itself
+		 * between games when a core left megabytes behind (plorpos-f1p.45),
+		 * and a launcher that trusted the old descriptor ran the next game
+		 * of a switcher chain standalone, where Menu ends the game. EOF or a
+		 * reset means reconnect; a quiet socket is a live one. */
+		char c;
+		ssize_t n = recv(dsock, &c, 1, MSG_PEEK | MSG_DONTWAIT);
+
+		if (n > 0 || (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)))
+			return true;
+		dclose();
+	}
 	if (!path) return false;
 
 	/* A new socket may be a new Diatom, which starts on its default output.
@@ -2157,9 +2177,13 @@ static int diatom_wait(void)
 		{
 			struct input_event ev;
 			while (fd_power >= 0 &&
-			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+#if defined(PLATFORM_MIYOO)
+				if (ev.type == EV_KEY) plat_note_key(ev.code, ev.value);
+#endif
 				if (ev.type == EV_KEY && ev.code == KEY_POWER)
 					pwr_down = ev.value != 0;
+			}
 
 			/* plat_input_poll isn't running - the game owns input - so this
 			 * is the only place watching the level at all; checked every
@@ -2331,6 +2355,134 @@ static unsigned pwr_since;
  * power button press (just resumed)"). 0 until the first sleep. */
 static unsigned resume_at;
 
+#if defined(PLATFORM_MIYOO)
+/* The Flip (plorpos-f1p.55): a 2 s hold powers off; a tap or a closed lid
+ * sleeps for FLIP_SLEEP_S and then powers off (no suspend here). */
+#define POWER_HOLD_MS 2000u
+static int flip_sleep_s = 120;            /* Sleep Poweroff; main.c sets it */
+void plat_set_sleep_timeout(int seconds) { if (seconds > 0) flip_sleep_s = seconds; }
+static bool flip_lid_sleep = true;        /* Lid Close: sleep / nothing */
+void plat_set_lid_sleep(bool on) { flip_lid_sleep = on; }
+
+/* The hall sensor on this hardware reports a closed lid by itself (f1p.61). A
+ * closed lid covers the face buttons and the D-pad, so one of those pressed
+ * means the lid is open: that is how a false close is told from a real one.
+ * Shoulder buttons, Start, Select and Menu are not counted: a bag presses
+ * them through a closed lid. */
+static bool face_key(int code)
+{
+	return code == KEY_SPACE || code == KEY_LEFTCTRL || code == KEY_LEFTSHIFT ||
+	       code == KEY_LEFTALT || code == KEY_LEFT || code == KEY_RIGHT ||
+	       code == KEY_UP || code == KEY_DOWN;
+}
+static unsigned flip_face_ms;             /* the last such press, 0 never */
+static unsigned lid_pending;              /* a close edge waiting out LID_DWELL_MS, 0 none */
+static bool     lid_sleep_pending;        /* the sleep about to start came from the lid */
+#define LID_DWELL_MS 1000u
+
+void plat_note_key(int code, int value)
+{
+	if (value == 1 && face_key(code)) {
+		unsigned t = plat_now_ms();
+
+		flip_face_ms = t ? t : 1;
+	}
+}
+bool plat_lid_closed(void);               /* platform_miyoo.c: the hall sensor */
+static int lid_state = -1;                /* -1 not read yet, 0 open, 1 closed */
+
+/* The hall level, debounced (f1p.61): a change counts only once a second read
+ * agrees, so one bad read cannot start or end a sleep. Returns the settled
+ * state; the first read is taken as is. */
+static int hall_filter(bool c)
+{
+	static int differ;
+
+	if (lid_state < 0 || c == lid_state) { differ = 0; return c; }
+	if (++differ >= 2) { differ = 0; return c; }
+	return lid_state;
+}
+
+/* True once when the lid goes from open to closed. The first read only sets the
+ * baseline, so a unit switched on with the lid shut does not sleep by itself.
+ * Rate-limited; every caller of plat_power_tap_or_hold runs it. */
+static bool lid_closed_edge(void)
+{
+	static unsigned next;
+	unsigned now = plat_now_ms();
+	int s;
+	bool edge;
+
+	if ((int)(now - next) < 0) return false;
+	next = now + 250;
+	s = hall_filter(plat_lid_closed());
+	edge = lid_state == 0 && s == 1;
+	lid_state = s;
+	if (edge) {
+		/* Not yet: the lid must stay closed LID_DWELL_MS with no face button or
+		 * D-pad pressed. A press in that time says the lid is open (f1p.61), and
+		 * lid_state stays closed, so no second edge until the sensor has read
+		 * open again. */
+		lid_pending = now ? now : 1;
+		return false;
+	}
+	if (!lid_pending) return false;
+	if (s == 0) { lid_pending = 0; return false; }                 /* it opened again */
+	if (flip_face_ms && (int)(flip_face_ms - lid_pending) >= 0) {
+		lid_pending = 0;
+		fprintf(stderr, "lid: closed but a button was pressed, ignored\n");
+		return false;
+	}
+	if (now - lid_pending < LID_DWELL_MS) return false;
+	lid_pending = 0;
+	return flip_lid_sleep;
+}
+
+/* One 200 ms slice of the wait in plat_light_sleep: 1 = woken (a power release
+ * or the lid opened), -1 = the button was held POWER_HOLD_MS (power off now),
+ * 0 = nothing. *down_at is the press time, 0 when not pressed. */
+static int flip_wake_wait(unsigned *down_at, bool by_lid)
+{
+	struct pollfd pfd;
+	struct input_event ev;
+	int r = 0;
+	bool button = false;
+
+	if (fd_power < 0) usleep(200000);
+	else {
+		pfd.fd = fd_power;
+		pfd.events = POLLIN;
+		if (poll(&pfd, 1, 200) > 0) {
+			while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+				if (ev.type == EV_KEY && ev.code == KEY_POWER) {
+					if (ev.value == 1) {
+						unsigned t = plat_now_ms();
+
+						*down_at = t ? t : 1;   /* never t|1: that can be ahead of now */
+					}
+					else if (ev.value == 0) r = 1;
+				} else if (by_lid && ev.type == EV_KEY && ev.value == 1 && face_key(ev.code))
+					button = true;       /* a closed lid covers these: it is not closed */
+		}
+	}
+	if (button && !r) { fprintf(stderr, "lid sleep: button, wake\n"); return 1; }
+	if (*down_at && plat_now_ms() - *down_at >= POWER_HOLD_MS) {
+		fprintf(stderr, "power: hold in sleep -> power off\n");
+		return -1;
+	}
+	if (r) return 1;
+	{
+		int s = hall_filter(plat_lid_closed());
+
+		if (lid_state == 1 && s == 0) { lid_state = 0; fprintf(stderr, "lid: open, wake\n"); return 1; }
+		lid_state = s;
+	}
+	return 0;
+}
+#else
+#define POWER_HOLD_MS 400u
+#endif
+
 
 /* NextUI's PWR_sleep, whole: PWR_enterSleep, PWR_waitForWake, PWR_exitSleep
  * (api.c:4262-4380), for every way into sleep - a tap, Auto Sleep's idle,
@@ -2369,7 +2521,17 @@ bool plat_light_sleep(unsigned waited_ms)
 	bool awake = true;
 #ifdef __linux__
 	int saved_vol = cur_vol;
+#if defined(PLATFORM_MIYOO)
+	/* No suspend to escalate to (f1p.7): the wait is the 2 minute power-off
+	 * timer (f1p.55); plat_sleep() is false, so the caller powers off. */
+	int timeout_ms = flip_sleep_s * 1000;
+	unsigned flip_down = 0;
+	bool by_lid = lid_sleep_pending;      /* this sleep came from the lid */
+
+	lid_sleep_pending = false;
+#else
 	int timeout_ms = PLAT_SUSPEND_AFTER_S * 1000;
+#endif
 	unsigned since;
 
 	plat_input_flush();                   /* PAD_reset */
@@ -2384,24 +2546,40 @@ bool plat_light_sleep(unsigned waited_ms)
 
 	since = plat_now_ms() - waited_ms;    /* already dark that long */
 	for (;;) {
+#if !defined(PLATFORM_MIYOO)
 		bool charging = false;
+#endif
 
 		/* A SIGTERM ends the wait (its poll returns EINTR): a restart or a
 		 * shutdown during sleep waited systemd's 90 s for the SIGKILL
 		 * (plorpos-3yv.87). The caller sees quit_requested next poll. */
 		if (g_terminating) break;
+#if defined(PLATFORM_MIYOO)
+		{
+			int w = flip_wake_wait(&flip_down, by_lid);
+
+			if (w > 0) break;
+			if (w < 0) { awake = false; break; }
+		}
+#else
 		if (power_key_within(200, 0)) break;
+#endif
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
+#if !defined(PLATFORM_MIYOO)             /* the Flip powers off on a charger too */
 		plat_battery(NULL, &charging);
 		if (charging || plat_usb_host()) {
 			since += 60000;               /* check again in a minute */
 			continue;
 		}
+#endif
 		awake = plat_sleep();
 		break;
 	}
 
+#if defined(PLATFORM_MIYOO)
+	if (awake)    /* going on to power off: stay dark, no flash of the shelf */
+#endif
 	apply_brightness(cur_bright);
 #if !defined(PLATFORM_ROTATE)
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
@@ -2452,13 +2630,20 @@ bool plat_usb_host(void)
 }
 
 
-#define POWER_HOLD_MS 400u
-
 pwr_action plat_power_tap_or_hold(bool down)
 {
 	static bool spurious;             /* this press began just after a wake */
 	unsigned now = plat_now_ms();
 
+#if defined(PLATFORM_MIYOO)
+	/* A closed lid is a tap that needs no release (f1p.55). */
+	if (lid_closed_edge()) {
+		pwr_since = 0;
+		lid_sleep_pending = true;
+		fprintf(stderr, "power: lid closed -> sleep\n");
+		return PWR_SLEEP;
+	}
+#endif
 	/* NextUI's resume_tick check: a press that starts inside a second of
 	 * waking is dropped whole - neither its hold nor its release counts. */
 	if (down && !pwr_since && !spurious && resume_at &&

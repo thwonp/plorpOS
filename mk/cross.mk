@@ -10,7 +10,12 @@ SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFOR
 CC ?= aarch64-linux-gnu-gcc
 
 VERSION ?= 0.0
-CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
+# The CPU every device but the Flip has; the Flip is 32-bit (below).
+CPU := -mcpu=cortex-a53
+ifeq ($(PLATFORM),miyoo)
+CPU := -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
+endif
+CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
           -I$(SYSROOT)/usr/include/SDL2 -D_GNU_SOURCE
 ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
@@ -35,6 +40,16 @@ CFLAGS += -DPLATFORM_H700 -DPLATFORM_ROTATE
 # Debian's SDL_config.h includes <SDL2/_real_SDL_config.h>. -idirafter, so
 # trixie's own libc headers in the sysroot never shadow the toolchain's.
 CFLAGS += -idirafter $(SYSROOT)/usr/include
+endif
+ifeq ($(PLATFORM),miyoo)
+# Miyoo Mini Flip on its stock firmware (plorpos-f1p): the H700's branches,
+# as the Rotate takes them, and PLATFORM_MIYOO where it differs
+# (src/platform_miyoo.c). One opener at a time on its sound (MI_AO), so Muse
+# takes it only to play, as on the H700.
+CFLAGS += -DPLATFORM_H700 -DPLATFORM_MIYOO
+# Its MI_AO is owned by the resident diatom, so Muse plays into diatom's music
+# socket rather than ALSA (src/muse/pcm.c, plorpos-f1p.9).
+MUSE_DEFS := -DMUSE_HANDOVER -DMUSE_PCM_DIATOM
 endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
@@ -69,7 +84,7 @@ CREDS := $(BUILD)/ss_creds.h
 CFLAGS += -I$(BUILD)
 
 TP_OUT := $(BUILD)/tp
-TP_OPT := -O2 -mcpu=cortex-a53
+TP_OPT := -O2 $(CPU)
 include mk/third_party.mk
 CFLAGS += $(TP_CFLAGS)
 
@@ -100,41 +115,50 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 MUSE_SRC := $(wildcard src/muse/*.c)
 $(BUILD)/muse: $(MUSE_SRC) $(wildcard src/muse/*.h)
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
+	$(CC) -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
 	      -D_GNU_SOURCE $(MUSE_DEFS) -I$(SYSROOT)/usr/include $(LDFLAGS) -o $@ $(MUSE_SRC) \
 	      -lavformat -lavcodec -lavfilter -lswresample -lavutil -lpthread -ldl
 
 # Talks to Muse by hand over ssh; the device's BusyBox nc has no -U.
 $(BUILD)/musectl: tools/musectl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $<
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $<
 
 # Registers a do-nothing media player with BlueZ so a headset's absolute
 # volume is not dropped; see the file. libdbus by dlopen, like ALSA in Muse.
 $(BUILD)/btplayer: tools/btplayer.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $< -ldl
 
 # Preloaded into native PICO-8 on the Brick (the firmware SDL has no sensors
 # and PICO-8 asks for them) and the H700: quiet while Muse plays, and its
 # sound follows the headset. See the file.
 $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
 		-o $@ $< -ldl
+
+# Preloaded into the owner's pico8_dyn on the Miyoo Mini Flip: the screen,
+# the buttons and the sound the card's offscreen-only SDL2 cannot give it.
+# See the file. SDL from the sysroot, so it links against what runs.
+$(BUILD)/flip-pico8.so: tools/flip-pico8.c
+	mkdir -p $(BUILD)
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+		-I$(SYSROOT)/usr/include/SDL2 -o $@ $< \
+		-L$(SYSROOT)/usr/lib -lSDL2 -ldl
 
 # Preloaded into PortMaster ports on the H700 (sd/h700/portmaster/pm-run.sh).
 $(BUILD)/portcompat.so: tools/portcompat.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC \
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC \
 		-o $@ $< -ldl
 
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -std=gnu11 -o $@ $<
+	$(CC) -O2 $(CPU) -Wall -std=gnu11 -o $@ $<
 
 # A libc-only probe, no SDL. It dlopens the device's own libsqlite3 rather than
 # linking it, because there is no sqlite3.h on the device or in the sysroot.
 $(BUILD)/storeprobe: tools/storeprobe.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -o $@ $< -ldl

@@ -42,6 +42,7 @@ sysroot-gkd/
 sysroot-h700/
 sysroot-rotate/
 sysroot-rgsp/
+sysroot-miyoo/
 
 # Local ROM/BIOS test set. 889 MB of content that must never enter history.
 /TortOS-Test-Set/

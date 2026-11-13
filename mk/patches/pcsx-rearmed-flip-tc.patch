@@ -1,0 +1,13 @@
+diff --git a/libpcsxcore/new_dynarec/assem_arm.h b/libpcsxcore/new_dynarec/assem_arm.h
+index 74b1657f..031a32b3 100644
+--- a/libpcsxcore/new_dynarec/assem_arm.h
++++ b/libpcsxcore/new_dynarec/assem_arm.h
+@@ -37,7 +37,7 @@
+ extern char *invc_ptr;
+ 
+ // note: max due to branch encoding: arm 32M, arm64 128M
+-#define TARGET_SIZE_2 24 // 2^24 = 16 megabytes
++#define TARGET_SIZE_2 22 // 2^22 = 4 megabytes (Flip: plorpos-f1p.27; was 24)
+ 
+ struct tramp_insns
+ {

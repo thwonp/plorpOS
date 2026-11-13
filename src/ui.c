@@ -157,7 +157,16 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
 		}
 	}
+#if defined(PLATFORM_MIYOO)
+	/* No glow on the Flip: ui_glow draws nothing when glow_tex is NULL. The
+	 * big alpha-modulated copies were about 80% of a scroll frame there
+	 * (122 -> 27 ms without them) and rendered as blotchy halos on the panel
+	 * (plorpos-f1p.14.3). */
+	glow_tex = NULL;
+	(void)make_glow;
+#else
 	glow_tex = make_glow(r);
+#endif
 	return fonts[UI_F_TITLE] != NULL;
 }
 
@@ -485,7 +494,14 @@ bool ui_redraw_due(unsigned now) { return now >= redraw_at_ms; }
 /* A gap this long between two passes means something else had the screen -
  * a menu, a game, the art scraper - and whatever it drew is not this one.
  * Catching it here covers every one of them without a list to keep. */
+#if defined(PLATFORM_MIYOO)
+/* Longer than this device's own slowest draw: a software-rendered shelf
+ * frame took 118-190 ms on the Miyoo Flip, every gap after one looked like
+ * "away", and the shelf redrew forever while idle (plorpos-f1p.14.2). */
+#define AWAY_MS 500
+#else
 #define AWAY_MS 100
+#endif
 /* Drawn at least this often regardless. A backstop, not a mechanism: if some
  * animation is ever added without telling ui_redraw_at, it shows as a screen
  * updating once a second, which is visibly wrong, rather than one that has

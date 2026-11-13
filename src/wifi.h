@@ -77,12 +77,13 @@ bool wifi_forget(const char *ssid);
 
 /* The network services a device lets you switch: SSH, Samba and Syncthing on
  * the GKD, where ROCKNIX runs them, SSH alone on the Rotate (off on a fresh
- * card, plorpos-3yv.13.4), and none on the Brick. On/off is the system's own
+ * card, plorpos-3yv.13.4) and on the Miyoo Mini Flip (plorpOS's own
+ * dropbear, off on a fresh card, plorpos-f1p.62.2), and none on the Brick. On/off is the system's own
  * setting, so it survives a reboot. */
 typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_SYNCTHING, WIFI_NSVC } wifi_svc;
 #ifdef PLATFORM_GKD
 #define WIFI_SVC_ROWS WIFI_NSVC
-#elif defined(PLATFORM_ROTATE)
+#elif defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO)
 #define WIFI_SVC_ROWS 1
 #else
 #define WIFI_SVC_ROWS 0

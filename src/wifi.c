@@ -75,10 +75,28 @@ static int run(char *const argv[], char *out, size_t cap)
  * (plorpos-7ny.5). Where the two differ is marked PLATFORM_H700. */
 #if !defined(PLATFORM_GKD)
 
-#define WPA_CLI  "/usr/sbin/wpa_cli"
+#if defined(PLATFORM_MIYOO)
+/* The Miyoo Mini Flip (plorpos-f1p.21): the stock firmware's supplicant, under
+ * /customer/app, with no /run, no /sbin/ip and no default udhcpc script. The
+ * RTL8188FU driver is loaded here, not by the OS as on BaseOS. Saved networks
+ * stay in the firmware's /appconfigs conf, the stock firmware's own. */
+#define WPA_CLI   "/customer/app/wpa_cli"
+#define WPA_SUPP  "/customer/app/wpa_supplicant"
+#define WPA_CONF  "/appconfigs/wpa_supplicant.conf"
+#define IP_BIN    "/bin/ip"
+#define UDHCPC_SCRIPT "/etc/init.d/udhcpc.script"
+#else
+#define WPA_CLI   "/usr/sbin/wpa_cli"
+#define WPA_SUPP  "/usr/sbin/wpa_supplicant"
+#define IP_BIN    "/sbin/ip"
+#endif
 #if defined(PLATFORM_H700)
 #include "platform.h"
+#if defined(PLATFORM_MIYOO)
+#define WPA_SOCK "/var/run/wpa_supplicant"
+#else
 #define WPA_SOCK "/run/wpa_supplicant"
+#endif
 #else
 #define WPA_SOCK "/etc/wifi/sockets"
 #endif
@@ -147,6 +165,11 @@ static bool kv(const char *text, const char *key, char *out, int cap)
 static bool g_dhcp_asked;   /* one lease request per association */
 static void dhcp_start(void);
 
+#if defined(UDHCPC_SCRIPT)
+#define UDHCPC_S " -s " UDHCPC_SCRIPT
+#else
+#define UDHCPC_S ""
+#endif
 #if defined(PLATFORM_H700)
 /* The lease, once the link is up - as launch_frontend.sh does at boot. Not
  * left to wifi_status: that asks only when something polls it, and the Wi-Fi
@@ -166,7 +189,7 @@ static void dhcp_after_join(void)
 				"i=0; until " WPA_CLI " -p " WPA_SOCK " -i " WLAN " status 2>/dev/null"
 				" | grep -q '^wpa_state=COMPLETED'; do [ $i -ge 30 ] && exit;"
 				" sleep 1; i=$((i + 1)); done;"
-				" exec /sbin/udhcpc -i " WLAN " -S -t 5 -T 7 -b -q", NULL };
+				" exec /sbin/udhcpc -i " WLAN UDHCPC_S " -S -t 5 -T 7 -b -q", NULL };
 			int null = open("/dev/null", O_RDWR);
 
 			if (null >= 0) { dup2(null, 1); dup2(null, 2); }
@@ -197,13 +220,30 @@ bool wifi_up(void)
 		char conf[512];
 		FILE *f;
 
+#if defined(WPA_CONF)
+		snprintf(conf, sizeof conf, "%s", WPA_CONF);
+		/* The driver first: launch.sh loads it at boot, but Wi-Fi switched
+		 * off and on later, or Wi-Fi off at boot, leaves no wlan0. */
+		if (access("/sys/class/net/" WLAN, F_OK) != 0) {
+			char *drv[] = { (char *)"/bin/sh", (char *)"-c", (char *)
+				"grep -q 8188fu /proc/modules || insmod /mnt/SDCARD/TortOS/8188fu.ko;"
+				" /customer/app/axp_test wifion; sleep 2", NULL };
+			run(drv, NULL, 0);
+		}
+		{
+			char *up[] = { (char *)IP_BIN, (char *)"link", (char *)"set",
+			               (char *)"dev", (char *)WLAN, (char *)"up", NULL };
+			run(up, NULL, 0);
+		}
+#else
 		snprintf(conf, sizeof conf, "%s/wpa_supplicant.conf", P_USERDATA);
+#endif
 		if (access(conf, F_OK) != 0 && (f = fopen(conf, "w"))) {
 			fputs("update_config=1\n", f);
 			fclose(f);
 		}
 		for (i = 0; i < 20; i++) {
-			char *argv[] = { (char *)"/usr/sbin/wpa_supplicant", (char *)"-B",
+			char *argv[] = { (char *)WPA_SUPP, (char *)"-B",
 			                 (char *)"-D", (char *)"nl80211,wext",
 			                 (char *)"-i", (char *)WLAN, (char *)"-C",
 			                 (char *)WPA_SOCK, (char *)"-c", conf, NULL };
@@ -247,7 +287,7 @@ static void lease_drop(void)
 	/* BusyBox is shared; the applet link is /usr/bin on Brick, /bin on H700. */
 	char *kill_dhcp[] = { (char *)"/bin/busybox", (char *)"killall",
 	                      (char *)"udhcpc", NULL };
-	char *flush[] = { (char *)"/sbin/ip", (char *)"addr", (char *)"flush",
+	char *flush[] = { (char *)IP_BIN, (char *)"addr", (char *)"flush",
 	                  (char *)"dev", (char *)WLAN, NULL };
 
 	if (!LEASES_OURS) return;
@@ -272,7 +312,7 @@ void wifi_down(void)
 	 * connected and idle, 121 mA down, and unloading the driver as well only
 	 * 119 (2026-10-18). wpa_supplicant leaves the link up as it found it. */
 	{
-		char *down[] = { (char *)"/sbin/ip", (char *)"link", (char *)"set",
+		char *down[] = { (char *)IP_BIN, (char *)"link", (char *)"set",
 		                 (char *)"dev", (char *)WLAN, (char *)"down", NULL };
 		run(down, NULL, 0);
 	}
@@ -489,6 +529,9 @@ static void dhcp_start(void)
 	if (pid == 0) {
 		if (fork() == 0) {
 			char *argv[] = { (char *)"/sbin/udhcpc", (char *)"-i", (char *)WLAN,
+#if defined(UDHCPC_SCRIPT)
+			                 (char *)"-s", (char *)UDHCPC_SCRIPT,
+#endif
 			                 (char *)"-S", (char *)"-t", (char *)"5",
 			                 (char *)"-T", (char *)"7", (char *)"-b",
 			                 (char *)"-q", NULL };
@@ -713,6 +756,28 @@ bool wifi_svc_set(wifi_svc s, bool on)
 		? (char *)"/usr/bin/systemctl enable --now ssh > /dev/null 2>&1 &"
 		: (char *)"/usr/bin/systemctl disable --now ssh > /dev/null 2>&1 &", NULL };
 	return s == WIFI_SSH && run(argv, NULL, 0) == 0;
+}
+#endif
+
+#if defined(PLATFORM_MIYOO) && defined(__linux__)
+#include "db.h"
+/* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
+ * fresh card. The switch is the "ssh" setting, which boot.env carries to
+ * launch.sh so it is still on after a reboot; TortOS/ssh.sh starts and stops
+ * it for both. Key login only, from TortOS/ssh/authorized_keys. */
+bool wifi_svc_on(wifi_svc s)
+{
+	return s == WIFI_SSH && db_get_int(db_dev(), "ssh", 0);
+}
+
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"/mnt/SDCARD/TortOS/ssh.sh",
+	                 on ? (char *)"start" : (char *)"stop", NULL };
+	if (s != WIFI_SSH || !db_set_int(db_dev(), "ssh", on ? 1 : 0)) return false;
+	db_write_boot_env();
+	run(argv, NULL, 0);
+	return true;
 }
 #endif
 
@@ -1137,7 +1202,7 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD) && !(defined(PLATFORM_ROTATE) && defined(__linux__))
+#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO)) && defined(__linux__))
 /* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }

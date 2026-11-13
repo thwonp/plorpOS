@@ -22,6 +22,7 @@
 #include "stats.h"
 #include "sort.h"
 #include "titles.h"
+#include "setmap.h"
 #include "coverflow.h"
 #include "chdread.h"
 #include "library.h"
@@ -565,28 +566,98 @@ static const char *shader_fields(app *a, int sys, char *f, size_t cap)
 	return f;
 }
 
-/* palette.GB.<file>, in the library database: a choice per game rather than
+/* palette.<TAG>.<file>, in the library database: a choice per game rather than
  * per system (plorpos-gkd.76), so it travels with the card the way favorites
  * do. Keyed on the file name, as save states are, so renaming a ROM loses it.
- * -1 for a game that is not a Game Boy game; no row is Auto. */
+ * -1 for a game that has no palette to pick; no row is the shelf's Default
+ * Palette (palettedef.<TAG>, the Flip's), or Auto where there is none. A game
+ * that has a row keeps it however the default changes later. */
+static bool gb_palette_tag(const char *tag)
+{
+	return !strcmp(tag, "GB")
+#if defined(PLATFORM_MIYOO)
+	    || !strcmp(tag, "GBC")
+#endif
+	    ;
+}
+
+#if defined(PLATFORM_MIYOO)
+/* A Game Boy Color game colors itself: byte 0x143 of a plain ROM is 0x80 or 0xC0. Only a game that
+ * has none has a palette to pick (a zipped ROM is taken to be one that has). */
+static bool rom_is_cgb(const char *path)
+{
+	size_t n = strlen(path);
+	unsigned char b = 0;
+	FILE *f;
+
+	if (n < 4 || (strcasecmp(path + n - 3, ".gb") && strcasecmp(path + n - 4, ".gbc") &&
+	              strcasecmp(path + n - 4, ".cgb") && strcasecmp(path + n - 4, ".dmg")))
+		return false;
+	if (!(f = fopen(path, "rb"))) return false;
+	if (fseek(f, 0x143, SEEK_SET) != 0 || fread(&b, 1, 1, f) != 1) b = 0;
+	fclose(f);
+	return b == 0x80 || b == 0xC0;
+}
+#endif
+
+static int palette_default_of(const char *tag)
+{
+#if defined(PLATFORM_MIYOO)
+	char key[40], name[CFG_STR];
+
+	snprintf(key, sizeof key, "palettedef.%s", tag);
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
+#else
+	(void)tag;
+	return 0;
+#endif
+}
+
+static void palette_default_save(const char *tag, int i)
+{
+	char key[40];
+
+	snprintf(key, sizeof key, "palettedef.%s", tag);
+	db_set_str(db_lib(), key, gbpal_label(i));
+}
+
 static int palette_of(app *a, int sys, const game_entry *g)
 {
 	char key[LIB_PATH + 32], name[CFG_STR];
-	const char *base;
+	const char *base, *tag = a->sys.systems[sys].tag;
 
-	if (strcmp(a->sys.systems[sys].tag, "GB")) return -1;
+	if (!gb_palette_tag(tag)) return -1;
+#if defined(PLATFORM_MIYOO)
+	{
+		char rom[LIB_PATH * 2];
+
+		snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
+		if (rom_is_cgb(rom)) return -1;
+	}
+#endif
 	base = strrchr(g->file, '/');
-	snprintf(key, sizeof key, "palette.GB.%s", base ? base + 1 : g->file);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
+	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : palette_default_of(tag);
 }
 
-static void palette_save(const game_entry *g, int i)
+static void palette_save(const char *tag, const game_entry *g, int i)
 {
 	char key[LIB_PATH + 32];
 	const char *base = strrchr(g->file, '/');
 
-	snprintf(key, sizeof key, "palette.GB.%s", base ? base + 1 : g->file);
+	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
 	db_set_str(db_lib(), key, gbpal_label(i));
+}
+
+/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or on the Flip a Game Boy shelf's
+ * Default Palette. */
+static bool sm_extra_shown(const char *tag)
+{
+	return ds_fill_shown(tag)
+#if defined(PLATFORM_MIYOO)
+	    || gb_palette_tag(tag)
+#endif
+	    ;
 }
 
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
@@ -647,6 +718,8 @@ static int alt_core(const system_cfg *s)
 	size_t k;
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	const int here = ALT_ON_GKD_ROTATE;
+#elif defined(PLATFORM_MIYOO)
+	const int here = 0; /* the Flip has no second core on any shelf (PokeDaisy crashed there; its mgba shelves went to Gambatte); before H700, which it also defines */
 #elif defined(PLATFORM_H700)
 	const int here = ALT_ON_H700; /* DSperate is its only DS core */
 #else
@@ -1556,13 +1629,23 @@ static unsigned ft_us(void)
 	return (unsigned)(t.tv_sec * 1000000u + t.tv_nsec / 1000);
 }
 
+#if defined(PLATFORM_MIYOO)
+extern unsigned plat_pan_us;   /* platform_miyoo.c: the vblank wait in present */
+#endif
 static void ft_frame(const char *where, unsigned t0, unsigned t1, unsigned t2,
                      int cursor, int count)
 {
 	if (g_ft && t2 - t0 > FT_SLOW_US)
-		fprintf(stderr, "frame: %s %u ms (update %u, draw %u), paths %u in %u ms, "
+		fprintf(stderr, "frame: %s %u ms (update %u, draw %u"
+#if defined(PLATFORM_MIYOO)
+		        ", pan %u"
+#endif
+		        "), paths %u in %u ms, "
 		        "uploads %u in %u ms, card %d/%d, at %u\n", where,
 		        (t2 - t0) / 1000, (t1 - t0) / 1000, (t2 - t1) / 1000,
+#if defined(PLATFORM_MIYOO)
+		        plat_pan_us / 1000,
+#endif
 		        g_ft_paths, g_ft_path_us / 1000, g_ft_ups, g_ft_up_us / 1000,
 		        cursor + 1, count, t2 / 1000);
 	g_ft_path_us = g_ft_paths = g_ft_up_us = g_ft_ups = 0;
@@ -1588,13 +1671,32 @@ static SDL_Texture *game_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 		char art[LIB_PATH * 3], prev[LIB_PATH * 3];
 		unsigned ft0 = g_ft ? ft_us() : 0;
 
-		card_art_path(&a->sys.systems[o], &v->list.items[i],
-		              art, sizeof art);
+		bool has_art = card_art_path(&a->sys.systems[o], &v->list.items[i],
+		                             art, sizeof art);
 		preview_path(a, o, &v->list.items[i], prev, sizeof prev);
 		if (g_ft) { g_ft_path_us += ft_us() - ft0; g_ft_paths++; }
+#if defined(PLATFORM_MIYOO)
+		/* THE FOCUSED CARD OF A GAME WITH NO ART, made right here. Its worker
+		 * job could only fail twice and send the slab back to be made on the
+		 * main thread anyway; the round trip (request next frame, wake, result,
+		 * drain on a later frame) added 1-3 frames and put one cold letter
+		 * jump in eight over the 100 ms budget on a shelf with no covers
+		 * (FBA, plorpos-f1p.43). The slab costs ~6 ms, once, and only for the
+		 * card being looked at; its neighbours still go through the worker.
+		 * A game with a preview (an Auto state) is not "no art": it goes to
+		 * the worker as before. */
+		if (!has_art && i == v->cursor && access(prev, F_OK) != 0) {
+			v->tex[i] = ui_make_card(a->r, v->list.items[i].title,
+			                         a->sys.systems[o].accent,
+			                         &v->tw[i], &v->th[i]);
+			v->cb[i] = 1.0f;
+		}
+#else
+		(void)has_art;
+#endif
 		/* Hand it to the worker and draw nothing this frame. Asking is cheap
 		 * and ignores a card already in hand, so callers ask every frame. */
-		if (!texload_want(s, i, art, prev)) {
+		if (!v->tex[i] && !texload_want(s, i, art, prev)) {
 			/* No worker. Exactly what this did before, on the frame. */
 			v->tex[i] = load_image(a->r, art, &v->tw[i], &v->th[i], &v->cb[i]);
 			if (!v->tex[i])
@@ -1683,6 +1785,33 @@ static void texload_drain(app *a)
 	if (g_ft && ft_n) { g_ft_up_us += ft_us() - ft0; g_ft_ups += ft_n; }
 }
 
+#if defined(PLATFORM_MIYOO)
+/* The system cards the Flip keeps and asks for: those within SYS_KEEP places
+ * of the cursor, round the ring as the row draws. evict_far's rule, for the
+ * system row: it had none, so every system you scrolled past stayed resident,
+ * 2.1 MB each at 640x820, and sixteen of them walked the launcher past 80 MB
+ * into the kernel's OOM killer (measured 2026-11-08, plorpos-f1p.23). The
+ * Flip's card art is also shrunk at deploy time (mk/miyoo-deploy.sh): scaling
+ * at load cost about 10 ms a card on the frame. */
+#define SYS_KEEP 5
+static bool sys_wanted(const app *a, int i)
+{
+	int n = a->sys.count, d = abs(i - a->sys_cursor);
+
+	if (n >= CF_WINDOW) d = d > n / 2 ? n - d : d;
+	return d <= SYS_KEEP;
+}
+
+static void sys_evict_far(app *a)
+{
+	for (int i = 0; i < a->sys.count; i++)
+		if (a->sys_tex[i] && !sys_wanted(a, i)) {
+			SDL_DestroyTexture(a->sys_tex[i]);
+			a->sys_tex[i] = NULL;
+		}
+}
+#endif
+
 static void evict_far(sysview *v, int keep)
 {
 	for (int i = 0; i < v->list.count; i++) {
@@ -1695,6 +1824,52 @@ static void evict_far(sysview *v, int keep)
 		}
 	}
 }
+
+/* The same rule while a letter jump is cutting, which evict_far waits out
+ * (the departure is still on screen). A held Up/Down is a jump per repeat, so
+ * "waits" never ended: every landing's cards (1.3 MB slabs on a shelf with no
+ * art) piled up until the kernel killed the launcher, 51 -> 82 MB in 2 s on the
+ * Flip (plorpos-f1p.43). Keep what the departure draws (around `from`) and the
+ * landing's window (around the cursor); everything else goes. */
+static void evict_cut(sysview *v, int cursor_keep, int from_keep)
+{
+	int n = v->list.count, f = (int)floorf(v->cf.from + 0.5f);
+
+	if (n <= 0) return;
+	f %= n; if (f < 0) f += n;
+	for (int i = 0; i < n; i++) {
+		int dc = abs(i - v->cursor), df = abs(i - f);
+		if (n >= CF_WINDOW) {
+			if (dc > n / 2) dc = n - dc;
+			if (df > n / 2) df = n - df;
+		}
+		if (v->tex[i] && dc > cursor_keep && df > from_keep) {
+			SDL_DestroyTexture(v->tex[i]);
+			v->tex[i] = NULL;
+		}
+	}
+}
+
+#if defined(PLATFORM_MIYOO)
+/* Before a game goes to the resident: drop every shelf texture but the
+ * launched system's focused card. The Flip has 101 MB and no swap; FBNeo's
+ * 45 MB of zero-fill pages are only mapped while about that much is free, and
+ * a launcher grown by a long scroll (anon past 45 MB) made the Arcade shelf
+ * fail to load, and PlayStation thrash the core's pages out (plorpos-f1p.26,
+ * .27). Everything dropped decodes again on the way back, as after a cold boot. */
+static void flip_trim_for_launch(app *a, int keep)
+{
+	for (int i = 0; i < a->sys.count; i++) {
+		if (i == keep) continue;
+		if (a->sys_tex[i]) { SDL_DestroyTexture(a->sys_tex[i]); a->sys_tex[i] = NULL; }
+		evict_far(&a->view[i], -1);
+	}
+	/* The launched shelf keeps the five cards it shows (cursor +-2), not just
+	 * the focused one: the four neighbours took 230-400 ms to come back as
+	 * placeholders after every game (plorpos-f1p.42). A few cover textures. */
+	evict_far(&a->view[keep], 2);
+}
+#endif
 
 #define PRIME_HALF_MAX (CF_HALF_WINDOW + 2)
 
@@ -1764,10 +1939,35 @@ static void prime_toward(app *a, int s, int center)
 	prime_around(a, s, center, CF_HALF_WINDOW);
 }
 
+#if defined(PLATFORM_MIYOO)
+/* At rest on the systems row, ask for the covers of the neighbours - one
+ * system per redraw, nearest first (+1, -1, +2, -2) - so a first visit one or
+ * two steps away already has its row. load_ahead only warms the system the
+ * row lands on, and a scroll that keeps moving never visits a cold one in
+ * time. Not while the row moves: the workers share two cores with the frame. */
+static void sys_prefetch(app *a)
+{
+	static int cur = -1, step;
+	int n = a->sys.count, off, s;
+
+	if (n < 2) return;
+	if (a->sys_cursor != cur) { cur = a->sys_cursor; step = 0; }
+	if (step >= 4) return;
+	off = step / 2 + 1;
+	if (step % 2) off = -off;
+	step++;
+	s = ((cur + off) % n + n) % n;
+	prime_toward(a, s, a->view[s].cursor);
+}
+#endif
+
 static void prime_sys_window(app *a)
 {
 	for (int i = 0; i < a->sys.count; i++) {
 		int w, h;
+#if defined(PLATFORM_MIYOO)
+		if (!sys_wanted(a, i)) continue;
+#endif
 		sys_get_tex(a, i, &w, &h, NULL);
 	}
 }
@@ -1941,14 +2141,26 @@ static void auto_off_save(int seconds)
  * shape rather than sharing it - mutually exclusive with Auto Sleep above,
  * matching NextUI, so the two get independent ladders and db keys even
  * though today they hold the same values. */
-#if !defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_MIYOO)
+/* The Flip (f1p.56): "Sleep Poweroff", how long a sleeping unit waits before
+ * it powers off - idle, tap or lid alike. Independent of Auto Sleep, no Never. */
+static const int AUTO_POWEROFF[] = { 30, 60, 120, 300, 600 };
+#define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+#elif !defined(PLATFORM_ROTATE)
 static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
 #define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
 #endif
 
 static int auto_poweroff_load(void)
 {
-#if defined(PLATFORM_ROTATE)
+#if defined(PLATFORM_MIYOO)
+	int v = db_get_int(db_dev(), "sleeppoweroff", 120);
+	int k;
+
+	for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
+		if (AUTO_POWEROFF[k] == v) return v;
+	return 120;
+#elif defined(PLATFORM_ROTATE)
 	return 0;     /* no Auto Off on the Rotate, whatever an old card saved (plorpos-3yv.100) */
 #else
 	int v = db_get_int(db_dev(), "autopoweroff", -1);
@@ -1958,7 +2170,12 @@ static int auto_poweroff_load(void)
 
 static void auto_poweroff_save(int seconds)
 {
+#if defined(PLATFORM_MIYOO)
+	db_set_int(db_dev(), "sleeppoweroff", seconds);
+	plat_set_sleep_timeout(seconds);
+#else
 	db_set_int(db_dev(), "autopoweroff", seconds);
+#endif
 }
 
 
@@ -3483,6 +3700,7 @@ static bool battery_low(void)
  *
  * plat_battery leaves its out-parameter alone when it fails, so the answer is
  * written before the call rather than after it. */
+#if !defined(PLATFORM_MIYOO)   /* the Flip's idle clock ignores the charger (f1p.56) */
 static bool keep_awake(void)
 {
 	static unsigned last;
@@ -3502,6 +3720,7 @@ static bool keep_awake(void)
 	}
 	return awake;
 }
+#endif
 /* END PolyForm-Noncommercial-1.0.0 */
 
 /* Has the player been away long enough for the armed idle action - Auto
@@ -3540,8 +3759,14 @@ static bool idle_due(app *a)
 	 * shortest is long. Never is the screen on for as long as music plays. A
 	 * new timer is a new countdown: an album that ended after five minutes
 	 * untouched must not fire Auto Sleep the moment it stops. */
+#if defined(PLATFORM_MIYOO)
+	/* Auto Sleep alone, music or not: Muse's Screen Off is gone here (f1p.58),
+	 * and Sleep Poweroff is no idle clock. */
+	secs = a->auto_off;
+#else
 	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
 	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
+#endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
 	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
@@ -3551,7 +3776,13 @@ static bool idle_due(app *a)
 	 * somebody using the device with nobody touching it, so running out
 	 * during one turns only the screen off - music_dark - and whatever the
 	 * clock was armed for waits until the music stops. */
+#if defined(PLATFORM_MIYOO)
+	/* The charger does not hold the idle clock on the Flip: a charging unit
+	 * sleeps and powers off like any other (f1p.56). */
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, false);
+#else
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, keep_awake());
+#endif
 }
 
 /* The keyboard takes callbacks rather than an app - it is deliberately
@@ -3777,9 +4008,17 @@ static void draw_systems(app *a)
 
 	cf_focus_rect(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
+#if defined(PLATFORM_MIYOO)
+	/* Not while a long jump is cutting: the cursor is already at the far end
+	 * and the cards in view are not (evict_far's rule). */
+	if (!cf_cutting(&a->cf_sys)) sys_evict_far(a);
+#endif
 	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
 	            sys_get_tex, a, &lay))
 		ui_redraw_now();
+#if defined(PLATFORM_MIYOO)
+	else sys_prefetch(a);
+#endif
 
 	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
 	 *
@@ -4116,6 +4355,7 @@ static void draw_games(app *a)
 		if (land >= 0) prime_toward(a, a->sys_cursor, land);
 	}
 	if (!cf_cutting(&v->cf)) evict_far(v, TEX_KEEP_NEAR);
+	else evict_cut(v, PRIME_HALF_MAX, CF_HALF_WINDOW + 1);
 
 	draw_game_text(a, v, s, v->cursor);
 	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
@@ -4170,11 +4410,20 @@ static bool backdrop_cached(app *a, const SDL_Rect *focus, unsigned accent)
 	if (g_backdrop_is.tint != a->tint || g_backdrop_is.glow != !!focus ||
 	    (focus && (g_backdrop_is.accent != accent ||
 	               memcmp(&g_backdrop_is.focus, focus, sizeof *focus)))) {
+		float sx = 1.0f, sy = 1.0f;
+
+		/* SDL resets the render scale to 1 whenever the target becomes a
+		 * texture and only puts it back when the target goes to NULL. So with
+		 * `was` a texture - the Flip's half-size frame, plat_lowres - the rest
+		 * of the frame drew at the wrong scale each time this cache redrew,
+		 * which is every frame while the tint eases. Put the scale back. */
+		SDL_RenderGetScale(a->r, &sx, &sy);
 		was = SDL_GetRenderTarget(a->r);
 		if (SDL_SetRenderTarget(a->r, g_backdrop) != 0) return false;
 		draw_background(a);
 		if (focus) ui_glow(a->r, focus, accent, 100, 2.3f);
 		SDL_SetRenderTarget(a->r, was);
+		SDL_RenderSetScale(a->r, sx, sy);
 		g_backdrop_is.tint = a->tint;
 		g_backdrop_is.glow = !!focus;
 		g_backdrop_is.accent = accent;
@@ -4200,7 +4449,11 @@ static void draw_shelf(app *a)
 	 * draws none, so nothing else would ask, and a full queue turns an ask
 	 * away. Thirteen checks once they are all in. */
 	for (int i = 0; i < a->sys.count; i++)
-		if (!a->sys_tex[i]) {
+		if (!a->sys_tex[i]
+#if defined(PLATFORM_MIYOO)
+		    && sys_wanted(a, i)    /* not the ones sys_evict_far just dropped */
+#endif
+		    ) {
 			int w, h;
 			sys_get_tex(a, i, &w, &h, NULL);
 		}
@@ -4224,6 +4477,74 @@ static void draw_shelf(app *a)
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
 }
+
+static bool g_snap_dirty;   /* a menu key handler ran: the shelf may have changed */
+
+#if defined(PLATFORM_MIYOO)
+/* The shelf behind a menu, dimmed, as ONE picture drawn once. Every menu frame
+ * used to redraw the whole shelf (cards, text, rail) and then blend a full
+ * screen dim over it - about 50 ms of a 55-70 ms press-to-glass on the Flip's
+ * software renderer (plorpos-f1p.14.3), for a shelf that cannot change while a
+ * menu is up. Shared by menu_run_body and the keyboard's backdrop. Rebuilt when
+ * the tint eases or the dim differs; freed when the outermost menu exits. */
+static SDL_Texture *g_snap;
+static unsigned g_snap_tint, g_snap_dim;
+static int g_snap_depth;
+
+static void shelf_dim_cached(app *a, unsigned dim)
+{
+	if (g_snap && (g_snap_tint != a->tint || g_snap_dim != dim || g_snap_dirty)) {
+		SDL_DestroyTexture(g_snap);
+		g_snap = NULL;
+	}
+	g_snap_dirty = false;
+	if (!g_snap) {
+		int w = 0, h = 0;
+		float sx = 1.0f, sy = 1.0f;
+		SDL_Texture *was = SDL_GetRenderTarget(a->r);
+
+		SDL_GetRendererOutputSize(a->r, &w, &h);
+		g_snap = SDL_CreateTexture(a->r, SDL_PIXELFORMAT_ARGB8888,
+		                           SDL_TEXTUREACCESS_TARGET, w, h);
+		if (g_snap) {
+			/* A texture target resets the render scale to 1 (SDL), so the
+			 * layout scale is put back for the draw and again after it. */
+			SDL_RenderGetScale(a->r, &sx, &sy);
+			SDL_SetTextureBlendMode(g_snap, SDL_BLENDMODE_NONE);
+			if (SDL_SetRenderTarget(a->r, g_snap) == 0) {
+				SDL_RenderSetScale(a->r, sx, sy);
+				draw_shelf(a);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+				SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+				SDL_RenderFillRect(a->r, NULL);
+				SDL_SetRenderTarget(a->r, was);
+				SDL_RenderSetScale(a->r, sx, sy);
+				g_snap_tint = a->tint;
+				g_snap_dim = dim;
+			} else {
+				SDL_DestroyTexture(g_snap);
+				g_snap = NULL;
+			}
+		}
+	}
+	if (g_snap) {
+		SDL_RenderCopy(a->r, g_snap, NULL, NULL);
+		return;
+	}
+	draw_shelf(a);
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+	SDL_RenderFillRect(a->r, NULL);
+}
+#else
+static void shelf_dim_cached(app *a, unsigned dim)
+{
+	draw_shelf(a);
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, dim);
+	SDL_RenderFillRect(a->r, NULL);
+}
+#endif
 
 /* Drawing only when something changed. See ui_redraw_at in ui.h.
  *
@@ -4261,11 +4582,32 @@ static bool screen_draw_due(app *a, ui_pace *p, Uint32 shown)
 	return ui_draw_due(p, touched || texload_ready(), shown);
 }
 
+#if defined(PLATFORM_MIYOO)
+/* A shelf's row is moving: the systems row on the systems screen, the open
+ * system's row on the games screen. */
+static bool shelf_moving(const app *a)
+{
+	if (a->screen == SCREEN_SYSTEMS) return a->cf_sys.active;
+	if (a->screen == SCREEN_GAMES) return a->view[a->sys_cursor].cf.active;
+	return false;
+}
+#endif
+
 static void render(app *a)
 {
+#if defined(PLATFORM_MIYOO)
+	bool lo = shelf_moving(a);
+
+	plat_lowres(lo);
+#endif
 	draw_shelf(a);
 	draw_chrome(a->r);
 	plat_present(a->r);
+#if defined(PLATFORM_MIYOO)
+	/* The move ended on a half-size frame: draw the sharp one now, or the
+	 * shelf would sit soft until something else asked for a redraw. */
+	if (lo && !shelf_moving(a)) ui_redraw_now();
+#endif
 }
 
 /* Ease the background tint toward the focused system rather than snapping: the
@@ -5425,6 +5767,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
+#if defined(PLATFORM_MIYOO)
+		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
+#endif
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -5457,6 +5802,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 			u.clock = clk;
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
+		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -5821,10 +6167,10 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * triggered: holding A on a row that opens a screen should open it
 		 * once. Sent before the press loop below, which skips them. */
 		if (on_key && in_repeat(&a->in, IN_LEFT))
-			if (on_key(a, ctx, IN_LEFT, sel) == MENU_DONE)
+			if ((g_snap_dirty = true, on_key(a, ctx, IN_LEFT, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 		if (on_key && in_repeat(&a->in, IN_RIGHT))
-			if (on_key(a, ctx, IN_RIGHT, sel) == MENU_DONE)
+			if ((g_snap_dirty = true, on_key(a, ctx, IN_RIGHT, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 		if (!a->running) return MENU_LEFT_GONE;
 
@@ -5836,7 +6182,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 			if (b == IN_UP || b == IN_DOWN || b == IN_BACK || b == IN_MENU
 			    || b == IN_POWER || b == IN_VOLUP || b == IN_VOLDN
 			    || b == IN_BRIGHTUP || b == IN_BRIGHTDN) continue;
-			if (on_key && on_key(a, ctx, (in_button)b, sel) == MENU_DONE)
+			if (on_key && (g_snap_dirty = true, on_key(a, ctx, (in_button)b, sel)) == MENU_DONE)
 				return MENU_LEFT_SCREEN;
 			if (!a->running) return MENU_LEFT_GONE;
 			/* The screen it opened was left with MENU: out of this one too,
@@ -5859,10 +6205,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		if (st->backdrop) {
 			st->backdrop(a, ctx);
 		} else {
-			draw_shelf(a);
-			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
-			SDL_RenderFillRect(a->r, NULL);
+			shelf_dim_cached(a, 120);
 		}
 		menu_draw(a, heading, rows, n, sel, st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
@@ -5890,7 +6233,13 @@ static menu_exit menu_run(app *a, const menu_style *st,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+#if defined(PLATFORM_MIYOO)
+	g_snap_depth++;
+#endif
 	how = menu_run_body(a, st, build, on_key, ctx);
+#if defined(PLATFORM_MIYOO)
+	if (--g_snap_depth == 0 && g_snap) { SDL_DestroyTexture(g_snap); g_snap = NULL; }
+#endif
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -5900,10 +6249,7 @@ static menu_exit menu_run(app *a, const menu_style *st,
 static void wifi_backdrop(void *ctx)
 {
 	app *a = ctx;
-	draw_shelf(a);
-	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 150);
-	SDL_RenderFillRect(a->r, NULL);
+	shelf_dim_cached(a, 150);
 	draw_battery(a->r);   /* the keyboard draws over this and presents itself */
 }
 
@@ -7070,6 +7416,9 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
+#if defined(PLATFORM_MIYOO)
+static void default_palette_screen(app *a, int sys);
+#endif
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -7345,6 +7694,9 @@ static void bt_await_route(const char *mac)
 	}
 }
 
+#if defined(PLATFORM_MIYOO)
+__attribute__((unused))   /* no Bluetooth row on the Flip (f1p.57) */
+#endif
 static void bt_screen(app *a)
 {
 	bt_ui u = { 0 };
@@ -8057,10 +8409,18 @@ static int menu_shelf_width(app *a)
 		/* And every shader name, as the in-game menu measures them. */
 		for (k = 0; !own && k < a->shaders.count; k++) {
 			int mw;
-			rows[sm_index(ds_fill_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
+			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
+#if defined(PLATFORM_MIYOO)
+		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
+			int mw;
+			rows[SM_FILL].value = gbpal_label(k);
+			mw = menu_measure(rows, n, heading);
+			if (mw > w) w = mw;
+		}
+#endif
 		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
 			int mw;
 			rows[SM_CORE].value = ENGINE_LABEL(k);
@@ -8500,10 +8860,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		auto_off_save(a->auto_off);
 		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
 		 * escalation ladder, so at most one of the pair is ever armed. */
+#if !defined(PLATFORM_MIYOO)
 		if (a->auto_off && a->auto_poweroff) {
 			a->auto_poweroff = 0;
 			auto_poweroff_save(0);
 		}
+#endif
 		/* From now, not from whenever the last countdown began: choosing 30s
 		 * should not inherit two minutes of an old one already spent. */
 		a->idle.since_ms = plat_now_ms();
@@ -8522,15 +8884,27 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
 		a->auto_poweroff = AUTO_POWEROFF[at];
 		auto_poweroff_save(a->auto_poweroff);
+#if !defined(PLATFORM_MIYOO)
 		if (a->auto_poweroff && a->auto_off) {
 			a->auto_off = 0;
 			auto_off_save(0);
 		}
 		a->idle.since_ms = plat_now_ms();
+#endif
 		return MENU_STAY;
 	}
 #endif
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
+#if defined(PLATFORM_MIYOO)
+	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
+	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
+		bool on = db_get_int(db_dev(), "lidclose", 1) == 0;
+
+		db_set_int(db_dev(), "lidclose", on);
+		plat_set_lid_sleep(on);
+		return MENU_STAY;
+	}
+#endif
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
@@ -8751,10 +9125,20 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * right on Favorites' Sort By did nothing at all. */
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
-			sel = sm_row_at(ds_fill_shown(a->sys.systems[a->sys_cursor].tag), sel);
+			sel = sm_row_at(sm_extra_shown(a->sys.systems[a->sys_cursor].tag), sel);
 		/* The DS's Display: left and right step it, A steps forward, saved
 		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
+#if defined(PLATFORM_MIYOO)
+			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
+			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
+				const char *tg = a->sys.systems[a->sys_cursor].tag;
+
+				if (d) palette_default_save(tg, (palette_default_of(tg) + d + GBPAL_COUNT) % GBPAL_COUNT);
+				else default_palette_screen(a, a->sys_cursor);
+				return MENU_STAY;
+			}
+#endif
 			ds_fill_step(d ? d : 1, false);
 			return MENU_STAY;
 		}
@@ -8798,7 +9182,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
 				shader_save(a, a->sys_cursor);
 			} else {
+#if defined(PLATFORM_MIYOO)
+				v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
+				shader_save(a, a->sys_cursor);
+#else
 				shelf_shader_screen(a, a->sys_cursor);
+#endif
 			}
 			return MENU_STAY;
 		}
@@ -8861,7 +9250,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 	case PM_GAME:         game_settings_screen(a); break;
+#if !defined(PLATFORM_MIYOO)
 	case PM_BT:           bt_screen(a); break;
+#endif
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
 	case PM_ABOUT:        about_screen(a); break;
@@ -11950,6 +12341,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
 		bool shown = i < R_SWAP;
+#if defined(PLATFORM_MIYOO)
+		/* The Flip's diatom keeps no rewind history for a PS1 state (over its cap): no row to bind. */
+		if (i == 1 && tag && !strcmp(tag, "PS")) continue;
+#endif
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
@@ -12489,13 +12884,24 @@ static bool sleep_cycle(app *a)
 	 * (plorpos-2wl.12). */
 	if (a->game_on) plat_screen_off();
 	checkpoint_game(a);
+#if defined(PLATFORM_MIYOO)
+	/* The Flip (f1p.55): music is paused and muted for the sleep, not played on
+	 * in the dark; it resumes on a wake. */
+	bool paused_music = musec_playing();
+
+	if (paused_music) musec_pause();
+#else
 	if (musec_playing()) {
 		dark_end end = music_dark(a, &waited);
 
 		if (end != DARK_STOPPED) return end == DARK_WOKE;
 	}
+#endif
 	t0 = plat_now_ms();
 	awake = plat_light_sleep(waited);
+#if defined(PLATFORM_MIYOO)
+	if (paused_music && awake) musec_toggle();
+#endif
 	fprintf(stderr, "sleep: %s after %us%s\n",
 	        awake ? "awake" : "no suspend, powering off",
 	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");
@@ -12518,7 +12924,11 @@ static pwr_action power_check(app *a)
 	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
 
 	if (pa == PWR_NONE && idle_due(a)) {
+#if defined(PLATFORM_MIYOO)
+		pa = PWR_SLEEP;                    /* the power-off is the sleep's timer */
+#else
 		pa = a->auto_poweroff ? PWR_POWEROFF : PWR_SLEEP;
+#endif
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
@@ -12549,7 +12959,7 @@ static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 	for (i = 0; i < n; i++)
 		rows[i] = (menu_row){ a->shaders.e[i].name,
 		                      i == a->view[c->sys].shader ? "Current" : NULL, true };
-	*heading = "Shader";
+	*heading = SHADER_LABEL;
 	return n;
 }
 
@@ -12620,6 +13030,7 @@ typedef struct {
 	gm_ctx           *gm;
 	const game_entry *g;
 	int               cur;
+	const char       *tag;
 } pal_ctx;
 
 static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
@@ -12645,13 +13056,13 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (sel == c->cur) return MENU_DONE;
-	if (gbpal_opts(sel, p, sizeof p, col, sizeof col)) {
+	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
+	if (sel != c->cur && gbpal_opts(sel, p, sizeof p, col, sizeof col)) {
 		char *eq;
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
 	}
-	palette_save(c->g, sel);
+	palette_save(c->tag, c->g, sel);
 	return MENU_DONE;
 }
 
@@ -12662,7 +13073,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 {
 	sysview *sv = &a->view[a->sys_cursor];
 	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0 };
+	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag };
 	menu_style st = gm->st;
 
 	c.cur = palette_of(a, o, c.g);
@@ -12673,6 +13084,42 @@ static void palette_screen(app *a, gm_ctx *gm)
 	st.start    = c.cur;
 	menu_run(a, &st, pal_build, pal_key, &c);
 }
+
+#if defined(PLATFORM_MIYOO)
+/* A Game Boy shelf's Default Palette, from its system menu: the in-game Palette's list, kept for the
+ * shelf. Only a game that has not chosen its own follows it. A keeps the choice; the next launch
+ * draws with it. */
+typedef struct { app *a; int sys; } dp_ctx;
+
+static int dp_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	dp_ctx *c = ctx;
+	int i, cur = palette_default_of(c->a->sys.systems[c->sys].tag), n = GBPAL_COUNT < max ? GBPAL_COUNT : max;
+
+	for (i = 0; i < n; i++)
+		rows[i] = (menu_row){ gbpal_label(i), i == cur ? "Current" : NULL, true };
+	*heading = "Default Palette";
+	return n;
+}
+
+static menu_result dp_key(app *a, void *ctx, in_button key, int sel)
+{
+	dp_ctx *c = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	palette_default_save(a->sys.systems[c->sys].tag, sel);
+	return MENU_DONE;
+}
+
+static void default_palette_screen(app *a, int sys)
+{
+	dp_ctx c = { a, sys };
+	menu_style st = { .accent = MENU_ACCENT, .follow_tint = true,
+	                  .start = palette_default_of(a->sys.systems[sys].tag) };
+
+	menu_run(a, &st, dp_build, dp_key, &c);
+}
+#endif
 
 /* The in-game Disc list (plorpos-gkd.47), an .m3u game's own. Same shape as
  * the Palette list above; the disc is kept per game for the next launch. */
@@ -12773,6 +13220,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		gm_cycle_display(a, key == IN_RIGHT ? 1 : -1);
 		return MENU_STAY;
 	}
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's Scanline Filter is On / Off: left and right turn it over, as they do in the shelf menu. */
+	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT)) {
+		sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+
+		sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		return MENU_STAY;
+	}
+#endif
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
@@ -12831,7 +13287,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		gm_cycle_display(a, +1);
 		break;
 	case GM_SHADER:
+#if defined(PLATFORM_MIYOO)
+		{	/* On / Off: A toggles, through the list screen's own apply-and-save */
+			sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+
+			sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		}
+#else
 		shader_screen(a, c);
+#endif
 		break;
 	case GM_PALETTE:
 		palette_screen(a, c);
@@ -13337,6 +13801,20 @@ static bool is_splore(const system_cfg *s, const char *file)
 	return is_pico8(s) && !strcmp(file, SPLORE);
 }
 
+/* The owner's PICO-8, and where it keeps what it writes (-home). The Flip runs
+ * the Raspberry Pi build, pico8_dyn (plorpos-f1p.78), and its card is vfat
+ * mounted iocharset=utf8: lookups there are case-sensitive, yet a mkdir of
+ * Saves/pico-8 collides with fake08's Saves/Pico-8 on the short name - so
+ * native's home there is that folder, spelled as fake08 has it, and the two
+ * share cdata/ as they do on exFAT. */
+#if defined(PLATFORM_MIYOO)
+#define P8_BIN  "pico8_dyn"
+#define P8_HOME "Saves/Pico-8"
+#else
+#define P8_BIN  "pico8_64"
+#define P8_HOME "Saves/pico-8"
+#endif
+
 /* Carts played in Splore, onto the shelf (plorpos-gkd.50.18). Splore keeps
  * every cart it shows in bbs/carts, browsing included, but writes a
  * temp-<id>.nfo - the cart's lid (id-revision) and title - only for one that
@@ -13356,7 +13834,7 @@ static int splore_keep(const char *folder)
 	DIR *d;
 	int n = 0;
 
-	snprintf(dir, sizeof dir, "%s/Saves/pico-8/bbs/carts", P_CARD);
+	snprintf(dir, sizeof dir, "%s/" P8_HOME "/bbs/carts", P_CARD);
 	if (!(d = opendir(dir))) return 0;
 	while ((e = readdir(d))) {
 		size_t len = strlen(e->d_name), k = 0;
@@ -13427,7 +13905,7 @@ static int splore_keep(const char *folder)
 
 static void pico8_bin(char *out, size_t n)
 {
-	snprintf(out, n, "%s/Bios/pico8_64", P_CARD);
+	snprintf(out, n, "%s/Bios/" P8_BIN, P_CARD);
 }
 
 /* First on the shelf, before any cart, whenever native PICO-8 is there to
@@ -13692,7 +14170,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #endif
 	int n = 0, ow = 0, oh = 0, flags;
 
-	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
+	snprintf(home, sizeof home, "%s/" P8_HOME, P_CARD);
 	snprintf(desk, sizeof desk, "%s/desktop", home);
 	mkdir(home, 0755);
 	mkdir(desk, 0755);
@@ -13943,7 +14421,7 @@ static void launch_one(app *a)
 	native = is_splore(s, romfile) || (is_pico8(s) && a->view[o].native);
 	pico8_bin(pico8, sizeof pico8);
 	if (native && access(pico8, X_OK) != 0) {
-		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/pico8_64");
+		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/" P8_BIN);
 		SDL_Delay(2200);
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
@@ -14058,6 +14536,9 @@ static void launch_one(app *a)
 	plat_audio_settle(5000);
 #endif
 
+#if defined(PLATFORM_MIYOO)
+	flip_trim_for_launch(a, o);
+#endif
 	t_prep = plat_now_ms();
 	if (!native && plat_resident_ready_wait()) {
 		t_ready = plat_now_ms();
@@ -14369,7 +14850,6 @@ static void launch_one(app *a)
 	 * than a shutdown. Everything above leaves the marker standing, which is
 	 * what makes the next boot able to tell them apart. */
 	bookmarks_finish();
-	playing_clear();
 
 	/* Straight to the shelf, no fade. The card decode inside this render is
 	 * the only real cost left on the way back, and a fade laid over the top of
@@ -14383,6 +14863,10 @@ static void launch_one(app *a)
 	 * is waiting on, so they happen once the shelf is up rather than while it
 	 * is still black. The two paths above that leave without reaching here do
 	 * it themselves. */
+	/* The marker's unlink on the card took 9-57 ms of the first frame back on
+	 * the Flip (plorpos-f1p.42); it follows the frame like the LEDs on every
+	 * port (plorpos-bbw.2). Rotate: 14 ms either way, so no gain there, no cost. */
+	playing_clear();
 	plat_leds_off();
 }
 
@@ -15400,13 +15884,29 @@ static void build_muse_shelf(app *a, bool bg)
 /* `bg`: Muse's library may still be being read on return - see muse_walk. */
 static void scan_all(app *a, bool bg)
 {
+	/* Where the scan's time goes, one line at the end: lib_scan (directory
+	 * reads), titles_apply (names, art lookups), the rest. */
+	Uint32 t_lib = 0, t_titles = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
+
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
+		t1 = SDL_GetTicks();
 		lib_scan(P_ROMS, a->sys.systems[i].folder, a->sys.systems[i].exts, &v->list);
+		t_lib += SDL_GetTicks() - t1;
+		t1 = SDL_GetTicks();
 		ports_titles(&a->sys.systems[i], &v->list);
-		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
-		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
-		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
+		/* Arcade shelves are named by set: fbneo's two from FBNeo's table, mame2000
+		 * and fbalpha2012 from their own romset maps (setmap.h). */
+		{
+			char mp[CFG_STR * 2], res[CFG_STR * 2];
+			const char *core = a->sys.systems[i].core, *map;
+
+			snprintf(res, sizeof res, "%s/res", P_ROOT);
+			map = setmap_path(res, core, mp, sizeof mp);
+			titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
+			             strcmp(core, "fbneo") && strncmp(core, "fbalpha2012", 11) && strcmp(core, "mame2000") ? NULL : fbneo_dat(), map);
+		}
+		t_titles += SDL_GetTicks() - t1;
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {
@@ -15443,9 +15943,12 @@ static void scan_all(app *a, bool bg)
 			        names, v->list.skipped > shown ? ", and more" : "");
 		}
 	}
+	t_rest = SDL_GetTicks();
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
 	build_muse_shelf(a, bg);
+	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, shelves %u ms, total %u ms\n",
+	        t_lib, t_titles, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the
@@ -15887,6 +16390,7 @@ int main(int argc, char *argv[])
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
 	bool loader;                  /* texload's threads are running */
+
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_path = argv[++i];
@@ -16351,6 +16855,10 @@ int main(int argc, char *argv[])
 		 * device has no trust store of its own - res/ssl/README.md. */
 		a.auto_off = auto_off_load();
 		a.auto_poweroff = auto_poweroff_load();
+#if defined(PLATFORM_MIYOO)
+		plat_set_sleep_timeout(a.auto_poweroff);
+		plat_set_lid_sleep(db_get_int(db_dev(), "lidclose", 1) != 0);
+#endif
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
@@ -16396,7 +16904,20 @@ int main(int argc, char *argv[])
 	/* Scan every system now, not when one is opened: it is three directory
 	 * reads, it happens behind the boot animation, and it means walking into
 	 * a system is a frame rather than a wait. */
+#ifdef PLATFORM_MIYOO
+	/* Cold vfat directory reads were 2.7 s of the Flip's boot: answer from the
+	 * last scan while the folders are unchanged. A rescan (menu, upload) reads
+	 * the card and refreshes it. */
+	{
+		char cdir[CFG_STR];
+
+		snprintf(cdir, sizeof cdir, "%s/libcache", P_USERDATA);
+		lib_cache_dir(cdir);
+		lib_cache_use(true);
+	}
+#endif
 	scan_all(&a, true);
+	lib_cache_use(false);
 	t_mark("library scan");
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
@@ -16587,6 +17108,12 @@ int main(int argc, char *argv[])
 				}
 			}
 			if (found) {
+				/* TORTOS_AUTOENGINE=native|fake08: PICO-8's engine for this
+				 * run only, never saved (plorpos-f1p.78). */
+				const char *eng = getenv("TORTOS_AUTOENGINE");
+
+				if (eng && is_pico8(&a.sys.systems[a.sys_cursor]))
+					a.view[a.sys_cursor].native = !strcmp(eng, "native");
 				fprintf(stderr, "autolaunch: %s / %s\n", tag, file);
 				launch(&a);
 			} else {

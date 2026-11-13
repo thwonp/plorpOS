@@ -1,0 +1,51 @@
+#!/bin/sh
+# The Miyoo Mini Flip's boot hook (plorpos-f1p.12): the stock firmware's
+# /customer/main runs /mnt/SDCARD/.tmp_update/updater, when there is one, in
+# place of Miyoo's MainUI. This one starts plorpOS.
+#
+# When plorpOS cannot start (no TortOS/launch.sh, or its launch loop gives up
+# after five launcher failures in a row) the hook hands the device back to
+# the stock MainUI (plorpos-f1p.62.1). The stock main runs `rm -rf
+# .tmp_update` as soon as this script returns, so the hook first moves its
+# own folder aside to .tmp_update.off: main then finds no .tmp_update and
+# starts MainUI, and the hook survives. To boot plorpOS again, rename
+# .tmp_update.off back to .tmp_update (from a PC).
+#
+# TortOS/.boot-idle: stay up instead (for ssh) rather than starting MainUI.
+# TortOS/.fallback-test: TEST ONLY, the fallback re-arms the hook, runs the
+# marker's lines (to undo the test's trigger) and reboots after 60 s, so an
+# unattended test heals itself.
+ROOT=/mnt/SDCARD
+T=$ROOT/.tmp_update
+
+boot_fallback() {
+	if [ -f "$ROOT/TortOS/.boot-idle" ]; then
+		while :; do sleep 3600; done
+	fi
+	rm -rf "$ROOT/.tmp_update.off"
+	mv "$T" "$ROOT/.tmp_update.off" || while :; do sleep 3600; done
+	if [ -f "$ROOT/TortOS/.fallback-test" ]; then
+		# the marker's own lines undo whatever the test did to force the fallback
+		mv "$ROOT/TortOS/.fallback-test" /tmp/fallback-test.sh
+		( sleep 60; mv "$ROOT/.tmp_update.off" "$T"; sh /tmp/fallback-test.sh; sync; reboot ) > /dev/null 2>&1 &
+	fi
+	sync
+	exit 0
+}
+[ -f "$ROOT/TortOS/launch.sh" ] || boot_fallback
+
+export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
+
+# Backlight and panel as the stock firmware brings them up.
+echo 0 > /sys/class/pwm/pwmchip0/export 2> /dev/null
+echo 800 > /sys/class/pwm/pwmchip0/pwm0/period
+echo 50 > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
+echo 1 > /sys/class/pwm/pwmchip0/pwm0/enable
+cat /proc/ls > /dev/null
+# The stock telnetd (passwordless root): plorpOS's ssh, off by default, is
+# switched on in Network Services instead (TortOS/launch.sh starts it).
+killall telnetd 2> /dev/null
+ifconfig lo up
+
+sh "$ROOT/TortOS/launch.sh"
+boot_fallback

@@ -39,7 +39,9 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
+#if !defined(PLATFORM_MIYOO)   /* the Flip has no Bluetooth (f1p.57) */
 	PM_BT,
+#endif
 	PM_AUDIO,
 	PM_SYSTEM, PM_UI, PM_GAME,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
@@ -58,10 +60,14 @@ typedef enum {
  * indicator, and the side switch where there is one. */
 typedef enum {
 	ST_CLOCK,
+#if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
+	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
+#else
 #if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
+#endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
@@ -197,6 +203,7 @@ typedef struct {
 	const char *clock;       /* now, as Date & Time's row shows it */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
+	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
@@ -222,6 +229,7 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
+	const char *palette;     /* a Game Boy shelf's Default Palette (the Flip's), in SM_FILL's place; NULL elsewhere */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not

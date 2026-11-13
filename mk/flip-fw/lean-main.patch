@@ -1,0 +1,31 @@
+--- a/main
++++ b/main
+@@ -74,7 +74,10 @@
+ export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
+ /customer/app/axp_test poweron
+ 
+-init_lcd 1
++# plorpOS (plorpos-f1p.38): no 1 s settle. The LCD is initialised by init_lcd's
++# `cat /proc/ls`; the sleep and the two sdldisplay splash draws below cost
++# ~4 s of boot before the SD card's updater could start.
++init_lcd 0
+ 
+ if [ -f ${CUSTOMER_DIR}/exit_on_stage2 ] ; then
+     exit 0
+@@ -83,14 +86,14 @@
+ #wait for SDCARD mounted
+ mounted=`cat /proc/mounts | grep SDCARD`
+ cnt=0
+-/customer/app/sdldisplay /customer/app/skin/icon-wait-tf-card_flipped.png
++#plorpOS: skipped, ~2 s each: /customer/app/sdldisplay /customer/app/skin/icon-wait-tf-card_flipped.png
+ while [ "$mounted" == "" ] && [ $cnt -lt 16 ] ; do
+    echo "wait for sdcard $cnt $mounted"
+    sleep 0.5
+    cnt=`expr $cnt + 1`
+    mounted=`cat /proc/mounts | grep SDCARD`
+ done
+-/customer/app/sdldisplay /customer/app/skin/app_loading_bg_flipped.png
++#plorpOS: skipped, ~2 s each: /customer/app/sdldisplay /customer/app/skin/app_loading_bg_flipped.png
+ if [ "$mounted" != "" ] ; then
+    insmod /mnt/SDCARD/8188fu.ko
+    for f in `ls /mnt/SDCARD/boot/*.ko` ; do

@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 #include "sys_menu.h"
+#include "shaderlist.h"
 
 void sys_menu_auto_off_label(int seconds, char *out, size_t n)
 {
@@ -29,7 +30,9 @@ int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
 	if (!books) out[n++] = SMM_ART;
 	out[n++] = SMM_DISPLAY;
 	out[n++] = SMM_RESCAN;
+#if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
+#endif
 	return n;
 }
 
@@ -94,8 +97,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
-		out[SM_FILL]    = (menu_row){ "Display",       u->fill,     true  };
-		out[SM_SHADER]  = (menu_row){ "Shader", u->shader ? u->shader : "None",
+		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
+		                             : (menu_row){ "Display",         u->fill,    true };
+		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row
@@ -123,7 +127,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
-		if (!u->fill) {
+		if (!u->fill && !u->palette) {
 			int i;
 
 			for (i = SM_FILL; i < SM_ROWS - 1; i++) out[i] = out[i + 1];
@@ -146,9 +150,11 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
 	 * value is still the radio's, since that is what decides the rest. */
 	out[PM_WIFI]         = (menu_row){ "Network Services", b->b, true };
+#if !defined(PLATFORM_MIYOO)
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
+#endif
 	/* Where the system's sound goes - not Diatom's, which is why the label says
 	 * neither "game" nor "emulator": the audiobook and music player will read
 	 * the same setting. Diatom's ADR-0029, and src/audioout.c for the rule.
@@ -190,7 +196,16 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
 #if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
+#if defined(PLATFORM_MIYOO)
+	/* The Flip has no suspend: how long a sleeping unit waits before it powers
+	 * off, whatever started the sleep (f1p.56). */
+	out[ST_AUTO_OFF] = (menu_row){ "Sleep Poweroff",  b->a, true };
+	/* The hall sensor can read closed with the lid open beside a magnet (f1p.61), so
+	 * the lid's sleep can be turned off; the power button and Auto Sleep stay. */
+	out[ST_LID]      = (menu_row){ "Lid Close",       u->lid_sleep ? "sleep" : "nothing", true };
+#else
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
+#endif
 #endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };

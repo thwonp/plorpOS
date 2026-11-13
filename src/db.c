@@ -118,6 +118,17 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's Game Boy core is Gambatte (plorpos-f1p.77). Its own default corrects GBC colors; the
+	 * picture mgba drew was uncorrected, so that stays. The palette is sent at every launch (palette.<TAG>.<file>). */
+	{ "coreopt..gambatte_gbc_color_correction", "disabled" },
+#endif
+	/* snes9x2010 ships with frameskip disabled. Star Fox (Super FX) runs at
+	 * 91.6% on the Flip without it; auto drops only the drawing of a late
+	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
+	{ "coreopt.SFC.snes9x_2010_frameskip", "auto" },
+	/* The Flip's SNES core (plorpos-f1p.70): the same auto frameskip, under its own key. */
+	{ "coreopt.SFC.snes9x_2005_frameskip", "auto" },
 	/* PicoDrive's own default, PAR, reports square pixels: Genesis 1.4286,
 	 * Master System 1.3333. CRT is a television's shape, within 3% of what
 	 * genesis_plus_gx reported for all three Sega systems before PicoDrive
@@ -706,6 +717,14 @@ bool db_write_boot_env(void)
 	             db_get_int(g_dev, "bluetooth", 0) ? 1 : 0,
 	             strchr(tz, '\'') ? "UTC" : tz);
 	if (n < 0 || n >= (int)sizeof body) return false;
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's ssh switch (plorpos-f1p.62.2): launch.sh starts dropbear. */
+	{
+		int m = snprintf(body + n, sizeof body - (size_t)n, "SSH='%d'\n",
+		                 db_get_int(g_dev, "ssh", 0) ? 1 : 0);
+		if (m < 0 || m >= (int)sizeof body - n) return false;
+	}
+#endif
 
 	/* NOTHING TO DO IF NOTHING CHANGED, and this is not an optimization for
 	 * its own sake. levels_save calls this on every nudge of the volume

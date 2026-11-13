@@ -16,6 +16,7 @@
 #include "artshrink.h"
 #include "config.h"
 #include "fbneodat.h"
+#include "setmap.h"
 #include "library.h"
 #include "net.h"
 #include "ss.h"
@@ -79,6 +80,11 @@ static const struct { const char *folder, *remote[3]; } MAP[] = {
 	/* Arcade art is filed by set under FBNeo's catalog; Neo Geo sets have their
 	 * own. Both are named by the full title, not the set name (plorpos-gkd.56.3). */
 	{ "Arcade", { "FBNeo - Arcade Games" } },
+	/* The Flip's two arcade shelves are named for their core. MAME 2000's art is
+	 * libretro's own MAME collection, filed by MAME's titles, not FBNeo's; FB Alpha
+	 * 2012 is FBNeo's ancestor and shares its catalog. */
+	{ "Arcade (MAME 2000)", { "MAME" } },
+	{ "Arcade (FBA 2012)", { "FBNeo - Arcade Games" } },
 	/* FBNeo's catalog second: it files every Neo Geo set as well, under
 	 * FBNeo's own names, and the Neo Geo one has 257 covers to its 6,456. */
 	{ "Neo Geo", { "SNK - Neo Geo", "FBNeo - Arcade Games" } },
@@ -349,7 +355,7 @@ static int     g_nnames;      /* what the index held; for the message only */
 static char   *g_dat;
 static bool    g_crc_tried;
 
-typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; bool fbneo; } sysrow;
+typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; bool fbneo; char map[LIB_PATH]; } sysrow;
 static sysrow  g_sys[CFG_MAX_SYSTEMS];
 static int     g_nsys;
 static char    g_romdir[LIB_PATH];
@@ -897,7 +903,20 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_d
 
 		snprintf(g_sys[g_nsys].folder, CFG_STR, "%s", sys->systems[i].folder);
 		snprintf(g_sys[g_nsys].exts,   CFG_STR, "%s", sys->systems[i].exts);
-		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo");
+		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo") || !strncmp(sys->systems[i].core, "fbalpha2012", 11) || !strcmp(sys->systems[i].core, "mame2000");
+		/* mame2000 and fbalpha2012 are named by their own romset's map where
+		 * the card has one (res/maps, beside the FBNeo table), else by FBNeo's. */
+		g_sys[g_nsys].map[0] = '\0';
+		{
+			char res[LIB_PATH], *sl;
+
+			snprintf(res, sizeof res, "%s", g_fbneo_dat);
+			if ((sl = strrchr(res, '/'))) {
+				*sl = '\0';
+				if (!setmap_path(res, sys->systems[i].core, g_sys[g_nsys].map, sizeof g_sys[g_nsys].map))
+					g_sys[g_nsys].map[0] = '\0';
+			}
+		}
 		g_nsys++;
 	}
 	g_st.systems = g_nsys;
@@ -941,10 +960,10 @@ static bool start_image(const char *remote, const char *name, const char *dest)
 static const char *asked(int i)
 {
 	static char buf[NAME_MAX_];
-	const char *d = g_sys[g_si].fbneo && g_fbneo_dat[0]
-	              ? fbneo_desc(g_fbneo_dat, g_roms[i]) : NULL;
+	const char *d = g_sys[g_si].map[0] ? setmap_title(g_sys[g_si].map, g_roms[i]) : NULL;
 	size_t k;
 
+	if (!d) d = g_sys[g_si].fbneo && g_fbneo_dat[0] ? fbneo_desc(g_fbneo_dat, g_roms[i]) : NULL;
 	if (!d) return g_roms[i];
 	for (k = 0; d[k] && k < sizeof buf - 1; k++)
 		buf[k] = strchr("&*/:`<>?\\|", d[k]) ? '_' : d[k];

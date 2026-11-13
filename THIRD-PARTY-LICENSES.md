@@ -208,6 +208,60 @@ by this project's MIT license. If the author objects, it will be removed.
 GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
 the list itself, is this project's (MIT).
 
+## libretro cores on the Miyoo Mini Flip (`TortOS/cores/`)
+
+Built by this project from the upstream commits pinned in
+`mk/flip-cores/cores.lock` (each core's HEAD as of 2026-11-10) (with each source tarball's sha256; the source of a
+GPL core is that tarball plus the patches named there), by
+`mk/flip-cores/build-<core>.sh`. None is a third-party binary.
+
+| Core | System | Upstream @ commit | License |
+|------|--------|-------------------|---------|
+| `fceumm_libretro.so` | NES | libretro/libretro-fceumm @ e0f3086 | GPL-2.0 |
+| `picodrive_libretro.so` | Master System, Game Gear, Genesis, Sega CD, 32X | libretro/picodrive @ 1890c29 (+ its submodules at the commits it pins) | **Non-commercial** (PicoDrive's own licence) |
+| `mgba_libretro.so` | Game Boy, Game Boy Color | libretro/mgba @ 7a12d6d | MPL-2.0 |
+| `gpsp_libretro.so` | Game Boy Advance | libretro/gpsp @ 5819380 | GPL-2.0 |
+| `mednafen_pce_fast_libretro.so` | TurboGrafx-16 | libretro/beetle-pce-fast-libretro @ 2de1ce1 | GPL-2.0 |
+| `snes9x2005_plus_libretro.so` | SNES | libretro/snes9x2005 @ a79dfe9, built with `USE_BLARGG_APU=1` | **Non-commercial** (Snes9x licence, `copyright` in the repo; its ndssfc port layer GPL-2.0-or-later, libretro glue MIT) |
+| `race_libretro.so` | Neo Geo Pocket (Color) | libretro/RACE @ c7810dd | GPL-2.0-or-later |
+| `fbalpha2012_neogeo_libretro.so` | Neo Geo | libretro/fbalpha2012_neogeo @ e092097 | **Non-commercial** (FB Alpha licence) |
+| `fbalpha2012_libretro.so` | Arcade (FBA 2012) | libretro/fbalpha2012 @ 0ce3153 | **Non-commercial** (FB Alpha licence, plus MAME's) |
+| `mame2000_libretro.so` | Arcade (MAME 2000) | libretro/mame2000-libretro @ 181b42e + `mk/flip-cores/patches/mame2000-nano.patch` | **Non-commercial** (MAME licence) |
+| `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
+| `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
+
+## Network tools (Miyoo Mini Flip only)
+
+- `TortOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
+  (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
+  `mk/flip-cores/build-curl.sh`, which pins both source tarballs by sha256; HTTP/HTTPS only.
+  The Flip's firmware has no curl; other devices use their system one.
+- `TortOS/bin/dropbear`, `TortOS/bin/dropbearkey` - **Dropbear SSH** (MIT-style licence, Matt Johnston
+  and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
+  from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
+  Off until switched on in Network Services; login plorpos / plorpos or a key.
+
+## Wi-Fi driver (Miyoo Mini Flip only)
+
+- `TortOS/8188fu.ko` - **Realtek RTL8188FU wireless driver**, `version=v5.7.4.2_36687.20200421`,
+  `author=Realtek Semiconductor Corp.`, `license=GPL` (the module's own `modinfo`), built by Miyoo for the
+  Flip's kernel (`vermagic=4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8`). md5
+  `085ee00a031c401ea7d5a6a6b2ed2b0c`. Shipped unmodified, because the Flip's stock firmware loads the radio
+  driver from the SD card and has no copy of its own. **GPL-2.0** (the kernel's `GPL` tag): it is
+  Realtek's out-of-tree `rtl8188FU` Linux driver at that version, built against Miyoo's kernel tree;
+  this project did not build it and holds no build tree for it beyond that version string; its source
+  is Realtek's rtl8188FU driver at that version, as distributed by Miyoo with the Flip's firmware.
+
+## Miyoo firmware component (optional fast-boot image, Flip only)
+
+- The separate "fast boot" download's `miyoo285_fw.img` is a customer-only update image: the `/customer`
+  partition of Miyoo's own firmware for the Mini Flip (build 202510011046, as published by Miyoo on its firmware
+  page) with a single script, `/customer/main`, changed (`mk/flip-fw/lean-main.patch`). It contains Miyoo's
+  binaries and fonts, which are **not covered by this project's licence** and whose terms were not checked
+  here; the community already redistributes the same firmware. It is not affiliated with or endorsed by Miyoo
+  and is not part of the release zip. It will be removed if Miyoo objects. `mk/flip-fw/build-lean.sh` rebuilds
+  it from the user's own copy of the stock firmware.
+
 ## Certificates
 
 - `res/ssl/cacert.pem` - Mozilla's root CA list as published by the curl

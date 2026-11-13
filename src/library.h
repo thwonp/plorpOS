@@ -60,6 +60,15 @@ bool lib_is_disc(const char *name);
 
 bool lib_scan(const char *roms_root, const char *folder, const char *exts,
               game_list *out);
+
+/* A scan result per system folder, kept in `dir` and trusted while the folder's
+ * mtime and the extension list are unchanged. The Flip's cold vfat reads cost
+ * 2.7 s at boot (plorpos-f1p, scan cache); elsewhere this is never switched on.
+ *   lib_cache_dir(dir)    where the files live; NULL (the default) = no cache.
+ *   lib_cache_use(true)   lib_scan may answer from it (boot); false = always read
+ *                         the card, and still refresh the cache (a rescan). */
+void lib_cache_dir(const char *dir);
+void lib_cache_use(bool read);
 void lib_free(game_list *l);
 
 /* The order a shelf is read in: by title, and by name where two titles are

@@ -1,0 +1,2 @@
+# PGO=gen sh mk/flip-cores/build-fake08.sh && sh mk/flip-cores/pgo-train.sh fake08 900 \
+"Pico-8/Celeste.p8.png" "Pico-8/Celeste 2.p8.png" "Pico-8/Beckon the Hellspawn.p8.png" "Pico-8/Dank Tomb.p8.png" "Pico-8/Air Delivery.p8.png" "Pico-8/Bubble Bobble.p8.png" "Pico-8/Cherry Bomb.p8.png" "Pico-8/Alone in Pico.p8.png" "Pico-8/CRATER.p8.png"

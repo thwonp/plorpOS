@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* See texload.h for why this exists. */
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 #include <string.h>
 #include <SDL.h>
 #include <SDL_image.h>
@@ -94,7 +96,33 @@ static bool queued(int sys, int idx)
 /* Worker side. Touches no renderer and no launcher state - only its own copy
  * of the job, which is why the paths are copied into the request rather than
  * pointed at: the list they came from can be rebuilt while this runs. */
-static SDL_Surface *decode(const char *path)
+#if defined(PLATFORM_MIYOO)
+/* Covers are kept at about half the area they arrive with, shrunk HERE on the
+ * worker so the frame never pays for it (scaling on the main thread cost about
+ * 10 ms a card). Box art is 230x345 (317 KB decoded, 7 a system) and the Flip
+ * has 101 MB and no swap: at half the area every system's covers stay resident
+ * after the first visit instead of reloading on each return, which is what
+ * hitched the scroll (plorpos-f1p.23). Softer art, by the owner's call:
+ * smooth scrolling over fidelity in shelves. Only shelf covers (sys >= 0); the
+ * system cards come in under a negative shelf number and are shrunk at deploy. */
+#define COVER_MAX_PX 40000
+static SDL_Surface *cover_shrink(SDL_Surface *s)
+{
+	SDL_Surface *d;
+	float k;
+
+	if (!s || (long)s->w * s->h <= COVER_MAX_PX) return s;
+	k = sqrtf((float)COVER_MAX_PX / ((float)s->w * (float)s->h));
+	d = SDL_CreateRGBSurfaceWithFormat(0, (int)(s->w * k), (int)(s->h * k), 32,
+	                                   SDL_PIXELFORMAT_ARGB8888);
+	if (!d) return s;
+	if (SDL_SoftStretchLinear(s, NULL, d, NULL) != 0) { SDL_FreeSurface(d); return s; }
+	SDL_FreeSurface(s);
+	return d;
+}
+#endif
+
+static SDL_Surface *decode(const char *path, bool cover)
 {
 	SDL_Surface *raw, *conv;
 
@@ -102,6 +130,11 @@ static SDL_Surface *decode(const char *path)
 	if (!(raw = IMG_Load(path))) return NULL;
 	conv = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ARGB8888, 0);
 	SDL_FreeSurface(raw);
+#if defined(PLATFORM_MIYOO)
+	if (cover) conv = cover_shrink(conv);
+#else
+	(void)cover;
+#endif
 	return conv;
 }
 
@@ -128,8 +161,8 @@ static int worker(void *arg)
 		g_cur_gen[me] = job.gen;
 		SDL_UnlockMutex(g_lock);
 
-		s = decode(job.first);
-		if (!s) s = decode(job.second);
+		s = decode(job.first, job.sys >= 0);
+		if (!s) s = decode(job.second, job.sys >= 0);
 
 		SDL_LockMutex(g_lock);
 		g_cur_sys[me] = g_cur_idx[me] = -1;
