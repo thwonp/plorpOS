@@ -4594,8 +4594,11 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
 		dh = (int)(h * k);
 	}
 	block = dh + gl_under_h(L);
+	/* Centred on the screen; under a wide header, between it and the footer,
+	 * so the title clears the cover (owner). */
 	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2,
-	                   (TORTOS_SCREEN_H - gl_footer_h(L) - block) / 2, dw, dh };
+	                   L->wide_header ? g.top + (g.bottom - g.top - block) / 2
+	                   : (TORTOS_SCREEN_H - gl_footer_h(L) - block) / 2, dw, dh };
 	if (tex) *tex = t;
 }
 
