@@ -282,12 +282,30 @@ album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
-**Display** is `Coverflow`, the shelf of albums, or `Artist List`, a list of
-the artists (the authors, on books) with how many albums each has: up and down
-step, left and right jump by initial, L1 and R1 go eight at a time, and A opens
-that artist's albums as the same coverflow, with the same menu. B goes back
-from the albums to the list, and from the list out of Muse. Kept across
-restarts; Show and Rescan Folder return to the list.
+**Display** is `Coverflow`, the shelf of albums, or `List`: three tabs,
+**Artists**, **Albums** and **Playlists** (on audiobooks **Authors** and
+**Books**, and no playlists), named along the bottom with L2 and R2 at its ends.
+L2 and R2 step between them, round from the last to the first, and Muse opens
+on the tab you left it on.
+
+- **Artists** lists the artists with how many albums each has. Up and down
+  step, left and right jump by initial, L1 and R1 a screenful. A opens that
+  artist's albums as a list, and B comes back to the artist.
+- **Albums** lists every album with its cover on the right and its year and
+  artist under it, as a Detailed List shows a game. Y favorites the album
+  under the cursor, and held it shows only the favorites, from any tab.
+- **Playlists** lists your playlists with how many tracks each has; A opens
+  one. MENU on a playlist renames it (on the keyboard) or deletes it, asked
+  first; MENU on one of its tracks removes that track from it.
+
+A on an album opens its tracks, the same list with the album's cover. With
+something playing, SELECT opens Now Playing and B goes back to that album's
+tracks and then its artist's albums. Kept across restarts.
+
+**Playlists** are `.m3u` files in `Music/Playlists/`, so other players and a
+computer can read and edit them. **Y on any track** - an album's or a
+playlist's, in either Display - adds it to a playlist: one you have, or a new
+one named on the keyboard.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused

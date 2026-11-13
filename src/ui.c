@@ -9,10 +9,11 @@
 #include <unistd.h>
 
 #define GLOW_SIZE 192      /* the glow is drawn stretched; small is enough */
-/* 24, not 12: a Gamelist Layout list frame draws ~16 strings (ten rows, the
- * header, the facts), and an LRU smaller than one frame misses every time -
- * 30-44 ms list frames on the Brick (plorpos-gwf). */
-#define TEXT_CACHE 24
+/* 48, not 12: a list frame draws more strings than 12 - a game list ~16, and
+ * Muse's Artists ~30 (twelve names, twelve counts, the header, the tab
+ * footer) - and an LRU smaller than one frame misses every time: 30-48 ms
+ * list frames on the Brick (plorpos-gwf, plorpos-era). */
+#define TEXT_CACHE 48
 #ifndef UI_LIST_PT
 #define UI_LIST_PT 40
 #endif

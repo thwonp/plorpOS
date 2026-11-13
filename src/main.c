@@ -12657,12 +12657,14 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		bool lists = tab == MT_PLAYLISTS;
 		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
+		unsigned ft0, ft1;
 
 		if (lists) muse_playlists_load();
 		n = albums ? v->list.count : artists ? g_mar.n : lists ? g_npls : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
+		ft0 = g_ft ? ft_us() : 0;
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
 			pwr_action pa = power_check(a);
@@ -12786,8 +12788,11 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 
 		if (screen_draw_due(a, &pace, (Uint32)(tab * 7919 + *cur * 31 + drilled * 3 +
-		                                      g_muse_favs + n * 131 + (muse_toast_now() != NULL))))
+		                                      g_muse_favs + n * 131 + (muse_toast_now() != NULL)))) {
+			ft1 = g_ft ? ft_us() : 0;
 			muse_list_draw(a, v, g_mls_asel, g_mls_psel);
+			ft_frame("Muse list", ft0, ft1, ft_us(), *cur, n);
+		}
 		else
 			SDL_Delay(IDLE_POLL_MS);
 	}
