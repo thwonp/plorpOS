@@ -5,7 +5,7 @@
 #   mk/miyoo-deploy.sh all      launcher, Muse, diatom, SDL2/FFmpeg libraries,
 #                               fonts, art, systems.cfg, the launch and ssh
 #                               scripts, dropbear and the Wi-Fi driver
-#   mk/miyoo-deploy.sh elf      the launcher only
+#   mk/miyoo-deploy.sh elf      the launcher (and native PICO-8's preload) only
 #   mk/miyoo-deploy.sh diatom   the resident emulator only (../diatom-miyoo or DIATOM_ELF)
 #   mk/miyoo-deploy.sh cores    the cores systems.cfg names, from FLIP_CORES
 #   mk/miyoo-deploy.sh hook     the boot hook (sd/miyoo/updater) into .tmp_update/
@@ -42,7 +42,7 @@ if [ "$MODE" = verify ]; then
 	Z=$OUT/plorpOS-flip-v$VER.zip
 	exec sh "$ROOT/mk/flip-verify.sh" "$Z" "$ROOT/mk/flip-cores/cores.lock" "$DRIVER_MD5"
 fi
-for f in tortos.elf muse musectl; do
+for f in tortos.elf muse musectl flip-pico8.so; do
 	[ -f "$B/$f" ] || { echo "no $B/$f; run: make PLATFORM=miyoo" >&2; exit 1; }
 done
 if [ "$MODE" = hook ]; then
@@ -97,7 +97,7 @@ stage_cores() { # systems.cfg dir: every core it names, from FLIP_CORES
 	done
 }
 stage_all() {
-	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$S/"
+	cp "$B/tortos.elf" "$B/muse" "$B/musectl" "$B/flip-pico8.so" "$S/"
 	cp "$DIATOM" "$S/diatom"
 	# The firmware has no curl (plorpos-f1p.36): ours, built by mk/flip-cores/build-curl.sh.
 	[ -f "$FLIP_CURL" ] || { echo "no curl at $FLIP_CURL (run mk/flip-cores/build-curl.sh, or set FLIP_CURL)" >&2; exit 1; }
@@ -147,7 +147,7 @@ stage_package() {
 	echo "package: $Z ($(du -h "$Z" | cut -f1), $(wc -l < "$R/MD5SUMS") files)"
 }
 case $MODE in
-elf)    cp "$B/tortos.elf" "$S/" ;;
+elf)    cp "$B/tortos.elf" "$B/flip-pico8.so" "$S/" ;;   # the launcher and native PICO-8's preload
 diatom) cp "$DIATOM" "$S/diatom" ;;
 launch) cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$S/" ;;
 cfg)    flip_cfg "$S/systems.cfg" ;;

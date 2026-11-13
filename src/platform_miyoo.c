@@ -59,10 +59,14 @@ const char *const plat_child_env[] = {
 /* Our SDL2 and FFmpeg live on the card (the firmware has SDL 1.2 only), and
  * a standalone diatom needs the firmware's libmi_* for MI_AO and MI_GFX. */
 const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib:/config/lib:/customer/lib";
-/* Native PICO-8 is out of scope here (no PICO-8 for armhf glibc 2.28 tested). */
-const char *const plat_pico8_preload = "";
+/* Native PICO-8 (plorpos-f1p.78): the owner's Raspberry Pi build, Bios/pico8_dyn,
+ * on our SDL2, whose dummy video driver the preload draws from onto fb0 - with
+ * the buttons and the sound (tools/flip-pico8.c). The pad slot, an env(1)
+ * argument on every H700-branch build, names that driver here: SDL2 would not
+ * pick a demand-only driver on its own. */
+const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/flip-pico8.so";
 const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
-const char plat_pico8_pad[] = "";
+const char plat_pico8_pad[] = "SDL_VIDEODRIVER=dummy";
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }

@@ -138,6 +138,15 @@ $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
 		-o $@ $< -ldl
 
+# Preloaded into the owner's pico8_dyn on the Miyoo Mini Flip: the screen,
+# the buttons and the sound the card's offscreen-only SDL2 cannot give it.
+# See the file. SDL from the sysroot, so it links against what runs.
+$(BUILD)/flip-pico8.so: tools/flip-pico8.c
+	mkdir -p $(BUILD)
+	$(CC) -O2 $(CPU) -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+		-I$(SYSROOT)/usr/include/SDL2 -o $@ $< \
+		-L$(SYSROOT)/usr/lib -lSDL2 -ldl
+
 # Preloaded into PortMaster ports on the H700 (sd/h700/portmaster/pm-run.sh).
 $(BUILD)/portcompat.so: tools/portcompat.c
 	mkdir -p $(BUILD)

@@ -13801,6 +13801,20 @@ static bool is_splore(const system_cfg *s, const char *file)
 	return is_pico8(s) && !strcmp(file, SPLORE);
 }
 
+/* The owner's PICO-8, and where it keeps what it writes (-home). The Flip runs
+ * the Raspberry Pi build, pico8_dyn (plorpos-f1p.78), and its card is vfat
+ * mounted iocharset=utf8: lookups there are case-sensitive, yet a mkdir of
+ * Saves/pico-8 collides with fake08's Saves/Pico-8 on the short name - so
+ * native's home there is that folder, spelled as fake08 has it, and the two
+ * share cdata/ as they do on exFAT. */
+#if defined(PLATFORM_MIYOO)
+#define P8_BIN  "pico8_dyn"
+#define P8_HOME "Saves/Pico-8"
+#else
+#define P8_BIN  "pico8_64"
+#define P8_HOME "Saves/pico-8"
+#endif
+
 /* Carts played in Splore, onto the shelf (plorpos-gkd.50.18). Splore keeps
  * every cart it shows in bbs/carts, browsing included, but writes a
  * temp-<id>.nfo - the cart's lid (id-revision) and title - only for one that
@@ -13820,7 +13834,7 @@ static int splore_keep(const char *folder)
 	DIR *d;
 	int n = 0;
 
-	snprintf(dir, sizeof dir, "%s/Saves/pico-8/bbs/carts", P_CARD);
+	snprintf(dir, sizeof dir, "%s/" P8_HOME "/bbs/carts", P_CARD);
 	if (!(d = opendir(dir))) return 0;
 	while ((e = readdir(d))) {
 		size_t len = strlen(e->d_name), k = 0;
@@ -13891,7 +13905,7 @@ static int splore_keep(const char *folder)
 
 static void pico8_bin(char *out, size_t n)
 {
-	snprintf(out, n, "%s/Bios/pico8_64", P_CARD);
+	snprintf(out, n, "%s/Bios/" P8_BIN, P_CARD);
 }
 
 /* First on the shelf, before any cart, whenever native PICO-8 is there to
@@ -14156,7 +14170,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #endif
 	int n = 0, ow = 0, oh = 0, flags;
 
-	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
+	snprintf(home, sizeof home, "%s/" P8_HOME, P_CARD);
 	snprintf(desk, sizeof desk, "%s/desktop", home);
 	mkdir(home, 0755);
 	mkdir(desk, 0755);
@@ -14407,7 +14421,7 @@ static void launch_one(app *a)
 	native = is_splore(s, romfile) || (is_pico8(s) && a->view[o].native);
 	pico8_bin(pico8, sizeof pico8);
 	if (native && access(pico8, X_OK) != 0) {
-		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/pico8_64");
+		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/" P8_BIN);
 		SDL_Delay(2200);
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
@@ -17094,6 +17108,12 @@ int main(int argc, char *argv[])
 				}
 			}
 			if (found) {
+				/* TORTOS_AUTOENGINE=native|fake08: PICO-8's engine for this
+				 * run only, never saved (plorpos-f1p.78). */
+				const char *eng = getenv("TORTOS_AUTOENGINE");
+
+				if (eng && is_pico8(&a.sys.systems[a.sys_cursor]))
+					a.view[a.sys_cursor].native = !strcmp(eng, "native");
 				fprintf(stderr, "autolaunch: %s / %s\n", tag, file);
 				launch(&a);
 			} else {

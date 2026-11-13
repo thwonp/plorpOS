@@ -35,7 +35,7 @@ all: nano
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so build/h700/portcompat.so
 else ifeq ($(PLATFORM),miyoo)
-all: build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl
+all: build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl build/miyoo/flip-pico8.so
 else ifeq ($(PLATFORM),rotate)
 all: build/rotate/tortos.elf build/rotate/muse build/rotate/musectl build/rotate/btplayer build/rotate/pico8sdl.so
 else
@@ -255,6 +255,10 @@ build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl: $(SRC_MIYOO) $(wild
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work:z -w /work $(MIYOO_IMAGE) \
 		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=miyoo BUILD=build/miyoo SYSROOT=/work/sysroot-miyoo \
 		VERSION=$(VERSION) creds build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl
+
+build/miyoo/flip-pico8.so: tools/flip-pico8.c mk/cross.mk
+	docker run --rm -v $(CURDIR):/work:z -w /work $(MIYOO_IMAGE) \
+		make -f mk/cross.mk PLATFORM=miyoo BUILD=build/miyoo SYSROOT=/work/sysroot-miyoo build/miyoo/flip-pico8.so
 
 build/rotate/tortos.elf: $(SRC_ROTATE) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rotate/ss_creds.h
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
