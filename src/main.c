@@ -12860,7 +12860,7 @@ static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 	for (i = 0; i < n; i++)
 		rows[i] = (menu_row){ a->shaders.e[i].name,
 		                      i == a->view[c->sys].shader ? "Current" : NULL, true };
-	*heading = "Shader";
+	*heading = SHADER_LABEL;
 	return n;
 }
 

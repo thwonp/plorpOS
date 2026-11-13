@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "game_menu.h"
+#include "shaderlist.h"
 
 int gi_rows(menu_row *out, const game_info *gi, bool net)
 {
@@ -98,7 +99,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Display", "Shader", "Palette", "Disc",
+		"Continue", "Save", "Load", "Display", "Display", SHADER_LABEL, "Palette", "Disc",
 		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
 	};
 	int i;

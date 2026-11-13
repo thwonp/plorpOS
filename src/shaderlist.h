@@ -10,6 +10,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* The menu row's name: the Flip has no GPU and carries two display filters in the list (plorpos-f1p.75). */
+#if defined(PLATFORM_MIYOO)
+#define SHADER_LABEL "Filter"
+#else
+#define SHADER_LABEL "Shader"
+#endif
+
 #define SL_MAX  32
 #define SL_NAME 32
 
