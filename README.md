@@ -70,9 +70,9 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 |---|---|---|---|---|
 | PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano uses `pico_dyn` instead of `pico8_64`) |
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
-| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA, or PokeDaisy (per game) | - |
-| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA, or PokeDaisy (per game) | - |
-| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA, or PokeDaisy over armGBA (per game) | Optional: `gba_bios.bin` |
+| Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | Gambatte, or PokeDaisy or mGBA (per game) | - |
+| Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | Gambatte, or PokeDaisy or mGBA (per game) | - |
+| Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | armGBA, or PokeDaisy over armGBA or mGBA (per game) | Optional: `gba_bios.bin` |
 | Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
 | Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm | - |
@@ -165,7 +165,7 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Screen Layout ->** (the next screen layout; MENU + X by default on the GKD and Rotate) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Screen Layout <-** (the previous layout), **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Screen Layout** (the next screen layout; MENU + X by default on the GKD and Rotate), **Swap Screens** (the other screen big, remembered per game) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **Modifiers** are buttons you hold for a chord, like MENU + X. Each hotkey has its own: hold the modifier when you press the trigger and the screen shows it, so Fast-Forward on L Stick Click + A and Rewind on MENU + A work side by side. The modifiers each device offers:
 - **Brick, RG SP:** Menu or Select.

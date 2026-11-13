@@ -100,10 +100,12 @@ pauses when the headset goes. Its own buttons play/pause and skip in Muse.
 
 Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks DSperate-lr (the default) or
 PokeDaisy DS for the game under the cursor (the Pokemon games' companion: Party, Dex, Map, Bag and
-Guide from the game). The in-game Layout row has **Focus Top**, **Focus Bottom**, **Even Split**, **Top
-Overlay** and **Bottom Overlay**, and the **Screen Layout ->** hotkey (MENU + X by default) steps
-through them. The Display row under it sets the Overlays' big screen to **Aspect**, **Stretch** or
-**Integer**.
+Guide from the game). The layouts are **Overlay**, **Offset** (one screen big, the other small),
+**Even Split** and **Single Screen**: the shelf menu's **Default Layout** sets the shelf's, the in-game
+**Layout** row the game's own. The **Screen Layout** hotkey (MENU + X by default) steps through them;
+the **Swap Screens** hotkey puts the other screen in the big place (nothing to swap on Even Split) and
+is remembered for each game. The Display row sets Single Screen and the Overlay's big screen to
+**Aspect**, **Stretch** or **Integer**, centered.
 
 Touch the bottom screen to use the stylus. Or, in Hotkeys, bind **Stylus Mode** (the D-pad moves a
 cursor over the bottom screen) and **Stylus Tap** (hold to touch where the cursor is). The cursor

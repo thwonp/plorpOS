@@ -44,14 +44,13 @@ Your settings, saves, play time and achievements live in `.userdata/` and
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
-There are six layouts, in the in-game menu's Layout row: **Top Only** (the
-default) and **Bottom Only**, one screen at full height; **Top Focus** and
-**Bottom Focus**, one screen at twice the DS's size and the other in the width
-left over at its right; and **Top Overlay** and **Bottom Overlay**, one screen
-filling the display at 4:3 and the other, 80% opaque, over its bottom-right
-corner. The **Screen Layout ->** and **Screen Layout <-** hotkeys step through
-them. The **Display** row under Layout picks how Top Only, Bottom Only and the
-Overlays' big screen fill the display: **Aspect** (4:3, the default),
+There are three layouts: **Overlay**, one screen filling the display at 4:3 and
+the other, 80% opaque, over its bottom-right corner; **Single Screen**, one
+screen at full height; and **Hybrid**, one screen at twice the DS's size and the
+other in the width left over at its right. The shelf menu's **Default Layout**
+sets the shelf's; the in-game **Layout** row sets the game's own. The **Swap Screens** hotkey puts the other screen in the big place and is remembered for each game; **Screen Layout** steps through the layouts and keeps the screen you swapped to.
+The **Display** row under Layout picks how Single Screen and the
+Overlay's big screen fill the display: **Aspect** (4:3, the default),
 **Stretch** (the whole panel, on the 720x480 RG SP and RG34xxSP) or
 **Integer** (2x, 512x384). The RG35XX H's panel is 4:3, so it offers Aspect
 and Integer only.

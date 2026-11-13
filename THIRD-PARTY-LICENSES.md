@@ -70,6 +70,23 @@ Core source: the libretro organization and each core's upstream repository
 
 ---
 
+## Gambatte (`gambatte_libretro.so`, `vendor/cores-brick/`; the Flip's in its own core set)
+
+A libretro core, loaded by Diatom and never linked into the launcher: Gambatte by Sindre Aamås and contributors,
+**GPL-2.0-only**, as libretro's https://github.com/libretro/gambatte-libretro at commit
+77f2567d718b8973d02caa2daa8dce4953faf811, unmodified, built by `mk/build-gambatte-core.sh` (aarch64 ports) and
+`mk/flip-cores/build-gambatte.sh` (the Flip). The Game Boy and Game Boy Color shelves' default core (plorpos-ssa). The
+source is at that commit.
+
+## armGBA (`armgba_libretro.so`, `vendor/cores-brick/`)
+
+A libretro core, loaded by Diatom and never linked into the launcher: armGBA, https://github.com/MagnominusGit/armGBA,
+release v1.6 (tag v1.6, commit de50d047507468b1041d85cfcc9051088901a3a2), upstream's own aarch64 build, unmodified and
+hash-pinned by `mk/fetch-armgba-core.sh`. Its own code is MPL-2.0 (with Jeffrey Pfau's and mGBA contributors' MPL-2.0
+notices where it follows mGBA's); the release build also contains its Game Boy side, Gambatte (GPL-2.0-only), so the
+binary as distributed is under **GPL-2.0** (upstream's `armgba_libretro.info`: `license = "GPLv2"`). The Game Boy
+Advance shelf's default core (plorpos-9i7). The source is at that tag.
+
 ## PokeDaisy for Game Boy and Game Boy Color (`pokedaisy_gbc_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
