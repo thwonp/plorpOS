@@ -383,6 +383,7 @@ typedef enum { MUSE_BACK, MUSE_CLOSE, MUSE_REBUILT } muse_exit;
  * only a call that checks it right after - muse_open_shelf - ever acts on it. */
 static bool g_muse_sw;
 static muse_exit muse_tracks(app *a, int album, bool now);
+static int  muse_card_of(const sysview *v, int album);
 /* Muse's shelf borrows the games shelf's cards and its letter jump, both of
  * which live down with the shelf code. */
 static void muse_shelf_screen(app *a, bool now);
@@ -11670,29 +11671,146 @@ static int muse_playing_album(int *row)
  * from there lands on the album it is playing. Returns how it was left, so
  * the shelf can close too when SELECT closed Muse - it used to be told
  * nothing, and SELECT from Now Playing landed on the shelf instead. */
-static muse_exit muse_tracks(app *a, int album, bool now)
+/* A list of tracks: an album's, or a playlist's (plorpos-era.5), by index
+ * into the library. `album` is the album when they are all one album's, else
+ * -1; a playlist names itself in `head` and its first track's artist plays as
+ * the artist. `pl` is the playlist, or -1. */
+typedef struct {
+	const int *trk;
+	int n, album, pl;
+	const char *head, *head2;
+} muse_tset;
+
+/* The album a track is on: the album whose run of tracks holds it. */
+static int muse_album_of_track(int t)
 {
-	int sel = 0, done = 0, art, i;
+	for (int i = 0; i < g_muse.nalbums; i++)
+		if (t >= g_muse.albums[i].first && t < g_muse.albums[i].first + g_muse.albums[i].n)
+			return i;
+	return -1;
+}
+
+/* Muse's view, wherever Muse was opened from: NULL when the card has none. */
+static sysview *muse_view(app *a)
+{
+	for (int i = 0; i < a->sys.count; i++)
+		if (is_muse(&a->sys.systems[i])) return &a->view[i];
+	return NULL;
+}
+
+/* List display's drawing of a track list (owner: the list font, as the rest of
+ * List). The focused track's album cover on the right - one album's tracks
+ * share it; a playlist's change it as the cursor moves - and under it whose,
+ * what is playing, and where you are. */
+static struct { const muse_tset *ts; const char *playing; int state; } g_mtl;
+
+static const char *mtl_title(void *ctx, int i) { (void)ctx; return g_muse.tracks[g_mtl.ts->trk[i]].name; }
+
+static const char *mtl_value(void *ctx, int i)
+{
+	(void)ctx;
+	if (!g_mtl.playing[0] || strcmp(g_mtl.playing, g_muse.tracks[g_mtl.ts->trk[i]].path)) return "";
+	return g_mtl.state == MU_PAUSED ? "paused" : "playing";
+}
+
+/* The cover is the album's card in Muse's view, so it comes from the same
+ * cache as the Albums list. The view's cursor stands on that card while a
+ * track list is up, so priming and eviction keep the right covers. */
+static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
+{
+	app *a = ctx;
+	sysview *v = &a->view[a->sys_cursor];
+	int al = muse_album_of_track(g_mtl.ts->trk[i]), k;
+	float cb = 0.0f;
+
+	if (!is_muse(&a->sys.systems[a->sys_cursor]) || al < 0) return NULL;
+	if ((k = muse_card_of(v, al)) < 0) return NULL;
+	if (v->cursor != k) { v->cursor = k; cf_reset(&v->cf, k); }
+	return game_get_tex(a, k, w, h, &cb);
+}
+
+static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
+                                  const mu_now *mn, bool loaded, const char *playing)
+{
+	gl_list L;
+	gl_geom g;
+	char line[200], t0[16], t1[16];
+	int al = ts->n > 0 ? muse_album_of_track(ts->trk[sel]) : -1;
+	sysview *v = &a->view[a->sys_cursor];
+
+	g_mtl.ts = ts;
+	g_mtl.playing = playing;
+	g_mtl.state = mn->state;
+	memset(&L, 0, sizeof L);
+	L.key = GL_KEY_TRACKS;
+	L.header = ts->head;
+	L.n = ts->n;
+	L.cur = sel;
+	L.accent = MUSE_ACCENT;
+	L.ctx = a;
+	L.title = mtl_title;
+	L.value = mtl_value;
+	L.art = mtl_art;
+	L.empty = "No tracks";
+	L.phase = mq_phase(MQ_SHELF, -3, sel);
+	gl_geometry(&g, &L);
+	if (al >= 0) {
+		int y = g_year && g_year[al] > 0 ? g_year[al] : 0;
+		const char *who = g_muse.artists[muse_artist_of(al)].name;
+
+		/* An album's own name is the header; a playlist's track says it. */
+		if (ts->album >= 0) snprintf(line, sizeof line, y ? "%s  \xC2\xB7  %d" : "%s", who, y);
+		else snprintf(line, sizeof line, "%s  \xC2\xB7  %s", who, g_muse.albums[al].name);
+		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	}
+	if (loaded) {
+		mmss(t0, sizeof t0, mn->at);
+		mmss(t1, sizeof t1, mn->len);
+		snprintf(line, sizeof line, "%s%s  %s / %s", mn->state == MU_PAUSED ? "Paused: " : "",
+		         mn->title, t0, t1);
+		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	}
+	if (ts->n > 0) snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, ts->n);
+
+	texload_drain(a);
+	draw_background(a);
+	if (is_muse(&a->sys.systems[a->sys_cursor])) {
+		SDL_Rect r;
+
+		gl_art_rect(&L, &r, NULL);       /* also puts the view on the cover */
+		prime_toward(a, a->sys_cursor, v->cursor);
+		evict_far(v, TEX_KEEP_NEAR);
+		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+	}
+	gl_draw(a, &L);
+	draw_chrome(a->r);
+	plat_present(a->r);
+}
+
+static muse_exit muse_tset_run(app *a, const muse_tset *ts, bool now)
+{
+	int sel = 0, done = 0, i, home = -1;
 	muse_exit how = MUSE_BACK;
 	menu_row *rows;
-	char (*vals)[24];
-	char heading[300], note[300], t0[16], t1[16];
-	const ml_album *al;
+	char note[300], t0[16], t1[16];
+	sysview *mv = muse_view(a);
+	bool list = g_muse_listmode && mv && &a->view[a->sys_cursor] == mv;
 
-	if (album < 0 || album >= g_muse.nalbums || g_muse.nartists == 0) return MUSE_BACK;
-	al = &g_muse.albums[album];
-	art = muse_artist_of(album);
-	rows = calloc((size_t)al->n + 4, sizeof *rows);
-	vals = calloc((size_t)al->n + 4, sizeof *vals);
-	if (!rows || !vals) { free(rows); free(vals); return MUSE_BACK; }
+	rows = calloc((size_t)ts->n + 4, sizeof *rows);
+	if (!rows) return MUSE_BACK;
+	if (list) home = mv->cursor;      /* the album cursor, put back on the way out */
 
 	/* On the track that is playing, when it is one of these. */
-	if (muse_playing_album(&i) == album) sel = i;
+	{
+		const char *p = musec_path();
+
+		for (i = 0; p[0] && i < ts->n; i++)
+			if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
+	}
 
 	if (now) {
 		how = muse_now_screen(a);
 		if (how != MUSE_BACK) done = 1;
-		else if (muse_playing_album(&i) == album) sel = i;
 	}
 
 	plat_input_flush();
@@ -11713,10 +11831,8 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		playing = musec_path();
 		plat_input_poll(&a->in);
 
-		snprintf(heading, sizeof heading, "%s\n%s", al->name,
-		         g_muse.artists[art].name);
-		for (i = 0; i < al->n; i++, n++) {
-			const ml_track *t = &g_muse.tracks[al->first + i];
+		for (i = 0; i < ts->n; i++, n++) {
+			const ml_track *t = &g_muse.tracks[ts->trk[i]];
 			/* Every row a value, if only an empty one: a list with a value
 			 * anywhere is laid out in two columns, left-aligned, and one
 			 * without is centered. Without this the list sat centered until
@@ -11758,17 +11874,21 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		if (a->in.pressed[IN_ACCEPT] && items > 0) {
 			/* The track already playing is not started over: A on it is the
 			 * way to its Now Playing, the same as the row. */
-			if (!loaded || strcmp(playing, g_muse.tracks[al->first + sel].path)) {
-				const char **paths = calloc((size_t)al->n, sizeof *paths);
+			if (!loaded || strcmp(playing, g_muse.tracks[ts->trk[sel]].path)) {
+				const char **paths = calloc((size_t)ts->n, sizeof *paths);
 
 				if (paths) {
-					for (i = 0; i < al->n; i++)
-						paths[i] = g_muse.tracks[al->first + i].path;
+					int al = ts->album >= 0 ? ts->album : muse_album_of_track(ts->trk[0]);
+					bool book = ts->album >= 0 && g_muse.albums[ts->album].book;
+
+					for (i = 0; i < ts->n; i++)
+						paths[i] = g_muse.tracks[ts->trk[i]].path;
 					/* A book's file from its start: choosing one is choosing
 					 * where to listen from, and the place moves with it. */
-					muse_play(paths, al->n, sel, 0, al->book,
-					          al->book ? book_speed(album) : 1.0,
-					          g_muse.artists[art].name, al->name);
+					muse_play(paths, ts->n, sel, 0, book,
+					          book ? book_speed(ts->album) : 1.0,
+					          al >= 0 ? g_muse.artists[muse_artist_of(al)].name : "",
+					          ts->album >= 0 ? g_muse.albums[ts->album].name : ts->head);
 					free(paths);
 				}
 			}
@@ -11784,7 +11904,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
 		}
-		/* After a rescan `al` is gone with the old library: not one more
+		/* After a rescan the library `ts` points into is gone: not one more
 		 * frame from it. */
 		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
@@ -11795,28 +11915,63 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		/* Back from Now Playing onto the track it had reached, which may be
 		 * several past the one chosen. */
 		if (open_now) {
+			const char *p;
+
 			how = muse_now_screen(a);
 			if (how != MUSE_BACK) break;
-			if (muse_playing_album(&i) == album) sel = i;
+			p = musec_path();
+			for (i = 0; p[0] && i < ts->n; i++)
+				if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
 			continue;
 		}
 
 		/* The rows carry the playing track and its time, so a track
 		 * playing is a frame a second and a paused one is none. */
-		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+		if (!screen_draw_due(a, &pace, menu_fingerprint(ts->head, rows, n, sel))) {
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		muse_backdrop(a);
-		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
-		draw_chrome(a->r);
-		plat_present(a->r);
+		if (list) {
+			muse_tracks_draw_list(a, ts, sel, mn, loaded, playing);
+		} else {
+			char heading[300];
+
+			snprintf(heading, sizeof heading, "%s%s%s", ts->head,
+			         ts->head2 ? "\n" : "", ts->head2 ? ts->head2 : "");
+			muse_backdrop(a);
+			menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
+			draw_chrome(a->r);
+			plat_present(a->r);
+		}
 	}
 
+	/* The album cursor the track list borrowed for its covers. */
+	if (list && how != MUSE_REBUILT && mv->cursor != home && home >= 0 &&
+	    home < mv->list.count) {
+		mv->cursor = home;
+		cf_reset(&mv->cf, home);
+	}
 	free(rows);
-	free(vals);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+	return how;
+}
+
+static muse_exit muse_tracks(app *a, int album, bool now)
+{
+	const ml_album *al;
+	muse_tset ts;
+	int *trk, i;
+	muse_exit how;
+
+	if (album < 0 || album >= g_muse.nalbums || g_muse.nartists == 0) return MUSE_BACK;
+	al = &g_muse.albums[album];
+	if (!(trk = calloc((size_t)al->n + 1, sizeof *trk))) return MUSE_BACK;
+	for (i = 0; i < al->n; i++) trk[i] = al->first + i;
+	ts = (muse_tset){ trk, al->n, album, -1, al->name,
+	                  g_muse.artists[muse_artist_of(album)].name };
+	how = muse_tset_run(a, &ts, now);
+	free(trk);
 	return how;
 }
 
