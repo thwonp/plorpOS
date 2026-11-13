@@ -4500,6 +4500,12 @@ typedef struct {
 	unsigned phase;          /* the focused title's marquee clock */
 	const char *empty;       /* said when there are no rows */
 	const char *toast;       /* a passing word ("Added to Road Trip"), or NULL */
+	/* Help along the bottom of a list without tabs: button, label pairs. */
+	const char *const *help;
+	int nhelp;
+	/* The header runs over the art to the battery (a track list's album
+	 * name); the toast then goes under the art instead. */
+	bool wide_header;
 } gl_list;
 
 /* Fit-cache keys for lists that are not a shelf. */
@@ -4510,7 +4516,26 @@ typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
 
 static int gl_footer_h(const gl_list *L)
 {
-	return L->ntabs > 0 ? ui_font_line(UI_F_META) + GL_PAD / 2 : 0;
+	return L->ntabs > 0 || L->nhelp > 0 ? ui_font_line(UI_F_META) + GL_PAD / 2 : 0;
+}
+
+/* Where the battery's corner starts (draw_battery's disc), for a header that
+ * runs right up to it. */
+static int gl_header_right(void)
+{
+	int rad = ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6;
+
+	return TORTOS_SCREEN_W - 10 - rad * 2 - GL_PAD / 2;
+}
+
+/* A page jump on a list: a screenful, stopping at either end, and from the
+ * end round to the other - modulo wrapping put a short list's cursor
+ * anywhere (owner, plorpos-era). */
+static int gl_page_step(int cur, int n, int page, int dir)
+{
+	if (n <= 0) return 0;
+	if (dir > 0) return cur >= n - 1 ? 0 : (cur + page < n ? cur + page : n - 1);
+	return cur <= 0 ? n - 1 : (cur - page > 0 ? cur - page : 0);
 }
 
 static void gl_geometry(gl_geom *g, const gl_list *L)
@@ -4641,10 +4666,11 @@ static void gl_draw(app *a, const gl_list *L)
 
 	gl_geometry(&g, L);
 	/* Header. Where you are in the list goes under the art. */
-	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf, g.col_w);
+	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf,
+	            L->wide_header ? gl_header_right() - GL_PAD : g.col_w);
 	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
 	/* A passing word, on the header's line, clear of the battery's corner. */
-	if (L->toast && *L->toast)
+	if (L->toast && *L->toast && !L->wide_header)
 		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
 		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), 1, ac);
 
@@ -4708,6 +4734,16 @@ static void gl_draw(app *a, const gl_list *L)
 			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
 	}
 	if (L->ntabs > 0) gl_draw_footer(a, L);
+	else if (L->nhelp > 0) {
+		int y = TORTOS_SCREEN_H - GL_PAD - ui_font_line(UI_F_META), total = 0, x;
+
+		for (i = 0; i < L->nhelp; i++) total += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
+		x = (TORTOS_SCREEN_W - total) / 2;
+		for (i = 0; i < L->nhelp; i++) {
+			ui_hint(a->r, x, y, L->help[2 * i], L->help[2 * i + 1]);
+			x += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
+		}
+	}
 }
 
 /* ---- Gamelist Layout: a game shelf as a list (plorpos-gwf) ---- */
@@ -11704,6 +11740,11 @@ static int     g_npls = -1;              /* -1: read the folder again */
 static char    g_muse_toast[160];
 static Uint32  g_muse_toast_until;
 
+/* Where the music now playing was started (owner: B from Now Playing goes
+ * back there, however Muse was left and opened again): a playlist by name,
+ * or an album reached from the Albums tab or from an artist (`artist`). */
+static struct { bool set, pl; char name[PL_NAME_MAX]; int tab, artist; } g_muse_from;
+
 static void muse_pl_dir(char *out, size_t n)
 {
 	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
@@ -11889,6 +11930,26 @@ static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
 	return game_get_tex(a, k, w, h, &cb);
 }
 
+/* An album's name without the year its folder starts with ("2010 Cerulean"
+ * is Cerulean): the track list's header, whose cover has the year under it
+ * already (owner). The album lists keep it - it is what they sort and jump
+ * by. */
+static const char *muse_name_noyear(const char *name)
+{
+	const char *p = name;
+
+	if (isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ') {
+		p += 5;
+		while (*p == ' ' || *p == '-') p++;
+		if (*p) return p;
+	}
+	return name;
+}
+
+static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
+static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "MENU", "Remove" };
+
 static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
                                   const mu_now *mn, bool loaded, const char *playing)
 {
@@ -11903,7 +11964,10 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 	g_mtl.state = mn->state;
 	memset(&L, 0, sizeof L);
 	L.key = GL_KEY_TRACKS;
-	L.header = ts->head;
+	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
+	L.wide_header = true;
+	L.help = ts->pl ? MTL_HELP_PL : MTL_HELP;
+	L.nhelp = ts->pl ? 3 : 2;
 	L.n = ts->n;
 	L.cur = sel;
 	L.accent = MUSE_ACCENT;
@@ -11912,7 +11976,6 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 	L.value = mtl_value;
 	L.art = mtl_art;
 	L.empty = "No tracks";
-	L.toast = muse_toast_now();
 	L.phase = mq_phase(MQ_SHELF, -3, sel);
 	gl_geometry(&g, &L);
 	if (al >= 0) {
@@ -11931,7 +11994,10 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 		         mn->title, t0, t1);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	}
-	if (ts->n > 0) snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, ts->n);
+	if (muse_toast_now())
+		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	else if (ts->n > 0)
+		snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, ts->n);
 
 	texload_drain(a);
 	draw_background(a);
@@ -12055,6 +12121,11 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 					          al >= 0 ? g_muse.artists[muse_artist_of(al)].name : "",
 					          ts->album >= 0 ? g_muse.albums[ts->album].name : ts->head);
 					free(paths);
+					g_muse_from.set = true;
+					g_muse_from.pl = ts->pl != NULL;
+					snprintf(g_muse_from.name, sizeof g_muse_from.name, "%s", ts->pl ? ts->pl : "");
+					g_muse_from.tab = g_muse_list_up ? muse_tab() : -1;
+					g_muse_from.artist = muse_artist_filter();
 				}
 			}
 			open_now = true;
@@ -12172,7 +12243,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 
 /* A playlist as a track list: its entries that are in the library, each
  * remembering its line in the file so MENU can remove that one. */
-static muse_exit muse_playlist_open(app *a, int idx)
+static muse_exit muse_playlist_open(app *a, int idx, bool now)
 {
 	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], **v;
 	int *trk, *ent, n, i, m = 0;
@@ -12193,11 +12264,30 @@ static muse_exit muse_playlist_open(app *a, int idx)
 	pl_free(v, n);
 	if (!trk || !ent) { free(trk); free(ent); return MUSE_BACK; }
 	ts = (muse_tset){ trk, m, -1, name, NULL, name, ent };
-	how = muse_tset_run(a, &ts, false);
+	how = muse_tset_run(a, &ts, now);
 	free(trk);
 	free(ent);
 	g_npls = -1;
 	return how;
+}
+
+/* The playlist (its row in g_pls) the playing music was started from, while
+ * it still holds the track that is playing; else -1. */
+static int muse_from_playlist(void)
+{
+	char d[CFG_STR * 2 + 32], **v;
+	const char *p = musec_path();
+	int i, n, hit = 0;
+
+	if (!g_muse_from.set || !g_muse_from.pl || !p[0]) return -1;
+	muse_playlists_load();
+	for (i = 0; i < g_npls; i++) if (!strcmp(g_pls[i].name, g_muse_from.name)) break;
+	if (i == g_npls) return -1;
+	muse_pl_dir(d, sizeof d);
+	if ((n = pl_read(d, g_muse_from.name, P_CARD, &v)) < 0) return -1;
+	for (int k = 0; k < n && !hit; k++) hit = !strcmp(v[k], p);
+	pl_free(v, n);
+	return hit ? i : -1;
 }
 
 /* SELECT, from anywhere but a running game - the shelf, every menu, and the
@@ -12636,10 +12726,24 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		g_mls_asel = muse_artist_row(pa);
 		if (now) {
 			muse_exit how;
+			int fp = muse_from_playlist();
 
-			muse_tab_set(MT_ARTISTS);
-			muse_set_filter(v, pa, playing);
-			how = muse_tracks(a, playing, true);
+			/* Back to where it was started: a playlist's tracks over the
+			 * Playlists tab, an album's over the Albums tab or its artist. */
+			if (fp >= 0) {
+				muse_tab_set(MT_PLAYLISTS);
+				g_mls_psel = fp;
+				how = muse_playlist_open(a, fp, true);
+			} else {
+				if (g_muse_from.set && g_muse_from.tab == MT_ALBUMS && g_muse_from.artist < 0) {
+					muse_tab_set(MT_ALBUMS);
+					muse_set_filter(v, -1, playing);
+				} else {
+					muse_tab_set(MT_ARTISTS);
+					muse_set_filter(v, pa, playing);
+				}
+				how = muse_tracks(a, playing, true);
+			}
 			if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return ML_LEAVE; }
 			if (how == MUSE_REBUILT) {
 				if (!(v = muse_shelf_refind(a))) { g_muse_list_up = false; return ML_LEAVE; }
@@ -12696,8 +12800,8 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (*cur >= n) *cur = n - 1;
 			if (in_repeat(&a->in, IN_UP))   *cur = (*cur + n - 1) % n;
 			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
-			if (in_repeat(&a->in, IN_L1))   *cur = ((*cur - page) % n + n) % n;
-			if (in_repeat(&a->in, IN_R1))   *cur = (*cur + page) % n;
+			if (in_repeat(&a->in, IN_L1))   *cur = gl_page_step(*cur, n, page, -1);
+			if (in_repeat(&a->in, IN_R1))   *cur = gl_page_step(*cur, n, page, +1);
 			if (in_repeat(&a->in, IN_RIGHT) && !lists)
 				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
 			if (in_repeat(&a->in, IN_LEFT) && !lists)
@@ -12729,7 +12833,7 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (artists) {
 				muse_set_filter(v, g_mar.ix[g_mls_asel], -1);
 			} else if (lists) {
-				muse_exit how = muse_playlist_open(a, g_mls_psel);
+				muse_exit how = muse_playlist_open(a, g_mls_psel, false);
 
 				if (how == MUSE_CLOSE || g_muse_gone) break;
 				if (how == MUSE_REBUILT) {
@@ -12865,7 +12969,8 @@ static void muse_shelf_screen(app *a, bool now)
 		now = false;
 	}
 	if (!done && now && playing >= 0) {
-		muse_exit how = muse_tracks(a, playing, true);
+		int fp = muse_from_playlist();
+		muse_exit how = fp >= 0 ? muse_playlist_open(a, fp, true) : muse_tracks(a, playing, true);
 
 		if (how == MUSE_CLOSE || g_muse_gone) done = true;
 		else if (how == MUSE_REBUILT) {
@@ -16251,10 +16356,15 @@ static void update_games(app *a)
 	 * three games the obvious `(cursor - CF_WINDOW + n*2) % n` lands on -1 and
 	 * the draw walks off the front of the list. */
 	{
-		int page = vert ? gl_page(a) : CF_WINDOW;
+		if (vert) {
+			int page = gl_page(a);
 
-		if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - page) % n + n) % n;
-		if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + page) % n;
+			if (in_repeat(&a->in, IN_L1)) v->cursor = gl_page_step(v->cursor, n, page, -1);
+			if (in_repeat(&a->in, IN_R1)) v->cursor = gl_page_step(v->cursor, n, page, +1);
+		} else {
+			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
+		}
 	}
 	/* HERE, AND NOT AT THE END OF THE PASS, because four of the handlers below
 	 * return without reaching the end.

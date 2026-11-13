@@ -1506,3 +1506,35 @@ ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act)
 	return hit_shown.n > 0 ? UI_HIT_NONE : UI_HIT_UNMAPPED;
 }
 #endif
+
+/* A face button as a chip and what it does beside it: the keyboard's hint
+ * bar, and the lists' help footer (plorpos-era). */
+void ui_hint(SDL_Renderer *r, int x, int y, const char *btn,
+                      const char *label)
+{
+	TTF_Font *fm = ui_font(UI_F_META);
+	int bw = ui_text_width(fm, btn);
+	/* The chip was sized to the LINE SKIP and the glyph drawn from the em
+	 * box's top, so all of the unused descender depth landed below the text
+	 * and every button sat high in its own box. These labels are A, B, X, Y,
+	 * L/R, START, MENU - nothing in them descends at all, so the gap was pure
+	 * and visible.
+	 *
+	 * Height from the em box, and the ink centered in it the way menu_draw
+	 * centers its rows. Descent is negative, so half of it subtracted moves
+	 * the line down onto the middle of the chip. */
+	int fh = fm ? ui_font_box(fm) : ui_font_line(UI_F_META);
+	int ink = fm ? -ui_font_descent(fm) / 2 : 0;
+	int padv = 3;
+	SDL_Rect chip = { x, y - padv, bw + 14, fh + padv * 2 };
+
+	ui_round_rect(r, &chip, 6, (SDL_Color){ 52, 56, 70, 255 });
+	ui_text(r, fm, btn, x + 7, y + ink, -1, UI_TEXT_SOFT);
+	ui_text(r, fm, label, x + chip.w + 6, y + ink, -1, UI_TEXT_DIM);
+}
+
+int ui_hint_width(const char *btn, const char *label)
+{
+	TTF_Font *fm = ui_font(UI_F_META);
+	return ui_text_width(fm, btn) + 14 + 6 + ui_text_width(fm, label) + 18;
+}

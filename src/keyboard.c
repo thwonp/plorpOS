@@ -99,35 +99,6 @@ static void del_left(kb_state *k)
 #define KEY_H      60
 #define KEY_GAP     6
 
-static void draw_hint(SDL_Renderer *r, int x, int y, const char *btn,
-                      const char *label)
-{
-	TTF_Font *fm = ui_font(UI_F_META);
-	int bw = ui_text_width(fm, btn);
-	/* The chip was sized to the LINE SKIP and the glyph drawn from the em
-	 * box's top, so all of the unused descender depth landed below the text
-	 * and every button sat high in its own box. These labels are A, B, X, Y,
-	 * L/R, START, MENU - nothing in them descends at all, so the gap was pure
-	 * and visible.
-	 *
-	 * Height from the em box, and the ink centered in it the way menu_draw
-	 * centers its rows. Descent is negative, so half of it subtracted moves
-	 * the line down onto the middle of the chip. */
-	int fh = fm ? ui_font_box(fm) : ui_font_line(UI_F_META);
-	int ink = fm ? -ui_font_descent(fm) / 2 : 0;
-	int padv = 3;
-	SDL_Rect chip = { x, y - padv, bw + 14, fh + padv * 2 };
-
-	ui_round_rect(r, &chip, 6, (SDL_Color){ 52, 56, 70, 255 });
-	ui_text(r, fm, btn, x + 7, y + ink, -1, UI_TEXT_SOFT);
-	ui_text(r, fm, label, x + chip.w + 6, y + ink, -1, UI_TEXT_DIM);
-}
-
-static int hint_width(const char *btn, const char *label)
-{
-	TTF_Font *fm = ui_font(UI_F_META);
-	return ui_text_width(fm, btn) + 14 + 6 + ui_text_width(fm, label) + 18;
-}
 
 static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
                     unsigned accent)
@@ -251,13 +222,13 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 		for (n = 0; n < 2; n++) {
 			int from = n ? split : 0, to = n ? 7 : split;
 			total = 0;
-			for (i = from; i < to; i++) total += hint_width(btn[i], lbl[i]);
+			for (i = from; i < to; i++) total += ui_hint_width(btn[i], lbl[i]);
 			hx = panel.x + (PANEL_W - total) / 2;
 			for (i = from; i < to; i++) {
-				int w = hint_width(btn[i], lbl[i]);
+				int w = ui_hint_width(btn[i], lbl[i]);
 				SDL_Rect hit = { hx - 6, y0 + n * lh - 6, w, lh + 4 };
 
-				draw_hint(r, hx, y0 + n * lh, btn[i], lbl[i]);
+				ui_hint(r, hx, y0 + n * lh, btn[i], lbl[i]);
 				if (i == 4) {   /* L/R: the left half is L, the right R */
 					hit.w /= 2;
 					ui_hit_id(&hit, KB_CHIP + 4);
