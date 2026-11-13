@@ -648,6 +648,8 @@ static int alt_core(const system_cfg *s)
 	size_t k;
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	const int here = ALT_ON_GKD_ROTATE;
+#elif defined(PLATFORM_MIYOO)
+	const int here = 0; /* the Flip ships no second core: PokeDaisy crashed on Pokemon Crystal there (plorpos-f1p); before H700, which it also defines */
 #elif defined(PLATFORM_H700)
 	const int here = ALT_ON_H700; /* DSperate is its only DS core */
 #else
@@ -12240,6 +12242,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
 		bool shown = i < R_SWAP;
+#if defined(PLATFORM_MIYOO)
+		/* The Flip's diatom keeps no rewind history for a PS1 state (over its cap): no row to bind. */
+		if (i == 1 && tag && !strcmp(tag, "PS")) continue;
+#endif
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_BLOW;
