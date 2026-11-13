@@ -7,12 +7,15 @@
  * keeps PICO-8's window, renderer, timers and events; this does what the Flip
  * needs on top, as tools/nano-pico8.c does on the RG Nano:
  *
- * - The screen. The display is said to be fb0's own size (752x560), so
- *   PICO-8's Display flags (-draw_rect, -pixel_perfect: main.c p8_flags) fit
- *   it to the panel. Each frame PICO-8 presents - through its renderer or
- *   straight from the window surface - is copied onto the fb0 page NOT on
- *   glass, turned 180 degrees (the panel is mounted upside down), and panned
- *   to. FBIOPAN_DISPLAY waits for vblank here, so frames lock to the panel and
+ * - The screen. The display is said to be 128x128, PICO-8's own size: told
+ *   752x560 it scaled every frame itself and, on this CPU, dropped 60 fps
+ *   carts to 30 (plorpos-f1p.82: Kalikan 30 -> 59.9 fps). The Display mode
+ *   is read from PICO-8's flags (main.c p8_flags): -draw_rect is Stretch
+ *   (752x560), -pixel_perfect 1 Integer (512x512), otherwise Aspect
+ *   (560x560); Stretch's rect is rewritten to 128x128 for PICO-8. Each frame
+ *   PICO-8 presents - through its renderer or straight from the window
+ *   surface - is scaled into that box on the fb0 page NOT on glass, turned
+ *   180 degrees (the panel is mounted upside down), and panned to. FBIOPAN_DISPLAY waits for vblank here, so frames lock to the panel and
  *   none tears: the launcher's plat_present and diatom's flip do the same.
  * - The buttons, as fake08 has them under diatom: B is O, A is X, Start
  *   pauses, the d-pad moves. Read from the pad's own node, event0; Menu, the
@@ -68,6 +71,9 @@ static uint8_t *fbmem;
 static struct fb_fix_screeninfo fix;
 static struct fb_var_screeninfo var;
 static int fb_w = 752, fb_h = 560;     /* until fb0 says */
+#define P8_W 128                       /* the display PICO-8 is told of */
+enum { M_ASPECT, M_INTEGER, M_STRETCH };
+static int dmode = M_ASPECT;
 static SDL_Window *win;
 static int trace;
 
@@ -138,6 +144,63 @@ static void fb_open(void)
 	}
 }
 
+/* The box a frame is scaled into, in panel coordinates (before the turn). */
+static void box(int sw, int sh, int *bx, int *by, int *bw, int *bh)
+{
+	if (dmode == M_STRETCH) {
+		*bw = fb_w; *bh = fb_h;
+	} else {
+		int k = fb_h / sh < fb_w / sw ? fb_h / sh : fb_w / sw;
+
+		if (dmode == M_INTEGER && k >= 1) { *bw = sw * k; *bh = sh * k; }
+		else {                             /* Aspect: the largest square-pixel fit */
+			*bh = fb_h; *bw = sw * fb_h / sh;
+			if (*bw > fb_w) { *bw = fb_w; *bh = sh * fb_w / sw; }
+		}
+	}
+	*bx = (fb_w - *bw) / 2;
+	*by = (fb_h - *bh) / 2;
+}
+
+/* Scale w x h of the surface (nearest) into its box on page, turned 180
+ * degrees, the rest of the page black. Each row is scaled once into RAM and
+ * written out for every panel row that repeats it: fb0 is slow to read back
+ * (25 ms a frame copying rows from it). */
+static void scale(SDL_Surface *s, int w, int h, int page)
+{
+	static int xmap[1024];
+	static uint32_t row[1024];
+	int bx, by, bw, bh, px0, px1, py0;
+	uint8_t *base = fbmem + (size_t)page * var.yres * fix.line_length;
+	size_t ll = fix.line_length;
+	int prev_sy = -1;
+
+	box(w, h, &bx, &by, &bw, &bh);
+	if (bw > (int)(sizeof xmap / sizeof xmap[0])) bw = (int)(sizeof xmap / sizeof xmap[0]);
+	for (int x = 0; x < bw; x++) xmap[x] = x * w / bw;
+	px0 = fb_w - bx - bw;              /* the box after the turn */
+	px1 = px0 + bw;
+	py0 = fb_h - by - bh;
+	for (int y = 0; y < fb_h; y++) {
+		uint32_t *d = (uint32_t *)(base + (size_t)y * ll);
+		int j = fb_h - 1 - y - by;     /* the box row this physical row shows */
+		int sy;
+
+		if (y < py0 || j < 0 || j >= bh) { memset(d, 0, (size_t)fb_w * 4); continue; }
+		if (px0 > 0) memset(d, 0, (size_t)px0 * 4);
+		if (px1 < fb_w) memset(d + px1, 0, (size_t)(fb_w - px1) * 4);
+		sy = j * h / bh;
+		if (sy != prev_sy) {
+			const uint32_t *src = (const uint32_t *)((const uint8_t *)s->pixels + (size_t)sy * (size_t)s->pitch);
+			uint32_t *o = row + bw - 1;
+
+			for (int x = 0; x < bw; x++) *o-- = src[xmap[x]];
+			prev_sy = sy;
+		}
+		memcpy(d + px0, row, (size_t)bw * 4);
+	}
+}
+
 /* The window surface onto a free page, turned 180 degrees (the panel is
  * mounted upside down), queued for the flip thread. */
 static void show(SDL_Surface *s)
@@ -172,13 +235,7 @@ static void show(SDL_Surface *s)
 	}
 	pthread_mutex_unlock(&fmx);
 	t0 = now_us();
-	for (int y = 0; y < h; y++) {
-		const uint32_t *src = (const uint32_t *)((const uint8_t *)s->pixels + (size_t)y * (size_t)s->pitch);
-		uint32_t *d = (uint32_t *)(fbmem + ((size_t)page * var.yres + (size_t)(fb_h - 1 - y)) *
-		                           fix.line_length) + (fb_w - 1);
-
-		for (int x = 0; x < w; x++) *d-- = src[x];
-	}
+	scale(s, w, h, page);
 	t1 = now_us();
 	if (f_thread) {
 		pthread_mutex_lock(&fmx);
@@ -214,7 +271,7 @@ SDL_Window *SDL_CreateWindow(const char *title, int x, int y, int w, int h, Uint
 
 	fb_open();
 	(void)w; (void)h;
-	win = real_SDL_CreateWindow(title, x, y, fb_w, fb_h,
+	win = real_SDL_CreateWindow(title, x, y, P8_W, P8_W,
 	                            flags & ~(Uint32)(SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP));
 	return win;
 }
@@ -243,7 +300,7 @@ void SDL_RenderPresent(SDL_Renderer *r)
 	}
 }
 
-static void say_fb(SDL_DisplayMode *m) { fb_open(); m->w = fb_w; m->h = fb_h; }
+static void say_fb(SDL_DisplayMode *m) { m->w = P8_W; m->h = P8_W; }
 
 int SDL_GetDesktopDisplayMode(int i, SDL_DisplayMode *m)
 {
@@ -277,7 +334,7 @@ int SDL_GetDisplayBounds(int i, SDL_Rect *b)
 	REAL(SDL_GetDisplayBounds);
 	int r = real_SDL_GetDisplayBounds(i, b);
 
-	if (r == 0) { fb_open(); b->x = b->y = 0; b->w = fb_w; b->h = fb_h; }
+	if (r == 0) { b->x = b->y = 0; b->w = P8_W; b->h = P8_W; }
 	return r;
 }
 
@@ -550,9 +607,20 @@ void SDL_CloseAudio(void)
 
 /* ------------------------------------------------------------- lifetime */
 
-__attribute__((constructor)) static void init(void)
+__attribute__((constructor)) static void init(int argc, char **argv)
 {
 	const char *t = getenv("PLORPOS_P8_TRACE");
+
+	for (int i = 1; argv && i + 1 < argc; i++) {
+		if (!strcmp(argv[i], "-draw_rect")) {
+			static const char r[] = "0,0,128,128";
+
+			dmode = M_STRETCH;           /* PICO-8 fills its 128x128; this stretches */
+			if (strlen(argv[i + 1]) >= sizeof r - 1) memcpy(argv[i + 1], r, sizeof r);
+		} else if (!strcmp(argv[i], "-pixel_perfect") && argv[i + 1][0] == '1') {
+			dmode = M_INTEGER;
+		}
+	}
 
 	/* Before PICO-8's SDL_Init: both drivers are demand-only, and without
 	 * an audio driver PICO-8 would never open its sound. */
