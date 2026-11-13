@@ -295,8 +295,8 @@ on the tab you left it on.
   artist under it, as a Detailed List shows a game. Y favorites the album
   under the cursor, and held it shows only the favorites, from any tab.
 - **Playlists** lists your playlists with how many tracks each has; A opens
-  one. MENU on a playlist renames it (on the keyboard) or deletes it, asked
-  first. In a playlist, X removes the track under the cursor, and L2 and R2
+  one. X deletes the playlist under the cursor, asked first, and MENU renames
+  it on the keyboard. In a playlist, X removes the track under the cursor, and L2 and R2
   move it up and down a place.
 
 A on an album opens its tracks, the same list with the album's cover. With

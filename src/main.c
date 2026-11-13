@@ -12873,11 +12873,26 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
+		/* X deletes the playlist, asked first (owner); MENU renames it. */
+		if (a->in.pressed[IN_X] && lists && n > 0) {
+			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[200];
+
+			muse_pl_dir(d, sizeof d);
+			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
+			snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
+			if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
+				muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
+				g_npls = -1;
+				muse_playlists_load();
+				if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
+			}
+			ui_redraw_now();
+			continue;
+		}
 		if (a->in.pressed[IN_MENU] && lists && n > 0) {
-			/* A playlist's own rows first; Muse's menu is the last. */
-			static const char *const OPTS[] = { "Rename Playlist", "Delete Playlist", "Muse Menu" };
+			static const char *const OPTS[] = { "Rename Playlist", "Muse Menu" };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
-			int k = muse_pick_run(a, g_pls[g_mls_psel].name, OPTS, 3);
+			int k = muse_pick_run(a, g_pls[g_mls_psel].name, OPTS, 2);
 
 			muse_pl_dir(d, sizeof d);
 			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
@@ -12889,16 +12904,8 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					g_npls = -1;
 					muse_toast(msg);
 				}
-			} else if (k == 1) {
-				snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
-				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
-					muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
-					g_npls = -1;
-					muse_playlists_load();
-					if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
-				}
 			}
-			if (k != 2) { ui_redraw_now(); continue; }
+			if (k != 1) { ui_redraw_now(); continue; }
 		}
 		if (a->in.pressed[IN_MENU]) {
 			muse_exit how = muse_menu(a);
