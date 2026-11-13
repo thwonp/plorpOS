@@ -97,7 +97,8 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
-		out[SM_FILL]    = (menu_row){ "Display",       u->fill,     true  };
+		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
+		                             : (menu_row){ "Display",         u->fill,    true };
 		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
@@ -126,7 +127,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
-		if (!u->fill) {
+		if (!u->fill && !u->palette) {
 			int i;
 
 			for (i = SM_FILL; i < SM_ROWS - 1; i++) out[i] = out[i + 1];

@@ -229,6 +229,7 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
+	const char *palette;     /* a Game Boy shelf's Default Palette (the Flip's), in SM_FILL's place; NULL elsewhere */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not

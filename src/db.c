@@ -118,6 +118,11 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's Game Boy core is Gambatte (plorpos-f1p.77). Its own default corrects GBC colors; the
+	 * picture mgba drew was uncorrected, so that stays. The palette is sent at every launch (palette.<TAG>.<file>). */
+	{ "coreopt..gambatte_gbc_color_correction", "disabled" },
+#endif
 	/* snes9x2010 ships with frameskip disabled. Star Fox (Super FX) runs at
 	 * 91.6% on the Flip without it; auto drops only the drawing of a late
 	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
