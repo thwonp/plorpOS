@@ -13220,6 +13220,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		gm_cycle_display(a, key == IN_RIGHT ? 1 : -1);
 		return MENU_STAY;
 	}
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's Scanline Filter is On / Off: left and right turn it over, as they do in the shelf menu. */
+	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT)) {
+		sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+
+		sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		return MENU_STAY;
+	}
+#endif
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
