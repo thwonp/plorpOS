@@ -65,7 +65,7 @@ rm -rf "$S"; mkdir -p "$S"
 # RACE (2.6-2.9x cheaper per frame than Beetle NeoPop; user, 2026-11-10, accepting
 # that one prototype, Cool Cool Jam, does not draw on it - plorpos-f1p.62.3.11).
 flip_cfg() {
-	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' \
+	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)armgba|/\1gpsp|/' \
 	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' \
 	    -e 's/^\(sys|Neo Geo Pocket[^|]*|[^|]*|\)mednafen_ngp|/\1race|/' \
 	    -e 's/^\(sys|SNES|[^|]*|\)snes9x2010|/\1snes9x2005_plus|/' \

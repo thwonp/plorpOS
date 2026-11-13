@@ -780,7 +780,11 @@ static const struct { const char *core, *label, *alt, *alt_label, *bare; int on;
 	 * that name (or pokedaisy_armgba, which a pre-release build wrote) keeps PokeDaisy: `legacy` lists the old names. A state is its emulator's, and mGBA's does not load in armGBA,
 	 * so the armGBA core has its own states folder, named after it; pokedaisy_gbc is the same engine as before and keeps
 	 * the folder "pokedaisy" its states are in (`folder`). */
-	{ "mgba", "mGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL, NULL, NULL },
+	/* armGBA (v1.6, upstream's release build) is the Game Boy Advance shelf's core (plorpos-9i7): a recompiler, a frame
+	 * in under two thirds of mGBA's time on the Brick. mGBA stays a third choice, as on the Game Boy shelves, and its
+	 * states stay in the shelf's own folder (`bare`); armGBA's are in their own. */
+	{ "armgba", "armGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL,
+	  "mgba", "mGBA" },
 	/* Gambatte is the Game Boy and Color shelves' core (plorpos-ssa), half mGBA's cost per frame on the Flip
 	 * (plorpos-f1p.77). mGBA stays a third choice, so a game can load the state it left there and save in-game before
 	 * moving on: a state is its emulator's, and mGBA's is the one in the shelf's own folder (`bare`). A game never
