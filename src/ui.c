@@ -9,7 +9,10 @@
 #include <unistd.h>
 
 #define GLOW_SIZE 192      /* the glow is drawn stretched; small is enough */
-#define TEXT_CACHE 12
+/* 24, not 12: a Gamelist Layout list frame draws ~16 strings (ten rows, the
+ * header, the facts), and an LRU smaller than one frame misses every time -
+ * 30-44 ms list frames on the Brick (plorpos-gwf). */
+#define TEXT_CACHE 24
 
 /* The type scale: one base size and a multiplier per role. The panel is
  * 1024x768 across about three inches, so the base is set for reading at arm's

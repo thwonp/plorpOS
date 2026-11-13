@@ -4462,8 +4462,227 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 	}
 }
 
+/* GAMELIST LAYOUT: THE LISTS (plorpos-gwf). Detailed List and Art List draw a
+ * game shelf as a column of titles on the left and the focused game's box art
+ * on the right, EmulationStation's Detailed theme in this launcher's clothes:
+ * the same black backdrop, the accent glow behind the art instead of behind a
+ * card, the heart in its fixed seat. Detailed List says the scrape's facts
+ * under the art; Art List gives the art the whole height. Muse keeps the
+ * coverflow (plorpos-era).
+ *
+ * The art is the coverflow's own texture for the card, so the decode stays on
+ * the workers and the cache, priming and eviction are the coverflow's too:
+ * moving never decodes on the input path, and art that is not in yet leaves
+ * the pane empty for the frames it takes. */
+#define GL_PAD (TORTOS_SCREEN_W / 40)
+
+typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
+
+static void gl_geometry(gl_geom *g)
+{
+	int head = ui_font_line(UI_F_TITLE);
+
+	g->top = GL_PAD + head + GL_PAD / 2;
+	g->bottom = TORTOS_SCREEN_H - GL_PAD;
+	g->row_h = ui_font_line(UI_F_MENU) * 4 / 3;
+	g->rows = (g->bottom - g->top) / g->row_h;
+	if (g->rows < 1) g->rows = 1;
+	g->col_w = TORTOS_SCREEN_W * 52 / 100 - GL_PAD * 2;
+	g->pane_x = TORTOS_SCREEN_W * 52 / 100;
+	g->pane_w = TORTOS_SCREEN_W - g->pane_x - GL_PAD;
+}
+
+/* L1/R1's screenful on a list: the rows in view. */
+static int gl_page(void)
+{
+	gl_geom g;
+
+	gl_geometry(&g);
+	return g.rows;
+}
+
+static bool gl_active(const app *a)
+{
+	return GAMELISTS[g_gl].list && a->sys.count > 0 &&
+	       !is_muse(&a->sys.systems[a->sys_cursor]);
+}
+
+/* Where the art sits: its own aspect, fitted to the pane and centred in it.
+ * The box above the facts on Detailed List, the pane's height on Art List.
+ * Without a texture yet, the whole box - which is also where the glow goes. */
+static void gl_art_rect(app *a, SDL_Rect *out, SDL_Texture **tex)
+{
+	gl_geom g;
+	sysview *v = &a->view[a->sys_cursor];
+	int bh, w = 0, h = 0;
+	float cb = 0.0f;
+	SDL_Texture *t = NULL;
+
+	gl_geometry(&g);
+	bh = g.bottom - g.top;
+	if (GAMELISTS[g_gl].meta) bh = bh * 64 / 100;
+	*out = (SDL_Rect){ g.pane_x, g.top, g.pane_w, bh };
+	if (v->list.count > 0) t = game_get_tex(a, v->cursor, &w, &h, &cb);
+	if (t && w > 0 && h > 0) {
+		float k = fminf((float)g.pane_w / w, (float)bh / h);
+		int dw = (int)(w * k), dh = (int)(h * k);
+
+		*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2, g.top + (bh - dh) / 2, dw, dh };
+	}
+	if (tex) *tex = t;
+}
+
+/* The facts, read once per focused game rather than per frame: one row from
+ * the card's games table, kept until the cursor or the shelf moves. */
+static struct { int sys, idx, n; char line[4][160]; } g_gl_facts = { -1, -1, 0, { "" } };
+
+static void gl_facts(app *a, sysview *v, int idx)
+{
+	game_meta *m;
+	const system_cfg *gs;
+	int n = 0;
+
+	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx) return;
+	g_gl_facts.sys = a->sys_cursor;
+	g_gl_facts.idx = idx;
+	g_gl_facts.n = 0;
+	m = calloc(1, sizeof *m);       /* 5 KB of synopsis we do not show */
+	if (!m) return;
+	gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, idx)];
+	if (db_game_get(db_lib(), gs->folder, v->list.items[idx].file, m)) {
+		if (m->year[0] || m->genres[0])
+			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "%s%s%s",
+			         m->year, m->year[0] && m->genres[0] ? "  \xC2\xB7  " : "", m->genres);
+		if (m->developer[0])
+			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Developer  %s", m->developer);
+		if (m->publisher[0] && strcmp(m->publisher, m->developer))
+			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Publisher  %s", m->publisher);
+		if (m->players[0])
+			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Players  %s", m->players);
+	}
+	if (!n) snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Not scraped yet");
+	g_gl_facts.n = n;
+	{
+		gl_geom g;
+		char fit[160];
+
+		gl_geometry(&g);
+		for (int i = 0; i < n; i++) {
+			ui_fit_text(ui_font(UI_F_META), g_gl_facts.line[i], fit, sizeof fit, g.pane_w);
+			memcpy(g_gl_facts.line[i], fit, sizeof fit);
+		}
+	}
+	free(m);
+}
+
+/* A row's title as it fits the column, kept: fitting measures the title once
+ * per character it trims, and ten rows of that every frame was most of a
+ * frame. Direct-mapped on the index; a slot is good for one shelf and width. */
+static struct { int sys, idx, w; char s[192]; } g_gl_fit[64];
+
+static const char *gl_fit(app *a, int idx, const char *title, int w)
+{
+	int k = idx & 63;
+
+	if (g_gl_fit[k].sys != a->sys_cursor + 1 || g_gl_fit[k].idx != idx ||
+	    g_gl_fit[k].w != w) {
+		ui_fit_text(ui_font(UI_F_MENU), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
+		g_gl_fit[k].sys = a->sys_cursor + 1;      /* 0 = empty slot */
+		g_gl_fit[k].idx = idx;
+		g_gl_fit[k].w = w;
+	}
+	return g_gl_fit[k].s;
+}
+
+static void draw_games_list(app *a)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	const system_cfg *s = &a->sys.systems[a->sys_cursor];
+	int n = v->list.count, cur = v->cursor, first, i;
+	TTF_Font *fm = ui_font(UI_F_MENU);
+	int mline = ui_font_line(UI_F_MENU);
+	int hrad = mline * 2 / 7;
+	int tx = GL_PAD + hrad * 3;              /* edge, heart seat, its gap */
+	gl_geom g;
+	SDL_Rect art;
+	SDL_Texture *tex;
+	char buf[192];
+	/* Every frame, as draw_game_text does: the marquee clock restarts on a
+	 * cursor change only if it is asked on the frames in between. */
+	unsigned phase = title_phase(a);
+
+	gl_geometry(&g);
+	/* The coverflow is not drawn, so it is held at the cursor: nothing waits
+	 * on a move it will never finish, and Coverflow picks up where this is. */
+	cf_reset(&v->cf, cur);
+	prime_toward(a, a->sys_cursor, cur);
+	evict_far(v, TEX_KEEP_NEAR);
+
+	/* Header: the shelf, and where you are in it - beside the name, because
+	 * the top right corner is the battery's. */
+	{
+		int nw;
+
+		ui_fit_text(ui_font(UI_F_TITLE), s->name, buf, sizeof buf, g.col_w * 3 / 4);
+		nw = ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+		snprintf(buf, sizeof buf, "%d / %d", cur + 1, n);
+		ui_text(a->r, ui_font(UI_F_META), buf, GL_PAD + nw + GL_PAD,
+		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), -1,
+		        UI_TEXT_DIM);
+	}
+
+	/* The column. The cursor rides the middle row once the list is long
+	 * enough to scroll, so there is always as much ahead as behind. */
+	first = cur - g.rows / 2;
+	if (first > n - g.rows) first = n - g.rows;
+	if (first < 0) first = 0;
+	for (i = first; i < n && i < first + g.rows; i++) {
+		game_entry *e = &v->list.items[i];
+		const system_cfg *gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, i)];
+		int y = g.top + (i - first) * g.row_h;
+		int ty = y + (g.row_h - mline) / 2;
+		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
+		SDL_Color ac = { (Uint8)(s->accent >> 16), (Uint8)(s->accent >> 8),
+		                 (Uint8)s->accent, 255 };
+
+		if (i == cur) {
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			ac.a = 210;
+			ui_round_rect(a->r, &row, g.row_h / 4, ac);
+			ac.a = 255;
+		}
+		if (fav_is(gs->tag, e->file))
+			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
+			           (float)hrad, i == cur ? UI_TEXT : ac);
+		if (i == cur && ui_text_width(fm, e->title) > g.col_w - (tx - GL_PAD)) {
+			ui_text_marquee(a->r, fm, e->title, tx, ty, g.col_w - (tx - GL_PAD),
+			                phase, UI_TEXT);
+		} else {
+			ui_text(a->r, fm, gl_fit(a, i, e->title, g.col_w - (tx - GL_PAD)), tx, ty, -1,
+			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
+		}
+		/* A tap on a row brings it into focus, as a tap on a card does. */
+		if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+	}
+
+	/* The art, and on Detailed List what the scrape says under it. */
+	gl_art_rect(a, &art, &tex);
+	if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
+	if (GAMELISTS[g_gl].meta && n > 0) {
+		int y = g.top + (g.bottom - g.top) * 64 / 100 + GL_PAD;
+		int fl = ui_font_line(UI_F_META);
+
+		gl_facts(a, v, cur);
+		for (i = 0; i < g_gl_facts.n && y + fl <= g.bottom; i++, y += fl + fl / 4) {
+			ui_text(a->r, ui_font(UI_F_META), g_gl_facts.line[i], g.pane_x + g.pane_w / 2, y, 0,
+			        i == 0 ? UI_TEXT_SOFT : UI_TEXT_DIM);
+		}
+	}
+}
+
 static void draw_games(app *a)
 {
+	if (gl_active(a)) { draw_games_list(a); return; }
 	shelf_pacing(&a->view[a->sys_cursor].cf);
 	shelf_pacing(&a->cf_sys);
 
@@ -4593,6 +4812,8 @@ static void draw_shelf(app *a)
 		/* The glow behind the focused card. */
 		if (games) {
 			accent = a->sys.systems[a->sys_cursor].accent;
+			if (gl_active(a)) gl_art_rect(a, &focus, NULL);
+			else
 			cf_focus_rect(is_muse(&a->sys.systems[a->sys_cursor]) ? &CF_LAYOUT_ALBUMS
 			              : &CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 		}
@@ -15248,8 +15469,12 @@ static void update_games(app *a)
 	 * way round on purpose: C's % truncates toward zero, so on a shelf of
 	 * three games the obvious `(cursor - CF_WINDOW + n*2) % n` lands on -1 and
 	 * the draw walks off the front of the list. */
-	if (in_repeat(&a->in, IN_L1))    v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
-	if (in_repeat(&a->in, IN_R1))    v->cursor = (v->cursor + CF_WINDOW) % n;
+	{
+		int page = vert ? gl_page() : CF_WINDOW;
+
+		if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - page) % n + n) % n;
+		if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + page) % n;
+	}
 	/* HERE, AND NOT AT THE END OF THE PASS, because four of the handlers below
 	 * return without reaching the end.
 	 *

@@ -19,8 +19,8 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 
 | | |
 |---|---|
-| **Left/Right** | move along the row, when the shelf runs horizontally |
-| **Up/Down** | move along the shelf when it runs vertically - **down advances** |
+| **Left/Right** | move along the row (systems, and games on Coverflow) |
+| **Up/Down** | move down the list on the Detailed List and Art List layouts - **down advances** |
 | **the other axis** | jump to the previous / next initial (games) |
 | **L1/R1** | jump a screenful (games) |
 | **A** | open a system, or start a game |
@@ -49,8 +49,8 @@ were, or back into the game - and B goes back one screen at a time.
 **plorpOS carries this table itself**, under **MENU > Controls**: five pages
 that left and right step through - moving, the shelf, a game, Muse, and the
 buttons that work anywhere. It is the copy that is always to hand, and the one
-that follows your UI Direction, so the page shows the axes as they are on your
-device rather than all three at once. This guide is the long version of the
+that follows your Gamelist Layout, so the page shows the axes as they are on
+your device. This guide is the long version of the
 same thing.
 
 The plorpOS menu opens from the systems row and is about the device rather
@@ -63,7 +63,7 @@ than any one console:
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
-| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else. **Ports Tile**: `Visible` or `Hidden`, whether the Ports card is on the systems row (only listed on devices that have one; hiding it does not delete anything, and Ports games in Favorites and the switcher wait for it to come back) |
+| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **Gamelist Layout**: `Coverflow`, `Detailed List` or `Art List`, how a game shelf is drawn. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else. **Ports Tile**: `Visible` or `Hidden`, whether the Ports card is on the systems row (only listed on devices that have one; hiding it does not delete anything, and Ports games in Favorites and the switcher wait for it to come back) |
 | **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Off` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what the Fast-Forward hotkey runs at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Download Achievement Sets**: every game's set onto the card at once, for playing offline; games already cached are skipped, and the panel counts the games with no achievements to earn. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
 | **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
@@ -417,18 +417,20 @@ Nintendo, Sega, NEC, SNK, Sony, then PICO-8 - each group in release order.
 Favorites stays first and Muse last whichever you pick, and the shelf reorders
 the moment you change it.
 
-**UI Direction** picks how you move. `Horizontal` is the row above.
+**Gamelist Layout** picks how a game shelf looks. The systems row is always
+the row above; this is about the games inside a system, and Favorites, Recents
+and Ports follow it too. Muse keeps its own shelf.
 
-`Vertical` is that row stood on its end. The cards slide up and down instead
-of left and right, flat and unrotated and all one size, with the one under the
-cursor filling most of the screen and its neighbors pushed off the top and
-bottom edges. It is laid out the way `Horizontal` is and moves at the row's
-pace.
+`Coverflow` is the row above, with box art.
 
-Vertically the shelf runs **A at the top to Z at the bottom**, and down
-advances, the way right does on the row. The position rail moves to the left
-edge and runs top-down with it, and on the games shelf the `n / total` sits
-in the bottom left beside it, stationary.
+`Detailed List` puts the games in a column on the left and the focused game's
+art on the right, with what the scrape knows under it - year, genre,
+developer, publisher, players. A game nobody has scraped says so. Up and down
+move, left and right jump by letter, L1/R1 a screenful, and the cursor rides
+the middle of the column once the list is long enough to scroll.
+
+`Art List` is the same list with the art given the whole height and nothing
+under it.
 
 Card art comes from, in order:
 
