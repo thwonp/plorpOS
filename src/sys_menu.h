@@ -91,7 +91,7 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * side - Diatom has per-system display modes and core-supplied button labels -
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
-	SM_GAMES, SM_CORE, SM_SORT,
+	SM_CORE, SM_SORT,
 	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN, SM_ROWS
 } sm_row;
 
@@ -112,9 +112,10 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * and its display mode through the shelf it was started from. Setting one here
  * would give a game a different aspect depending on which shelf launched it.
  *
- * Games and Sort By are both true of a shelf of favorites, so those are what
- * it gets. Eric's call, 2026-09-17. */
-#define SM_FAV_ROWS 2
+ * Sort By is true of a shelf of favorites, so that is what it gets (Eric's
+ * call, 2026-09-17; the Games count row went from every shelf menu,
+ * plorpos-9jo - the shelf itself shows the count). */
+#define SM_FAV_ROWS 1
 
 /* What Muse's shelf menu is: how many albums, Show - music or audiobooks,
  * the two kinds its one shelf holds - Sort By - by artist or by album, its own

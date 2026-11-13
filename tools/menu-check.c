@@ -437,7 +437,8 @@ static void system_menu(void)
 	printf("system menu:\n");
 	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
 	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
-	ck(!strcmp(val(&rows[SM_GAMES]), "412"), "the count is the real one");
+	for (int r = 0; r < n; r++)
+		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
 	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
 	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
 	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Shader"),
@@ -446,7 +447,7 @@ static void system_menu(void)
 	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
 	   "and carries the system's shader");
 	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
-	ck(!rows[SM_GAMES].live && !rows[SM_CORE].live, "reported facts are not rows to press");
+	ck(!rows[SM_CORE].live, "reported facts are not rows to press");
 	ck(rows[sm_index(false, SM_BOXART)].live, "Box Art is live on a network");
 
 	/* The same menu with the radio down. Only Box Art changes. */
@@ -497,9 +498,8 @@ static void system_menu(void)
 		f.sys_core = "";
 		fn = sys_menu_build(&f, frows, &fb, &fhead);
 		printf("the Favorites shelf's menu:\n");
-		ck(fn == SM_FAV_ROWS, "two rows and a count, not six");
-		ck(!strcmp(frows[0].label, "Games"), "how many are on it");
-		ck(!strcmp(frows[1].label, "Sort By"), "and what order they are in");
+		ck(fn == SM_FAV_ROWS, "one row, not six");
+		ck(!strcmp(frows[0].label, "Sort By"), "what order they are in");
 		for (k = 0; k < fn; k++) {
 			ck(strcmp(frows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(frows[k].label, "Display Mode") != 0,
@@ -666,7 +666,7 @@ static void cursor_reaches(void)
 	ck(holds(got, k, SM_SORT), "Sort By");
 	ck(holds(got, k, sm_index(false, SM_BOXART)), "Box Art");
 	ck(holds(got, k, sm_index(false, SM_RESCAN)), "Rescan Folder");
-	ck(!holds(got, k, SM_GAMES) && !holds(got, k, SM_CORE),
+	ck(!holds(got, k, SM_CORE),
 	   "the reported facts are not stops");
 
 	memset(&u, 0, sizeof u);

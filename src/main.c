@@ -8401,7 +8401,7 @@ static int menu_shelf_width(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		bool muse = is_muse(&a->sys.systems[i]);
 		bool own  = muse || a->view[i].owner;
-		int  srow = own ? 1 : SM_SORT, show = -1, disp = -1;
+		int  srow = own ? 0 : SM_SORT, show = -1, disp = -1;
 
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
@@ -9151,11 +9151,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				return MENU_DONE;
 			}
 		}
-		/* Favorites' menu is its own rows too, Games and Sort By - see
-		 * SM_FAV_ROWS - so its Sort By is row 1 and not SM_SORT. Nothing here
-		 * knew that from the day the menu was cut to two rows, and left and
-		 * right on Favorites' Sort By did nothing at all. */
-		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
+		/* Favorites' menu is its own rows too, Sort By alone - see
+		 * SM_FAV_ROWS - so its Sort By is row 0 and not SM_SORT. */
+		if (a->view[a->sys_cursor].owner) sel = SM_SORT;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
 			sel = sm_row_at(sm_extra_shown(a->sys.systems[a->sys_cursor].tag), sel);
 		/* The DS's Display: left and right step it, A steps forward, saved
