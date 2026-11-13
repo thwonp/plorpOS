@@ -74,7 +74,7 @@ static int trace;
 /* Stats for the trace and the exit line: frames PICO-8 presented, flips
  * that reached the glass, frames replaced before they did, copy time. */
 static unsigned st_n, st_all, st_flips, st_drop, st_drop_all;
-static long long st_copy, st_t0, st_first;
+static long long st_copy, st_t0, st_first, st_last;
 
 /* The flip thread. fb0 has three pages: one on glass (front), one the thread
  * is panning to (panning), one waiting for it (queued); PICO-8's next frame
@@ -150,6 +150,14 @@ static void show(SDL_Surface *s)
 	w = s->w < fb_w ? s->w : fb_w;
 	h = s->h < fb_h ? s->h : fb_h;
 	pthread_mutex_lock(&fmx);
+	/* Back from a gap - the launcher's menu, drawn and panned while this
+	 * process was frozen: the page on glass is whichever it left. */
+	if (f_thread && f_panning < 0 && f_queued < 0 && st_last && now_us() - st_last > 200000) {
+		struct fb_var_screeninfo v;
+
+		if (ioctl(fb, FBIOGET_VSCREENINFO, &v) == 0 && v.yres && (int)(v.yoffset / v.yres) < 3)
+			f_front = (int)(v.yoffset / v.yres);
+	}
 	if (f_thread) {
 		for (page = 0; page < 3; page++)
 			if (page != f_front && page != f_panning && page != f_queued) break;
@@ -179,6 +187,7 @@ static void show(SDL_Surface *s)
 		pthread_mutex_unlock(&fmx);
 	}
 	st_copy += t1 - t0;
+	st_last = t1;
 	if (!st_first) st_first = t0;
 	st_all++;
 	if (!st_t0) st_t0 = t0;
