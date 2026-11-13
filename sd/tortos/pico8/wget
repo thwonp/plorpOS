@@ -1,5 +1,6 @@
 #!/bin/sh
-# wget for native PICO-8 (pico8_64) on the Brick, the Brick Pro and the H700s.
+# wget for native PICO-8 (pico8_64) on the Brick, the Brick Pro and the H700s,
+# and pico8_dyn on the Miyoo Mini Flip.
 #
 # The aarch64 pico8_64 has no libcurl of its own: Splore's BBS list and every
 # cart download go through `wget "URL" -q -O "FILE"` (and the same with
@@ -22,5 +23,9 @@ while [ $# -gt 0 ]; do
 	shift
 done
 [ -n "$url" ] && [ -n "$out" ] || exit 1
-exec curl -fsSL --cacert /mnt/SDCARD/TortOS/cacert.pem -o "$out" \
+# The Miyoo Mini Flip's firmware has no curl: plorpOS's own (mbedTLS) sits
+# beside this folder there, and nowhere else.
+CURL=curl
+[ -x "${0%/*}/../curl" ] && CURL=${0%/*}/../curl
+exec "$CURL" -fsSL --cacert /mnt/SDCARD/TortOS/cacert.pem -o "$out" \
 	${post:+--data-binary "@$post"} "$url"

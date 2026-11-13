@@ -103,6 +103,7 @@ stage_all() {
 	[ -f "$FLIP_CURL" ] || { echo "no curl at $FLIP_CURL (run mk/flip-cores/build-curl.sh, or set FLIP_CURL)" >&2; exit 1; }
 	cp "$FLIP_CURL" "$S/curl"; chmod +x "$S/curl"
 	cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$S/"
+	mkdir -p "$S/pico8"; cp "$ROOT/sd/tortos/pico8/wget" "$S/pico8/"   # Splore's downloads over HTTPS (the shim says why)
 	flip_cfg "$S/systems.cfg"
 	# ssh, off until switched on in Network Services (plorpos-f1p.62.2).
 	mkdir -p "$S/bin"
@@ -147,7 +148,7 @@ stage_package() {
 	echo "package: $Z ($(du -h "$Z" | cut -f1), $(wc -l < "$R/MD5SUMS") files)"
 }
 case $MODE in
-elf)    cp "$B/tortos.elf" "$B/flip-pico8.so" "$S/" ;;   # the launcher and native PICO-8's preload
+elf)    cp "$B/tortos.elf" "$B/flip-pico8.so" "$S/"; mkdir -p "$S/pico8"; cp "$ROOT/sd/tortos/pico8/wget" "$S/pico8/" ;;   # the launcher and native PICO-8's files
 diatom) cp "$DIATOM" "$S/diatom" ;;
 launch) cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$S/" ;;
 cfg)    flip_cfg "$S/systems.cfg" ;;
