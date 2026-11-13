@@ -46,6 +46,7 @@
 #include "musec.h"
 #include "museart.h"
 #include "muselib.h"
+#include "playlist.h"
 #include "ss.h"
 #include "ssrun.h"
 #include "sys_menu.h"
@@ -4498,6 +4499,7 @@ typedef struct {
 	int ntabs, tab;
 	unsigned phase;          /* the focused title's marquee clock */
 	const char *empty;       /* said when there are no rows */
+	const char *toast;       /* a passing word ("Added to Road Trip"), or NULL */
 } gl_list;
 
 /* Fit-cache keys for lists that are not a shelf. */
@@ -4574,30 +4576,28 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
 
 /* A row's title as it fits, kept: fitting measures the title once per
  * character it trims, and ten rows of that every frame was most of a frame.
- * Direct-mapped on the index; a slot is good for one list and width. */
-static struct { int key, idx, w; bool used; char s[192]; } g_gl_fit[64];
+ * Direct-mapped on the index; a slot is good for one list, width and title -
+ * the title's hash too, because a list's rows change under the same key (an
+ * artist filter, a sort, a playlist edited) and a slot must not outlive the
+ * words it was made from. */
+static struct { int key, idx, w; Uint32 h; bool used; char s[192]; } g_gl_fit[64];
 
 static const char *gl_fit(int key, int idx, const char *title, int w)
 {
 	int k = idx & 63;
+	Uint32 h = 2166136261u;
 
+	for (const unsigned char *p = (const unsigned char *)title; *p; p++) h = (h ^ *p) * 16777619u;
 	if (!g_gl_fit[k].used || g_gl_fit[k].key != key || g_gl_fit[k].idx != idx ||
-	    g_gl_fit[k].w != w) {
+	    g_gl_fit[k].w != w || g_gl_fit[k].h != h) {
 		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
 		g_gl_fit[k].used = true;
 		g_gl_fit[k].key = key;
 		g_gl_fit[k].idx = idx;
 		g_gl_fit[k].w = w;
+		g_gl_fit[k].h = h;
 	}
 	return g_gl_fit[k].s;
-}
-
-/* A list whose rows changed under the same key (a rename, a rescan, a playlist
- * edited) has its fitted titles dropped. */
-static void gl_fit_forget(int key)
-{
-	for (int k = 0; k < 64; k++)
-		if (g_gl_fit[k].key == key) g_gl_fit[k].used = false;
 }
 
 /* The tabs: "L2", the names with the current one lit, "R2". */
@@ -4643,6 +4643,10 @@ static void gl_draw(app *a, const gl_list *L)
 	/* Header. Where you are in the list goes under the art. */
 	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf, g.col_w);
 	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+	/* A passing word, on the header's line, clear of the battery's corner. */
+	if (L->toast && *L->toast)
+		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
+		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), 1, ac);
 
 	/* The column. The cursor rides the middle row once the list is long
 	 * enough to scroll, so there is always as much ahead as behind. Titles
@@ -4827,9 +4831,23 @@ static void draw_games_list(app *a)
 	gl_draw(a, &L);
 }
 
+/* Muse's List screen is up (plorpos-era): whatever draws the shelf behind
+ * itself - Muse's menu, a pick, the keyboard - draws that list instead of
+ * Muse's coverflow. Its artist and playlist rows live here for that. */
+static bool g_muse_list_up;
+static int  g_mls_asel, g_mls_psel;
+static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L);
+
 static void draw_games(app *a)
 {
 	if (gl_active(a)) { draw_games_list(a); return; }
+	if (g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor])) {
+		gl_list L;
+
+		muse_list_describe(a, &a->view[a->sys_cursor], g_mls_asel, g_mls_psel, &L);
+		gl_draw(a, &L);
+		return;
+	}
 	shelf_pacing(&a->view[a->sys_cursor].cf);
 	shelf_pacing(&a->cf_sys);
 
@@ -4956,7 +4974,8 @@ static void draw_shelf(app *a)
 		unsigned accent = 0;
 		SDL_Rect focus = { 0 };
 
-		/* The glow behind the focused card. */
+		/* The glow behind the focused card - none behind Muse's lists. */
+		if (games && g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor])) games = false;
 		if (games) {
 			accent = a->sys.systems[a->sys_cursor].accent;
 			if (gl_active(a)) { gl_list L; gl_games_list(a, &L); gl_art_rect(&L, &focus, NULL); }
@@ -11671,14 +11690,155 @@ static int muse_playing_album(int *row)
  * from there lands on the album it is playing. Returns how it was left, so
  * the shelf can close too when SELECT closed Muse - it used to be told
  * nothing, and SELECT from Now Playing landed on the shelf instead. */
+/* ---- Muse: Playlists (plorpos-era.5, era.6) ---------------------------------
+ *
+ * .m3u files in Music/Playlists (src/playlist.c). The Playlists tab lists
+ * them; A opens one as a track list; MENU there renames or deletes it, and
+ * MENU on one of its tracks removes that track. Y on any track - an album's
+ * or a playlist's, List or Coverflow - adds it to a playlist, a new one named
+ * on the keyboard or one that exists. */
+#define PL_SHOW_MAX 256
+static pl_info g_pls[PL_SHOW_MAX];
+static char    g_pl_val[PL_SHOW_MAX][12];
+static int     g_npls = -1;              /* -1: read the folder again */
+static char    g_muse_toast[160];
+static Uint32  g_muse_toast_until;
+
+static void muse_pl_dir(char *out, size_t n)
+{
+	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
+}
+
+static void muse_playlists_load(void)
+{
+	char d[CFG_STR * 2 + 32];
+
+	if (g_npls >= 0) return;
+	muse_pl_dir(d, sizeof d);
+	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
+	for (int i = 0; i < g_npls; i++)
+		snprintf(g_pl_val[i], sizeof g_pl_val[i], "%d", g_pls[i].n);
+}
+
+/* A word for two seconds, on whatever list is up. */
+static void muse_toast(const char *msg)
+{
+	snprintf(g_muse_toast, sizeof g_muse_toast, "%s", msg);
+	g_muse_toast_until = SDL_GetTicks() + 2000;
+	ui_redraw_now();
+}
+
+static const char *muse_toast_now(void)
+{
+	if (!g_muse_toast[0] || SDL_GetTicks() >= g_muse_toast_until) return NULL;
+	ui_redraw_at(g_muse_toast_until);
+	return g_muse_toast;
+}
+
+/* The library's track at `path` (card-relative), or -1: a playlist can name a
+ * file that has since gone. Once per entry when a playlist opens. */
+static int muse_track_by_path(const char *path)
+{
+	for (int t = 0; t < g_muse.ntracks; t++)
+		if (!strcmp(g_muse.tracks[t].path, path)) return t;
+	return -1;
+}
+
+/* A short menu of `n` labels: the one chosen, or -1. */
+typedef struct { const char *heading; const char *const *labels; int n, chosen; } muse_pick;
+
+static int muse_pick_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	muse_pick *p = ctx;
+	int i;
+
+	*heading = p->heading;
+	for (i = 0; i < p->n && i < max; i++) rows[i] = (menu_row){ p->labels[i], NULL, true };
+	return i;
+}
+
+static menu_result muse_pick_key(app *a, void *ctx, in_button key, int sel)
+{
+	muse_pick *p = ctx;
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	p->chosen = sel;
+	return MENU_DONE;
+}
+
+static int muse_pick_run(app *a, const char *heading, const char *const *labels, int n)
+{
+	muse_pick p = { heading, labels, n, -1 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         muse_pick_build, muse_pick_key, &p);
+	return p.chosen;
+}
+
+static void muse_kb_backdrop(void *ctx)
+{
+	muse_backdrop(ctx);
+}
+
+/* A playlist's name on the keyboard, `buf` the seed. Asked again while the
+ * name will not make a file. False for cancel (and the power button, which
+ * closes Muse). */
+static bool muse_name_prompt(app *a, const char *title, char *buf, int cap)
+{
+	const char *ask = title;
+
+	for (;;) {
+		kb_result kr = kb_prompt(a->r, &a->in, ask, buf, cap, MUSE_ACCENT,
+		                         muse_kb_backdrop, power_due_ctx, a);
+		char *p = buf, *e;
+
+		if (kr == KB_POWER) { muse_power(a); return false; }
+		if (kr != KB_ACCEPT) return false;
+		while (*p == ' ') p++;
+		memmove(buf, p, strlen(p) + 1);
+		for (e = buf + strlen(buf); e > buf && e[-1] == ' '; ) *--e = '\0';
+		if (pl_name_ok(buf)) return true;
+		ask = "Not / \\ : * ? \" < > | or a leading dot";
+	}
+}
+
+/* Y on a track (era.6): a playlist to add it to, a new one first. */
+static void muse_add_to_playlist(app *a, int t)
+{
+	const char *labels[MENU_RUN_ROWS];
+	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[160];
+	int k, n = 0, i;
+
+	if (t < 0 || t >= g_muse.ntracks) return;
+	muse_playlists_load();
+	labels[n++] = "New Playlist...";
+	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) labels[n++] = g_pls[i].name;
+	k = muse_pick_run(a, "Add to Playlist", labels, n);
+	if (k < 0) return;
+	if (k == 0) {
+		name[0] = '\0';
+		if (!muse_name_prompt(a, "New Playlist", name, (int)sizeof name)) return;
+	} else {
+		snprintf(name, sizeof name, "%s", g_pls[k - 1].name);
+	}
+	muse_pl_dir(d, sizeof d);
+	if (pl_add(d, name, g_muse.tracks[t].path)) snprintf(msg, sizeof msg, "Added to %s", name);
+	else snprintf(msg, sizeof msg, "Could not add to %s", name);
+	g_npls = -1;
+	muse_toast(msg);
+}
+
 /* A list of tracks: an album's, or a playlist's (plorpos-era.5), by index
  * into the library. `album` is the album when they are all one album's, else
  * -1; a playlist names itself in `head` and its first track's artist plays as
- * the artist. `pl` is the playlist, or -1. */
+ * the artist. */
 typedef struct {
-	const int *trk;
-	int n, album, pl;
+	int *trk;
+	int n, album;
 	const char *head, *head2;
+	const char *pl;       /* the playlist's name, or NULL for an album */
+	int *ent;             /* a playlist's: each track's entry in its file */
 } muse_tset;
 
 /* The album a track is on: the album whose run of tracks holds it. */
@@ -11752,6 +11912,7 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 	L.value = mtl_value;
 	L.art = mtl_art;
 	L.empty = "No tracks";
+	L.toast = muse_toast_now();
 	L.phase = mq_phase(MQ_SHELF, -3, sel);
 	gl_geometry(&g, &L);
 	if (al >= 0) {
@@ -11787,7 +11948,7 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 	plat_present(a->r);
 }
 
-static muse_exit muse_tset_run(app *a, const muse_tset *ts, bool now)
+static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 {
 	int sel = 0, done = 0, i, home = -1;
 	muse_exit how = MUSE_BACK;
@@ -11849,7 +12010,11 @@ static muse_exit muse_tset_run(app *a, const muse_tset *ts, bool now)
 
 		/* What is playing, under a rule, even when it is another album's -
 		 * the list is a way to reach music, and the music is the point. */
-		if (loaded) {
+		if (muse_toast_now()) {
+			snprintf(note, sizeof note, "%s", g_muse_toast);
+			rows[n++] = MENU_RULE;
+			rows[n++] = MENU_NOTE(note);
+		} else if (loaded) {
 			mmss(t0, sizeof t0, mn->at);
 			mmss(t1, sizeof t1, mn->len);
 			snprintf(note, sizeof note, "%s%s  -  %s   %s / %s",
@@ -11904,9 +12069,39 @@ static muse_exit muse_tset_run(app *a, const muse_tset *ts, bool now)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
 		}
+		if (a->in.pressed[IN_Y] && items > 0) {
+			muse_add_to_playlist(a, ts->trk[sel]);
+			continue;
+		}
 		/* After a rescan the library `ts` points into is gone: not one more
-		 * frame from it. */
+		 * frame from it. A playlist's MENU offers removing the track first. */
 		if (a->in.pressed[IN_MENU]) {
+			if (ts->pl && items > 0) {
+				static const char *const OPTS[] = { "Remove from Playlist", "Muse Menu" };
+				int k = muse_pick_run(a, ts->pl, OPTS, 2);
+
+				if (k == 0) {
+					char d[CFG_STR * 2 + 32];
+
+					muse_pl_dir(d, sizeof d);
+					if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
+						int gone = ts->ent[sel];
+
+						for (i = sel; i + 1 < ts->n; i++) {
+							ts->trk[i] = ts->trk[i + 1];
+							ts->ent[i] = ts->ent[i + 1];
+						}
+						ts->n--;
+						for (i = 0; i < ts->n; i++) if (ts->ent[i] > gone) ts->ent[i]--;
+						g_npls = -1;
+						muse_toast("Removed");
+					} else {
+						muse_toast("Could not remove");
+					}
+					continue;
+				}
+				if (k != 1) continue;
+			}
 			how = muse_menu(a);
 			if (how != MUSE_BACK) break;
 			continue;
@@ -11968,10 +12163,40 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 	al = &g_muse.albums[album];
 	if (!(trk = calloc((size_t)al->n + 1, sizeof *trk))) return MUSE_BACK;
 	for (i = 0; i < al->n; i++) trk[i] = al->first + i;
-	ts = (muse_tset){ trk, al->n, album, -1, al->name,
-	                  g_muse.artists[muse_artist_of(album)].name };
+	ts = (muse_tset){ trk, al->n, album, al->name,
+	                  g_muse.artists[muse_artist_of(album)].name, NULL, NULL };
 	how = muse_tset_run(a, &ts, now);
 	free(trk);
+	return how;
+}
+
+/* A playlist as a track list: its entries that are in the library, each
+ * remembering its line in the file so MENU can remove that one. */
+static muse_exit muse_playlist_open(app *a, int idx)
+{
+	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], **v;
+	int *trk, *ent, n, i, m = 0;
+	muse_tset ts;
+	muse_exit how;
+
+	if (idx < 0 || idx >= g_npls) return MUSE_BACK;
+	snprintf(name, sizeof name, "%s", g_pls[idx].name);
+	muse_pl_dir(d, sizeof d);
+	if ((n = pl_read(d, name, P_CARD, &v)) < 0) { muse_toast("Could not read it"); return MUSE_BACK; }
+	trk = calloc((size_t)n + 1, sizeof *trk);
+	ent = calloc((size_t)n + 1, sizeof *ent);
+	for (i = 0; trk && ent && i < n; i++) {
+		int t = muse_track_by_path(v[i]);
+
+		if (t >= 0) { trk[m] = t; ent[m] = i; m++; }
+	}
+	pl_free(v, n);
+	if (!trk || !ent) { free(trk); free(ent); return MUSE_BACK; }
+	ts = (muse_tset){ trk, m, -1, name, NULL, name, ent };
+	how = muse_tset_run(a, &ts, false);
+	free(trk);
+	free(ent);
+	g_npls = -1;
 	return how;
 }
 
@@ -12238,7 +12463,6 @@ static void muse_artists_build(void)
 	}
 	g_mar.gen = g_muse_gen;
 	g_mar.books = books;
-	gl_fit_forget(GL_KEY_ARTISTS);
 }
 
 static int muse_artist_row(int ar)
@@ -12270,7 +12494,10 @@ static const char *const MUSE_TABS_BOOKS[] = { "Authors", "Books" };
 
 /* What a List-display Muse screen shows: the artists, or the albums (all,
  * favorites, or one artist's). `asel` is the artist row. */
-static void muse_list_describe(app *a, sysview *v, int asel, gl_list *L)
+static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
+static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
+
+static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L)
 {
 	bool books = muse_books_shown();
 	int tab = muse_tab(), ar = muse_artist_filter();
@@ -12281,6 +12508,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, gl_list *L)
 	L->tabs = books ? MUSE_TABS_BOOKS : MUSE_TABS;
 	L->ntabs = muse_ntabs();
 	L->tab = tab;
+	L->toast = muse_toast_now();
 	if (tab == MT_ARTISTS && ar < 0) {
 		L->key = GL_KEY_ARTISTS;
 		L->header = books ? "Authors" : "Artists";
@@ -12293,9 +12521,15 @@ static void muse_list_describe(app *a, sysview *v, int asel, gl_list *L)
 		return;
 	}
 	if (tab == MT_PLAYLISTS) {
+		muse_playlists_load();
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
-		L->empty = "No playlists yet";
+		L->n = g_npls;
+		L->cur = psel;
+		L->title = mpl_title;
+		L->value = mpl_value;
+		L->empty = "No playlists yet. Y on a track adds one.";
+		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
 	/* Albums: the view. */
@@ -12333,12 +12567,12 @@ static void muse_list_describe(app *a, sysview *v, int asel, gl_list *L)
 	}
 }
 
-static void muse_list_draw(app *a, sysview *v, int asel)
+static void muse_list_draw(app *a, sysview *v, int asel, int psel)
 {
 	gl_list L;
 
 	texload_drain(a);
-	muse_list_describe(a, v, asel, &L);
+	muse_list_describe(a, v, asel, psel, &L);
 	draw_background(a);
 	if (L.art) {
 		SDL_Rect r;
@@ -12389,25 +12623,26 @@ typedef enum { ML_LEAVE, ML_FLAT } ml_ret;
 static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
-	int asel = 0;
 	bool y_down = false, y_spent = false;
 	ml_ret ret = ML_LEAVE;
 	ui_pace pace = {0};
 
+	g_mls_asel = g_mls_psel = 0;
+	g_muse_list_up = true;
 	muse_artists_build();
 	if (playing >= 0 && g_muse.albums[playing].book == muse_books_shown()) {
 		int pa = muse_artist_of(playing);
 
-		asel = muse_artist_row(pa);
+		g_mls_asel = muse_artist_row(pa);
 		if (now) {
 			muse_exit how;
 
 			muse_tab_set(MT_ARTISTS);
 			muse_set_filter(v, pa, playing);
 			how = muse_tracks(a, playing, true);
-			if (how == MUSE_CLOSE || g_muse_gone) return ML_LEAVE;
+			if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return ML_LEAVE; }
 			if (how == MUSE_REBUILT) {
-				if (!(v = muse_shelf_refind(a))) return ML_LEAVE;
+				if (!(v = muse_shelf_refind(a))) { g_muse_list_up = false; return ML_LEAVE; }
 				muse_artists_build();
 			}
 		}
@@ -12419,10 +12654,12 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
 		bool albums = tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
 		bool artists = tab == MT_ARTISTS && !drilled;
-		int n = albums ? v->list.count : artists ? g_mar.n : 0;
-		int *cur = albums ? &v->cursor : &asel;
+		bool lists = tab == MT_PLAYLISTS;
+		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
 
+		if (lists) muse_playlists_load();
+		n = albums ? v->list.count : artists ? g_mar.n : lists ? g_npls : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
@@ -12437,7 +12674,7 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (a->in.pressed[IN_BACK] && drilled && tab == MT_ARTISTS) {
 			/* One level up: the artists, standing on this one. */
-			asel = muse_artist_row(muse_artist_filter());
+			g_mls_asel = muse_artist_row(muse_artist_filter());
 			muse_set_filter(v, -1, -1);
 			continue;
 		}
@@ -12450,7 +12687,7 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
-		muse_list_describe(a, v, asel, &L);
+		muse_list_describe(a, v, g_mls_asel, g_mls_psel, &L);
 		if (n > 0) {
 			int page = gl_rows(&L);
 
@@ -12459,9 +12696,9 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
 			if (in_repeat(&a->in, IN_L1))   *cur = ((*cur - page) % n + n) % n;
 			if (in_repeat(&a->in, IN_R1))   *cur = (*cur + page) % n;
-			if (in_repeat(&a->in, IN_RIGHT))
+			if (in_repeat(&a->in, IN_RIGHT) && !lists)
 				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
-			if (in_repeat(&a->in, IN_LEFT))
+			if (in_repeat(&a->in, IN_LEFT) && !lists)
 				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
 			if (albums) cf_reset(&v->cf, v->cursor);
 		}
@@ -12488,7 +12725,15 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 		if (a->in.pressed[IN_ACCEPT] && n > 0) {
 			if (artists) {
-				muse_set_filter(v, g_mar.ix[asel], -1);
+				muse_set_filter(v, g_mar.ix[g_mls_asel], -1);
+			} else if (lists) {
+				muse_exit how = muse_playlist_open(a, g_mls_psel);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					muse_artists_build();
+				}
 			} else if (albums) {
 				muse_exit how = muse_album(a, v, v->cursor);
 
@@ -12501,6 +12746,33 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
+		if (a->in.pressed[IN_MENU] && lists && n > 0) {
+			/* A playlist's own rows first; Muse's menu is the last. */
+			static const char *const OPTS[] = { "Rename Playlist", "Delete Playlist", "Muse Menu" };
+			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
+			int k = muse_pick_run(a, g_pls[g_mls_psel].name, OPTS, 3);
+
+			muse_pl_dir(d, sizeof d);
+			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
+			if (k == 0) {
+				snprintf(to, sizeof to, "%s", name);
+				if (muse_name_prompt(a, "Rename Playlist", to, (int)sizeof to) && strcmp(to, name)) {
+					if (pl_rename(d, name, to)) snprintf(msg, sizeof msg, "Renamed to %s", to);
+					else snprintf(msg, sizeof msg, "%s already exists", to);
+					g_npls = -1;
+					muse_toast(msg);
+				}
+			} else if (k == 1) {
+				snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
+				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
+					muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
+					g_npls = -1;
+					muse_playlists_load();
+					if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
+				}
+			}
+			if (k != 2) { ui_redraw_now(); continue; }
+		}
 		if (a->in.pressed[IN_MENU]) {
 			muse_exit how = muse_menu(a);
 
@@ -12508,19 +12780,20 @@ static ml_ret muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (!(v = muse_shelf_refind(a))) break;
 			if (!g_muse_listmode) { ret = ML_FLAT; break; }
 			muse_artists_build();
-			if (asel >= g_mar.n) asel = 0;
+			if (g_mls_asel >= g_mar.n) g_mls_asel = 0;
 			ui_redraw_now();
 			continue;
 		}
 
 		if (screen_draw_due(a, &pace, (Uint32)(tab * 7919 + *cur * 31 + drilled * 3 +
-		                                      g_muse_favs + n * 131)))
-			muse_list_draw(a, v, asel);
+		                                      g_muse_favs + n * 131 + (muse_toast_now() != NULL))))
+			muse_list_draw(a, v, g_mls_asel, g_mls_psel);
 		else
 			SDL_Delay(IDLE_POLL_MS);
 	}
 	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
 	*vp = v;
+	g_muse_list_up = false;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	return ret;

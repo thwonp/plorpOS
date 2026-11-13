@@ -50,7 +50,8 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
-         check-gamelist check-logpack check-titles check-clock check-sysorder check-paused
+         check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
+         check-playlist
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -763,6 +764,14 @@ build-native/logpack-check: tools/logpack-check.c src/logpack.c src/logpack.h FO
 
 # The play modes: the last track, the first, a shuffle running out, a track
 # that will not open, and a mode changed under a playing track.
+check-playlist: build-native/playlist-check
+	@./build-native/playlist-check
+
+build-native/playlist-check: tools/playlist-check.c src/playlist.c src/playlist.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/playlist-check.c src/playlist.c
+
 check-musequeue: build-native/musequeue-check
 	@./build-native/musequeue-check
 
