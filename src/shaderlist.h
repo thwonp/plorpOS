@@ -9,12 +9,16 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
-/* The menu row's name: the Flip has no GPU and carries two display filters in the list (plorpos-f1p.75). */
+/* The menu row: the Flip has no GPU, and its one entry is the scanline filter, an On / Off row
+ * (plorpos-f1p.75). SHADER_VALUE turns the list's "None" into the Off it shows there. */
 #if defined(PLATFORM_MIYOO)
-#define SHADER_LABEL "Filter"
+#define SHADER_LABEL "Scanline Filter"
+#define SHADER_VALUE(n) (strcmp((n), "None") ? (n) : "Off")
 #else
 #define SHADER_LABEL "Shader"
+#define SHADER_VALUE(n) (n)
 #endif
 
 #define SL_MAX  32

@@ -98,7 +98,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		                              u->sort ? u->sort : "Name", true  };
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
 		out[SM_FILL]    = (menu_row){ "Display",       u->fill,     true  };
-		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, u->shader ? u->shader : "None",
+		out[SM_SHADER]  = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row

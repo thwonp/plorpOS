@@ -9088,7 +9088,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
 				shader_save(a, a->sys_cursor);
 			} else {
+#if defined(PLATFORM_MIYOO)
+				v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
+				shader_save(a, a->sys_cursor);
+#else
 				shelf_shader_screen(a, a->sys_cursor);
+#endif
 			}
 			return MENU_STAY;
 		}
@@ -13142,7 +13147,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		gm_cycle_display(a, +1);
 		break;
 	case GM_SHADER:
+#if defined(PLATFORM_MIYOO)
+		{	/* On / Off: A toggles, through the list screen's own apply-and-save */
+			sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+
+			sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		}
+#else
 		shader_screen(a, c);
+#endif
 		break;
 	case GM_PALETTE:
 		palette_screen(a, c);
