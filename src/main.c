@@ -781,7 +781,8 @@ static struct { int index, count; char label[24]; } g_disc;
  * their own folder; the Brick and H700 never had another DS core. `on` says
  * which build ships the alternative; one core may have a row per build. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
-static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy, *folder; } ALT_CORES[] = {
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy, *folder;
+                      const char *alt2, *alt2_label; } ALT_CORES[] = {
 	/* DSperate with the PokeDaisy companion over it, chosen per game like PokeDaisy on the Game Boy shelves: it is
 	 * for the Pokemon DS games, DSperate stays every other game's. */
 	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "melondsds", ALT_ON_GKD_ROTATE, true },
@@ -796,9 +797,25 @@ static const struct { const char *core, *label, *alt, *alt_label, *bare; int on;
 	 * that name (or pokedaisy_armgba, which a pre-release build wrote) keeps PokeDaisy: `legacy` lists the old names. A state is its emulator's, and mGBA's does not load in armGBA,
 	 * so the armGBA core has its own states folder, named after it; pokedaisy_gbc is the same engine as before and keeps
 	 * the folder "pokedaisy" its states are in (`folder`). */
-	{ "mgba", "mGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL },
-	{ "mgba", "mGBA", "pokedaisy_gbc", "PokeDaisy", "mgba", ALT_ON_ALL, true, NULL, "pokedaisy", "pokedaisy" },
+	{ "mgba", "mGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL, NULL, NULL },
+	/* Gambatte is the Game Boy and Color shelves' core (plorpos-ssa), half mGBA's cost per frame on the Flip
+	 * (plorpos-f1p.77). mGBA stays a third choice, so a game can load the state it left there and save in-game before
+	 * moving on: a state is its emulator's, and mGBA's is the one in the shelf's own folder (`bare`). A game never
+	 * turned has no row, so every one of them plays on Gambatte now. */
+	{ "gambatte", "Gambatte", "pokedaisy_gbc", "PokeDaisy", "mgba", ALT_ON_ALL, true, NULL, "pokedaisy", "pokedaisy",
+	  "mgba", "mGBA" },
 };
+
+/* A per-game shelf's cores in Core-row order: its own, the alternative, and a second where there is one (j 0..2). */
+static int alt_n(int k) { return ALT_CORES[k].alt2 ? 3 : 2; }
+static const char *alt_core_name(int k, int j)
+{
+	return j == 0 ? ALT_CORES[k].core : j == 1 ? ALT_CORES[k].alt : ALT_CORES[k].alt2;
+}
+static const char *alt_core_label(int k, int j)
+{
+	return j == 0 ? ALT_CORES[k].label : j == 1 ? ALT_CORES[k].alt_label : ALT_CORES[k].alt2_label;
+}
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
 static int alt_core(const system_cfg *s)
@@ -864,9 +881,10 @@ static const char *shelf_core(app *a, int sys, const char *file)
 
 		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
-		return db_get_str(db_dev(), key, name, sizeof name, NULL) &&
-		       (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name))
-		       ? ALT_CORES[k].alt : s->core;
+		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) return s->core;
+		if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
+		if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
+		return s->core;
 	}
 	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
 }
@@ -899,17 +917,30 @@ static void engine_save(app *a, int sys)
 	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
-/* Turn the game under the shelf's cursor to the other core of a per-game shelf, saved at once. */
-static void engine_game_flip(app *a, int sys)
+/* Which of a per-game shelf's cores (alt_core_name's j) the game under the cursor plays on. */
+static int engine_game_index(app *a, int sys)
+{
+	const char *core = shelf_core(a, sys, cursor_file(a, sys));
+	int k = alt_core(&a->sys.systems[sys]), j;
+
+	for (j = 1; j < alt_n(k); j++)
+		if (!strcmp(core, alt_core_name(k, j))) return j;
+	return 0;
+}
+
+/* Step the game under the shelf's cursor through a per-game shelf's cores, saved at once. The shelf's own core
+ * is no row at all, so a game left on it follows the shelf's default when that changes. */
+static void engine_game_step(app *a, int sys, int d)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	const char *file = cursor_file(a, sys);
 	char key[LIB_PATH + 32];
-	int k = alt_core(s);
+	int k = alt_core(s), j;
 
 	if (k < 0 || !file) return;
+	j = ((engine_game_index(a, sys) + d) % alt_n(k) + alt_n(k)) % alt_n(k);
 	engine_game_key(key, sizeof key, s, file);
-	if (strcmp(shelf_core(a, sys, file), ALT_CORES[k].alt)) db_set_str(db_dev(), key, ALT_CORES[k].alt);
+	if (j) db_set_str(db_dev(), key, alt_core_name(k, j));
 	else db_del(db_dev(), key);
 }
 
@@ -923,8 +954,7 @@ static const char *engine_label(app *a, int sys)
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
-	if (k >= 0 && ALT_CORES[k].per_game)
-		return strcmp(shelf_core(a, sys, cursor_file(a, sys)), ALT_CORES[k].alt) ? ALT_CORES[k].label : ALT_CORES[k].alt_label;
+	if (k >= 0 && ALT_CORES[k].per_game) return alt_core_label(k, engine_game_index(a, sys));
 	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
 	return NULL;
 }
@@ -8546,8 +8576,8 @@ static int menu_shelf_width(app *a)
 		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
 			int c = alt_core(&a->sys.systems[i]), mw;
 
-			for (k = 0; k < 2; k++) {
-				rows[SM_CORE].value = k ? ALT_CORES[c].alt_label : ALT_CORES[c].label;
+			for (k = 0; k < alt_n(c); k++) {
+				rows[SM_CORE].value = alt_core_label(c, k);
 				mw = menu_measure(rows, n, heading);
 				if (mw > w) w = mw;
 			}
@@ -9257,8 +9287,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			return MENU_STAY;
 		}
 		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
-		 * shelf with two (ALT_CORES). Two values, so left, right and A all
-		 * turn it over, saved at once like Display Mode. No check for the
+		 * shelf with more (ALT_CORES). Left and right step it, A steps
+		 * forward, saved at once like Display Mode. No check for the
 		 * binary here: a missing one says so at launch, the same as Splore. */
 		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
 		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
@@ -9268,7 +9298,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			int k = alt_core(&a->sys.systems[a->sys_cursor]);
 
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
-			else if (ALT_CORES[k].per_game) engine_game_flip(a, a->sys_cursor);
+			else if (ALT_CORES[k].per_game) engine_game_step(a, a->sys_cursor, d ? d : 1);
 			else v->alt = !v->alt;
 			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
 			/* Each core keeps its own states, and a card with no art shows
@@ -13180,6 +13210,7 @@ typedef struct {
 	const game_entry *g;
 	int               cur;
 	const char       *tag;
+	bool              gambatte; /* the game's core, whose options carry the palette */
 } pal_ctx;
 
 static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
@@ -13206,7 +13237,7 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
-	if (sel != c->cur && gbpal_opts(sel, p, sizeof p, col, sizeof col)) {
+	if (sel != c->cur && gbpal_opts(sel, c->gambatte, p, sizeof p, col, sizeof col)) {
 		char *eq;
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
@@ -13222,7 +13253,8 @@ static void palette_screen(app *a, gm_ctx *gm)
 {
 	sysview *sv = &a->view[a->sys_cursor];
 	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag };
+	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag,
+	              !strcmp(shelf_core(a, o, sv->list.items[sv->cursor].file), "gambatte") };
 	menu_style st = gm->st;
 
 	c.cur = palette_of(a, o, c.g);
@@ -14509,7 +14541,8 @@ static void launch_one(app *a)
 	 * older card stored for the whole system cannot decide it. */
 	{
 		int pal = palette_of(a, o, &v->list.items[v->cursor]);
-		if (pal >= 0) gbpal_opts(pal, palp, sizeof palp, palc, sizeof palc);
+		if (pal >= 0) gbpal_opts(pal, !strcmp(shelf_core(a, o, romfile), "gambatte"),
+		                         palp, sizeof palp, palc, sizeof palc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
