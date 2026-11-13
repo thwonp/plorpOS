@@ -424,13 +424,12 @@ and Ports follow it too. Muse keeps its own shelf.
 `Coverflow` is the row above, with box art.
 
 `Detailed List` puts the games in a column on the left and the focused game's
-art on the right, with what the scrape knows under it - year, genre,
-developer, publisher, players. A game nobody has scraped says so. Up and down
+art on the right, with its year and genre under it and your place in the
+shelf (`11 / 156`) under that. A game nobody has scraped says so. Up and down
 move, left and right jump by letter, L1/R1 a screenful, and the cursor rides
 the middle of the column once the list is long enough to scroll.
 
-`Art List` is the same list with the art given the whole height and nothing
-under it.
+`Art List` is the same list with only your place in the shelf under the art.
 
 Card art comes from, in order:
 

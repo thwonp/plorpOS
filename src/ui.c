@@ -13,6 +13,9 @@
  * header, the facts), and an LRU smaller than one frame misses every time -
  * 30-44 ms list frames on the Brick (plorpos-gwf). */
 #define TEXT_CACHE 24
+#ifndef UI_LIST_PT
+#define UI_LIST_PT 40
+#endif
 
 /* The type scale: one base size and a multiplier per role. The panel is
  * 1024x768 across about three inches, so the base is set for reading at arm's
@@ -61,6 +64,9 @@ static const float font_mul[UI_F_COUNT] = {
 	[UI_F_META]  = 1.00f,   /* 32 */
 	[UI_F_CARD]  = 1.94f,   /* 62, in card pixels - the title IS the card */
 	[UI_F_BADGE] = 0.63f,   /* 20 */
+	/* The list rows: the menu's size read too large there (owner, plorpos-gwf),
+	 * so UI_LIST_PT of the menu's 48 on the Brick, scaled like the rest. */
+	[UI_F_LIST]  = 1.34f * UI_LIST_PT / 48.0f,
 };
 
 static TTF_Font *fonts[UI_F_COUNT];

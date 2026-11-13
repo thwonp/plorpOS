@@ -4476,7 +4476,28 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
  * the pane empty for the frames it takes. */
 #define GL_PAD (TORTOS_SCREEN_W / 40)
 
+/* Year and genre, one line (owner: developer, publisher and players left out). */
+#define GL_FACTS 1
+
 typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
+
+/* What sits under the art: a gap, then on Detailed List the facts, and on
+ * both lists the shelf position, "11 / 156". */
+static int gl_under_lines(void)
+{
+	return (GAMELISTS[g_gl].meta ? GL_FACTS : 0) + 1;
+}
+
+static int gl_under_h(void)
+{
+	return GL_PAD / 2 + gl_under_lines() * ui_font_line(UI_F_META);
+}
+
+/* The art box's height: what the pane has left above the lines under it. */
+static int gl_art_h(const gl_geom *g)
+{
+	return g->bottom - g->top - gl_under_h();
+}
 
 static void gl_geometry(gl_geom *g)
 {
@@ -4484,7 +4505,7 @@ static void gl_geometry(gl_geom *g)
 
 	g->top = GL_PAD + head + GL_PAD / 2;
 	g->bottom = TORTOS_SCREEN_H - GL_PAD;
-	g->row_h = ui_font_line(UI_F_MENU) * 4 / 3;
+	g->row_h = ui_font_line(UI_F_LIST) * 4 / 3;
 	g->rows = (g->bottom - g->top) / g->row_h;
 	if (g->rows < 1) g->rows = 1;
 	g->col_w = TORTOS_SCREEN_W * 52 / 100 - GL_PAD * 2;
@@ -4507,34 +4528,38 @@ static bool gl_active(const app *a)
 	       !is_muse(&a->sys.systems[a->sys_cursor]);
 }
 
-/* Where the art sits: its own aspect, fitted to the pane and centred in it.
- * The box above the facts on Detailed List, the pane's height on Art List.
- * Without a texture yet, the whole box - which is also where the glow goes. */
+/* Where the art sits: its own aspect, fitted to the box above the lines under
+ * it, and the art with those lines centred as one block between the top and
+ * bottom of the screen. Without a
+ * texture yet, the whole box - which is also where the glow goes. */
 static void gl_art_rect(app *a, SDL_Rect *out, SDL_Texture **tex)
 {
 	gl_geom g;
 	sysview *v = &a->view[a->sys_cursor];
-	int bh, w = 0, h = 0;
+	int bh, dw, dh, block, w = 0, h = 0;
 	float cb = 0.0f;
 	SDL_Texture *t = NULL;
 
 	gl_geometry(&g);
-	bh = g.bottom - g.top;
-	if (GAMELISTS[g_gl].meta) bh = bh * 64 / 100;
-	*out = (SDL_Rect){ g.pane_x, g.top, g.pane_w, bh };
+	bh = gl_art_h(&g);
+	dw = g.pane_w;
+	dh = bh;
+
 	if (v->list.count > 0) t = game_get_tex(a, v->cursor, &w, &h, &cb);
 	if (t && w > 0 && h > 0) {
 		float k = fminf((float)g.pane_w / w, (float)bh / h);
-		int dw = (int)(w * k), dh = (int)(h * k);
 
-		*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2, g.top + (bh - dh) / 2, dw, dh };
+		dw = (int)(w * k);
+		dh = (int)(h * k);
 	}
+	block = dh + gl_under_h();
+	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2, (TORTOS_SCREEN_H - block) / 2, dw, dh };
 	if (tex) *tex = t;
 }
 
 /* The facts, read once per focused game rather than per frame: one row from
  * the card's games table, kept until the cursor or the shelf moves. */
-static struct { int sys, idx, n; char line[4][160]; } g_gl_facts = { -1, -1, 0, { "" } };
+static struct { int sys, idx, n; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, { "" } };
 
 static void gl_facts(app *a, sysview *v, int idx)
 {
@@ -4553,12 +4578,6 @@ static void gl_facts(app *a, sysview *v, int idx)
 		if (m->year[0] || m->genres[0])
 			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "%s%s%s",
 			         m->year, m->year[0] && m->genres[0] ? "  \xC2\xB7  " : "", m->genres);
-		if (m->developer[0])
-			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Developer  %s", m->developer);
-		if (m->publisher[0] && strcmp(m->publisher, m->developer))
-			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Publisher  %s", m->publisher);
-		if (m->players[0])
-			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Players  %s", m->players);
 	}
 	if (!n) snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Not scraped yet");
 	g_gl_facts.n = n;
@@ -4586,7 +4605,7 @@ static const char *gl_fit(app *a, int idx, const char *title, int w)
 
 	if (g_gl_fit[k].sys != a->sys_cursor + 1 || g_gl_fit[k].idx != idx ||
 	    g_gl_fit[k].w != w) {
-		ui_fit_text(ui_font(UI_F_MENU), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
+		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
 		g_gl_fit[k].sys = a->sys_cursor + 1;      /* 0 = empty slot */
 		g_gl_fit[k].idx = idx;
 		g_gl_fit[k].w = w;
@@ -4599,10 +4618,11 @@ static void draw_games_list(app *a)
 	sysview *v = &a->view[a->sys_cursor];
 	const system_cfg *s = &a->sys.systems[a->sys_cursor];
 	int n = v->list.count, cur = v->cursor, first, i;
-	TTF_Font *fm = ui_font(UI_F_MENU);
-	int mline = ui_font_line(UI_F_MENU);
+	TTF_Font *fm = ui_font(UI_F_LIST);
+	int mline = ui_font_line(UI_F_LIST);
 	int hrad = mline * 2 / 7;
-	int tx = GL_PAD + hrad * 3;              /* edge, heart seat, its gap */
+	/* Titles start under the header's first letter; a favorite's heart goes
+	 * there instead and pushes only that row's title right (owner). */
 	gl_geom g;
 	SDL_Rect art;
 	SDL_Texture *tex;
@@ -4618,18 +4638,9 @@ static void draw_games_list(app *a)
 	prime_toward(a, a->sys_cursor, cur);
 	evict_far(v, TEX_KEEP_NEAR);
 
-	/* Header: the shelf, and where you are in it - beside the name, because
-	 * the top right corner is the battery's. */
-	{
-		int nw;
-
-		ui_fit_text(ui_font(UI_F_TITLE), s->name, buf, sizeof buf, g.col_w * 3 / 4);
-		nw = ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
-		snprintf(buf, sizeof buf, "%d / %d", cur + 1, n);
-		ui_text(a->r, ui_font(UI_F_META), buf, GL_PAD + nw + GL_PAD,
-		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), -1,
-		        UI_TEXT_DIM);
-	}
+	/* Header: the shelf. Where you are in it goes under the art. */
+	ui_fit_text(ui_font(UI_F_TITLE), s->name, buf, sizeof buf, g.col_w);
+	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
 
 	/* The column. The cursor rides the middle row once the list is long
 	 * enough to scroll, so there is always as much ahead as behind. */
@@ -4644,6 +4655,9 @@ static void draw_games_list(app *a)
 		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
 		SDL_Color ac = { (Uint8)(s->accent >> 16), (Uint8)(s->accent >> 8),
 		                 (Uint8)s->accent, 255 };
+		bool fav = fav_is(gs->tag, e->file);
+		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
+		int tw = g.col_w - (tx - GL_PAD);
 
 		if (i == cur) {
 			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4651,32 +4665,34 @@ static void draw_games_list(app *a)
 			ui_round_rect(a->r, &row, g.row_h / 4, ac);
 			ac.a = 255;
 		}
-		if (fav_is(gs->tag, e->file))
+		if (fav)
 			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
 			           (float)hrad, i == cur ? UI_TEXT : ac);
-		if (i == cur && ui_text_width(fm, e->title) > g.col_w - (tx - GL_PAD)) {
-			ui_text_marquee(a->r, fm, e->title, tx, ty, g.col_w - (tx - GL_PAD),
-			                phase, UI_TEXT);
+		if (i == cur && ui_text_width(fm, e->title) > tw) {
+			ui_text_marquee(a->r, fm, e->title, tx, ty, tw, phase, UI_TEXT);
 		} else {
-			ui_text(a->r, fm, gl_fit(a, i, e->title, g.col_w - (tx - GL_PAD)), tx, ty, -1,
+			ui_text(a->r, fm, gl_fit(a, i, e->title, tw), tx, ty, -1,
 			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
 		}
 		/* A tap on a row brings it into focus, as a tap on a card does. */
 		if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
 	}
 
-	/* The art, and on Detailed List what the scrape says under it. */
+	/* The art; under it, on Detailed List what the scrape says, then where
+	 * you are in the shelf. */
 	gl_art_rect(a, &art, &tex);
 	if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
-	if (GAMELISTS[g_gl].meta && n > 0) {
-		int y = g.top + (g.bottom - g.top) * 64 / 100 + GL_PAD;
-		int fl = ui_font_line(UI_F_META);
+	{
+		int y = art.y + art.h + GL_PAD / 2;
+		int fl = ui_font_line(UI_F_META), cx = g.pane_x + g.pane_w / 2;
 
-		gl_facts(a, v, cur);
-		for (i = 0; i < g_gl_facts.n && y + fl <= g.bottom; i++, y += fl + fl / 4) {
-			ui_text(a->r, ui_font(UI_F_META), g_gl_facts.line[i], g.pane_x + g.pane_w / 2, y, 0,
-			        i == 0 ? UI_TEXT_SOFT : UI_TEXT_DIM);
+		if (GAMELISTS[g_gl].meta && n > 0) {
+			gl_facts(a, v, cur);
+			for (i = 0; i < g_gl_facts.n; i++, y += fl)
+				ui_text(a->r, ui_font(UI_F_META), g_gl_facts.line[i], cx, y, 0, UI_TEXT_SOFT);
 		}
+		snprintf(buf, sizeof buf, "%d / %d", cur + 1, n);
+		ui_text(a->r, ui_font(UI_F_META), buf, cx, y, 0, UI_TEXT_DIM);
 	}
 }
 

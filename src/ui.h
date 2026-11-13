@@ -80,6 +80,7 @@ typedef enum {
 	UI_F_META,    /* counts, timestamps -- the quiet line */
 	UI_F_CARD,
 	UI_F_BADGE,   /* the battery's number, small enough for the corner */
+	UI_F_LIST,    /* a game shelf's rows on the Gamelist Layout lists */
 	UI_F_COUNT
 } ui_font_role;
 
