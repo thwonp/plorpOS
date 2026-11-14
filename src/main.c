@@ -6663,6 +6663,7 @@ typedef struct {
 /* SELECT: Muse, over whatever is on screen. Declared here, after menu_style,
  * because it borrows two of its hooks. */
 static bool muse_open(app *a, const menu_style *over, void *ctx);
+static bool g_muse_card;              /* muse_open is the card's, not SELECT's */
 
 /* Read every frame through the caller's pointer, so a screen that keeps its
  * style inside its own context can change it between frames. The info screen
@@ -12337,7 +12338,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		g_menu_closing = false;
 		return g_muse_gone;
 	}
-	muse_shelf_screen(a, mn->state == MU_PLAYING || mn->state == MU_PAUSED);
+	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
+	 * one left, whatever is playing (owner, plorpos-era.9). */
+	muse_shelf_screen(a, !g_muse_card && (mn->state == MU_PLAYING || mn->state == MU_PAUSED));
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
 	/* Nothing Muse did closes the menu it may have been opened over. */
@@ -14746,10 +14749,12 @@ static void switcher_shelf(app *a)
 }
 
 /* Muse opened from a shelf: if Menu was held inside it, the switcher follows. */
-static void muse_open_shelf(app *a)
+static void muse_open_shelf(app *a, bool card)
 {
 	g_muse_sw_ok = true;
+	g_muse_card = card;
 	muse_open(a, NULL, NULL);
+	g_muse_card = false;
 	g_muse_sw_ok = false;
 	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_launch(a, &g_muse_pick); }
 }
@@ -16190,7 +16195,7 @@ static void update_systems(app *a)
 	if (dir) load_ahead(a);
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
-		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a);
+		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a, true);
 		else enter_system(a);
 	}
 	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
@@ -16285,7 +16290,7 @@ static void update_games(app *a)
 	 * comes back to the card on the systems row. */
 	if (is_muse(&a->sys.systems[a->sys_cursor])) {
 		a->screen = SCREEN_SYSTEMS;
-		muse_open_shelf(a);
+		muse_open_shelf(a, true);
 		return;
 	}
 	/* The two axes trade roles with the shelf rather than one of them being
@@ -18491,7 +18496,7 @@ int main(int argc, char *argv[])
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
 		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a); continue; }
+		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a, false); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
 		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */

@@ -264,9 +264,9 @@ does not wait for the launcher to notice the headset is gone.
 ## Muse
 
 Muse plays the music and the audiobooks on the card. Its card at the end of
-the shelf opens Muse,
-the same as SELECT does: Now Playing when something is playing or paused, and
-otherwise its tabs (below). A on an album opens its tracks. MENU, anywhere in
+the shelf opens Muse on its tabs (below), on the album that is playing if one
+is. SELECT opens it too: Now Playing when something is playing or paused, and
+otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
 Muse, has the album count, Show, Sort By, Album Art (below), and Rescan Folder
 for music copied on while the device was running.
 
