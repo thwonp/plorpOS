@@ -266,12 +266,9 @@ does not wait for the launcher to notice the headset is gone.
 Muse plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse,
 the same as SELECT does: Now Playing when something is playing or paused, and
-otherwise a shelf of album covers, the way a console's opens onto its games -
-in all three layouts, with the other axis jumping from one initial to the
-next. A on an
-album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
-Sort By, Album Art (below), Display, and Rescan Folder for music copied on while the
-device was running.
+otherwise its tabs (below). A on an album opens its tracks. MENU, anywhere in
+Muse, has the album count, Show, Sort By, Album Art (below), and Rescan Folder
+for music copied on while the device was running.
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -282,11 +279,10 @@ album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
-**Display** is `Coverflow`, the shelf of albums, or `List`: three tabs,
-**Artists**, **Albums** and **Playlists** (on audiobooks **Authors** and
-**Books**, and no playlists), named along the bottom with L2 and R2 at its ends.
-L2 and R2 step between them, round from the last to the first, and Muse opens
-on the tab you left it on.
+Muse has four tabs, **Artists**, **Albums**, **Playlists** and **Coverflow**
+(on audiobooks **Authors**, **Books** and **Coverflow**, and no playlists),
+named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
+round from the last to the first, and Muse opens on the tab you left it on.
 
 - **Artists** lists the artists with how many albums each has. Up and down
   step, left and right jump by initial, L1 and R1 a screenful. A opens that
@@ -298,6 +294,10 @@ on the tab you left it on.
   one. X deletes the playlist under the cursor, asked first, and MENU renames
   it on the keyboard. In a playlist, X removes the track under the cursor, and L2 and R2
   move it up and down a place.
+- **Coverflow** is the shelf of album covers, the way a console's opens onto
+  its games: left and right move, up and down jump from one initial to the
+  next, L1 and R1 a window of covers. Y favorites as on Albums. Leaving an
+  artist's albums for Albums or Coverflow keeps the album you were on.
 
 A on an album opens its tracks, the same list with the album's cover. With
 something playing, SELECT opens Now Playing and B goes back to that album's
@@ -305,7 +305,7 @@ tracks and then its artist's albums. Kept across restarts.
 
 **Playlists** are `.m3u` files in `Music/Playlists/`, so other players and a
 computer can read and edit them. **Y on any track** - an album's or a
-playlist's, in either Display - adds it to a playlist: one you have, or a new
+playlist's - adds it to a playlist: one you have, or a new
 one named on the keyboard.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
