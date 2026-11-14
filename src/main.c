@@ -1980,21 +1980,35 @@ static void texload_drain(app *a)
  * Flip's card art is also shrunk at deploy time (mk/miyoo-deploy.sh): scaling
  * at load cost about 10 ms a card on the frame. */
 #define SYS_KEEP 5
-static bool sys_wanted(const app *a, int i)
+/* The systems whose game covers stay: the ones load_ahead and sys_prefetch ask
+ * for (cursor +-2), so nothing freed here is asked for again at rest. Before
+ * this, each system landed on kept its primed covers until its own shelf was
+ * opened and left, and one lap of the row grew the launcher's anon from 31 to
+ * 53 MB (plorpos-f1p.93). */
+#define SYS_COVERS 2
+static int sys_dist(const app *a, int i)
 {
 	int n = a->sys.count, d = abs(i - a->sys_cursor);
 
 	if (n >= CF_WINDOW) d = d > n / 2 ? n - d : d;
-	return d <= SYS_KEEP;
+	return d;
 }
+
+static bool sys_wanted(const app *a, int i) { return sys_dist(a, i) <= SYS_KEEP; }
+
+static void evict_far(sysview *v, int keep);
 
 static void sys_evict_far(app *a)
 {
-	for (int i = 0; i < a->sys.count; i++)
-		if (a->sys_tex[i] && !sys_wanted(a, i)) {
+	for (int i = 0; i < a->sys.count; i++) {
+		int d = sys_dist(a, i);
+
+		if (a->sys_tex[i] && d > SYS_KEEP) {
 			SDL_DestroyTexture(a->sys_tex[i]);
 			a->sys_tex[i] = NULL;
 		}
+		if (d > SYS_COVERS) evict_far(&a->view[i], -1);
+	}
 }
 #endif
 
