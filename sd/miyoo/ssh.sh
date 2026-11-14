@@ -11,19 +11,10 @@
 # it is copied to a private folder in /tmp. The host key is made on the first
 # start and kept in plorpOS/ssh.
 #
-# An ssh login shell sources /etc/profile, then .profile in the current
-# directory, which dropbear sets to the home folder. BusyBox 1.20 ash reads
-# ./.profile, not $HOME/.profile.
-#
-# The firmware's /etc/profile is the second half of its boot. It remounts
-# /dev, starts telnetd and runs /customer/main again, which starts a second
-# plorpOS and then takes the boot hook off the card. So ssh.sh bind-mounts a
-# short profile over it, and does not start dropbear if that fails.
-#
-# plorpos's home is a folder in /tmp, because another firmware may have left
-# a .profile at the card root. The .profile in that folder changes to
-# /mnt/SDCARD. The cd cannot go in /etc/profile, or ash would read the
-# card's .profile.
+# A login shell sources /etc/profile, which on this firmware re-runs the boot,
+# then .profile in the home folder. So a short profile is bind-mounted over
+# /etc/profile (dropbear does not start if that fails), and plorpos's home is
+# a folder in /tmp whose .profile changes to /mnt/SDCARD.
 D=/mnt/SDCARD/plorpOS
 K=$D/ssh
 PID=/tmp/dropbear.pid
