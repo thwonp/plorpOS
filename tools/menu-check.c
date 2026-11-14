@@ -546,7 +546,7 @@ static void system_menu(void)
 		   "covers to fetch, on a network");
 		ck(!strcmp(mrows[3].label, "Rescan Folder") && mrows[3].live,
 		   "and a rescan that works, no Display row (the coverflow is a tab)");
-		ck(!strcmp(mrows[4].label, "Muse Settings") && mrows[4].live,
+		ck(!strcmp(mrows[4].label, "Playback Settings") && mrows[4].live,
 		   "and Muse's own settings");
 		m.sort = "Album";
 		m.wifi = WIFI_OFF;
@@ -589,7 +589,7 @@ static void system_menu(void)
 
 			ck(sys_menu_muse_rows(true, false, ids) == 4 && ids[1] == SMM_SORT &&
 			   ids[2] == SMM_RESCAN && ids[3] == SMM_SETTINGS,
-			   "books alone: the count, Sort By, Rescan Folder and Muse Settings");
+			   "books alone: the count, Sort By, Rescan Folder and Playback Settings");
 		}
 	}
 }

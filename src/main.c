@@ -1212,6 +1212,7 @@ static bool g_muse_books;
  * makes the Favorites shelf. The view is this session's; it ends by itself
  * when its last album is unmarked, or when the kind shown has none. */
 static bool g_muse_favs;
+static bool g_muse_list_up;           /* Muse's tabs are on screen (plorpos-era) */
 
 /* The artist filter (plorpos-mn1, now the Artists tab's drill, plorpos-era):
  * A on an artist sets g_muse_artist, a filter muse_order_view applies to
@@ -2236,6 +2237,8 @@ static void muse_show(sysview *v, bool books)
 	g_muse_books = books;
 	g_muse_artist = -1;
 	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
+	/* On the Favorites tab, the new kind's favorites (none ends it again). */
+	g_muse_favs = g_muse_list_up && muse_tab() == MT_FAVORITES;
 	free_view_textures(v);
 	muse_order_view(v);
 	v->cursor = 0;
@@ -3919,7 +3922,7 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
-/* Muse Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
+/* Playback Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
 static const int MUSE_SCREEN_OFF[] = { 5, 10, 15, 30, 60, 0 };
 #define MUSE_SCREEN_OFF_COUNT \
 	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
@@ -3929,7 +3932,7 @@ static bool idle_due(app *a)
 	int b, secs;
 
 	/* Whichever of the two is armed - never both (ST_SLEEP/ST_AUTO_OFF) -
-	 * except while music plays, when Muse Settings' Screen Off says how
+	 * except while music plays, when Playback Settings' Screen Off says how
 	 * long (TortOS-28l): an iPod's backlight timer, short where Auto Sleep's
 	 * shortest is long. Never is the screen on for as long as music plays. A
 	 * new timer is a new countdown: an album that ended after five minutes
@@ -4143,7 +4146,6 @@ static unsigned rail_sys_hue(void *ctx, int i)
  * placed against the cards moves with them. 0 on the Brick. */
 #define STAGE_Y ((TORTOS_SCREEN_H - CF_STAGE_H) / 2)
 #define GL_PAD (TORTOS_SCREEN_W / 40)
-static bool g_muse_list_up;           /* Muse's tabs are on screen (plorpos-era) */
 
 static void draw_systems(app *a)
 {
@@ -9132,7 +9134,7 @@ typedef struct {
 	int       screen;
 } sysmenu_ctx;
 
-/* Muse Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
+/* Playback Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
  * pressed while music plays in the dark wakes the screen - see music_dark,
  * which reads it - and how long music plays untouched before the screen goes
  * off - see idle_due. */
@@ -9188,7 +9190,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 {
 	(void)ctx;
 	(void)max;
-	*heading = "Muse Settings";
+	*heading = "Playback Settings";
 	rows[0] = (menu_row){ "Wake Screen On Press",
 	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
 	                      true };
@@ -14067,7 +14069,7 @@ static void checkpoint_game(app *a)
  * Playing AND wake the screen; any other button only wakes; the volume keys
  * act without waking. A POWER tap wakes, a hold powers off. Whichever wakes
  * it, the press is used up - A in the dark toggles the music and does not
- * also open the game under the cursor. Muse Settings' Wake Screen On Press
+ * also open the game under the cursor. Playback Settings' Wake Screen On Press
  * set to No (TortOS-28l) keeps it dark instead: Muse's buttons act, every
  * other button is ignored, and only POWER wakes.
  *
@@ -14121,7 +14123,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		vol_keys(&a->in);
 		music_keys();
 		/* The lock as an iPod's hold (TortOS-ib9; the Brick's switch, or
-		 * Muse Settings' Sleep Button Lock everywhere): face and shoulder
+		 * Playback Settings' Sleep Button Lock everywhere): face and shoulder
 		 * buttons, and the Rotate's touch panel (its gestures arrive as
 		 * those buttons), are dropped, not saved for later. Read every
 		 * tick, so flipping the switch here takes effect at once. POWER,

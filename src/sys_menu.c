@@ -80,7 +80,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };
 					break;
 				case SMM_SETTINGS:
-					out[k] = (menu_row){ "Muse Settings", NULL, true };
+					out[k] = (menu_row){ "Playback Settings", NULL, true };
 					break;
 				}
 			return n;

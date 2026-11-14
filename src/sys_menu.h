@@ -48,7 +48,7 @@ typedef enum {
 } pm_row;
 
 /* A side mute switch: the Bricks only. The GKD and the H700s (the Rotate
- * defines PLATFORM_H700 too) have none; Muse Settings' Sleep Button Lock is
+ * defines PLATFORM_H700 too) have none; Playback Settings' Sleep Button Lock is
  * a plain software toggle there. */
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
 #define SYS_HAS_MUTESW 1
@@ -123,7 +123,7 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * the two kinds its one shelf holds - Sort By - by artist or by album, its own
  * two orders, where a console's shelf has four - Album Art to fetch covers for
  * the albums that have none or only a small one, and Rescan Folder for music
- * copied onto the card while the Brick was on - and Muse Settings, Muse's own
+ * copied onto the card while the Brick was on - and Playback Settings, Muse's own
  * options (TortOS-28l). Muse has no core, no ROM folder and no display mode. Album order was Eric's, 2026-09-19; Show, 2026-09-27.
  *
  * On books the count is Books, Sort By is by author or title, and Album Art is

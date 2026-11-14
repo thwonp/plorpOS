@@ -378,14 +378,14 @@ d-pad's sides do what they do on Now Playing.
 
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
-plays, how soon the screen goes off is **Screen Off** in Muse Settings (5s to
+plays, how soon the screen goes off is **Screen Off** in Playback Settings (5s to
 1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
 
 In the dark the volume keys change the volume and a headset's buttons work,
 both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
 sides) do what they do there and wake the screen, like an iPod's. Any other
 button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
-(MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
+(MENU in Muse, then Playback Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
 the same buttons keep working for 30 seconds, so a pause in the dark can be
@@ -399,7 +399,7 @@ Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
-while it is down. Muse Settings' row reads `lock switch on`, grayed out, while
+while it is down. Playback Settings' row reads `lock switch on`, grayed out, while
 the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.

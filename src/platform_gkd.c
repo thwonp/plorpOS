@@ -1121,7 +1121,7 @@ bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
  * plorpos-3yv.67. */
 void plat_audio_settle(unsigned ms) { (void)ms; }
 bool plat_muted(void) { return false; }
-/* No switch: Muse Settings' Sleep Button Lock stands in for the Brick's
+/* No switch: Playback Settings' Sleep Button Lock stands in for the Brick's
  * switch held down in button lock (gkd.34), under the same db key. */
 static bool button_lock;
 void plat_mute_switch_lock(bool lock) { button_lock = lock; }
