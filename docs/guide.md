@@ -300,7 +300,7 @@ tab besides Playlists stays on.
   (**Favorite Albums**; on audiobooks **Favorite Books**). Y on one takes it
   off, and it leaves the list.
 - **Playlists** lists your playlists with how many tracks each has; A opens
-  one. X (or Y; a long press on the RG Rotate) on a playlist offers **Delete**
+  one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
   every tab. In a playlist, X removes the track under the cursor, and L2 and R2
   move it up and down a place.

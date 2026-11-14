@@ -13193,10 +13193,10 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
-		/* X - or Y, the Rotate's long press - on a playlist: Delete (asked
-		 * first) or Rename; MENU is the Muse menu, as on every tab (owner,
-		 * plorpos-3yv.110.1). */
-		if ((a->in.pressed[IN_X] || a->in.pressed[IN_Y]) && lists && n > 0) {
+		/* Y - the Rotate's long press - on a playlist: Delete (asked first)
+		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
+		 * tab (owner, plorpos-3yv.110.1). */
+		if (a->in.pressed[IN_Y] && lists && n > 0) {
 			static const char *const OPTS[] = { "Delete", "Rename" };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
 			int k;
