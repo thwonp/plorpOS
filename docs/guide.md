@@ -107,18 +107,19 @@ The system menu opens on a shelf of games and applies to that system alone:
 
 | | |
 |---|---|
-| **Games** | how many the shelf found |
 | **Core** | which libretro core runs them |
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
-| **Display Mode** | left/right cycles it; saved the moment it changes. On the DS shelf it is **Layout** |
-| **Display** | DS shelf only: **Aspect**, **Stretch** or **Integer** for Top Only, Bottom Only and the Overlays' big screen; only the choices that change the picture on that panel, none on the Brick |
-| **Shader** | the console's shader, the one the in-game Shader row picks: left/right steps through the list, A opens it; greyed on PICO-8 running native |
+| **Default Display Mode** | left/right cycles it; saved the moment it changes. On the DS shelf it is **Default Layout**. A game whose Display you set in the in-game menu keeps its own |
+| **Default Palette** | Game Boy and Game Boy Color shelves: the palette a game starts with until you pick one in the in-game menu |
+| **Default Display** | DS shelf only: **Aspect**, **Stretch** or **Integer** for Top Only, Bottom Only and the Overlays' big screen; only the choices that change the picture on that panel, none on the Brick |
+| **Default Shader** | the console's shader (**Default Scanline Filter** on the Miyoo Mini Flip): left/right steps through the list, A opens it; a game whose Shader you set in the in-game menu keeps its own; greyed on PICO-8 running native |
 | **Box Art** | fetch what this system is missing, and nothing else |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |
+| **Reset Display Overrides** | only while a game of this shelf has its own Display, Shader or DS Display: asks Yes/No, then puts every game back on the shelf's defaults |
 
-On Favorites the menu is only Games and Sort By. The rest is about one
-console, and a game there takes its console's Display Mode wherever it was
-started from.
+On Favorites the menu is only Sort By. The rest is about one
+console, and a game there keeps its own Display, or its console's default,
+wherever it was started from.
 
 Display Mode is per-system, because a Game Boy and a Genesis do not want the
 same answer. Set here it applies from the next launch; the same row in the
@@ -454,7 +455,7 @@ and Ports follow it too. Muse keeps its own shelf.
 
 `Detailed List` puts the games in a column on the left and the focused game's
 art on the right, with its year and genre under it and your place in the
-shelf (`11 / 156`) under that. A game nobody has scraped says so. Up and down
+shelf (`11 / 156`) under that; a game nobody has scraped leaves that line blank. Up and down
 move, left and right jump by letter, L1/R1 a screenful, and the cursor rides
 the middle of the column once the list is long enough to scroll.
 
