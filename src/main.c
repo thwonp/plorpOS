@@ -13893,7 +13893,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		bool shown = i < R_SWAP;
 #if defined(PLATFORM_MIYOO)
 		/* The Flip's diatom keeps no rewind history for a PS1 state (over its cap): no row to bind. */
-		if (i == 1 && tag && !strcmp(tag, "PS")) continue;
+		if (i == 2 /* Rewind */ && tag && !strcmp(tag, "PS")) continue;
 #endif
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
