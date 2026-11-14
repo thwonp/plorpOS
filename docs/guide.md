@@ -267,8 +267,9 @@ Muse plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse, has the album count, Show, Sort By, Album Art (below), and Rescan Folder
-for music copied on while the device was running.
+Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
+Rescan Folder for music copied on while the device was running, and Playback
+Settings.
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -284,6 +285,10 @@ Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
 **Coverflow**, and no playlists),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
 round from the last to the first, and Muse opens on the tab you left it on.
+**Tab Settings** in Muse's MENU lists the tabs in order with On or Off: A (or
+left/right) switches one, and L2 and R2 move it up and down, which is the
+order along the bottom too. One order for music and audiobooks; at least one
+tab besides Playlists stays on.
 
 - **Artists** lists the artists with how many albums each has. Up and down
   step, left and right jump by initial, L1 and R1 a screenful. A opens that

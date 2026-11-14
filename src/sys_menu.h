@@ -130,9 +130,9 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * not there: MusicBrainz knows records. Show is there only when the card has
  * both kinds, since with one there is nothing to choose between. So the rows
  * move, and which one is where is sys_menu_muse_rows's to say. */
-typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_RESCAN,
+typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
                SMM_SETTINGS } sm_muse_row;
-#define SM_MUSE_ROWS 6
+#define SM_MUSE_ROWS 7
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has

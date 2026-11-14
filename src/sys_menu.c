@@ -28,6 +28,7 @@ int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
 	if (both) out[n++] = SMM_SHOW;
 	out[n++] = SMM_SORT;
 	if (!books) out[n++] = SMM_ART;
+	out[n++] = SMM_TABS;
 	out[n++] = SMM_RESCAN;
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
@@ -78,6 +79,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_RESCAN:
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };
+					break;
+				case SMM_TABS:
+					out[k] = (menu_row){ "Tab Settings", NULL, true };
 					break;
 				case SMM_SETTINGS:
 					out[k] = (menu_row){ "Playback Settings", NULL, true };

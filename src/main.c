@@ -391,6 +391,8 @@ static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
 static int  muse_tab(void);
+static void muse_tabs_screen(app *a);
+static void muse_tabs_load(void);
 enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static ml_order muse_sort_shown(int sort)
@@ -4512,7 +4514,7 @@ typedef struct {
 
 /* Fit-cache keys for lists that are not a shelf. */
 enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
-       GL_KEY_PICK = -4 };
+       GL_KEY_PICK = -4, GL_KEY_TABS = -5 };
 
 typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
 
@@ -9718,6 +9720,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
+				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -12524,10 +12527,48 @@ static int g_muse_tab = -1;              /* -1: not read from the db yet */
  * remembered stays meaningful; the order is what moves (plorpos-era.10). */
 static int g_mt_order[MT_N] = { MT_ARTISTS, MT_ALBUMS, MT_FAVORITES, MT_PLAYLISTS,
                                 MT_COVERFLOW };
+static bool g_mt_on[MT_N] = { true, true, true, true, true };
+
+/* Tab Settings' order and switches (owner, plorpos-era.10): "muse.tabs" is
+ * the tab numbers in order, a '!' before one that is off ("0,1,4,!2,3"). One
+ * order for music and books. A tab missing from it (newer than the setting)
+ * goes on at the end; anything unreadable is the default. */
+static void muse_tabs_load(void)
+{
+	char buf[64], *p, *e;
+	int order[MT_N], n = 0, t, i;
+	bool on[MT_N], seen[MT_N] = { false };
+
+	db_get_str(db_dev(), "muse.tabs", buf, sizeof buf, "");
+	if (!buf[0]) return;
+	for (p = buf; *p && n < MT_N; p = *e ? e + 1 : e) {
+		bool off = *p == '!';
+
+		t = (int)strtol(p + off, &e, 10);
+		if (e == p + off || (*e && *e != ',') || t < 0 || t >= MT_N || seen[t]) return;
+		seen[t] = true;
+		on[n] = !off;
+		order[n++] = t;
+	}
+	for (t = 0; t < MT_N; t++) if (!seen[t]) { on[n] = true; order[n++] = t; }
+	for (i = 0; i < MT_N; i++) { g_mt_order[i] = order[i]; g_mt_on[order[i]] = on[i]; }
+}
+
+static void muse_tabs_save(void)
+{
+	char buf[64];
+	int len = 0, i;
+
+	for (i = 0; i < MT_N; i++)
+		len += snprintf(buf + len, sizeof buf - (size_t)len, "%s%s%d", i ? "," : "",
+		                g_mt_on[g_mt_order[i]] ? "" : "!", g_mt_order[i]);
+	db_set_str(db_dev(), "muse.tabs", buf);
+}
 
 static bool muse_tab_shown(int t)
 {
-	return t >= 0 && t < MT_N && (t != MT_PLAYLISTS || !muse_books_shown());
+	return t >= 0 && t < MT_N && g_mt_on[t] &&
+	       (t != MT_PLAYLISTS || !muse_books_shown());
 }
 
 static int muse_tab_pos(int t)
@@ -12659,6 +12700,82 @@ static void muse_tabs_into(gl_list *L)
 	}
 	L->tabs = names;
 	L->ntabs = n;
+}
+
+/* ---- Muse: Tab Settings (plorpos-era.10) ------------------------------------
+ *
+ * Every tab in footer order, On or Off at the row's end. A, Left or Right
+ * switches the one under the cursor; L2 and R2 move it up and down a place,
+ * the cursor with it - the footer and L2/R2 follow the same order. One of
+ * the tabs both kinds have stays on, so Muse always has a tab to open on. */
+static const char *const MTS_HELP[] = { "A", "On/Off", "L2/R2", "Move", "B", "Back" };
+
+static const char *mts_title(void *ctx, int i) { (void)ctx; return muse_tab_name(g_mt_order[i]); }
+static const char *mts_value(void *ctx, int i) { (void)ctx; return g_mt_on[g_mt_order[i]] ? "On" : "Off"; }
+
+static void muse_tabs_screen(app *a)
+{
+	int sel = muse_tab_pos(muse_tab()), i;
+	ui_pace pace = {0};
+	gl_list L;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		muse_screen_poll();
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; break; }
+		if (power_check(a) == PWR_POWEROFF) { muse_power(a); break; }
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_MENU] || a->in.pressed[IN_SELECT]) break;
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + MT_N - 1) % MT_N;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % MT_N;
+		vol_keys(&a->in);
+		if (a->in.pressed[IN_ACCEPT] || in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_RIGHT)) {
+			int t = g_mt_order[sel], left = 0;
+
+			for (i = 0; i < MT_N; i++)
+				if (i != t && i != MT_PLAYLISTS && g_mt_on[i]) left++;
+			if (g_mt_on[t] && t != MT_PLAYLISTS && left == 0) {
+				muse_toast("One tab stays on");
+			} else {
+				g_mt_on[t] = !g_mt_on[t];
+				muse_tabs_save();
+			}
+		}
+		if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2)) {
+			int j = sel + (in_repeat(&a->in, IN_R2) ? 1 : -1);
+
+			if (j >= 0 && j < MT_N) {
+				int t = g_mt_order[sel];
+
+				g_mt_order[sel] = g_mt_order[j];
+				g_mt_order[j] = t;
+				sel = j;
+				muse_tabs_save();
+			}
+		}
+		if (!screen_draw_due(a, &pace, (Uint32)(sel * 31 + (muse_toast_now() != NULL)))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		memset(&L, 0, sizeof L);
+		L.key = GL_KEY_TABS;
+		L.header = "Tab Settings";
+		L.accent = MUSE_ACCENT;
+		L.n = MT_N;
+		L.cur = sel;
+		L.title = mts_title;
+		L.value = mts_value;
+		L.help = MTS_HELP;
+		L.nhelp = 3;
+		L.toast = muse_toast_now();
+		draw_background(a);
+		gl_draw(a, &L);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
 }
 
 /* The albums view follows the tab: only the marked ones on Favorites. None
@@ -17178,6 +17295,7 @@ static void build_muse_shelf(app *a, bool bg)
 		char show[16];
 
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
+		muse_tabs_load();
 		g_muse_books = !strcmp(show, "books");
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
