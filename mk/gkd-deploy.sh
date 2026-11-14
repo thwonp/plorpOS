@@ -79,6 +79,10 @@ case $WHAT in vendor)
 	put "$ROOT/vendor/cores/"* "$GKD:$P/cores/"
 	# The GKD's own builds (mk/build-dsperate.sh).
 	put "$ROOT/vendor/cores-gkd/"* "$GKD:$P/cores/"
+	# The GB/GBC and GBA defaults since plorpos-881, built for every aarch64
+	# port (mk/build-gambatte-core.sh, mk/fetch-armgba-core.sh); mk/payload.sh
+	# ships them to the GKD from cores-brick too.
+	put "$ROOT/vendor/cores-brick/gambatte_libretro.so" "$ROOT/vendor/cores-brick/armgba_libretro.so" "$GKD:$P/cores/"
 	echo "  + cores"
 esac
 $S sync
