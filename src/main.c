@@ -12682,6 +12682,10 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->art = gl_game_art;
 	L->empty = "Nothing here";
 	L->phase = title_phase(a);
+	/* As the track list: a long artist's name runs over the cover to the
+	 * battery, and the cover sits between the header and the footer (owner,
+	 * plorpos-era.12). */
+	L->wide_header = true;
 	if (L->n > 0 && v->album) {
 		int al = v->album[v->cursor], y = g_year && g_year[al] > 0 ? g_year[al] : 0;
 		const char *who = ar < 0 ? g_muse.artists[muse_artist_of(al)].name : "";
@@ -12704,6 +12708,9 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	} else if (L->n > 0) {
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
 	}
+	/* The header is wide, so a passing word goes under the cover. */
+	if (L->toast && *L->toast && L->nunder < 3)
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
 }
 
 static void muse_list_draw(app *a, sysview *v, int asel, int psel)
