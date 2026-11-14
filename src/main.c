@@ -5135,8 +5135,15 @@ static bool backdrop_cached(app *a, const SDL_Rect *focus, unsigned accent)
 	return true;
 }
 
+/* What every menu, popup and keyboard shows behind itself in place of the
+ * shelf while a Muse track list is up (plorpos-3yv.110.2): the shelf's own
+ * draw is the Muse list the track list was opened from. NULL: the shelf. */
+static void (*g_shelf_under)(app *a, void *ctx);
+static void  *g_shelf_under_ctx;
+
 static void draw_shelf(app *a)
 {
+	if (g_shelf_under) { g_shelf_under(a, g_shelf_under_ctx); return; }
 	/* Install whatever the workers finished, before anything is drawn.
 	 *
 	 * Here rather than in the main loop, because the main loop is one of
@@ -12089,8 +12096,8 @@ static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
 static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "X", "Remove",
                                             "L2/R2", "Move" };
 
-static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
-                                  const mu_now *mn, bool loaded, const char *playing)
+static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
+                              const mu_now *mn, bool loaded, const char *playing)
 {
 	gl_list L;
 	gl_geom g;
@@ -12149,8 +12156,27 @@ static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
 		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
 	}
 	gl_draw(a, &L);
+}
+
+static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
+                                  const mu_now *mn, bool loaded, const char *playing)
+{
+	muse_tracks_paint(a, ts, sel, mn, loaded, playing);
 	draw_chrome(a->r);
 	plat_present(a->r);
+}
+
+/* The track list as the shelf behind a menu (g_shelf_under), with what is
+ * playing read fresh. */
+typedef struct { const muse_tset *ts; const int *sel; } muse_tracks_under;
+
+static void muse_tracks_under_draw(app *a, void *ctx)
+{
+	const muse_tracks_under *u = ctx;
+	const mu_now *mn = musec_now();
+
+	muse_tracks_paint(a, u->ts, *u->sel, mn,
+	                  mn->state == MU_PLAYING || mn->state == MU_PAUSED, musec_path());
 }
 
 static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
@@ -12161,9 +12187,15 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 	char note[300], t0[16], t1[16];
 	sysview *mv = muse_view(a);
 	bool list = mv && &a->view[a->sys_cursor] == mv;   /* borrows Muse's view for covers */
+	muse_tracks_under under;
+	void (*was_under)(app *a, void *ctx);
+	void *was_under_ctx;
 
 	rows = calloc((size_t)ts->n + 4, sizeof *rows);
 	if (!rows) return MUSE_BACK;
+	under = (muse_tracks_under){ ts, &sel };
+	was_under = g_shelf_under; was_under_ctx = g_shelf_under_ctx;
+	g_shelf_under = muse_tracks_under_draw; g_shelf_under_ctx = &under;
 	if (list) home = mv->cursor;      /* the album cursor, put back on the way out */
 
 	/* On the track that is playing, when it is one of these. */
@@ -12365,6 +12397,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		mv->cursor = home;
 		cf_reset(&mv->cf, home);
 	}
+	g_shelf_under = was_under; g_shelf_under_ctx = was_under_ctx;
 	free(rows);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
