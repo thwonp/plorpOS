@@ -4451,11 +4451,20 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		else
 			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
 		/* On Muse's Coverflow tab the tabs take the rail's place, and the
-		 * count sits just above them (owner). */
-		ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2,
-		        is_muse(s) && g_muse_list_up
-		        ? TORTOS_SCREEN_H - GL_PAD * 2 - 2 * ui_font_line(UI_F_META)
-		        : STAGE_Y + 690, 0, UI_TEXT_DIM);
+		 * count sits centred between the cover and them (owner). */
+		{
+			int cy = STAGE_Y + 690;
+
+			if (is_muse(s) && g_muse_list_up) {
+				SDL_Rect c;
+				int mline = ui_font_line(UI_F_META);
+				int ftop = TORTOS_SCREEN_H - GL_PAD - mline;   /* gl_draw_footer's */
+
+				cf_focus_rect(&CF_LAYOUT_ALBUMS, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &c);
+				cy = (c.y + c.h + ftop - mline) / 2;
+			}
+			ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2, cy, 0, UI_TEXT_DIM);
+		}
 	} else {
 		char nfit[192];
 
