@@ -47,18 +47,6 @@ Saves/       one folder per console, ready for saves from another device
 The first boot installs the hook, and every boot after that comes up in
 plorpOS.
 
-## Upgrading a TortOS card
-
-Copy everything inside the zip over the card, replacing what's there. Your
-settings, save states, favorites and play time are kept.
-
-Battery saves (`.srm` files) now live in a folder per console, named like the
-console's `Roms/` folder: `Saves/Game Boy Advance/`, `Saves/SNES/` and so on.
-Saves from an older build are loose in `Saves/` and are not picked up there.
-Move each one into its console's folder, creating the folder if it isn't there
-yet. A game played before its save is moved starts without it; its new save
-lands in the console's folder, so move the old one over it.
-
 ## Adding games over Wi-Fi
 
 1. Join a network under **MENU > Network Services > Wi-Fi**.
@@ -107,7 +95,7 @@ works. The microphone is not verified.
 ## Ports
 
 The Ports shelf includes PortMaster. Its support on plorpOS is unofficial;
-report integration problems to plorpOS rather than the PortMaster team.
+**report problems to plorpOS rather than the PortMaster team.**
 Existing ports go in `Roms/Ports/`, with each `.sh` launcher beside its data
 folder. The first launch unpacks PortMaster and can take longer than later
 starts. Wi-Fi is needed to browse or install ports from the app.
