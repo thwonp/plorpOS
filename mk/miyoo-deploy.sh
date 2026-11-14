@@ -30,7 +30,7 @@ FLIP_CURL=${FLIP_CURL:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/c
 FLIP_CORES=${FLIP_CORES:-$ROOT/build/flip-cores/out}
 FLIP_INPUTS=${FLIP_INPUTS:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist-inputs}
 OUT=${OUT:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist}
-VER=$(sed -n 's/^FLIP_VERSION ?= *//p' "$ROOT/Makefile" | head -1)   # the Flip's own numbering
+VER=$(sed -n 's/^VERSION ?= *//p' "$ROOT/Makefile" | head -1)   # the shared version (Makefile)
 # Miyoo's own RTL8188FU driver for the Flip's 4.9.84 kernel (plorpos-f1p.62.4,
 # docs/third-party/8188fu.md): the stock firmware has no copy of its own.
 DRIVER_MD5=085ee00a031c401ea7d5a6a6b2ed2b0c
