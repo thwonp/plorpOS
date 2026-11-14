@@ -2066,6 +2066,7 @@ gesture plat_resident_gesture_asked(void)
 #if !defined(PLATFORM_ROTATE)
 void plat_touch_free(bool on) { (void)on; }
 bool plat_touch_drag_get(touch_drag_state *d) { memset(d, 0, sizeof *d); return false; }
+void plat_touch_catch(void) { }
 /* No touch panel: nothing to read, nothing ever swiped. */
 int     gesture_fd(void) { return -1; }
 void    gesture_tight(bool on) { (void)on; }

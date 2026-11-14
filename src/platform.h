@@ -471,9 +471,13 @@ typedef struct {
 	bool  released;        /* it just ended (once) */
 	float dx, dy;          /* from where it went down */
 	float vx, vy;          /* at the release */
+	bool  down;            /* a finger is on the glass, moved or not */
 } touch_drag_state;
 void plat_touch_free(bool on);
 bool plat_touch_drag_get(touch_drag_state *d);
+/* The touch now down stopped the screen's own coast: it is not a tap
+ * (plorpos-3yv.110, a list's fling). */
+void plat_touch_catch(void);
 
 /* Why plat_run's on_menu was called: Menu (GESTURE_NONE) or a swipe. */
 gesture plat_run_menu_why(void);

@@ -300,8 +300,9 @@ tab besides Playlists stays on.
   (**Favorite Albums**; on audiobooks **Favorite Books**). Y on one takes it
   off, and it leaves the list.
 - **Playlists** lists your playlists with how many tracks each has; A opens
-  one. X deletes the playlist under the cursor, asked first, and MENU renames
-  it on the keyboard. In a playlist, X removes the track under the cursor, and L2 and R2
+  one. X (or Y; a long press on the RG Rotate) on a playlist offers **Delete**
+  (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
+  every tab. In a playlist, X removes the track under the cursor, and L2 and R2
   move it up and down a place.
 - **Coverflow** is the shelf of album covers, the way a console's opens onto
   its games: left and right move, up and down jump from one initial to the
