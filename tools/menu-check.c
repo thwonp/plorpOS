@@ -544,12 +544,11 @@ static void system_menu(void)
 		   "Sort By, and by artist when nothing says otherwise");
 		ck(!strcmp(mrows[2].label, "Album Art") && mrows[2].live,
 		   "covers to fetch, on a network");
-		ck(!strcmp(mrows[3].label, "Display") && mrows[3].live &&
-		   !strcmp(val(&mrows[3]), "Coverflow"),
-		   "Display, Coverflow when nothing says otherwise");
+		ck(!strcmp(mrows[3].label, "Tab Settings") && mrows[3].live,
+		   "Tab Settings above Rescan Folder (plorpos-era.10)");
 		ck(!strcmp(mrows[4].label, "Rescan Folder") && mrows[4].live,
-		   "and a rescan that works");
-		ck(!strcmp(mrows[5].label, "Muse Settings") && mrows[5].live,
+		   "and a rescan that works, no Display row (the coverflow is a tab)");
+		ck(!strcmp(mrows[5].label, "Playback Settings") && mrows[5].live,
 		   "and Muse's own settings");
 		m.sort = "Album";
 		m.wifi = WIFI_OFF;
@@ -559,11 +558,8 @@ static void system_menu(void)
 		   "Album Art says why it cannot, off the network");
 		ck(mrows[1].live && mrows[4].live,
 		   "and neither Sort By nor Rescan Folder needs one");
-		m.muse_artists = true;
-		sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(!strcmp(val(&mrows[3]), "Artist List"), "Display, on the artist list");
-		m.muse_artists = false;
 		for (k = 0; k < mn; k++) {
+			ck(strcmp(mrows[k].label, "Display") != 0, "no Display: Coverflow is a tab");
 			ck(strcmp(mrows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(mrows[k].label, "Display Mode") != 0, "no Display Mode");
 		}
@@ -594,8 +590,8 @@ static void system_menu(void)
 			sm_muse_row ids[SM_MUSE_ROWS];
 
 			ck(sys_menu_muse_rows(true, false, ids) == 5 && ids[1] == SMM_SORT &&
-			   ids[2] == SMM_DISPLAY && ids[4] == SMM_SETTINGS,
-			   "books alone: the count, Sort By, Display, Rescan Folder and Muse Settings");
+			   ids[2] == SMM_TABS && ids[3] == SMM_RESCAN && ids[4] == SMM_SETTINGS,
+			   "books alone: the count, Sort By, Tab Settings, Rescan Folder and Playback Settings");
 		}
 	}
 }

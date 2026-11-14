@@ -26,7 +26,7 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **A** | open a system, or start a game |
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
-| **Y** | favorite it - Favorites is a shelf of its own. On Muse's shelf, Y favorites the album, and held half a second shows only favorite albums (again to show them all) |
+| **Y** | favorite it - Favorites is a shelf of its own. In Muse, Y favorites the album under the cursor (or takes it off), and Muse's Favorites tab shows only those |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **MENU + volume** | brightness, everywhere, including in game, held the same way (Home with the volume rocker on the GKD) |
 | **Fn1 / Fn2** (Brick, Brick Pro) | the two function keys, Fn1 the left: nothing until bound as hotkeys, alone or with a modifier |
@@ -264,14 +264,12 @@ does not wait for the launcher to notice the headset is gone.
 ## Muse
 
 Muse plays the music and the audiobooks on the card. Its card at the end of
-the shelf opens Muse,
-the same as SELECT does: Now Playing when something is playing or paused, and
-otherwise a shelf of album covers, the way a console's opens onto its games -
-in all three layouts, with the other axis jumping from one initial to the
-next. A on an
-album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
-Sort By, Album Art (below), Display, and Rescan Folder for music copied on while the
-device was running.
+the shelf opens Muse on its tabs (below), on the album that is playing if one
+is. SELECT opens it too: Now Playing when something is playing or paused, and
+otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
+Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
+Rescan Folder for music copied on while the device was running, and Playback
+Settings.
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -282,12 +280,42 @@ album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
-**Display** is `Coverflow`, the shelf of albums, or `Artist List`, a list of
-the artists (the authors, on books) with how many albums each has: up and down
-step, left and right jump by initial, L1 and R1 go eight at a time, and A opens
-that artist's albums as the same coverflow, with the same menu. B goes back
-from the albums to the list, and from the list out of Muse. Kept across
-restarts; Show and Rescan Folder return to the list.
+Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
+**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites** and
+**Coverflow**, and no playlists),
+named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
+round from the last to the first, and Muse opens on the tab you left it on.
+**Tab Settings** in Muse's MENU lists the tabs in order with On or Off: A (or
+left/right) switches one, and L2 and R2 move it up and down, which is the
+order along the bottom too. One order for music and audiobooks; at least one
+tab besides Playlists stays on.
+
+- **Artists** lists the artists with how many albums each has. Up and down
+  step, left and right jump by initial, L1 and R1 a screenful. A opens that
+  artist's albums as a list, and B comes back to the artist.
+- **Albums** lists every album with its cover on the right and its year and
+  artist under it, as a Detailed List shows a game. Y favorites the album
+  under the cursor, or takes it off.
+- **Favorites** is the same list with only the albums you favorited
+  (**Favorite Albums**; on audiobooks **Favorite Books**). Y on one takes it
+  off, and it leaves the list.
+- **Playlists** lists your playlists with how many tracks each has; A opens
+  one. X deletes the playlist under the cursor, asked first, and MENU renames
+  it on the keyboard. In a playlist, X removes the track under the cursor, and L2 and R2
+  move it up and down a place.
+- **Coverflow** is the shelf of album covers, the way a console's opens onto
+  its games: left and right move, up and down jump from one initial to the
+  next, L1 and R1 a window of covers. Y favorites as on Albums. Leaving an
+  artist's albums for Albums or Coverflow keeps the album you were on.
+
+A on an album opens its tracks, the same list with the album's cover. With
+something playing, SELECT opens Now Playing and B goes back to that album's
+tracks and then its artist's albums. Kept across restarts.
+
+**Playlists** are `.m3u` files in `Music/Playlists/`, so other players and a
+computer can read and edit them. **Y on any track** - an album's or a
+playlist's - adds it to a playlist: one you have, or a new
+one named on the keyboard.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
@@ -355,14 +383,14 @@ d-pad's sides do what they do on Now Playing.
 
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
-plays, how soon the screen goes off is **Screen Off** in Muse Settings (5s to
+plays, how soon the screen goes off is **Screen Off** in Playback Settings (5s to
 1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
 
 In the dark the volume keys change the volume and a headset's buttons work,
 both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
 sides) do what they do there and wake the screen, like an iPod's. Any other
 button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
-(MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
+(MENU in Muse, then Playback Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
 the same buttons keep working for 30 seconds, so a pause in the dark can be
@@ -376,7 +404,7 @@ Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
-while it is down. Muse Settings' row reads `lock switch on`, grayed out, while
+while it is down. Playback Settings' row reads `lock switch on`, grayed out, while
 the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.

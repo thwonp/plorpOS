@@ -272,6 +272,10 @@ void ui_rail(SDL_Renderer *r, int screen_w, int screen_h, float index, int count
  * one rect and the two caps as one inset row each, so a panel costs a few
  * dozen fills rather than one per scanline. */
 void ui_round_rect(SDL_Renderer *r, const SDL_Rect *q, int radius, SDL_Color col);
+/* A button chip ("A") and its label ("type") at x, y; and the room it takes,
+ * with the gap after it. */
+void ui_hint(SDL_Renderer *r, int x, int y, const char *btn, const char *label);
+int  ui_hint_width(const char *btn, const char *label);
 
 /* A menu slab: near-opaque, so a list drawn on it reads against a paused game
  * frame or a lit shelf without either showing through, with a hairline of the
