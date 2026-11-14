@@ -4920,7 +4920,8 @@ static void gl_facts(app *a, sysview *v, int idx, int w)
 			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "%s%s%s",
 			         m->year, m->year[0] && m->genres[0] ? "  \xC2\xB7  " : "", m->genres);
 	}
-	if (!n) snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Not scraped yet");
+	/* Nothing scraped: a blank line, so the index under it keeps its place. */
+	if (!n) g_gl_facts.line[n++][0] = '\0';
 	g_gl_facts.n = n;
 	for (int i = 0; i < n; i++) {
 		char fit[160];
