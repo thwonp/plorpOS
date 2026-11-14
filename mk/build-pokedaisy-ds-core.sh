@@ -15,8 +15,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-ds-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-84170ddd83e04f013422bc6765543ce0ef40d7cf} # plorpos/integration: upstream dev 9c9fd173 + open upstream PRs #564 #565 #566 #525 + the owner's DS companion fixes and decrypted HG/Black 2 dumps, 2026-11-08
-SHA=${PD_SHA:-2e19fea20355b895db74cc42b32796470101e21bf28c2199c3129e4e6bc26571} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 + open PRs, the same commit as pokedaisy_gba, 2026-11-14
+SHA=${PD_SHA:-297daac1476b052b07fd7fb6dd199df998c2f1ef72e9963441137791a8ead914} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }

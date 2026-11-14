@@ -16,8 +16,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gbc-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-b9518c90963d02ad09b815969d218049b209dd7b} # feat/armgba-core: dev 9c9fd173 + Keegan's open PRs #564 #565 #566 (+ #525) + the owner's fixes + the armGBA core, 2026-11-09
-SHA=${PD_SHA:-bd5dcd861ba41e9f8a085420037f885466b6345d4c945a16e4f4ba2ec2ffc5ec} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 + open PRs + the GBA FF skip and canvas fix, the same commit as pokedaisy_gba, 2026-11-14
+SHA=${PD_SHA:-7ab055d83029fbf5862e1bf59e70a9bdb8646b32cbf349cf1ad3ca88c093b66a} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -37,19 +37,19 @@ set -e
 # A fresh build dir every time: CMake reads the toolchain file'"'"'s flags only on a first configure, and a kept cache once
 # froze them empty (the v0.3-pre2 asset is the generic armv8 build that made; plorpos-oe0.23).
 rm -rf /out/* && cmake -S libretro -B /out -DCMAKE_TOOLCHAIN_FILE=/src/libretro/aarch64.cmake -DCMAKE_BUILD_TYPE=Release >/out/cfg.log 2>&1
-cmake --build /out -j"$(nproc)" --target pokedaisy_libretro >/out/build.log 2>&1
-aarch64-linux-gnu-strip --strip-unneeded -o /out/pokedaisy_libretro.stripped.so /out/pokedaisy_libretro.so
+cmake --build /out -j"$(nproc)" --target pokedaisy_gbc_libretro >/out/build.log 2>&1
+aarch64-linux-gnu-strip --strip-unneeded -o /out/pokedaisy_gbc_libretro.stripped.so /out/pokedaisy_gbc_libretro.so
 # Never ship one that cannot load on the Brick: every libretro entry point and nothing else exported,
 # no unversioned undefined symbol, nothing newer than its glibc 2.33 (ADR-0006: a second mGBA is resident).
-NM=aarch64-linux-gnu-nm sh libretro/test/check_exports.sh /out/pokedaisy_libretro.so
-[ "$(aarch64-linux-gnu-nm -D -u /out/pokedaisy_libretro.so | grep -v " w " | grep -vc @)" = 0 ] \
+NM=aarch64-linux-gnu-nm sh libretro/test/check_exports.sh /out/pokedaisy_gbc_libretro.so
+[ "$(aarch64-linux-gnu-nm -D -u /out/pokedaisy_gbc_libretro.so | grep -v " w " | grep -vc @)" = 0 ] \
   || { echo "!! undefined symbols" >&2; exit 1; }
-g=$(aarch64-linux-gnu-objdump -T /out/pokedaisy_libretro.so | grep -oE "GLIBC_2\.[0-9]+" | sort -uV | tail -1)
+g=$(aarch64-linux-gnu-objdump -T /out/pokedaisy_gbc_libretro.so | grep -oE "GLIBC_2\.[0-9]+" | sort -uV | tail -1)
 echo "glibc: $g"
 [ "$(echo "$g" | cut -d. -f2)" -le 33 ] || { echo "!! needs $g, the Brick has 2.33" >&2; exit 1; }
 ' 2>&1 | tail -6
 
-SO=$OUT/pokedaisy_libretro.stripped.so
+SO=$OUT/pokedaisy_gbc_libretro.stripped.so
 [ -f "$SO" ] || { echo "!! build failed (see $OUT/build.log)" >&2; exit 1; }
 GOT=$(sha256sum "$SO" | cut -d' ' -f1)
 if [ -n "$SHA" ] && [ "$SHA" != "-" ] && [ "$GOT" != "$SHA" ]; then
