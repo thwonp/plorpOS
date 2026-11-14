@@ -26,7 +26,7 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **A** | open a system, or start a game |
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
-| **Y** | favorite it - Favorites is a shelf of its own. On Muse's shelf, Y favorites the album, and held half a second shows only favorite albums (again to show them all) |
+| **Y** | favorite it - Favorites is a shelf of its own. In Muse, Y favorites the album under the cursor (or takes it off), and Muse's Favorites tab shows only those |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **MENU + volume** | brightness, everywhere, including in game, held the same way (Home with the volume rocker on the GKD) |
 | **Fn1 / Fn2** (Brick, Brick Pro) | the two function keys, Fn1 the left: nothing until bound as hotkeys, alone or with a modifier |
@@ -279,8 +279,9 @@ album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
-Muse has four tabs, **Artists**, **Albums**, **Playlists** and **Coverflow**
-(on audiobooks **Authors**, **Books** and **Coverflow**, and no playlists),
+Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
+**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites** and
+**Coverflow**, and no playlists),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
 round from the last to the first, and Muse opens on the tab you left it on.
 
@@ -289,7 +290,10 @@ round from the last to the first, and Muse opens on the tab you left it on.
   artist's albums as a list, and B comes back to the artist.
 - **Albums** lists every album with its cover on the right and its year and
   artist under it, as a Detailed List shows a game. Y favorites the album
-  under the cursor, and held it shows only the favorites, from any tab.
+  under the cursor, or takes it off.
+- **Favorites** is the same list with only the albums you favorited
+  (**Favorite Albums**; on audiobooks **Favorite Books**). Y on one takes it
+  off, and it leaves the list.
 - **Playlists** lists your playlists with how many tracks each has; A opens
   one. X deletes the playlist under the cursor, asked first, and MENU renames
   it on the keyboard. In a playlist, X removes the track under the cursor, and L2 and R2

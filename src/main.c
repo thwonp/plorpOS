@@ -391,7 +391,7 @@ static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
 static int  muse_tab(void);
-enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_N };
+enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static ml_order muse_sort_shown(int sort)
 {
@@ -1206,8 +1206,8 @@ static void  year_fill(void);
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
 
-/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, Y held
- * MUSE_FAV_HOLD_MS shows only the marked ones. A mark is the card's
+/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, and the
+ * Favorites tab (plorpos-era.13) shows only the marked ones. A mark is the card's
  * "mfav.<album folder>" row - not favorites.c's set, which is games and
  * makes the Favorites shelf. The view is this session's; it ends by itself
  * when its last album is unmarked, or when the kind shown has none. */
@@ -1223,8 +1223,6 @@ static bool g_muse_favs;
 static int g_muse_artist = -1;        /* the artist whose albums are shown, or -1 */
 static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
 static char g_muse_artist_name[128];
-static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
-#define MUSE_FAV_HOLD_MS 500u
 
 static bool muse_fav_is(const char *dir)
 {
@@ -4443,13 +4441,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * the shelf slides along y a card height and a half per step and a
 		 * centered counter had every move drag a card and its reflection
 		 * straight across it. */
-		if (is_muse(s) && SDL_GetTicks() < g_muse_note_until) {
-			snprintf(count, sizeof count, "No favorite albums");
-			ui_redraw_at(g_muse_note_until);
-		} else if (is_muse(s) && g_muse_favs)
-			snprintf(count, sizeof count, "Favorites  \xC2\xB7  %d / %d", idx + 1, v->list.count);
-		else
-			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
+		snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
 		/* On Muse's Coverflow tab the tabs take the rail's place, and the
 		 * count sits centred between the cover and them (owner). */
 		{
@@ -4645,10 +4637,27 @@ static void gl_draw_footer(app *a, const gl_list *L)
 	SDL_Color ac = { (Uint8)(L->accent >> 16), (Uint8)(L->accent >> 8),
 	                 (Uint8)L->accent, 255 };
 
-	ui_text(a->r, f, "L2", GL_PAD, y, -1, UI_TEXT_DIM);
-	ui_text(a->r, f, "R2", TORTOS_SCREEN_W - GL_PAD, y, 1, UI_TEXT_DIM);
+	/* L2 and R2 small, on the tabs' baseline: a hint, not a tab (owner). */
+	TTF_Font *fs = ui_font(UI_F_BADGE);
+	int ys = y + TTF_FontAscent(f) - TTF_FontAscent(fs);
+	int left = GL_PAD * 2 + ui_text_width(fs, "L2");
+	int room = TORTOS_SCREEN_W - left - GL_PAD * 2 - ui_text_width(fs, "R2");
+
+	ui_text(a->r, fs, "L2", GL_PAD, ys, -1, UI_TEXT_DIM);
+	ui_text(a->r, fs, "R2", TORTOS_SCREEN_W - GL_PAD, ys, 1, UI_TEXT_DIM);
 	for (i = 0; i < L->ntabs; i++) total += ui_text_width(f, L->tabs[i]) + (i ? gap : 0);
-	x = (TORTOS_SCREEN_W - total) / 2;
+	/* Too wide between L2 and R2: the gaps give way first (owner). */
+	if (total > room && L->ntabs > 1) {
+		int words = total - gap * (L->ntabs - 1);
+
+		gap = (room - words) / (L->ntabs - 1);
+		if (gap < 0) gap = 0;
+		total = words + gap * (L->ntabs - 1);
+	}
+	x = total > room ? (TORTOS_SCREEN_W - total) / 2 : left + (room - total) / 2;
+	if (total <= room && (TORTOS_SCREEN_W - total) / 2 >= left &&
+	    (TORTOS_SCREEN_W + total) / 2 <= left + room)
+		x = (TORTOS_SCREEN_W - total) / 2;     /* centred on the screen when it fits */
 	for (i = 0; i < L->ntabs; i++) {
 		int w = ui_text_width(f, L->tabs[i]);
 
@@ -12435,35 +12444,16 @@ static void muse_refilter(sysview *v, int album)
 	ui_redraw_now();
 }
 
-/* Y on the shelf (plorpos-3yv.98): a tap marks or unmarks the album under the
- * cursor; held, the Favorites view on or off. */
+/* Y on an album (plorpos-3yv.98): marks or unmarks the one under the
+ * cursor. */
 static void muse_fav_tap(sysview *v)
 {
 	if (v->list.count <= 0) return;
 	muse_fav_flip(v->list.items[v->cursor].file);
-	/* Unmarked in the view, it leaves it - and the last one ends it. */
+	/* Unmarked on the Favorites tab, it leaves it - and the last one leaves
+	 * the tab empty (muse_order_view ends the filter). */
 	if (g_muse_favs) muse_refilter(v, v->album[v->cursor]);
 	else ui_redraw_now();
-}
-
-static void muse_fav_hold(sysview *v)
-{
-	int al = v->list.count > 0 ? v->album[v->cursor] : -1, k;
-	char dir[LIB_PATH];
-
-	if (!g_muse_favs) {
-		for (k = 0; k < v->list.count; k++) {
-			muse_album_dir(v->album[k], dir, sizeof dir);
-			if (muse_fav_is(dir)) break;
-		}
-		if (k == v->list.count) {
-			g_muse_note_until = SDL_GetTicks() + 2000;
-			ui_redraw_now();
-			return;
-		}
-	}
-	g_muse_favs = !g_muse_favs;
-	muse_refilter(v, al);
 }
 
 /* ---- Muse: the artist filter (plorpos-mn1) ---------------------------------- */
@@ -12528,16 +12518,39 @@ static int muse_initial(int ar)
  * can never disagree about what is on the shelf. */
 static int g_muse_tab = -1;              /* -1: not read from the db yet */
 
+/* The tabs in footer order. A tab's number never changes, so the one
+ * remembered stays meaningful; the order is what moves (plorpos-era.10). */
+static int g_mt_order[MT_N] = { MT_ARTISTS, MT_ALBUMS, MT_FAVORITES, MT_PLAYLISTS,
+                                MT_COVERFLOW };
+
 static bool muse_tab_shown(int t)
 {
 	return t >= 0 && t < MT_N && (t != MT_PLAYLISTS || !muse_books_shown());
 }
 
+static int muse_tab_pos(int t)
+{
+	for (int i = 0; i < MT_N; i++) if (g_mt_order[i] == t) return i;
+	return 0;
+}
+
 /* The next tab shown from `t`, `d` = +1 or -1, wrapping. */
 static int muse_tab_step(int t, int d)
 {
-	do t = (t + d + MT_N) % MT_N; while (!muse_tab_shown(t));
+	int p = muse_tab_pos(t), i;
+
+	for (i = 0; i < MT_N; i++) {
+		p = (p + d + MT_N) % MT_N;
+		if (muse_tab_shown(g_mt_order[p])) return g_mt_order[p];
+	}
 	return t;
+}
+
+/* The first tab shown, in footer order. */
+static int muse_tab_first(void)
+{
+	for (int i = 0; i < MT_N; i++) if (muse_tab_shown(g_mt_order[i])) return g_mt_order[i];
+	return MT_ARTISTS;
 }
 
 static void muse_tab_set(int t);
@@ -12559,7 +12572,7 @@ static int muse_tab(void)
 			g_muse_tab = t;
 		}
 	}
-	return muse_tab_shown(g_muse_tab) ? g_muse_tab : MT_ARTISTS;
+	return muse_tab_shown(g_muse_tab) ? g_muse_tab : muse_tab_first();
 }
 
 static void muse_tab_set(int t)
@@ -12619,18 +12632,43 @@ static bool mal_fav(void *ctx, int i)
 	return muse_fav_is(a->view[a->sys_cursor].list.items[i].file);
 }
 
-static const char *const MUSE_TABS[] = { "Artists", "Albums", "Playlists", "Coverflow" };
-static const char *const MUSE_TABS_BOOKS[] = { "Authors", "Books", "Coverflow" };
+/* A tab's name, by tab number, for the kind shown. */
+static const char *muse_tab_name(int t)
+{
+	static const char *const MUSIC[MT_N] = { "Artists", "Albums", "Playlists", "Coverflow", "Favorites" };
+	static const char *const BOOKS[MT_N] = { "Authors", "Books", "Playlists", "Coverflow", "Favorites" };
 
-/* The footer's part of a Muse screen: which tabs, and which one is lit. */
+	return (muse_books_shown() ? BOOKS : MUSIC)[t];
+}
+
+/* The footer's part of a Muse screen: which tabs, in order, and which one is
+ * lit. */
 static void muse_tabs_into(gl_list *L)
 {
-	bool books = muse_books_shown();
-	int tab = muse_tab();
+	static const char *names[MT_N];
+	int tab = muse_tab(), n = 0, i;
 
-	L->tabs = books ? MUSE_TABS_BOOKS : MUSE_TABS;
-	L->ntabs = books ? 3 : 4;
-	L->tab = books && tab > MT_PLAYLISTS ? tab - 1 : tab;
+	for (i = 0; i < MT_N; i++) {
+		int t = g_mt_order[i];
+
+		if (!muse_tab_shown(t)) continue;
+		if (t == tab) L->tab = n;
+		names[n++] = muse_tab_name(t);
+	}
+	L->tabs = names;
+	L->ntabs = n;
+}
+
+/* The albums view follows the tab: only the marked ones on Favorites. None
+ * marked, the view stays whole and the tab says so (an empty Muse view reads
+ * as no Muse at all). */
+static void muse_favs_sync(sysview *v, int tab)
+{
+	bool want = tab == MT_FAVORITES;
+
+	if (g_muse_favs == want) return;
+	g_muse_favs = want;
+	muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
 }
 
 /* What a List-display Muse screen shows: the artists, or the albums (all,
@@ -12673,14 +12711,17 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	}
 	/* Albums: the view. */
 	L->key = a->sys_cursor + 1;
-	L->header = ar >= 0 ? g_muse.artists[ar].name : g_muse_favs ? "Favorites"
+	L->header = ar >= 0 ? g_muse.artists[ar].name
+	          : tab == MT_FAVORITES ? (books ? "Favorite Books" : "Favorite Albums")
 	          : books ? "Books" : "Albums";
-	L->n = v->list.count;
+	L->n = tab == MT_FAVORITES && !g_muse_favs ? 0 : v->list.count;
 	L->cur = v->cursor;
 	L->title = mal_title;
 	L->fav = mal_fav;
 	L->art = gl_game_art;
-	L->empty = "Nothing here";
+	L->empty = tab != MT_FAVORITES ? "Nothing here"
+	         : books ? "No favorite books yet. Y on a book marks it."
+	         : "No favorite albums yet. Y on an album marks it.";
 	L->phase = title_phase(a);
 	/* As the track list: a long artist's name runs over the cover to the
 	 * battery, and the cover sits between the header and the footer (owner,
@@ -12702,10 +12743,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
 		}
 	}
-	if (SDL_GetTicks() < g_muse_note_until) {
-		snprintf(L->under[L->nunder++], sizeof L->under[0], "No favorite albums");
-		ui_redraw_at(g_muse_note_until);
-	} else if (L->n > 0) {
+	if (L->n > 0) {
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
 	}
 	/* The header is wide, so a passing word goes under the cover. */
@@ -12766,7 +12804,7 @@ static int muse_artist_jump(int sel, int dir)
 static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
-	bool y_down = false, y_spent = false;
+	int synced = -1;                  /* the tab the albums view was filtered for */
 	ui_pace pace = {0};
 
 	g_mls_asel = g_mls_psel = 0;
@@ -12789,12 +12827,14 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			} else {
 				int ft = g_muse_from.tab;
 
-				if (g_muse_from.set && (ft == MT_ALBUMS || ft == MT_COVERFLOW) &&
-				    g_muse_from.artist < 0) {
+				if (g_muse_from.set && (ft == MT_ALBUMS || ft == MT_COVERFLOW ||
+				                        ft == MT_FAVORITES) && g_muse_from.artist < 0) {
 					muse_tab_set(ft);
+					g_muse_favs = ft == MT_FAVORITES;
 					muse_set_filter(v, -1, playing);
 				} else {
 					muse_tab_set(MT_ARTISTS);
+					g_muse_favs = false;
 					muse_set_filter(v, pa, playing);
 				}
 				how = muse_tracks(a, playing, true);
@@ -12811,16 +12851,18 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 	while (!want_quit && a->running) {
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
-		bool cover = tab == MT_COVERFLOW;
-		bool albums = cover || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
+		bool cover = tab == MT_COVERFLOW, favs = tab == MT_FAVORITES;
+		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
 		bool artists = tab == MT_ARTISTS && !drilled;
 		bool lists = tab == MT_PLAYLISTS;
 		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
 		unsigned ft0, ft1;
 
+		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
 		if (lists) muse_playlists_load();
-		n = albums ? v->list.count : artists ? g_mar.n : lists ? g_npls : 0;
+		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
+		  : artists ? g_mar.n : lists ? g_npls : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
@@ -12885,22 +12927,8 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
-		/* Y as on the coverflow: a tap marks the album, held the
-		 * Favorites view - from any tab, which it opens on Albums. */
-		if (a->in.down[IN_Y] && !y_spent &&
-		    SDL_GetTicks() - a->in.down_since[IN_Y] >= MUSE_FAV_HOLD_MS) {
-			y_spent = true;
-			if (tab != MT_ALBUMS && !cover) {
-				if (drilled) muse_set_filter(v, -1, -1);
-				muse_tab_set(MT_ALBUMS);
-			}
-			muse_fav_hold(v);
-		}
-		if ((y_down || a->in.pressed[IN_Y]) && !a->in.down[IN_Y]) {
-			if (!y_spent && albums) muse_fav_tap(v);
-			y_spent = false;
-		}
-		y_down = a->in.down[IN_Y];
+		/* Y marks the album under the cursor, or unmarks it. */
+		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);
 
 		if (a->in.pressed[IN_ACCEPT] && n > 0) {
 			if (artists) {
@@ -12911,6 +12939,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 				if (how == MUSE_CLOSE || g_muse_gone) break;
 				if (how == MUSE_REBUILT) {
 					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
 					muse_artists_build();
 				}
 			} else if (albums) {
@@ -12919,6 +12948,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 				if (how == MUSE_CLOSE || g_muse_gone) break;
 				if (how == MUSE_REBUILT) {
 					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
 					muse_artists_build();
 				}
 			}
@@ -12964,6 +12994,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 			if (how == MUSE_CLOSE) break;
 			if (!(v = muse_shelf_refind(a))) break;
+			synced = -1;
 			muse_artists_build();
 			if (g_mls_asel >= g_mar.n) g_mls_asel = 0;
 			ui_redraw_now();
@@ -13043,6 +13074,8 @@ static void muse_shelf_screen(app *a, bool now)
 		muse_set_filter(v, -1, -1);
 	}
 	g_muse_artist = -1;
+	/* And whole again: the Favorites tab's filter is the tab's. */
+	if (g_muse_favs && v) { g_muse_favs = false; muse_refilter(v, -1); }
 	if (v) evict_far(v, TEX_KEEP_FAR);
 	a->screen = prev_screen;
 	a->sys_cursor = prev_sys;
