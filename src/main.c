@@ -12661,11 +12661,17 @@ static int muse_artist_row(int ar)
 static const char *mar_title(void *ctx, int i) { (void)ctx; return g_muse.artists[g_mar.ix[i]].name; }
 static const char *mar_value(void *ctx, int i) { (void)ctx; return g_mar.val[i]; }
 
+/* An album row without the folder's leading year, which the line under the
+ * cover already shows (owner, plorpos-era.15) - kept when there is no year
+ * to show there. The coverflow keeps the folder's name as it is. */
 static const char *mal_title(void *ctx, int i)
 {
 	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = v->album ? v->album[i] : -1;
 
-	return a->view[a->sys_cursor].list.items[i].title;
+	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title);
+	return v->list.items[i].title;
 }
 
 static bool mal_fav(void *ctx, int i)
