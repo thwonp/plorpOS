@@ -15,8 +15,8 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gba-core}
 REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-3c2587ac3990b55e6fb0c0a7710329e8a66cf646} # feat/armgba-1.6: b9518c90 + armGBA v1.6 (de50d047), 2026-11-13 (plorpos-0yp)
-SHA=${PD_SHA:-0e7971503d98459065303cd6f8fb07d1b9439c6b51d615a312bd430405a1bd31} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
+PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 (armGBA ratherDashing d528d09 = v1.6 GBA work) + open PRs + FF hidden-frame skip + GBA canvas 1x in gameplay, 2026-11-14 (plorpos-oe0.45.7/.8, 881.7)
+SHA=${PD_SHA:-6817116061a42f394830ffffb8c02cf438ae7a203436e1918d1d333a085bf932} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
@@ -38,7 +38,7 @@ set -e
 # A fresh build dir every time: CMake reads the toolchain file'"'"'s flags only on a first configure.
 rm -rf /out/* && cmake -S libretro/armgba -B /out -DCMAKE_TOOLCHAIN_FILE=/src/libretro/aarch64.cmake \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-mcpu=cortex-a53 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/out/cfg.log 2>&1
-cmake --build /out -j"$(nproc)" --target pokedaisy_armgba_libretro >/out/build.log 2>&1
+cmake --build /out -j"$(nproc)" --target pokedaisy_gba_libretro >/out/build.log 2>&1
 aarch64-linux-gnu-strip --strip-unneeded -o /out/pokedaisy_gba_libretro.stripped.so /out/pokedaisy_gba_libretro.so
 # Never ship one that cannot load on the Brick: only the libretro entry points may leave it, and it may need nothing newer
 # than its glibc 2.33.

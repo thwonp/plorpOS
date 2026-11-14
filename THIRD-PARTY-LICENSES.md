@@ -99,7 +99,8 @@ commit the fork pins, built by `mk/build-pokedaisy-gbc-core.sh`. The Game Boy an
 
 A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
 (https://github.com/thwonp/pokedaisy-lr, its `libretro/armgba/` core, **GPL-3.0**) with the Game Boy Advance run by
-armGBA, https://github.com/MagnominusGit/armGBA (v1.6; **MPL-2.0** for its own code, carrying Jeffrey Pfau's and mGBA
+armGBA as ratherDashing's fork https://github.com/ratherDashing/armGBA (3ds-v0.0.3-alpha, d528d09: MagnominusGit/armGBA's
+v1.6 Game Boy Advance work plus its own; **MPL-2.0** for its own code, carrying Jeffrey Pfau's and mGBA
 contributors' MPL-2.0 notices where it follows mGBA's, built with libretro.h (MIT), RetroArch's libretro-common and the LZMA
 SDK (MIT, public domain)) and zlib (zlib License), at the commits the fork pins, built by `mk/build-pokedaisy-gba-core.sh`.
 armGBA's Game Boy side (Gambatte, GPL-2.0 only) is NOT built into it. The Game Boy Advance shelf's Core row offers it per game
