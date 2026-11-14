@@ -11706,6 +11706,31 @@ static muse_exit muse_menu(app *a)
 /* MUSE_CLOSE for SELECT and the power button, which leave Muse altogether;
  * MUSE_BACK for B, which is the album's tracks underneath; MUSE_REBUILT when
  * MENU's Rescan Folder replaced the library. MENU otherwise comes back here. */
+/* What the mode will actually play next. Repeat one says so with its mark,
+ * and "Next:" naming the same song reads as a mistake. In a book with
+ * chapters, the next chapter, until the last. Empty for none. */
+static void np_next_line(char *next, size_t cap)
+{
+	const char *nt;
+
+	next[0] = '\0';
+	if (musec_is_book() && musec_chapters() > 1 &&
+	    musec_chapter_now() + 1 < musec_chapters())
+		chapter_label(musec_chapter_now() + 1, next, cap);
+	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
+		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
+}
+
+/* Now Playing as the shelf behind its MENU (g_shelf_under). */
+static void np_under_draw(app *a, void *ctx)
+{
+	char next[128];
+
+	(void)ctx;
+	np_next_line(next, sizeof next);
+	np_draw(a, musec_now(), next, muse_hold());
+}
+
 static muse_exit muse_now_screen(app *a)
 {
 	struct {
@@ -11717,7 +11742,10 @@ static muse_exit muse_now_screen(app *a)
 	} shown, drawn;
 	unsigned due = 0;
 	muse_exit how = MUSE_BACK;
+	void (*was_under)(app *a, void *ctx) = g_shelf_under;
+	void *was_under_ctx = g_shelf_under_ctx;
 
+	g_shelf_under = np_under_draw; g_shelf_under_ctx = NULL;
 	mq_reset(MQ_NP);
 	memset(&drawn, 0, sizeof drawn);
 	plat_input_flush();
@@ -11725,7 +11753,6 @@ static muse_exit muse_now_screen(app *a)
 
 	while (!want_quit && a->running) {
 		const mu_now *mn;
-		const char *nt;
 		char next[128] = "";
 		unsigned now;
 		bool touched = false;
@@ -11775,15 +11802,7 @@ static muse_exit muse_now_screen(app *a)
 		/* The queue's track, not musec_path: that goes blank when an album
 		 * ends, and the screen should still show the album that just did. */
 		np_cover(a, ml_album_of(&g_muse, musec_track(mn->index)));
-		/* What the mode will actually play next. Repeat one says so with
-		 * its mark, and "Next:" naming the same song reads as a mistake. */
-		/* In a book with chapters, the next chapter, until the last. */
-		if (musec_is_book() && musec_chapters() > 1 &&
-		    musec_chapter_now() + 1 < musec_chapters())
-			chapter_label(musec_chapter_now() + 1, next, sizeof next);
-		else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
-			ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt,
-			              next, sizeof next);
+		np_next_line(next, sizeof next);
 
 		/* Drawn when what it shows has changed, not every pass. This is the
 		 * screen left open for the length of an album, and a present a frame
@@ -11828,6 +11847,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 	}
 
+	g_shelf_under = was_under; g_shelf_under_ctx = was_under_ctx;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	return how;
