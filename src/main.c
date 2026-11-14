@@ -4510,7 +4510,13 @@ typedef struct {
 	/* The header runs over the art to the battery (a track list's album
 	 * name); the toast then goes under the art instead. */
 	bool wide_header;
+	/* A tap only brings a row into focus (a game list: a stray tap must not
+	 * launch). Else a tap opens the row, as A (plorpos-3yv.110). */
+	bool tap_focuses;
 } gl_list;
+
+/* A footer tab label tapped: ui_hit_take gives GL_HIT_TAB + its place. */
+#define GL_HIT_TAB 1000
 
 /* Fit-cache keys for lists that are not a shelf. */
 enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
@@ -4542,13 +4548,92 @@ static int gl_page_step(int cur, int n, int page, int dir)
 	return cur <= 0 ? n - 1 : (cur - page > 0 ? cur - page : 0);
 }
 
+/* A list row's pitch. */
+static int gl_row_h(void)
+{
+	return ui_font_line(UI_F_LIST) * 4 / 3;
+}
+
+/* Touch scrolling on a list (plorpos-3yv.110). While a list polls, the touch
+ * layer stops turning drags into d-pad steps (plat_touch_free, around that
+ * poll only, so a menu opened over the list still steps) and the rows follow
+ * the finger, one row per row of travel. A fling coasts on here, as many rows
+ * a frame as its speed asks - a fast one further than its speed alone would
+ * take it, GLS_GAIN, the acceleration - and stops at either end. A touch
+ * during the coast stops it and is not a tap. */
+#define GLS_TAU_MS   350.0f   /* the coast slows by e every this long */
+#define GLS_MIN_PXMS 0.5f     /* lifted slower than this: no coast */
+#define GLS_GAIN     0.5f     /* coast speed x (1 + GLS_GAIN * px/ms) */
+#define GLS_STOP     0.004f   /* rows/ms: stopped */
+
+typedef struct {
+	touch_drag_state d;       /* this poll's */
+	bool drag, coast;
+	int base;                 /* the cursor when the drag began */
+	float v, pos;             /* coast rows/ms, and rows short of the next */
+	unsigned t;
+} gl_scroll;
+
+/* The screen's poll, the drag read with it when `list` (a list is showing). */
+static void gl_poll(app *a, gl_scroll *s, bool list)
+{
+	if (list) plat_touch_free(true);
+	plat_input_poll(&a->in);
+	plat_touch_drag_get(&s->d);
+	if (list) plat_touch_free(false);
+	else s->drag = s->coast = false;
+}
+
+/* The drag or coast on *cur, of n rows. True when it moved. */
+static bool gl_scroll_apply(gl_scroll *s, int *cur, int n)
+{
+	float sc = plat_scale() > 0 ? plat_scale() : 1, rh = gl_row_h() * sc;
+	unsigned now = plat_now_ms();
+	int to = *cur;
+
+	if (n <= 0) { s->drag = s->coast = false; return false; }
+	if (s->d.down && s->coast && !s->drag) { s->coast = false; plat_touch_catch(); }
+	if (s->d.active) {
+		if (!s->drag) { s->drag = true; s->base = *cur; }
+		to = s->base + (int)lroundf(-s->d.dy / rh);   /* the finger up: on */
+	} else if (s->d.released) {
+		float pv = -s->d.vy, apv = fabsf(pv);
+
+		s->drag = false;
+		if (apv >= GLS_MIN_PXMS) {
+			s->coast = true;
+			s->v = pv / rh * (1 + GLS_GAIN * apv);
+			s->pos = 0;
+			s->t = now;
+		}
+	} else if (!s->d.down) s->drag = false;
+	if (s->coast && !s->drag) {
+		float dt = (float)(now - s->t);
+
+		s->t = now;
+		if (dt > 50) dt = 50;
+		s->pos += s->v * dt;
+		s->v -= s->v * dt / GLS_TAU_MS;
+		to += (int)s->pos;
+		s->pos -= (int)s->pos;
+		if (fabsf(s->v) < GLS_STOP || (s->v < 0 && to <= 0) || (s->v > 0 && to >= n - 1))
+			s->coast = false;
+	}
+	if (to < 0) to = 0;
+	if (to > n - 1) to = n - 1;
+	if (to == *cur) return false;
+	*cur = to;
+	ui_redraw_now();          /* a shelf's loop draws on buttons, not on this */
+	return true;
+}
+
 static void gl_geometry(gl_geom *g, const gl_list *L)
 {
 	int head = ui_font_line(UI_F_TITLE);
 
 	g->top = GL_PAD + head + GL_PAD / 2;
 	g->bottom = TORTOS_SCREEN_H - GL_PAD - gl_footer_h(L);
-	g->row_h = ui_font_line(UI_F_LIST) * 4 / 3;
+	g->row_h = gl_row_h();
 	g->rows = (g->bottom - g->top) / g->row_h;
 	if (g->rows < 1) g->rows = 1;
 	if (L->art) {
@@ -4672,6 +4757,9 @@ static void gl_draw_footer(app *a, const gl_list *L)
 			SDL_SetRenderDrawColor(a->r, ac.r, ac.g, ac.b, 255);
 			SDL_RenderFillRect(a->r, &u);
 		}
+		/* A tap on the label goes to that tab (plorpos-3yv.110). */
+		ui_hit_id(&(SDL_Rect){ x - gap / 2, y - GL_PAD / 2, w + gap, TORTOS_SCREEN_H - y + GL_PAD / 2 },
+		          GL_HIT_TAB + i);
 		x += w + gap;
 	}
 }
@@ -4740,8 +4828,14 @@ static void gl_draw(app *a, const gl_list *L)
 			ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1,
 			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
 		}
-		/* A tap on a row brings it into focus, as a tap on a card does. */
-		if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+		/* A tap on a row opens it, walking the cursor there first; on a game
+		 * list it only brings it into focus, as a tap on a card does. A long
+		 * press walks there and is Y (plorpos-3yv.110). */
+		if (L->tap_focuses) {
+			if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+		} else {
+			ui_hit_act(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+		}
 	}
 
 	/* The art and the lines under it, the last one dim. */
@@ -4848,6 +4942,7 @@ static void gl_games_list(app *a, gl_list *L)
 
 	memset(L, 0, sizeof *L);
 	L->key = a->sys_cursor + 1;
+	L->tap_focuses = true;
 	L->header = s->name;
 	L->n = v->list.count;
 	L->cur = v->cursor;
@@ -12065,6 +12160,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 	memset(&a->in, 0, sizeof a->in);
 
 	ui_pace pace = {0};
+	gl_scroll gs = { 0 };
 
 	while (!done && !want_quit && a->running) {
 		const mu_now *mn;
@@ -12077,7 +12173,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		mn = musec_now();
 		loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 		playing = musec_path();
-		plat_input_poll(&a->in);
+		gl_poll(a, &gs, true);
 
 		for (i = 0; i < ts->n; i++, n++) {
 			const ml_track *t = &g_muse.tracks[ts->trk[i]];
@@ -12114,6 +12210,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		if (items > 0) {
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + items - 1) % items;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % items;
+			gl_scroll_apply(&gs, &sel, items);
 		}
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
@@ -12708,6 +12805,14 @@ static void muse_tabs_into(gl_list *L)
 	L->ntabs = n;
 }
 
+/* The tab at footer place `pos` (muse_tabs_into's), or -1. */
+static int muse_tab_at(int pos)
+{
+	for (int i = 0; i < MT_N; i++)
+		if (muse_tab_shown(g_mt_order[i]) && pos-- == 0) return g_mt_order[i];
+	return -1;
+}
+
 /* ---- Muse: Tab Settings (plorpos-era.10) ------------------------------------
  *
  * Every tab in footer order, On or Off at the row's end. A, Left or Right
@@ -12974,6 +13079,8 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_hit_take();          /* a tap from before this screen is not ours */
+	gl_scroll gs = { 0 };
 	while (!want_quit && a->running) {
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
 		bool cover = tab == MT_COVERFLOW, favs = tab == MT_FAVORITES;
@@ -12990,7 +13097,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		  : artists ? g_mar.n : lists ? g_npls : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
-		plat_input_poll(&a->in);
+		gl_poll(a, &gs, !cover);   /* the Coverflow tab steps as the shelf does */
 		ft0 = g_ft ? ft_us() : 0;
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
@@ -13008,17 +13115,22 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			continue;
 		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
-		if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2)) {
-			int t = muse_tab_step(tab, in_repeat(&a->in, IN_R2) ? 1 : -1);
+		{
+			int hit = ui_hit_take(), t = -1;   /* a footer tab tapped */
 
-			/* Out of an artist's albums onto every album, still on this one. */
-			if (drilled) muse_set_filter(v, -1, v->album && v->list.count > 0
-			                                    ? v->album[v->cursor] : -1);
-			muse_tab_set(t);
-			/* The coverflow stands still on the album the lists were on. */
-			if (t == MT_COVERFLOW && v->list.count > 0) cf_reset(&v->cf, v->cursor);
-			ui_redraw_now();
-			continue;
+			if (hit >= GL_HIT_TAB) t = muse_tab_at(hit - GL_HIT_TAB);
+			if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2))
+				t = muse_tab_step(tab, in_repeat(&a->in, IN_R2) ? 1 : -1);
+			if (t >= 0) {
+				/* Out of an artist's albums onto every album, still on this one. */
+				if (drilled) muse_set_filter(v, -1, v->album && v->list.count > 0
+				                                    ? v->album[v->cursor] : -1);
+				muse_tab_set(t);
+				/* The coverflow stands still on the album the lists were on. */
+				if (t == MT_COVERFLOW && v->list.count > 0) cf_reset(&v->cf, v->cursor);
+				ui_redraw_now();
+				continue;
+			}
 		}
 		/* The Coverflow tab moves as the shelf of covers always did: Left
 		 * and Right a card, Up and Down a letter, L1 and R1 a window. */
@@ -13046,6 +13158,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
 			if (in_repeat(&a->in, IN_LEFT) && !lists)
 				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
+			gl_scroll_apply(&gs, cur, n);
 			if (albums) cf_reset(&v->cf, v->cursor);
 		}
 		vol_keys(&a->in);
@@ -13080,30 +13193,26 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
-		/* X deletes the playlist, asked first (owner); MENU renames it. */
-		if (a->in.pressed[IN_X] && lists && n > 0) {
-			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[200];
-
-			muse_pl_dir(d, sizeof d);
-			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
-			snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
-			if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
-				muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
-				g_npls = -1;
-				muse_playlists_load();
-				if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
-			}
-			ui_redraw_now();
-			continue;
-		}
-		if (a->in.pressed[IN_MENU] && lists && n > 0) {
-			static const char *const OPTS[] = { "Rename Playlist", "Muse Menu" };
+		/* Y - the Rotate's long press - on a playlist: Delete (asked first)
+		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
+		 * tab (owner, plorpos-3yv.110.1). */
+		if (a->in.pressed[IN_Y] && lists && n > 0) {
+			static const char *const OPTS[] = { "Delete", "Rename" };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
-			int k = muse_pick_run(a, g_pls[g_mls_psel].name, OPTS, 2);
+			int k;
 
 			muse_pl_dir(d, sizeof d);
 			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
+			k = muse_pick_run(a, name, OPTS, 2);
 			if (k == 0) {
+				snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
+				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
+					muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
+					g_npls = -1;
+					muse_playlists_load();
+					if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
+				}
+			} else if (k == 1) {
 				snprintf(to, sizeof to, "%s", name);
 				if (muse_name_prompt(a, "Rename Playlist", to, (int)sizeof to) && strcmp(to, name)) {
 					if (pl_rename(d, name, to)) snprintf(msg, sizeof msg, "Renamed to %s", to);
@@ -13112,7 +13221,8 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					muse_toast(msg);
 				}
 			}
-			if (k != 1) { ui_redraw_now(); continue; }
+			ui_redraw_now();
+			continue;
 		}
 		if (a->in.pressed[IN_MENU]) {
 			muse_exit how = muse_menu(a);
@@ -16450,6 +16560,9 @@ static int shelf_letter_jump(sysview *v, int dir)
 	return shelf_group_start(v, i);
 }
 
+/* A game list's touch scroll: read with the shelf loop's poll, used here. */
+static gl_scroll g_shelf_scroll;
+
 static void update_games(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
@@ -16490,6 +16603,7 @@ static void update_games(app *a)
 
 			if (in_repeat(&a->in, IN_L1)) v->cursor = gl_page_step(v->cursor, n, page, -1);
 			if (in_repeat(&a->in, IN_R1)) v->cursor = gl_page_step(v->cursor, n, page, +1);
+			gl_scroll_apply(&g_shelf_scroll, &v->cursor, n);
 		} else {
 			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
@@ -18599,7 +18713,8 @@ int main(int argc, char *argv[])
 	while (a.running) {
 		unsigned ft0, ft1;
 
-		plat_input_poll(&a.in);
+		/* A game list scrolls under the finger (plorpos-3yv.110). */
+		gl_poll(&a, &g_shelf_scroll, a.screen == SCREEN_GAMES && gl_active(&a));
 		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
 
