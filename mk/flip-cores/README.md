@@ -50,6 +50,12 @@ Notes:
   `fake08-bound-lua.patch`, never merged upstream) and `fake08-load.patch`.
 - `fceumm`: `HAVE_HDPACK=0`, as on the RG Nano.
 - `race` (both Neo Geo Pockets) ships the DrZ80 (ARM asm Z80) build.
+- `mednafen_ngp` (Beetle NeoPop): not in systems.cfg; the per-game alternative to RACE on the
+  shelf Core row (`FLIP_ALT_CORES` in `mk/miyoo-deploy.sh` ships it).
+- `mednafen_supafaust` (Supafaust): the same, beside snes9x2005_plus. `-O2`: it has an
+  `#error` for `-Ofast`. Its renderer is always the multi-threaded one (`retro_load_game`
+  sets it, whatever `supafaust_renderer` says), so it uses both cores: about 1.4-1.7 of
+  them in `lrbench`, and ~18 MB more RAM than snes9x2005_plus.
 - Patches are applied with `git apply --directory=...` from the repo root: a
   plain `git apply` inside this repo's `build/` silently skips every file.
 - `build-curl.sh` (static curl + Mbed TLS, `TortOS/curl`) is separate.

@@ -699,17 +699,25 @@ static struct { int index, count; char label[24]; } g_disc;
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
  * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
- * mGBA on every port's three Game Boy shelves (plorpos-oe0.22). `bare` is the core whose states
+ * mGBA on every port's three Game Boy shelves (plorpos-oe0.22), and the Flip's own
+ * pairs (plorpos-f1p.84). `bare` is the core whose states
  * live in the shelf's own .tortos folder - the one that was there first -
  * whichever is the default now (plorpos-3yv.105). `on` says which build ships
  * the alternative. */
-enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7 };
+enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7, /* ALL = every build but the Flip */
+       ALT_ON_MIYOO = 8 };
 static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
 	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
 	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
 	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
+	/* The Flip's Neo Geo Pockets: RACE by default (2.6-2.9x cheaper per frame), Beetle NeoPop
+	 * for a game RACE does not draw (Cool Cool Jam; plorpos-f1p.85). Each keeps its own flash
+	 * save beside the other (RACE .ngf, Beetle .flash): neither reads the other's. */
+	{ "race", "RACE", "mednafen_ngp", "Beetle NeoPop", "race", ALT_ON_MIYOO, true },
+	/* The Flip's SNES: Snes9x 2005 Plus by default, Supafaust per game (plorpos-f1p.87). */
+	{ "snes9x2005_plus", "Snes9x 2005 Plus", "mednafen_supafaust", "Supafaust", "snes9x2005_plus", ALT_ON_MIYOO, true },
 };
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
@@ -719,7 +727,7 @@ static int alt_core(const system_cfg *s)
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 	const int here = ALT_ON_GKD_ROTATE;
 #elif defined(PLATFORM_MIYOO)
-	const int here = 0; /* the Flip has no second core on any shelf (PokeDaisy crashed there; its mgba shelves went to Gambatte); before H700, which it also defines */
+	const int here = ALT_ON_MIYOO; /* its own rows only (PokeDaisy crashed there; its mgba shelves went to Gambatte); before H700, which it also defines */
 #elif defined(PLATFORM_H700)
 	const int here = ALT_ON_H700; /* DSperate is its only DS core */
 #else

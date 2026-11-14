@@ -88,9 +88,12 @@ flip_cards() { # staging dir
 		[ -f "$f" ] && magick "$f" -resize '301670@>' -strip PNG32:"$f.tmp" && mv "$f.tmp" "$f"
 	done
 }
-stage_cores() { # systems.cfg dir: every core it names, from FLIP_CORES
+# Per-game alternatives on the shelf's Core row (src/main.c ALT_CORES, ALT_ON_MIYOO):
+# systems.cfg names only each shelf's default core (plorpos-f1p.84).
+FLIP_ALT_CORES="mednafen_ngp mednafen_supafaust"
+stage_cores() { # systems.cfg dir: every core it names and the alternatives, from FLIP_CORES
 	mkdir -p "$2"
-	for c in $(cfg_cores "$1"); do
+	for c in $(cfg_cores "$1") $FLIP_ALT_CORES; do
 		[ -f "$FLIP_CORES/${c}_libretro.so" ] ||
 			{ echo "no core $c in $FLIP_CORES (mk/flip-cores/build-all.sh)" >&2; exit 1; }
 		cp "$FLIP_CORES/${c}_libretro.so" "$2/"

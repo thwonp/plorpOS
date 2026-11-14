@@ -46,17 +46,28 @@ Miyoo's MainUI.
 | Shelf (`Roms/` folder) | Core |
 |---|---|
 | NES | FCEUmm |
-| SNES | Snes9x 2005 Plus |
+| SNES | Snes9x 2005 Plus, or Supafaust per game |
 | Game Boy, Game Boy Color | Gambatte |
 | Game Boy Advance | gpSP |
 | Genesis, Master System, Game Gear, Sega CD, Sega 32X | PicoDrive |
 | TurboGrafx-16 | Beetle PCE Fast |
 | Neo Geo | FB Alpha 2012 Neo Geo |
-| Neo Geo Pocket, Neo Geo Pocket Color | RACE |
+| Neo Geo Pocket, Neo Geo Pocket Color | RACE, or Beetle NeoPop per game |
 | PlayStation | PCSX ReARMed |
 | Arcade (FBA 2012) | FB Alpha 2012 |
 | Arcade (MAME 2000) | MAME 2000 |
 | PICO-8 | fake-08, or PICO-8 itself (see "Native PICO-8") |
+
+A shelf with two cores has a **Core** row in its shelf menu, set per game: it
+turns the game under the cursor to the other core and back. Save states belong
+to one core and do not load in the other; on the Neo Geo Pockets the battery
+saves do not carry over either (RACE keeps `.ngf`, Beetle NeoPop `.flash`).
+Beetle NeoPop costs about three times RACE's time per frame and is there for
+the games RACE does not run (the Cool Cool Jam prototype stays black on RACE).
+Supafaust is the better SNES core for the Super FX games (Star Fox, Stunt Race
+FX: full speed where Snes9x 2005 Plus skips frames) and holds 60 fps on the
+lighter ones, but is slower on the SA-1 games (Kirby Super Star, Super Mario
+RPG), where Snes9x 2005 Plus stays the better pick.
 
 ## Controls
 

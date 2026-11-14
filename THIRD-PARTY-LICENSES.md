@@ -224,6 +224,8 @@ GPL core is that tarball plus the patches named there), by
 | `mednafen_pce_fast_libretro.so` | TurboGrafx-16 | libretro/beetle-pce-fast-libretro @ 2de1ce1 | GPL-2.0 |
 | `snes9x2005_plus_libretro.so` | SNES | libretro/snes9x2005 @ a79dfe9, built with `USE_BLARGG_APU=1` | **Non-commercial** (Snes9x licence, `copyright` in the repo; its ndssfc port layer GPL-2.0-or-later, libretro glue MIT) |
 | `race_libretro.so` | Neo Geo Pocket (Color) | libretro/RACE @ c7810dd | GPL-2.0-or-later |
+| `mednafen_supafaust_libretro.so` | SNES, per-game alternative to Snes9x 2005 Plus | libretro/supafaust @ 642d1d1 | GPL-2.0 |
+| `mednafen_ngp_libretro.so` | Neo Geo Pocket (Color), per-game alternative to RACE | libretro/beetle-ngp-libretro @ a50d5ac | GPL-2.0 |
 | `fbalpha2012_neogeo_libretro.so` | Neo Geo | libretro/fbalpha2012_neogeo @ e092097 | **Non-commercial** (FB Alpha licence) |
 | `fbalpha2012_libretro.so` | Arcade (FBA 2012) | libretro/fbalpha2012 @ 0ce3153 | **Non-commercial** (FB Alpha licence, plus MAME's) |
 | `mame2000_libretro.so` | Arcade (MAME 2000) | libretro/mame2000-libretro @ 181b42e + `mk/flip-cores/patches/mame2000-nano.patch` | **Non-commercial** (MAME licence) |
