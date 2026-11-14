@@ -59,15 +59,13 @@ push() { # staging dir
 S=$B/stage
 rm -rf "$S"; mkdir -p "$S"
 # The Flip's systems.cfg: the shared one with its own cores where the shared
-# pick is too heavy for two 1.2 GHz Cortex-A7s - Game Boy and Color on Gambatte, half mGBA's cost per
-# frame (plorpos-f1p.77); GBA on gpsp, not mGBA
+# pick is too heavy for two 1.2 GHz Cortex-A7s - GBA on gpsp, not mGBA (Game Boy and Color are on Gambatte
+# everywhere now, plorpos-ssa)
 # (user, 2026-11-04: mGBA lagged in play even at 1.2 GHz); both Neo Geo Pockets on
 # RACE (2.6-2.9x cheaper per frame than Beetle NeoPop; user, 2026-11-10, accepting
 # that one prototype, Cool Cool Jam, does not draw on it - plorpos-f1p.62.3.11).
 flip_cfg() {
-	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)mgba|/\1gpsp|/' \
-	    -e 's/^\(sys|Game Boy|[^|]*|\)mgba|/\1gambatte|/' \
-	    -e 's/^\(sys|Game Boy Color|[^|]*|\)mgba|/\1gambatte|/' \
+	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)armgba|/\1gpsp|/' \
 	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' \
 	    -e 's/^\(sys|Neo Geo Pocket[^|]*|[^|]*|\)mednafen_ngp|/\1race|/' \
 	    -e 's/^\(sys|SNES|[^|]*|\)snes9x2010|/\1snes9x2005_plus|/' \

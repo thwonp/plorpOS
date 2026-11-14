@@ -46,6 +46,7 @@
 #include "musec.h"
 #include "museart.h"
 #include "muselib.h"
+#include "playlist.h"
 #include "ss.h"
 #include "ssrun.h"
 #include "sys_menu.h"
@@ -166,22 +167,25 @@ static const struct { const char *name, *label; } DMODES[] = {
 	/* Display Mode (plorpos-3yv.62): the top screen big, the bottom one
 	 * big, or the two the same size. Ids are Diatom's and are what is
 	 * saved, so a card set to the old Layout A/B keeps its choice. */
-	{ "ds-a",      "Focus Top" },
-	{ "ds-a-swap", "Focus Bottom" },
+	/* One name per pair since Swap Screens (plorpos-jcj): the hotkey picks
+	 * which screen is the big one, kept per game; Layout picks the shape.
+	 * Focus is Offset now. */
+	{ "ds-a",      "Offset" },
+	{ "ds-a-swap", "Offset" },
 	{ "ds-b",      "Even Split" },
 	/* One screen fullscreen, or one big and one small: the DS on the Brick
 	 * and H700, which draw no split (plorpos-reo.21). The slice those two
 	 * offer, in the order the layout hotkeys round them. */
-	{ "ds-top",    "Top Only" },
-	{ "ds-bottom", "Bottom Only" },
+	{ "ds-top",    "Single Screen" },
+	{ "ds-bottom", "Single Screen" },
 	/* Both screens: one big at the left at a whole multiple, the other in
 	 * the width left over at its right (plorpos-6ei.4). */
-	{ "ds-topfocus",    "Top Focus" },
-	{ "ds-bottomfocus", "Bottom Focus" },
+	{ "ds-topfocus",    "Hybrid" },
+	{ "ds-bottomfocus", "Hybrid" },
 	/* One screen filling the panel, the other over its bottom-right corner,
 	 * 80% opaque: every device (plorpos-6ei.5). */
-	{ "ds-topoverlay",    "Top Overlay" },
-	{ "ds-bottomoverlay", "Bottom Overlay" },
+	{ "ds-topoverlay",    "Overlay" },
+	{ "ds-bottomoverlay", "Overlay" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
 
@@ -214,15 +218,29 @@ static void font_apply(bool head, int k)
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   4
 #define DMODE_INTOVER 3
-/* The DS's layouts, in DMODES order of their own: the split ones where the
- * port draws a split, the cropped/composed ones on the Brick and H700, the
- * two Overlays last on both (plorpos-6ei.5). Diatom's layout_step rings
- * match. */
+/* The DS's layouts, one per pair (plorpos-jcj), each named by its top-screen
+ * member: Overlay, Offset, Even Split, Single Screen where the port draws a
+ * split; Overlay, Single Screen, Hybrid on the Brick and H700. Diatom's
+ * layout_step rings match. */
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
-static const int DS_RING[] = { 4, 5, 6, 11, 12 };
+static const int DS_RING[] = { 11, 4, 6, 7 };
 #else
-static const int DS_RING[] = { 7, 8, 9, 10, 11, 12 };
+static const int DS_RING[] = { 11, 7, 9 };
 #endif
+
+/* A DS layout's other screen: ds-a/ds-a-swap, ds-top/ds-bottom, the Focuses and
+ * the Overlays pair up; Even Split is its own. */
+static int ds_partner(int k)
+{
+	switch (k) {
+	case 4: return 5;   case 5: return 4;
+	case 7: return 8;   case 8: return 7;
+	case 9: return 10;  case 10: return 9;
+	case 11: return 12; case 12: return 11;
+	default: return k;
+	}
+}
+static bool ds_bottom(int k) { return k == 5 || k == 8 || k == 10 || k == 12; }
 #define DS_RING_N ((int)(sizeof DS_RING / sizeof DS_RING[0]))
 _Static_assert(DMODE_COUNT == 13, "DS_RING indexes DMODES");
 
@@ -271,17 +289,20 @@ static int ds_fill_now(void)
 
 static const char *ds_fill_label(void) { return FILL_LABEL[ds_fill_now()]; }
 
-/* Stepped from a menu: saved, and sent to a game that is running. */
-static void ds_fill_step(int d, bool live)
+/* The step through this panel's fills from cur. */
+static int ds_fill_next(int cur, int d)
 {
-	int o[3], n = ds_fill_opts(o), cur = ds_fill_now(), i = 0;
+	int o[3], n = ds_fill_opts(o), i = 0;
 
 	while (i < n && o[i] != cur) i++;
-	db_set_int(db_dev(), "dsfill", o[((i + d) % n + n) % n]);
-	if (live) {
-		plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[ds_fill_now()]);
-		plat_resident_sync_rect(150);
-	}
+	return o[((i + d) % n + n) % n];
+}
+
+/* The shelf's Default Display, stepped from its menu. A game's own is
+ * gm_fill_step's. */
+static void ds_fill_step(int d)
+{
+	db_set_int(db_dev(), "dsfill", ds_fill_next(ds_fill_now(), d));
 }
 
 static int dmode_step(const char *tag, int cur, int d)
@@ -300,8 +321,14 @@ static int dmode_step(const char *tag, int cur, int d)
 		if (cur < 0 || cur >= DMODE_DS_A) return 0;
 		return (cur + d + n) % n;
 	}
+	/* By the top-screen member, keeping which screen is big: Swap Screens'
+	 * choice outlives a change of layout. */
 	for (i = 0; i < DS_RING_N; i++)
-		if (DS_RING[i] == cur) return DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+		if (DS_RING[i] == (ds_bottom(cur) ? ds_partner(cur) : cur)) {
+			int k = DS_RING[(i + d + DS_RING_N) % DS_RING_N];
+
+			return ds_bottom(cur) ? ds_partner(k) : k;
+		}
 	return DS_RING[0];
 }
 
@@ -357,11 +384,16 @@ typedef enum { MUSE_BACK, MUSE_CLOSE, MUSE_REBUILT } muse_exit;
  * only a call that checks it right after - muse_open_shelf - ever acts on it. */
 static bool g_muse_sw;
 static muse_exit muse_tracks(app *a, int album, bool now);
+static int  muse_card_of(const sysview *v, int album);
 /* Muse's shelf borrows the games shelf's cards and its letter jump, both of
  * which live down with the shelf code. */
 static void muse_shelf_screen(app *a, bool now);
 static int  muse_artist_of(int al);
 static int  muse_artist_filter(void);
+static int  muse_tab(void);
+static void muse_tabs_screen(app *a);
+static void muse_tabs_load(void);
+enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static ml_order muse_sort_shown(int sort)
 {
@@ -555,10 +587,9 @@ static void shader_save(app *a, int sys)
  * SETDISPLAY fields: "" for None, NULL when there is no list to choose from.
  * Diatom keeps a chain across RUN, as it keeps the mode, so a launch always
  * says one; plat_resident_send sends it before RUN, with None first. */
-static const char *shader_fields(app *a, int sys, char *f, size_t cap)
+static const char *shader_fields(app *a, int i, char *f, size_t cap)
 {
 	char dir[CFG_STR * 2];
-	int i = a->view[sys].shader;
 
 	if (a->shaders.count <= 1) return NULL;
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
@@ -566,22 +597,112 @@ static const char *shader_fields(app *a, int sys, char *f, size_t cap)
 	return f;
 }
 
+/* ---------- per-game display overrides (plorpos-0xv, plorpos-1a6) ---------
+ *
+ * The shelf menu sets a system's defaults - display.<TAG>, shader.<TAG>, the
+ * DS's dsfill. The in-game menu sets the one game's: <kind>.<TAG>.<file>
+ * beside them in the device database (a mode is the panel's business, as the
+ * defaults are), keyed on the file name as palettes are. A game without a row
+ * of its own plays at the default, whatever that is by then. */
+static void ovr_key(char *key, size_t n, const char *kind, app *a, int sys,
+                    const game_entry *g)
+{
+	const char *base = strrchr(g->file, '/');
+
+	snprintf(key, n, "%s.%s.%s", kind, a->sys.systems[sys].tag, base ? base + 1 : g->file);
+}
+
+static int game_dmode(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[CFG_STR];
+
+	int k = a->view[sys].dmode, sw;
+
+	ovr_key(key, sizeof key, "display", a, sys, g);
+	if (db_get_str(db_dev(), key, name, sizeof name, NULL))
+		for (int j = 0; j < DMODE_COUNT; j++)
+			if (!strcmp(DMODES[j].name, name)) { k = dmode_step(a->sys.systems[sys].tag, j, 0); break; }
+	/* The DS: which screen is big is the game's own once Swap Screens has
+	 * been pressed in it (dsswap.<TAG>.<file>, plorpos-jcj); until then the
+	 * layout's own. */
+	if (!is_nds_tag(a->sys.systems[sys].tag)) return k;
+	ovr_key(key, sizeof key, "dsswap", a, sys, g);
+	sw = db_get_int(db_dev(), key, -1);
+	if (sw >= 0 && (sw == 1) != ds_bottom(k)) k = ds_partner(k);
+	return k;
+}
+
+/* After a DS game: keep the screen it ended on as the game's own, when the
+ * layout it ended in has two (a hotkey's layout change lasts the run only). */
+static void game_dsswap_note(app *a, int sys, const game_entry *g, const char *mode)
+{
+	char key[LIB_PATH + 48];
+	int k;
+
+	if (!mode || !is_nds_tag(a->sys.systems[sys].tag)) return;
+	for (k = 0; k < DMODE_COUNT && strcmp(DMODES[k].name, mode); k++) ;
+	if (k == DMODE_COUNT || ds_partner(k) == k) return;
+	if (ds_bottom(k) == ds_bottom(game_dmode(a, sys, g))) return;
+	ovr_key(key, sizeof key, "dsswap", a, sys, g);
+	db_set_int(db_dev(), key, ds_bottom(k));
+}
+
+static void game_dmode_save(app *a, int sys, const game_entry *g, int k)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "display", a, sys, g);
+	db_set_str(db_dev(), key, DMODES[k].name);
+}
+
+static int game_shader(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[SL_NAME];
+
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	return db_get_str(db_dev(), key, name, sizeof name, NULL)
+	       ? sl_find(&a->shaders, name) : a->view[sys].shader;
+}
+
+static void game_shader_save(app *a, int sys, const game_entry *g, int i)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	db_set_str(db_dev(), key, a->shaders.e[i].name);
+}
+
+/* The DS's Display: the game's when this panel offers it, else the shelf's. */
+static int game_fill(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48];
+	int o[3], n = ds_fill_opts(o), v;
+
+	ovr_key(key, sizeof key, "dsfill", a, sys, g);
+	v = db_get_int(db_dev(), key, -1);
+	for (int i = 0; i < n; i++) if (o[i] == v) return v;
+	return ds_fill_now();
+}
+
+static void game_fill_save(app *a, int sys, const game_entry *g, int v)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "dsfill", a, sys, g);
+	db_set_int(db_dev(), key, v);
+}
+
 /* palette.<TAG>.<file>, in the library database: a choice per game rather than
  * per system (plorpos-gkd.76), so it travels with the card the way favorites
  * do. Keyed on the file name, as save states are, so renaming a ROM loses it.
  * -1 for a game that has no palette to pick; no row is the shelf's Default
- * Palette (palettedef.<TAG>, the Flip's), or Auto where there is none. A game
+ * Palette (palettedef.<TAG>), or Auto where there is none. A game
  * that has a row keeps it however the default changes later. */
 static bool gb_palette_tag(const char *tag)
 {
-	return !strcmp(tag, "GB")
-#if defined(PLATFORM_MIYOO)
-	    || !strcmp(tag, "GBC")
-#endif
-	    ;
+	return !strcmp(tag, "GB") || !strcmp(tag, "GBC");
 }
 
-#if defined(PLATFORM_MIYOO)
 /* A Game Boy Color game colors itself: byte 0x143 of a plain ROM is 0x80 or 0xC0. Only a game that
  * has none has a palette to pick (a zipped ROM is taken to be one that has). */
 static bool rom_is_cgb(const char *path)
@@ -598,19 +719,13 @@ static bool rom_is_cgb(const char *path)
 	fclose(f);
 	return b == 0x80 || b == 0xC0;
 }
-#endif
 
 static int palette_default_of(const char *tag)
 {
-#if defined(PLATFORM_MIYOO)
 	char key[40], name[CFG_STR];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
 	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
-#else
-	(void)tag;
-	return 0;
-#endif
 }
 
 static void palette_default_save(const char *tag, int i)
@@ -627,14 +742,12 @@ static int palette_of(app *a, int sys, const game_entry *g)
 	const char *base, *tag = a->sys.systems[sys].tag;
 
 	if (!gb_palette_tag(tag)) return -1;
-#if defined(PLATFORM_MIYOO)
 	{
 		char rom[LIB_PATH * 2];
 
 		snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
 		if (rom_is_cgb(rom)) return -1;
 	}
-#endif
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
 	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : palette_default_of(tag);
@@ -649,15 +762,11 @@ static void palette_save(const char *tag, const game_entry *g, int i)
 	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or on the Flip a Game Boy shelf's
+/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy shelf's
  * Default Palette. */
 static bool sm_extra_shown(const char *tag)
 {
-	return ds_fill_shown(tag)
-#if defined(PLATFORM_MIYOO)
-	    || gb_palette_tag(tag)
-#endif
-	    ;
+	return ds_fill_shown(tag) || gb_palette_tag(tag);
 }
 
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
@@ -698,20 +807,44 @@ static struct { int index, count; char label[24]; } g_disc;
 
 /* Shelves with a second libretro core the owner can pick in the system
  * menu's Core row (plorpos-3yv.80), the shelf's own core first. Only cores
- * that ship are listed: the Rotate's and GKD's DS pair, and PokeDaisy beside
- * mGBA on every port's three Game Boy shelves (plorpos-oe0.22), and the Flip's own
- * pairs (plorpos-f1p.84). `bare` is the core whose states
- * live in the shelf's own .tortos folder - the one that was there first -
- * whichever is the default now (plorpos-3yv.105). `on` says which build ships
- * the alternative. */
+ * that ship are listed: PokeDaisy beside mGBA on every port's three Game Boy
+ * shelves (plorpos-oe0.22), and PokeDaisy DS beside DSperate on the DS shelf
+ * (plorpos-oe0.44; melonDS DS, which the GKD and Rotate used to offer, is gone), and
+ * the Flip's own pairs (plorpos-f1p.84).
+ * `bare` is the core whose states live in the shelf's own .tortos folder - the
+ * one that was there first - whichever is the default now (plorpos-3yv.105):
+ * on the GKD and Rotate that is still melonDS DS, so DSperate's states stay in
+ * their own folder; the Brick and H700 never had another DS core. `on` says
+ * which build ships the alternative; one core may have a row per build. */
 enum { ALT_ON_GKD_ROTATE = 1, ALT_ON_BRICK = 2, ALT_ON_H700 = 4, ALT_ON_ALL = 7, /* ALL = every build but the Flip */
        ALT_ON_MIYOO = 8 };
-static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; } ALT_CORES[] = {
-	{ "dsperate", "DSperate-lr", "melondsds", "melonDS DS", "melondsds", ALT_ON_GKD_ROTATE, false },
+static const struct { const char *core, *label, *alt, *alt_label, *bare; int on; bool per_game; const char *tag, *legacy, *folder;
+                      const char *alt2, *alt2_label; } ALT_CORES[] = {
+	/* DSperate with the PokeDaisy companion over it, chosen per game like PokeDaisy on the Game Boy shelves: it is
+	 * for the Pokemon DS games, DSperate stays every other game's. */
+	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "melondsds", ALT_ON_GKD_ROTATE, true },
+	{ "dsperate", "DSperate-lr", "pokedaisy_ds", "PokeDaisy DS", "dsperate", ALT_ON_BRICK | ALT_ON_H700, true },
 	/* mGBA's own core with the PokeDaisy companion over it: the Game Boy, Color and Advance
 	 * shelves share the mgba core, so one row serves all three. Chosen per game, not per shelf: PokeDaisy is
 	 * for the Pokemon games, mGBA stays every other game's (plorpos-oe0.28). */
-	{ "mgba", "mGBA", "pokedaisy", "PokeDaisy", "mgba", ALT_ON_ALL, true },
+	/* PokeDaisy is two cores, one per job (plorpos-oe0.45). The Game Boy Advance shelf's pokedaisy_gba is the companion over
+	 * armGBA (a recompiler: a frame takes 4.2 ms on the Brick against 7.1 with mGBA, EXPAND on); its Game Boy side (Gambatte,
+	 * GPL-2.0 only) cannot be in the core, so the Game Boy and Color shelves' pokedaisy_gbc is the companion over mGBA. A tag
+	 * picks the shelf (the Game Boy Advance row comes first). Both cores were once called "pokedaisy": a game already set to
+	 * that name (or pokedaisy_armgba, which a pre-release build wrote) keeps PokeDaisy: `legacy` lists the old names. A state is its emulator's, and mGBA's does not load in armGBA,
+	 * so the armGBA core has its own states folder, named after it; pokedaisy_gbc is the same engine as before and keeps
+	 * the folder "pokedaisy" its states are in (`folder`). */
+	/* armGBA (v1.6, upstream's release build) is the Game Boy Advance shelf's core (plorpos-9i7): a recompiler, a frame
+	 * in under two thirds of mGBA's time on the Brick. mGBA stays a third choice, as on the Game Boy shelves, and its
+	 * states stay in the shelf's own folder (`bare`); armGBA's are in their own. */
+	{ "armgba", "armGBA", "pokedaisy_gba", "PokeDaisy", "mgba", ALT_ON_ALL, true, "GBA", "pokedaisy,pokedaisy_armgba", NULL,
+	  "mgba", "mGBA" },
+	/* Gambatte is the Game Boy and Color shelves' core (plorpos-ssa), half mGBA's cost per frame on the Flip
+	 * (plorpos-f1p.77). mGBA stays a third choice, so a game can load the state it left there and save in-game before
+	 * moving on: a state is its emulator's, and mGBA's is the one in the shelf's own folder (`bare`). A game never
+	 * turned has no row, so every one of them plays on Gambatte now. */
+	{ "gambatte", "Gambatte", "pokedaisy_gbc", "PokeDaisy", "mgba", ALT_ON_ALL, true, NULL, "pokedaisy", "pokedaisy",
+	  "mgba", "mGBA" },
 	/* The Flip's Neo Geo Pockets: RACE by default (2.6-2.9x cheaper per frame), Beetle NeoPop
 	 * for a game RACE does not draw (Cool Cool Jam; plorpos-f1p.85). Each keeps its own flash
 	 * save beside the other (RACE .ngf, Beetle .flash): neither reads the other's. */
@@ -719,6 +852,17 @@ static const struct { const char *core, *label, *alt, *alt_label, *bare; int on;
 	/* The Flip's SNES: Snes9x 2005 Plus by default, Supafaust per game (plorpos-f1p.87). */
 	{ "snes9x2005_plus", "Snes9x 2005 Plus", "mednafen_supafaust", "Supafaust", "snes9x2005_plus", ALT_ON_MIYOO, true },
 };
+
+/* A per-game shelf's cores in Core-row order: its own, the alternative, and a second where there is one (j 0..2). */
+static int alt_n(int k) { return ALT_CORES[k].alt2 ? 3 : 2; }
+static const char *alt_core_name(int k, int j)
+{
+	return j == 0 ? ALT_CORES[k].core : j == 1 ? ALT_CORES[k].alt : ALT_CORES[k].alt2;
+}
+static const char *alt_core_label(int k, int j)
+{
+	return j == 0 ? ALT_CORES[k].label : j == 1 ? ALT_CORES[k].alt_label : ALT_CORES[k].alt2_label;
+}
 
 /* Index into ALT_CORES, or -1 for a shelf with one core. */
 static int alt_core(const system_cfg *s)
@@ -729,7 +873,7 @@ static int alt_core(const system_cfg *s)
 #elif defined(PLATFORM_MIYOO)
 	const int here = ALT_ON_MIYOO; /* its own rows only (PokeDaisy crashed there; its mgba shelves went to Gambatte); before H700, which it also defines */
 #elif defined(PLATFORM_H700)
-	const int here = ALT_ON_H700; /* DSperate is its only DS core */
+	const int here = ALT_ON_H700;
 #else
 	const int here = ALT_ON_BRICK;
 #endif
@@ -737,8 +881,9 @@ static int alt_core(const system_cfg *s)
 	/* A Core row would offer a core that is not there (plorpos-reo.21.11): only
 	 * the build that carries the alternative lists it. */
 	for (k = 0; k < sizeof ALT_CORES / sizeof *ALT_CORES; k++)
-		if (!strcmp(s->core, ALT_CORES[k].core))
-			return (ALT_CORES[k].on & here) ? (int)k : -1;
+		if (!strcmp(s->core, ALT_CORES[k].core) && (ALT_CORES[k].on & here) &&
+		    (!ALT_CORES[k].tag || !strcmp(s->tag, ALT_CORES[k].tag)))
+			return (int)k;
 	return -1;
 }
 
@@ -755,6 +900,21 @@ static const char *cursor_file(app *a, int sys)
 	return v->list.count ? v->list.items[v->cursor].file : NULL;
 }
 
+/* Whether `name` is one of the comma-separated names in `list` (NULL = none). */
+static bool name_listed(const char *list, const char *name)
+{
+	size_t n = strlen(name);
+
+	while (list && *list) {
+		const char *e = strchr(list, ',');
+		size_t len = e ? (size_t)(e - list) : strlen(list);
+
+		if (len == n && !strncmp(list, name, n)) return true;
+		list = e ? e + 1 : NULL;
+	}
+	return false;
+}
+
 /* The core a game launches with: its shelf's own, or the alternative the shelf
  * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
 static const char *shelf_core(app *a, int sys, const char *file)
@@ -768,8 +928,10 @@ static const char *shelf_core(app *a, int sys, const char *file)
 
 		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
-		return db_get_str(db_dev(), key, name, sizeof name, NULL) && !strcmp(name, ALT_CORES[k].alt)
-		       ? ALT_CORES[k].alt : s->core;
+		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) return s->core;
+		if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
+		if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
+		return s->core;
 	}
 	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
 }
@@ -802,17 +964,30 @@ static void engine_save(app *a, int sys)
 	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
-/* Turn the game under the shelf's cursor to the other core of a per-game shelf, saved at once. */
-static void engine_game_flip(app *a, int sys)
+/* Which of a per-game shelf's cores (alt_core_name's j) the game under the cursor plays on. */
+static int engine_game_index(app *a, int sys)
+{
+	const char *core = shelf_core(a, sys, cursor_file(a, sys));
+	int k = alt_core(&a->sys.systems[sys]), j;
+
+	for (j = 1; j < alt_n(k); j++)
+		if (!strcmp(core, alt_core_name(k, j))) return j;
+	return 0;
+}
+
+/* Step the game under the shelf's cursor through a per-game shelf's cores, saved at once. The shelf's own core
+ * is no row at all, so a game left on it follows the shelf's default when that changes. */
+static void engine_game_step(app *a, int sys, int d)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	const char *file = cursor_file(a, sys);
 	char key[LIB_PATH + 32];
-	int k = alt_core(s);
+	int k = alt_core(s), j;
 
 	if (k < 0 || !file) return;
+	j = ((engine_game_index(a, sys) + d) % alt_n(k) + alt_n(k)) % alt_n(k);
 	engine_game_key(key, sizeof key, s, file);
-	if (strcmp(shelf_core(a, sys, file), ALT_CORES[k].alt)) db_set_str(db_dev(), key, ALT_CORES[k].alt);
+	if (j) db_set_str(db_dev(), key, alt_core_name(k, j));
 	else db_del(db_dev(), key);
 }
 
@@ -826,8 +1001,7 @@ static const char *engine_label(app *a, int sys)
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
-	if (k >= 0 && ALT_CORES[k].per_game)
-		return strcmp(shelf_core(a, sys, cursor_file(a, sys)), ALT_CORES[k].alt) ? ALT_CORES[k].label : ALT_CORES[k].alt_label;
+	if (k >= 0 && ALT_CORES[k].per_game) return alt_core_label(k, engine_game_index(a, sys));
 	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
 	return NULL;
 }
@@ -980,7 +1154,7 @@ static SDL_Texture *load_image(SDL_Renderer *r, const char *path, int *w, int *h
  * runs per card per frame and the shelf should not ask the database how to
  * draw itself. */
 static int g_cards;
-static int g_dir;
+static int g_gl;     /* Gamelist Layout, an index into GAMELISTS */
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
 /* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
@@ -1042,31 +1216,24 @@ static void  year_fill(void);
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
 
-/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, Y held
- * MUSE_FAV_HOLD_MS shows only the marked ones. A mark is the card's
+/* Muse's favorites (plorpos-3yv.98): Y on an album marks it, and the
+ * Favorites tab (plorpos-era.13) shows only the marked ones. A mark is the card's
  * "mfav.<album folder>" row - not favorites.c's set, which is games and
  * makes the Favorites shelf. The view is this session's; it ends by itself
  * when its last album is unmarked, or when the kind shown has none. */
 static bool g_muse_favs;
+static bool g_muse_list_up;           /* Muse's tabs are on screen (plorpos-era) */
 
-/* Display (plorpos-mn1). DESIGN: Muse's menu gets a Display row, Coverflow
- * (the default, the path that was always here) or Artist List, kept in the
- * device settings as "muse.display" like Show. Artist List is a list screen
- * (muse_artist_pick) over the library's own artist index, in the scan's
- * order, one row per artist of the kind shown with its album count; A on one
- * sets g_muse_artist, a filter muse_order_view applies to the same shelf, so
- * the albums are the existing coverflow with its menu, Sort By, Y marks and
- * letter jump - no second renderer. B in that coverflow goes back to the
- * list, B on the list leaves Muse as everywhere. The list is built once when
- * it opens and drawn by menu_draw, which paints the visible rows only. Books
- * work the same (authors); the Favorites view filters inside one artist.
- * Show clears the filter. The filter survives a Rescan by artist name. */
-static bool g_muse_artists;           /* Display is Artist List */
+/* The artist filter (plorpos-mn1, now the Artists tab's drill, plorpos-era):
+ * A on an artist sets g_muse_artist, a filter muse_order_view applies to
+ * Muse's own view, so that artist's albums are the same view with its Sort
+ * By, Y marks and letter jump - no second album list. B goes back to the
+ * artists. Books work the same (authors); the Favorites view filters inside
+ * one artist. Show clears the filter. The filter survives a Rescan by artist
+ * name. */
 static int g_muse_artist = -1;        /* the artist whose albums are shown, or -1 */
 static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
 static char g_muse_artist_name[128];
-static Uint32 g_muse_note_until;      /* "No favorite albums" until then */
-#define MUSE_FAV_HOLD_MS 500u
 
 static bool muse_fav_is(const char *dir)
 {
@@ -1438,7 +1605,8 @@ static const char *persist_folder(app *a, int s, const char *file)
 	int k = alt_core(sc);
 
 	if (k < 0 || !strcmp(core, ALT_CORES[k].bare)) return sc->folder;
-	snprintf(buf, sizeof buf, "%s/%s", sc->folder, core);
+	snprintf(buf, sizeof buf, "%s/%s", sc->folder,
+	         !strcmp(core, ALT_CORES[k].alt) && ALT_CORES[k].folder ? ALT_CORES[k].folder : core);
 	return buf;
 }
 
@@ -1569,6 +1737,16 @@ static sysview *owner_view(app *a)
 	sysview *v = &a->view[a->sys_cursor];
 
 	return &a->view[shelf_owner(a, a->sys_cursor, v->cursor)];
+}
+
+/* The game under the cursor - the one playing, while an in-game menu is up -
+ * and in *sys the system it belongs to, whose defaults it falls back to. */
+static const game_entry *playing(app *a, int *sys)
+{
+	sysview *v = &a->view[a->sys_cursor];
+
+	*sys = shelf_owner(a, a->sys_cursor, v->cursor);
+	return &v->list.items[v->cursor];
 }
 
 /* Where a game's box art lives.
@@ -2069,6 +2247,8 @@ static void muse_show(sysview *v, bool books)
 	g_muse_books = books;
 	g_muse_artist = -1;
 	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
+	/* On the Favorites tab, the new kind's favorites (none ends it again). */
+	g_muse_favs = g_muse_list_up && muse_tab() == MT_FAVORITES;
 	free_view_textures(v);
 	muse_order_view(v);
 	v->cursor = 0;
@@ -3752,7 +3932,7 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
-/* Muse Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
+/* Playback Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
 static const int MUSE_SCREEN_OFF[] = { 5, 10, 15, 30, 60, 0 };
 #define MUSE_SCREEN_OFF_COUNT \
 	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
@@ -3762,7 +3942,7 @@ static bool idle_due(app *a)
 	int b, secs;
 
 	/* Whichever of the two is armed - never both (ST_SLEEP/ST_AUTO_OFF) -
-	 * except while music plays, when Muse Settings' Screen Off says how
+	 * except while music plays, when Playback Settings' Screen Off says how
 	 * long (TortOS-28l): an iPod's backlight timer, short where Auto Sleep's
 	 * shortest is long. Never is the screen on for as long as music plays. A
 	 * new timer is a new countdown: an album that ended after five minutes
@@ -3933,33 +4113,10 @@ static void draw_background(app *a)
  * feel immediate. */
 static void shelf_pacing(coverflow *cf)
 {
-	if (CARD_DIRS[g_dir].vertical) {
-		/* THE DURATION IS FIXED BUT THE DISTANCE IS NOT. ANIM_MS is 240ms
-		 * whatever the travel, and Vertical shows one card at a time, so a
-		 * step moves 878px where the horizontal row moves 400. At the shared
-		 * default that is 2.2x the speed, which reads as too fast AND as
-		 * jerky - the frame rate is unchanged, so covering twice the ground
-		 * means half as many frames per pixel.
-		 *
-		 * 360ms is 2.4 px/ms against the horizontal row's 1.7 - deliberately
-		 * quicker than matching, because one card filling the screen carries
-		 * no neighbors to read on the way past and the travel is dead time.
-		 * 420 matched the row exactly and felt sluggish. Smooth rather than
-		 * out-cubic because out-cubic spends its speed at the start, and over
-		 * a throw this long that is a lurch before the settle. */
-		cf->anim_ms = 360.0f;
-		cf->ease = CF_EASE_SMOOTH;
-		cf->chase = false;
-		/* Two, not the row's eight. Vertical puts ONE card on the screen at a
-		 * time, so a card of travel is a whole screen of travel; eight would
-		 * be a full-screen blur rather than a departure. */
-		cf->glide = 2.0f;
-	} else {
-		cf->anim_ms = 0.0f;
-		cf->ease = CF_EASE_OUT_CUBIC;
-		cf->chase = false;
-		cf->glide = (float)CF_WARM_CARDS;
-	}
+	cf->anim_ms = 0.0f;
+	cf->ease = CF_EASE_OUT_CUBIC;
+	cf->chase = false;
+	cf->glide = (float)CF_WARM_CARDS;
 }
 
 /* A systems layout carrying the theme's reflection gap.
@@ -3998,6 +4155,7 @@ static unsigned rail_sys_hue(void *ctx, int i)
  * it was tuned on (see CF_STAGE_H): the cards are placed on it, so whatever is
  * placed against the cards moves with them. 0 on the Brick. */
 #define STAGE_Y ((TORTOS_SCREEN_H - CF_STAGE_H) / 2)
+#define GL_PAD (TORTOS_SCREEN_W / 40)
 
 static void draw_systems(app *a)
 {
@@ -4010,9 +4168,7 @@ static void draw_systems(app *a)
 	/* Systems only. The games shelf keeps the angled row whatever this says:
 	 * box art is a wall of many, and one cover per screen would turn picking
 	 * a game into paging through a catalog. */
-	/* Vertical stacks the same row down the screen. */
-	cf_layout lay = sys_layout(CARD_DIRS[g_dir].vertical
-	                           ? &CF_LAYOUT_SYSTEMS_V : &CF_LAYOUT_SYSTEMS);
+	cf_layout lay = sys_layout(&CF_LAYOUT_SYSTEMS);
 
 	cf_focus_rect(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
@@ -4028,28 +4184,10 @@ static void draw_systems(app *a)
 	else sys_prefetch(a);
 #endif
 
-	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
-	 *
-	 * Vertical crossfades them: one card fills the screen there, so a name
-	 * that changed the instant the button went down sat under a console that
-	 * had not started moving - the only thing on screen ahead of the motion.
-	 * cf_label answers both questions from the shelf's own position, so the
-	 * name swaps while it is invisible and nothing has to remember the old
-	 * one. The horizontal row keeps the cursor and the instant change: seven
-	 * cards move at once there and the eye is on them, and fading the name
-	 * would be a second thing happening for no reason.
-	 *
-	 * The count follows the name, not the cursor, or a move would show the
-	 * old system's name over the new system's game count. */
+	/* The system the words below describe: the cursor's, changing the instant
+	 * the button goes down - seven cards move at once and the eye is on them. */
 	const system_cfg *label = s;
 	float label_a = 1.0f;
-
-	if (CARD_DIRS[g_dir].vertical) {
-		int li = 0;
-
-		label_a = cf_label(&a->cf_sys, a->sys.count, &li);
-		if (li >= 0 && li < a->sys.count) label = &a->sys.systems[li];
-	}
 
 	/* Art that does not name itself gets named here, in the gap between the
 	 * card and the count, which is where the classic cards carry it. */
@@ -4093,9 +4231,8 @@ static void draw_systems(app *a)
 	}
 	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0,
 	        ui_fade(UI_TEXT_DIM, label_a));
-	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
-		(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
-		 s->accent, rail_sys_hue, a);
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
+	        s->accent, rail_sys_hue, a);
 }
 
 /* Milliseconds since the focused game last changed.
@@ -4316,19 +4453,22 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * the shelf slides along y a card height and a half per step and a
 		 * centered counter had every move drag a card and its reflection
 		 * straight across it. */
-		if (is_muse(s) && SDL_GetTicks() < g_muse_note_until) {
-			snprintf(count, sizeof count, "No favorite albums");
-			ui_redraw_at(g_muse_note_until);
-		} else if (is_muse(s) && g_muse_favs)
-			snprintf(count, sizeof count, "Favorites  \xC2\xB7  %d / %d", idx + 1, v->list.count);
-		else
-			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
-		if (CARD_DIRS[g_dir].vertical)
-			ui_text(a->r, ui_font(UI_F_META), count, 24, STAGE_Y + 700,
-			        -1, UI_TEXT_DIM);
-		else
-			ui_text(a->r, ui_font(UI_F_META), count,
-			        TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0, UI_TEXT_DIM);
+		snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
+		/* On Muse's Coverflow tab the tabs take the rail's place, and the
+		 * count sits centred between the cover and them (owner). */
+		{
+			int cy = STAGE_Y + 690;
+
+			if (is_muse(s) && g_muse_list_up) {
+				SDL_Rect c;
+				int mline = ui_font_line(UI_F_META);
+				int ftop = TORTOS_SCREEN_H - GL_PAD - mline;   /* gl_draw_footer's */
+
+				cf_focus_rect(&CF_LAYOUT_ALBUMS, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &c);
+				cy = (c.y + c.h + ftop - mline) / 2;
+			}
+			ui_text(a->r, ui_font(UI_F_META), count, TORTOS_SCREEN_W / 2, cy, 0, UI_TEXT_DIM);
+		}
 	} else {
 		char nfit[192];
 
@@ -4339,8 +4479,540 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 	}
 }
 
+/* THE LISTS (plorpos-gwf, plorpos-era). One drawer for every list screen:
+ * Gamelist Layout's Detailed List and Art List, and Muse's List display.
+ * A column of rows on the left and, when the list has art, the focused item's
+ * art on the right with a few lines under it - EmulationStation's Detailed
+ * theme in this launcher's clothes: the same black backdrop, the accent glow
+ * behind the art, the heart in its seat. Without art the column is the
+ * screen. A list with tabs (Muse) names them in a footer, L2 and R2 at its
+ * ends.
+ *
+ * The art is the coverflow's own texture for the card, so the decode stays on
+ * the workers and the cache, priming and eviction are the coverflow's too:
+ * moving never decodes on the input path, and art that is not in yet leaves
+ * the pane empty for the frames it takes. */
+#define GL_UNDER_MAX 3
+
+typedef struct {
+	int key;                 /* the fit cache's: a shelf index + 1, or GL_KEY_* */
+	const char *header;
+	int n, cur;
+	unsigned accent;
+	void *ctx;
+	const char *(*title)(void *ctx, int i);
+	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
+	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
+	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
+	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
+	int nunder;              /* lines under the art; the last one dim */
+	char under[GL_UNDER_MAX][160];
+	const char *const *tabs; /* footer, ntabs names, tab the current one */
+	int ntabs, tab;
+	unsigned phase;          /* the focused title's marquee clock */
+	const char *empty;       /* said when there are no rows */
+	const char *toast;       /* a passing word ("Added to Road Trip"), or NULL */
+	/* Help along the bottom of a list without tabs: button, label pairs. */
+	const char *const *help;
+	int nhelp;
+	/* The header runs over the art to the battery (a track list's album
+	 * name); the toast then goes under the art instead. */
+	bool wide_header;
+	/* A tap only brings a row into focus (a game list: a stray tap must not
+	 * launch). Else a tap opens the row, as A (plorpos-3yv.110). */
+	bool tap_focuses;
+} gl_list;
+
+/* A footer tab label tapped: ui_hit_take gives GL_HIT_TAB + its place. */
+#define GL_HIT_TAB 1000
+
+/* Fit-cache keys for lists that are not a shelf. */
+enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
+       GL_KEY_PICK = -4, GL_KEY_TABS = -5 };
+
+typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
+
+static int gl_footer_h(const gl_list *L)
+{
+	return L->ntabs > 0 || L->nhelp > 0 ? ui_font_line(UI_F_META) + GL_PAD / 2 : 0;
+}
+
+/* Where the battery's corner starts (draw_battery's disc), for a header that
+ * runs right up to it. */
+static int gl_header_right(void)
+{
+	int rad = ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6;
+
+	return TORTOS_SCREEN_W - 10 - rad * 2 - GL_PAD / 2;
+}
+
+/* A page jump on a list: a screenful, stopping at either end, and from the
+ * end round to the other - modulo wrapping put a short list's cursor
+ * anywhere (owner, plorpos-era). */
+static int gl_page_step(int cur, int n, int page, int dir)
+{
+	if (n <= 0) return 0;
+	if (dir > 0) return cur >= n - 1 ? 0 : (cur + page < n ? cur + page : n - 1);
+	return cur <= 0 ? n - 1 : (cur - page > 0 ? cur - page : 0);
+}
+
+/* A list row's pitch. */
+static int gl_row_h(void)
+{
+	return ui_font_line(UI_F_LIST) * 4 / 3;
+}
+
+/* Touch scrolling on a list (plorpos-3yv.110). While a list polls, the touch
+ * layer stops turning drags into d-pad steps (plat_touch_free, around that
+ * poll only, so a menu opened over the list still steps) and the rows follow
+ * the finger, one row per row of travel. A fling coasts on here, as many rows
+ * a frame as its speed asks - a fast one further than its speed alone would
+ * take it, GLS_GAIN, the acceleration - and stops at either end. A touch
+ * during the coast stops it and is not a tap. */
+#define GLS_TAU_MS   350.0f   /* the coast slows by e every this long */
+#define GLS_MIN_PXMS 0.5f     /* lifted slower than this: no coast */
+#define GLS_GAIN     0.5f     /* coast speed x (1 + GLS_GAIN * px/ms) */
+#define GLS_STOP     0.004f   /* rows/ms: stopped */
+
+typedef struct {
+	touch_drag_state d;       /* this poll's */
+	bool drag, coast;
+	int base;                 /* the cursor when the drag began */
+	float v, pos;             /* coast rows/ms, and rows short of the next */
+	unsigned t;
+} gl_scroll;
+
+/* The screen's poll, the drag read with it when `list` (a list is showing). */
+static void gl_poll(app *a, gl_scroll *s, bool list)
+{
+	if (list) plat_touch_free(true);
+	plat_input_poll(&a->in);
+	plat_touch_drag_get(&s->d);
+	if (list) plat_touch_free(false);
+	else s->drag = s->coast = false;
+}
+
+/* The drag or coast on *cur, of n rows. True when it moved. */
+static bool gl_scroll_apply(gl_scroll *s, int *cur, int n)
+{
+	float sc = plat_scale() > 0 ? plat_scale() : 1, rh = gl_row_h() * sc;
+	unsigned now = plat_now_ms();
+	int to = *cur;
+
+	if (n <= 0) { s->drag = s->coast = false; return false; }
+	if (s->d.down && s->coast && !s->drag) { s->coast = false; plat_touch_catch(); }
+	if (s->d.active) {
+		if (!s->drag) { s->drag = true; s->base = *cur; }
+		to = s->base + (int)lroundf(-s->d.dy / rh);   /* the finger up: on */
+	} else if (s->d.released) {
+		float pv = -s->d.vy, apv = fabsf(pv);
+
+		s->drag = false;
+		if (apv >= GLS_MIN_PXMS) {
+			s->coast = true;
+			s->v = pv / rh * (1 + GLS_GAIN * apv);
+			s->pos = 0;
+			s->t = now;
+		}
+	} else if (!s->d.down) s->drag = false;
+	if (s->coast && !s->drag) {
+		float dt = (float)(now - s->t);
+
+		s->t = now;
+		if (dt > 50) dt = 50;
+		s->pos += s->v * dt;
+		s->v -= s->v * dt / GLS_TAU_MS;
+		to += (int)s->pos;
+		s->pos -= (int)s->pos;
+		if (fabsf(s->v) < GLS_STOP || (s->v < 0 && to <= 0) || (s->v > 0 && to >= n - 1))
+			s->coast = false;
+	}
+	if (to < 0) to = 0;
+	if (to > n - 1) to = n - 1;
+	if (to == *cur) return false;
+	*cur = to;
+	ui_redraw_now();          /* a shelf's loop draws on buttons, not on this */
+	return true;
+}
+
+static void gl_geometry(gl_geom *g, const gl_list *L)
+{
+	int head = ui_font_line(UI_F_TITLE);
+
+	g->top = GL_PAD + head + GL_PAD / 2;
+	g->bottom = TORTOS_SCREEN_H - GL_PAD - gl_footer_h(L);
+	g->row_h = gl_row_h();
+	g->rows = (g->bottom - g->top) / g->row_h;
+	if (g->rows < 1) g->rows = 1;
+	if (L->art) {
+		g->col_w = TORTOS_SCREEN_W * 52 / 100 - GL_PAD * 2;
+		g->pane_x = TORTOS_SCREEN_W * 52 / 100;
+		g->pane_w = TORTOS_SCREEN_W - g->pane_x - GL_PAD;
+	} else {
+		g->col_w = TORTOS_SCREEN_W - GL_PAD * 2;
+		g->pane_x = g->pane_w = 0;
+	}
+}
+
+/* L1/R1's screenful on a list: the rows in view. */
+static int gl_rows(const gl_list *L)
+{
+	gl_geom g;
+
+	gl_geometry(&g, L);
+	return g.rows;
+}
+
+/* What sits under the art: a gap, then its lines. */
+static int gl_under_h(const gl_list *L)
+{
+	return GL_PAD / 2 + L->nunder * ui_font_line(UI_F_META);
+}
+
+/* Where the art sits: its own aspect, fitted to the box above the lines under
+ * it, and the art with those lines centred as one block between the top and
+ * bottom of the screen. Without a texture yet, the whole box - which is also
+ * where the glow goes. */
+static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
+{
+	gl_geom g;
+	int bh, dw, dh, block, w = 0, h = 0;
+	SDL_Texture *t = NULL;
+
+	gl_geometry(&g, L);
+	bh = g.bottom - g.top - gl_under_h(L);
+	dw = g.pane_w;
+	dh = bh;
+	if (L->art && L->n > 0) t = L->art(L->ctx, L->cur, &w, &h);
+	if (t && w > 0 && h > 0) {
+		float k = fminf((float)g.pane_w / w, (float)bh / h);
+
+		dw = (int)(w * k);
+		dh = (int)(h * k);
+	}
+	block = dh + gl_under_h(L);
+	/* Centred on the screen; under a wide header, between it and the footer,
+	 * so the title clears the cover (owner). */
+	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2,
+	                   L->wide_header ? g.top + (g.bottom - g.top - block) / 2
+	                   : (TORTOS_SCREEN_H - gl_footer_h(L) - block) / 2, dw, dh };
+	if (tex) *tex = t;
+}
+
+/* A row's title as it fits, kept: fitting measures the title once per
+ * character it trims, and ten rows of that every frame was most of a frame.
+ * Direct-mapped on the index; a slot is good for one list, width and title -
+ * the title's hash too, because a list's rows change under the same key (an
+ * artist filter, a sort, a playlist edited) and a slot must not outlive the
+ * words it was made from. */
+static struct { int key, idx, w; Uint32 h; bool used; char s[192]; } g_gl_fit[64];
+
+static const char *gl_fit(int key, int idx, const char *title, int w)
+{
+	int k = idx & 63;
+	Uint32 h = 2166136261u;
+
+	for (const unsigned char *p = (const unsigned char *)title; *p; p++) h = (h ^ *p) * 16777619u;
+	if (!g_gl_fit[k].used || g_gl_fit[k].key != key || g_gl_fit[k].idx != idx ||
+	    g_gl_fit[k].w != w || g_gl_fit[k].h != h) {
+		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
+		g_gl_fit[k].used = true;
+		g_gl_fit[k].key = key;
+		g_gl_fit[k].idx = idx;
+		g_gl_fit[k].w = w;
+		g_gl_fit[k].h = h;
+	}
+	return g_gl_fit[k].s;
+}
+
+/* The tabs: "L2", the names with the current one lit, "R2". */
+static void gl_draw_footer(app *a, const gl_list *L)
+{
+	TTF_Font *f = ui_font(UI_F_META);
+	int y = TORTOS_SCREEN_H - GL_PAD - ui_font_line(UI_F_META);
+	int gap = GL_PAD * 2, total = 0, x, i;
+	SDL_Color ac = { (Uint8)(L->accent >> 16), (Uint8)(L->accent >> 8),
+	                 (Uint8)L->accent, 255 };
+
+	/* L2 and R2 small, on the tabs' baseline: a hint, not a tab (owner). */
+	TTF_Font *fs = ui_font(UI_F_BADGE);
+	int ys = y + TTF_FontAscent(f) - TTF_FontAscent(fs);
+	int left = GL_PAD * 2 + ui_text_width(fs, "L2");
+	int room = TORTOS_SCREEN_W - left - GL_PAD * 2 - ui_text_width(fs, "R2");
+
+	ui_text(a->r, fs, "L2", GL_PAD, ys, -1, UI_TEXT_DIM);
+	ui_text(a->r, fs, "R2", TORTOS_SCREEN_W - GL_PAD, ys, 1, UI_TEXT_DIM);
+	for (i = 0; i < L->ntabs; i++) total += ui_text_width(f, L->tabs[i]) + (i ? gap : 0);
+	/* Too wide between L2 and R2: the gaps give way first (owner). */
+	if (total > room && L->ntabs > 1) {
+		int words = total - gap * (L->ntabs - 1);
+
+		gap = (room - words) / (L->ntabs - 1);
+		if (gap < 0) gap = 0;
+		total = words + gap * (L->ntabs - 1);
+	}
+	x = total > room ? (TORTOS_SCREEN_W - total) / 2 : left + (room - total) / 2;
+	if (total <= room && (TORTOS_SCREEN_W - total) / 2 >= left &&
+	    (TORTOS_SCREEN_W + total) / 2 <= left + room)
+		x = (TORTOS_SCREEN_W - total) / 2;     /* centred on the screen when it fits */
+	for (i = 0; i < L->ntabs; i++) {
+		int w = ui_text_width(f, L->tabs[i]);
+
+		ui_text(a->r, f, L->tabs[i], x, y, -1, i == L->tab ? ac : UI_TEXT_DIM);
+		if (i == L->tab) {
+			SDL_Rect u = { x, y + ui_font_line(UI_F_META), w, 3 };
+
+			SDL_SetRenderDrawColor(a->r, ac.r, ac.g, ac.b, 255);
+			SDL_RenderFillRect(a->r, &u);
+		}
+		/* A tap on the label goes to that tab (plorpos-3yv.110). */
+		ui_hit_id(&(SDL_Rect){ x - gap / 2, y - GL_PAD / 2, w + gap, TORTOS_SCREEN_H - y + GL_PAD / 2 },
+		          GL_HIT_TAB + i);
+		x += w + gap;
+	}
+}
+
+static void gl_draw(app *a, const gl_list *L)
+{
+	TTF_Font *fm = ui_font(UI_F_LIST), *fv = ui_font(UI_F_META);
+	int mline = ui_font_line(UI_F_LIST);
+	int hrad = mline * 2 / 7;
+	int n = L->n, cur = L->cur, first, i;
+	SDL_Color ac = { (Uint8)(L->accent >> 16), (Uint8)(L->accent >> 8),
+	                 (Uint8)L->accent, 255 };
+	gl_geom g;
+	char buf[192];
+	unsigned phase = L->phase;
+
+	gl_geometry(&g, L);
+	/* Header. Where you are in the list goes under the art. */
+	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf,
+	            L->wide_header ? gl_header_right() - GL_PAD : g.col_w);
+	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+	/* A passing word, on the header's line, clear of the battery's corner. */
+	if (L->toast && *L->toast && !L->wide_header)
+		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
+		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), 1, ac);
+
+	/* The column. The cursor rides the middle row once the list is long
+	 * enough to scroll, so there is always as much ahead as behind. Titles
+	 * start under the header's first letter; a favorite's heart goes there
+	 * instead and pushes only that row's title right (owner). */
+	first = cur - g.rows / 2;
+	if (first > n - g.rows) first = n - g.rows;
+	if (first < 0) first = 0;
+	if (n == 0 && L->empty)
+		ui_text(a->r, fm, L->empty, GL_PAD, g.top + (g.row_h - mline) / 2, -1, UI_TEXT_DIM);
+	for (i = first; i < n && i < first + g.rows; i++) {
+		const char *title = L->title(L->ctx, i);
+		const char *val = L->value ? L->value(L->ctx, i) : NULL;
+		int y = g.top + (i - first) * g.row_h;
+		int ty = y + (g.row_h - mline) / 2;
+		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
+		bool fav = L->fav && L->fav(L->ctx, i);
+		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
+		int tw = g.col_w - (tx - GL_PAD);
+
+		if (i == cur) {
+			SDL_Color hc = ac;
+
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			hc.a = 210;
+			ui_round_rect(a->r, &row, g.row_h / 4, hc);
+		}
+		if (fav)
+			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
+			           (float)hrad, i == cur ? UI_TEXT : ac);
+		if (val && *val) {
+			int vw = ui_text_width(fv, val);
+
+			ui_text(a->r, fv, val, GL_PAD + g.col_w, y + (g.row_h - ui_font_line(UI_F_META)) / 2,
+			        1, i == cur ? UI_TEXT : UI_TEXT_DIM);
+			tw -= vw + GL_PAD;
+		}
+		if (i == cur && ui_text_width(fm, title) > tw) {
+			ui_text_marquee(a->r, fm, title, tx, ty, tw, phase, UI_TEXT);
+		} else {
+			ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1,
+			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
+		}
+		/* A tap on a row opens it, walking the cursor there first; on a game
+		 * list it only brings it into focus, as a tap on a card does. A long
+		 * press walks there and is Y (plorpos-3yv.110). */
+		if (L->tap_focuses) {
+			if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+		} else {
+			ui_hit_act(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+		}
+	}
+
+	/* The art and the lines under it, the last one dim. */
+	if (L->art) {
+		SDL_Rect art;
+		SDL_Texture *tex;
+		int y, fl = ui_font_line(UI_F_META), cx = g.pane_x + g.pane_w / 2;
+
+		gl_art_rect(L, &art, &tex);
+		if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
+		y = art.y + art.h + GL_PAD / 2;
+		for (i = 0; i < L->nunder; i++, y += fl)
+			ui_text(a->r, fv, L->under[i], cx, y, 0,
+			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
+	}
+	if (L->ntabs > 0) gl_draw_footer(a, L);
+	else if (L->nhelp > 0) {
+		int y = TORTOS_SCREEN_H - GL_PAD - ui_font_line(UI_F_META), total = 0, x;
+
+		for (i = 0; i < L->nhelp; i++) total += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
+		x = (TORTOS_SCREEN_W - total) / 2;
+		for (i = 0; i < L->nhelp; i++) {
+			ui_hint(a->r, x, y, L->help[2 * i], L->help[2 * i + 1]);
+			x += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
+		}
+	}
+}
+
+/* ---- Gamelist Layout: a game shelf as a list (plorpos-gwf) ---- */
+
+/* Year and genre, one line (owner: developer, publisher and players left out). */
+#define GL_FACTS 1
+
+static bool gl_active(const app *a)
+{
+	return GAMELISTS[g_gl].list && a->sys.count > 0 &&
+	       !is_muse(&a->sys.systems[a->sys_cursor]);
+}
+
+/* The facts, read once per focused game rather than per frame: one row from
+ * the card's games table, kept until the cursor or the shelf moves. Fitted to
+ * `w` when read. */
+static struct { int sys, idx, n; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, { "" } };
+
+static void gl_facts(app *a, sysview *v, int idx, int w)
+{
+	game_meta *m;
+	const system_cfg *gs;
+	int n = 0;
+
+	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx) return;
+	g_gl_facts.sys = a->sys_cursor;
+	g_gl_facts.idx = idx;
+	g_gl_facts.n = 0;
+	m = calloc(1, sizeof *m);       /* 5 KB of synopsis we do not show */
+	if (!m) return;
+	gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, idx)];
+	if (db_game_get(db_lib(), gs->folder, v->list.items[idx].file, m)) {
+		if (m->year[0] || m->genres[0])
+			snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "%s%s%s",
+			         m->year, m->year[0] && m->genres[0] ? "  \xC2\xB7  " : "", m->genres);
+	}
+	if (!n) snprintf(g_gl_facts.line[n++], sizeof g_gl_facts.line[0], "Not scraped yet");
+	g_gl_facts.n = n;
+	for (int i = 0; i < n; i++) {
+		char fit[160];
+
+		ui_fit_text(ui_font(UI_F_META), g_gl_facts.line[i], fit, sizeof fit, w);
+		memcpy(g_gl_facts.line[i], fit, sizeof fit);
+	}
+	free(m);
+}
+
+static const char *gl_game_title(void *ctx, int i)
+{
+	app *a = ctx;
+
+	return a->view[a->sys_cursor].list.items[i].title;
+}
+
+static bool gl_game_fav(void *ctx, int i)
+{
+	app *a = ctx;
+	const system_cfg *gs = &a->sys.systems[shelf_owner(a, a->sys_cursor, i)];
+
+	return fav_is(gs->tag, a->view[a->sys_cursor].list.items[i].file);
+}
+
+static SDL_Texture *gl_game_art(void *ctx, int i, int *w, int *h)
+{
+	float cb = 0.0f;
+
+	return game_get_tex(ctx, i, w, h, &cb);
+}
+
+/* The game shelf under the cursor as a list. The facts are read here, so a
+ * caller that only wants the art's place (draw_shelf's glow) pays one lookup
+ * per focused game, the same one the draw makes. */
+static void gl_games_list(app *a, gl_list *L)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	const system_cfg *s = &a->sys.systems[a->sys_cursor];
+	gl_geom g;
+
+	memset(L, 0, sizeof *L);
+	L->key = a->sys_cursor + 1;
+	L->tap_focuses = true;
+	L->header = s->name;
+	L->n = v->list.count;
+	L->cur = v->cursor;
+	L->accent = s->accent;
+	L->ctx = a;
+	L->title = gl_game_title;
+	L->fav = gl_game_fav;
+	L->art = gl_game_art;
+	/* Every frame, as draw_game_text does: the marquee clock restarts on a
+	 * cursor change only if it is asked on the frames in between. */
+	L->phase = title_phase(a);
+	gl_geometry(&g, L);
+	if (GAMELISTS[g_gl].meta && L->n > 0) {
+		gl_facts(a, v, L->cur, g.pane_w);
+		for (int i = 0; i < g_gl_facts.n; i++)
+			memcpy(L->under[L->nunder++], g_gl_facts.line[i], sizeof L->under[0]);
+	}
+	snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
+}
+
+/* L1/R1's screenful on a game list. */
+static int gl_page(app *a)
+{
+	gl_list L;
+
+	gl_games_list(a, &L);
+	return gl_rows(&L);
+}
+
+static void draw_games_list(app *a)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	gl_list L;
+
+	/* The coverflow is not drawn, so it is held at the cursor: nothing waits
+	 * on a move it will never finish, and Coverflow picks up where this is. */
+	cf_reset(&v->cf, v->cursor);
+	prime_toward(a, a->sys_cursor, v->cursor);
+	evict_far(v, TEX_KEEP_NEAR);
+	gl_games_list(a, &L);
+	gl_draw(a, &L);
+}
+
+/* Muse's List screen is up (plorpos-era): whatever draws the shelf behind
+ * itself - Muse's menu, a pick, the keyboard - draws that list instead of
+ * Muse's coverflow. Its artist and playlist rows live here for that. */
+static int  g_mls_asel, g_mls_psel;
+static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L);
+static void muse_tabs_into(gl_list *L);
+
 static void draw_games(app *a)
 {
+	if (gl_active(a)) { draw_games_list(a); return; }
+	bool muse_tabs = g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor]);
+
+	if (muse_tabs && muse_tab() != MT_COVERFLOW) {
+		gl_list L;
+
+		muse_list_describe(a, &a->view[a->sys_cursor], g_mls_asel, g_mls_psel, &L);
+		gl_draw(a, &L);
+		return;
+	}
 	shelf_pacing(&a->view[a->sys_cursor].cf);
 	shelf_pacing(&a->cf_sys);
 
@@ -4350,9 +5022,7 @@ static void draw_games(app *a)
 	const cf_layout *row = albums ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
 
 	if (cf_draw(&v->cf, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->list.count,
-	            game_get_tex, a,
-	            !CARD_DIRS[g_dir].vertical ? row
-	            : albums ? &CF_LAYOUT_ALBUMS_V : &CF_LAYOUT_GAMES_V))
+	            game_get_tex, a, row))
 		ui_redraw_now();
 	/* Warm where the move is about to cut to, one card per frame, underneath
 	 * the departure that is still being drawn. Eviction waits: the cursor is
@@ -4366,9 +5036,18 @@ static void draw_games(app *a)
 	else evict_cut(v, PRIME_HALF_MAX, CF_HALF_WINDOW + 1);
 
 	draw_game_text(a, v, s, v->cursor);
-	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
-		(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
-		 s->accent, NULL, NULL);
+	/* Muse's Coverflow tab: the tabs where the rail is (owner). */
+	if (muse_tabs) {
+		gl_list L;
+
+		memset(&L, 0, sizeof L);
+		L.accent = MUSE_ACCENT;
+		muse_tabs_into(&L);
+		gl_draw_footer(a, &L);
+		return;
+	}
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
+	        s->accent, NULL, NULL);
 }
 
 /* The shelf, without presenting it: the options menu draws over a live one, so
@@ -4470,9 +5149,12 @@ static void draw_shelf(app *a)
 		unsigned accent = 0;
 		SDL_Rect focus = { 0 };
 
-		/* The glow behind the focused card. */
+		/* The glow behind the focused card - none behind Muse's lists. */
+		if (games && g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor])) games = false;
 		if (games) {
 			accent = a->sys.systems[a->sys_cursor].accent;
+			if (gl_active(a)) { gl_list L; gl_games_list(a, &L); gl_art_rect(&L, &focus, NULL); }
+			else
 			cf_focus_rect(is_muse(&a->sys.systems[a->sys_cursor]) ? &CF_LAYOUT_ALBUMS
 			              : &CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
 		}
@@ -5775,15 +6457,13 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
-#if defined(PLATFORM_MIYOO)
 		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
-#endif
+		u.overrides  = !is_ports(sc);
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
-		u.muse_artists = u.muse && g_muse_artists;
-		u.muse_list = u.muse_artists && muse_artist_filter() < 0;
+		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -5794,7 +6474,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.ss_in     = ss_signed_in();
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
 		u.cards     = CARD_SETS[g_cards].name;
-		u.cards_dir = CARD_DIRS[g_dir].name;
+		u.gamelist  = GAMELISTS[g_gl].name;
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
 		u.sys_order = SYS_ORDERS[g_order].name;
@@ -5919,17 +6599,26 @@ static bool menu_leaving(app *a)
 /* ...and its general form: `n` answers, then Cancel. Returns the answer's
  * index, or -1 for Cancel and everything confirm_panel counts as "not that".
  * Settings > Scraping's import is the caller with two (TortOS-mh0). */
-static int pick_panel(app *a, const char *heading, const char *msg,
-                      const char *const *opts, int n)
+static int pick_panel_ex(app *a, const char *heading, const char *msg,
+                         const char *const *opts, int n, const char *no_label)
 {
-	menu_row rows[4];
-	int sel, i;
+	menu_row rows[6];
+	char lines[3][160];
+	int sel, i, m = 0;
 
 	if (n > 2) n = 2;
-	rows[0] = (menu_row){ msg, NULL, false };
-	for (i = 0; i < n; i++) rows[1 + i] = (menu_row){ opts[i], NULL, true };
-	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
-	sel = 1 + n;
+	/* The question: one row per line of msg, up to three (a "\n" breaks it). */
+	for (const char *p = msg; p && m < 3; m++) {
+		const char *e = m < 2 ? strchr(p, '\n') : NULL;
+		size_t len = e ? (size_t)(e - p) : strlen(p);
+
+		snprintf(lines[m], sizeof lines[m], "%.*s", (int)len, p);
+		rows[m] = (menu_row){ lines[m], NULL, false };
+		p = e ? e + 1 : NULL;
+	}
+	for (i = 0; i < n; i++) rows[m + i] = (menu_row){ opts[i], NULL, true };
+	rows[m + n] = (menu_row){ no_label, NULL, true };
+	sel = m + n;
 
 	ui_pace pace = {0};
 
@@ -5942,10 +6631,10 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		}
 		if (menu_leaving(a)) return -1;
 
-		/* Only the answerable rows are reachable; row 0 is the question. */
-		if (in_repeat(&a->in, IN_UP))   sel = sel > 1 ? sel - 1 : 1 + n;
-		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
-		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
+		/* Only the answerable rows are reachable; the first m are the question. */
+		if (in_repeat(&a->in, IN_UP))   sel = sel > m ? sel - 1 : m + n;
+		if (in_repeat(&a->in, IN_DOWN)) sel = sel < m + n ? sel + 1 : m;
+		if (a->in.pressed[IN_ACCEPT]) return sel < m + n ? sel - m : -1;
 
 		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
@@ -5953,10 +6642,44 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
-		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
+		menu_draw(a, heading, rows, m + n + 1, sel, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
 	}
+}
+
+static int pick_panel(app *a, const char *heading, const char *msg,
+                      const char *const *opts, int n)
+{
+	return pick_panel_ex(a, heading, msg, opts, n, "Cancel");
+}
+
+/* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
+ * wrote (display/shader/dsfill/dsswap.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
+ * themselves stay. Asked first, No selected. */
+static void display_overrides_reset(app *a, int sys)
+{
+	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap" };
+	static const char *const YES[] = { "Yes" };
+	const char *tag = a->sys.systems[sys].tag;
+	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
+	char key[CFG_STR + 16];
+
+	if (pick_panel_ex(a, "Reset Display Overrides",
+	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nand Shader preferences"
+	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nand Shader preferences"
+	                  : "Are you sure? This will reset\nper-game Display Mode and\nShader preferences",
+	                  YES, 1, "No") != 0)
+		return;
+	for (size_t k = 0; k < sizeof KINDS / sizeof *KINDS; k++) {
+		snprintf(key, sizeof key, "%s.%s.", KINDS[k], tag);
+		db_del_prefix(db_dev(), key);
+	}
+	if (pal) {
+		snprintf(key, sizeof key, "palette.%s.", tag);
+		db_del_prefix(db_lib(), key);
+	}
+	fprintf(stderr, "display overrides: %s reset\n", tag);
 }
 
 static bool confirm_panel(app *a, const char *heading, const char *msg,
@@ -6065,6 +6788,7 @@ typedef struct {
 /* SELECT: Muse, over whatever is on screen. Declared here, after menu_style,
  * because it borrows two of its hooks. */
 static bool muse_open(app *a, const menu_style *over, void *ctx);
+static bool g_muse_card;              /* muse_open is the card's, not SELECT's */
 
 /* Read every frame through the caller's pointer, so a screen that keeps its
  * style inside its own context can change it between frames. The info screen
@@ -7424,9 +8148,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
-#if defined(PLATFORM_MIYOO)
 static void default_palette_screen(app *a, int sys);
-#endif
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -8241,11 +8963,10 @@ static void about_screen(app *a)
 }
 
 /* Which page the shelf's controls are described on. See controls.h: the page
- * follows UI Direction, because which axis moves is what that setting does. */
+ * follows Gamelist Layout, because which axis moves is what that setting does. */
 static ctl_dir controls_dir(void)
 {
-	if (CARD_DIRS[g_dir].vertical) return CTL_VERTICAL;
-	return CTL_HORIZONTAL;
+	return GAMELISTS[g_gl].list ? CTL_LIST : CTL_COVERFLOW;
 }
 
 /* MENU > Controls: what every button does, a page per place. Read-only like
@@ -8377,7 +9098,7 @@ static int menu_shelf_width(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		bool muse = is_muse(&a->sys.systems[i]);
 		bool own  = muse || a->view[i].owner;
-		int  srow = own ? 1 : SM_SORT, show = -1, disp = -1;
+		int  srow = own ? 0 : SM_SORT, show = -1;
 
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
@@ -8388,14 +9109,6 @@ static int menu_shelf_width(app *a)
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
 				if (ids[k] == SMM_SHOW) show = k;
-				if (ids[k] == SMM_DISPLAY) disp = k;
-			}
-			if (disp >= 0) {
-				int mw;
-
-				rows[disp].value = "Artist List";
-				mw = menu_measure(rows, n, heading);
-				if (mw > w) w = mw;
 			}
 			/* The longer of Show's two values, so turning it over does not
 			 * change the menu's width under the cursor. */
@@ -8421,14 +9134,12 @@ static int menu_shelf_width(app *a)
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
-#if defined(PLATFORM_MIYOO)
 		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
 			int mw;
 			rows[SM_FILL].value = gbpal_label(k);
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
-#endif
 		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
 			int mw;
 			rows[SM_CORE].value = ENGINE_LABEL(k);
@@ -8438,8 +9149,8 @@ static int menu_shelf_width(app *a)
 		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
 			int c = alt_core(&a->sys.systems[i]), mw;
 
-			for (k = 0; k < 2; k++) {
-				rows[SM_CORE].value = k ? ALT_CORES[c].alt_label : ALT_CORES[c].label;
+			for (k = 0; k < alt_n(c); k++) {
+				rows[SM_CORE].value = alt_core_label(c, k);
 				mw = menu_measure(rows, n, heading);
 				if (mw > w) w = mw;
 			}
@@ -8528,7 +9239,7 @@ typedef struct {
 	int       screen;
 } sysmenu_ctx;
 
-/* Muse Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
+/* Playback Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
  * pressed while music plays in the dark wakes the screen - see music_dark,
  * which reads it - and how long music plays untouched before the screen goes
  * off - see idle_due. */
@@ -8584,7 +9295,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 {
 	(void)ctx;
 	(void)max;
-	*heading = "Muse Settings";
+	*heading = "Playback Settings";
 	rows[0] = (menu_row){ "Wake Screen On Press",
 	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
 	                      true };
@@ -8987,8 +9698,8 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	/* Which way both shelves run. Only the cards' positions change, not the
 	 * textures, so nothing is dropped and there is nothing to rebuild. */
 	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
-		g_dir = cards_dir_step(g_dir, d ? d : 1);
-		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		g_gl = gamelist_step(g_gl, d ? d : 1);
+		db_set_str(db_dev(), "gamelist_layout", GAMELISTS[g_gl].id);
 		return MENU_STAY;
 	}
 
@@ -9108,36 +9819,25 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (d || key == IN_ACCEPT)
 					muse_show(&a->view[a->sys_cursor], !muse_books_shown());
 				return MENU_STAY;
-			} else if (id == SMM_DISPLAY) {
-				/* Two values, so left, right and A all turn it over. The
-				 * shelf under the menu follows when it closes
-				 * (muse_display_sync). */
-				if (d || key == IN_ACCEPT) {
-					g_muse_artists = !g_muse_artists;
-					db_set_str(db_dev(), "muse.display", g_muse_artists ? "artists" : "coverflow");
-				}
-				return MENU_STAY;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
+				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
 				return MENU_DONE;
 			}
 		}
-		/* Favorites' menu is its own rows too, Games and Sort By - see
-		 * SM_FAV_ROWS - so its Sort By is row 1 and not SM_SORT. Nothing here
-		 * knew that from the day the menu was cut to two rows, and left and
-		 * right on Favorites' Sort By did nothing at all. */
-		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
+		/* Favorites' menu is its own rows too, Sort By alone - see
+		 * SM_FAV_ROWS - so its Sort By is row 0 and not SM_SORT. */
+		if (a->view[a->sys_cursor].owner) sel = SM_SORT;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
 			sel = sm_row_at(sm_extra_shown(a->sys.systems[a->sys_cursor].tag), sel);
 		/* The DS's Display: left and right step it, A steps forward, saved
 		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-#if defined(PLATFORM_MIYOO)
 			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
 			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
 				const char *tg = a->sys.systems[a->sys_cursor].tag;
@@ -9146,13 +9846,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				else default_palette_screen(a, a->sys_cursor);
 				return MENU_STAY;
 			}
-#endif
-			ds_fill_step(d ? d : 1, false);
+			ds_fill_step(d ? d : 1);
 			return MENU_STAY;
 		}
 		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
-		 * shelf with two (ALT_CORES). Two values, so left, right and A all
-		 * turn it over, saved at once like Display Mode. No check for the
+		 * shelf with more (ALT_CORES). Left and right step it, A steps
+		 * forward, saved at once like Display Mode. No check for the
 		 * binary here: a missing one says so at launch, the same as Splore. */
 		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
 		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
@@ -9162,7 +9861,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			int k = alt_core(&a->sys.systems[a->sys_cursor]);
 
 			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
-			else if (ALT_CORES[k].per_game) engine_game_flip(a, a->sys_cursor);
+			else if (ALT_CORES[k].per_game) engine_game_step(a, a->sys_cursor, d ? d : 1);
 			else v->alt = !v->alt;
 			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
 			/* Each core keeps its own states, and a card with no art shows
@@ -9235,6 +9934,10 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			 * just lost the system it was built for. Acting and closing is
 			 * also what pressing it means. */
 			return MENU_DONE;
+		}
+		if (sel == SM_RESET) {
+			display_overrides_reset(a, a->sys_cursor);
+			return MENU_STAY;
 		}
 		return MENU_STAY;
 	}
@@ -10111,13 +10814,15 @@ static void game_switch(app *a)
 /* The mode the paused game is drawn in: Diatom's word for it when it has
  * said, since the DS's Display Mode hotkey changes it for that run only
  * (plorpos-3yv.62); else the saved one. */
-static int gm_dmode_now(const sysview *v)
+static int gm_dmode_now(app *a)
 {
 	const char *m = plat_resident_mode();
+	int sys;
+	const game_entry *g = playing(a, &sys);
 
 	for (int k = 0; m && k < DMODE_COUNT; k++)
 		if (!strcmp(DMODES[k].name, m)) return k;
-	return v->dmode;
+	return game_dmode(a, sys, g);
 }
 
 static void gm_cycle_display(app *a, int d)
@@ -10126,13 +10831,27 @@ static void gm_cycle_display(app *a, int d)
 	 * system that game belongs to - which is what a per-system mode means.
 	 * Set on the Favorites shelf it would have been filed under FAV and worn
 	 * by every game launched from there, whatever machine it came from. */
-	sysview *v = owner_view(a);
+	int sys, k;
+	const game_entry *g = playing(a, &sys);
 
 	/* From what is on screen, which a DS's Display Mode hotkey may have
-	 * moved on from the saved one (plorpos-3yv.62). */
-	v->dmode = dmode_step(a->sys.systems[v - a->view].tag, gm_dmode_now(v), d);
-	display_save(a);
-	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[v->dmode].name);
+	 * moved on from the saved one (plorpos-3yv.62). This game's own from
+	 * now on; the shelf's default stays as it was (plorpos-1a6). */
+	k = dmode_step(a->sys.systems[sys].tag, gm_dmode_now(a), d);
+	game_dmode_save(a, sys, g, k);
+	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[k].name);
+	plat_resident_sync_rect(150);
+}
+
+/* The DS's Display for this game alone, sent to it at once. */
+static void gm_fill_step(app *a, int d)
+{
+	int sys, v;
+	const game_entry *g = playing(a, &sys);
+
+	v = ds_fill_next(game_fill(a, sys, g), d);
+	game_fill_save(a, sys, g, v);
+	plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[v]);
 	plat_resident_sync_rect(150);
 }
 
@@ -10145,10 +10864,15 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	/* The owner's, the mode gm_cycle_display changes: on Favorites the
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
-	u.dmode  = DMODES[gm_dmode_now(owner_view(a))].label;
-	u.nds    = is_nds_tag(a->sys.systems[owner_view(a) - a->view].tag);
-	u.fill   = ds_fill_shown(a->sys.systems[owner_view(a) - a->view].tag) ? ds_fill_label() : NULL;
-	u.shader  = a->shaders.e[owner_view(a)->shader].name;
+	{
+		int sys;
+		const game_entry *g = playing(a, &sys);
+
+		u.dmode  = DMODES[gm_dmode_now(a)].label;
+		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
+		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
+		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+	}
 	u.shaders = a->shaders.count > 1;
 	{
 		sysview *sv = &a->view[a->sys_cursor];
@@ -11125,35 +11849,326 @@ static int muse_playing_album(int *row)
  * from there lands on the album it is playing. Returns how it was left, so
  * the shelf can close too when SELECT closed Muse - it used to be told
  * nothing, and SELECT from Now Playing landed on the shelf instead. */
-static muse_exit muse_tracks(app *a, int album, bool now)
+/* ---- Muse: Playlists (plorpos-era.5, era.6) ---------------------------------
+ *
+ * .m3u files in Music/Playlists (src/playlist.c). The Playlists tab lists
+ * them; A opens one as a track list; MENU there renames or deletes it, and
+ * MENU on one of its tracks removes that track. Y on any track - an album's
+ * or a playlist's, List or Coverflow - adds it to a playlist, a new one named
+ * on the keyboard or one that exists. */
+#define PL_SHOW_MAX 256
+static pl_info g_pls[PL_SHOW_MAX];
+static char    g_pl_val[PL_SHOW_MAX][12];
+static int     g_npls = -1;              /* -1: read the folder again */
+static char    g_muse_toast[160];
+static Uint32  g_muse_toast_until;
+
+/* Where the music now playing was started (owner: B from Now Playing goes
+ * back there, however Muse was left and opened again): a playlist by name,
+ * or an album reached from the Albums tab or from an artist (`artist`). */
+static struct { bool set, pl; char name[PL_NAME_MAX]; int tab, artist; } g_muse_from;
+
+static void muse_pl_dir(char *out, size_t n)
 {
-	int sel = 0, done = 0, art, i;
+	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
+}
+
+static void muse_playlists_load(void)
+{
+	char d[CFG_STR * 2 + 32];
+
+	if (g_npls >= 0) return;
+	muse_pl_dir(d, sizeof d);
+	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
+	for (int i = 0; i < g_npls; i++)
+		snprintf(g_pl_val[i], sizeof g_pl_val[i], "%d", g_pls[i].n);
+}
+
+/* A word for two seconds, on whatever list is up. */
+static void muse_toast(const char *msg)
+{
+	snprintf(g_muse_toast, sizeof g_muse_toast, "%s", msg);
+	g_muse_toast_until = SDL_GetTicks() + 2000;
+	ui_redraw_now();
+}
+
+static const char *muse_toast_now(void)
+{
+	if (!g_muse_toast[0] || SDL_GetTicks() >= g_muse_toast_until) return NULL;
+	ui_redraw_at(g_muse_toast_until);
+	return g_muse_toast;
+}
+
+/* The library's track at `path` (card-relative), or -1: a playlist can name a
+ * file that has since gone. Once per entry when a playlist opens. */
+static int muse_track_by_path(const char *path)
+{
+	for (int t = 0; t < g_muse.ntracks; t++)
+		if (!strcmp(g_muse.tracks[t].path, path)) return t;
+	return -1;
+}
+
+/* A short menu of `n` labels: the one chosen, or -1. */
+typedef struct { const char *heading; const char *const *labels; int n, chosen; } muse_pick;
+
+static int muse_pick_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	muse_pick *p = ctx;
+	int i;
+
+	*heading = p->heading;
+	for (i = 0; i < p->n && i < max; i++) rows[i] = (menu_row){ p->labels[i], NULL, true };
+	return i;
+}
+
+static menu_result muse_pick_key(app *a, void *ctx, in_button key, int sel)
+{
+	muse_pick *p = ctx;
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	p->chosen = sel;
+	return MENU_DONE;
+}
+
+static int muse_pick_run(app *a, const char *heading, const char *const *labels, int n)
+{
+	muse_pick p = { heading, labels, n, -1 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         muse_pick_build, muse_pick_key, &p);
+	return p.chosen;
+}
+
+static void muse_kb_backdrop(void *ctx)
+{
+	muse_backdrop(ctx);
+}
+
+/* A playlist's name on the keyboard, `buf` the seed. Asked again while the
+ * name will not make a file. False for cancel (and the power button, which
+ * closes Muse). */
+static bool muse_name_prompt(app *a, const char *title, char *buf, int cap)
+{
+	const char *ask = title;
+
+	for (;;) {
+		kb_result kr = kb_prompt(a->r, &a->in, ask, buf, cap, MUSE_ACCENT,
+		                         muse_kb_backdrop, power_due_ctx, a);
+		char *p = buf, *e;
+
+		if (kr == KB_POWER) { muse_power(a); return false; }
+		if (kr != KB_ACCEPT) return false;
+		while (*p == ' ') p++;
+		memmove(buf, p, strlen(p) + 1);
+		for (e = buf + strlen(buf); e > buf && e[-1] == ' '; ) *--e = '\0';
+		if (pl_name_ok(buf)) return true;
+		ask = "Not / \\ : * ? \" < > | or a leading dot";
+	}
+}
+
+/* Y on a track (era.6): a playlist to add it to, a new one first. */
+static void muse_add_to_playlist(app *a, int t)
+{
+	const char *labels[MENU_RUN_ROWS];
+	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[160];
+	int k, n = 0, i;
+
+	if (t < 0 || t >= g_muse.ntracks) return;
+	muse_playlists_load();
+	labels[n++] = "New Playlist...";
+	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) labels[n++] = g_pls[i].name;
+	k = muse_pick_run(a, "Add to Playlist", labels, n);
+	if (k < 0) return;
+	if (k == 0) {
+		name[0] = '\0';
+		if (!muse_name_prompt(a, "New Playlist", name, (int)sizeof name)) return;
+	} else {
+		snprintf(name, sizeof name, "%s", g_pls[k - 1].name);
+	}
+	muse_pl_dir(d, sizeof d);
+	if (pl_add(d, name, g_muse.tracks[t].path)) snprintf(msg, sizeof msg, "Added to %s", name);
+	else snprintf(msg, sizeof msg, "Could not add to %s", name);
+	g_npls = -1;
+	muse_toast(msg);
+}
+
+/* A list of tracks: an album's, or a playlist's (plorpos-era.5), by index
+ * into the library. `album` is the album when they are all one album's, else
+ * -1; a playlist names itself in `head` and its first track's artist plays as
+ * the artist. */
+typedef struct {
+	int *trk;
+	int n, album;
+	const char *head, *head2;
+	const char *pl;       /* the playlist's name, or NULL for an album */
+	int *ent;             /* a playlist's: each track's entry in its file */
+} muse_tset;
+
+/* The album a track is on: the album whose run of tracks holds it. */
+static int muse_album_of_track(int t)
+{
+	for (int i = 0; i < g_muse.nalbums; i++)
+		if (t >= g_muse.albums[i].first && t < g_muse.albums[i].first + g_muse.albums[i].n)
+			return i;
+	return -1;
+}
+
+/* Muse's view, wherever Muse was opened from: NULL when the card has none. */
+static sysview *muse_view(app *a)
+{
+	for (int i = 0; i < a->sys.count; i++)
+		if (is_muse(&a->sys.systems[i])) return &a->view[i];
+	return NULL;
+}
+
+/* List display's drawing of a track list (owner: the list font, as the rest of
+ * List). The focused track's album cover on the right - one album's tracks
+ * share it; a playlist's change it as the cursor moves - and under it whose,
+ * what is playing, and where you are. */
+static struct { const muse_tset *ts; const char *playing; int state; } g_mtl;
+
+static const char *mtl_title(void *ctx, int i) { (void)ctx; return g_muse.tracks[g_mtl.ts->trk[i]].name; }
+
+static const char *mtl_value(void *ctx, int i)
+{
+	(void)ctx;
+	if (!g_mtl.playing[0] || strcmp(g_mtl.playing, g_muse.tracks[g_mtl.ts->trk[i]].path)) return "";
+	return g_mtl.state == MU_PAUSED ? "paused" : "playing";
+}
+
+/* The cover is the album's card in Muse's view, so it comes from the same
+ * cache as the Albums list. The view's cursor stands on that card while a
+ * track list is up, so priming and eviction keep the right covers. */
+static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
+{
+	app *a = ctx;
+	sysview *v = &a->view[a->sys_cursor];
+	int al = muse_album_of_track(g_mtl.ts->trk[i]), k;
+	float cb = 0.0f;
+
+	if (!is_muse(&a->sys.systems[a->sys_cursor]) || al < 0) return NULL;
+	if ((k = muse_card_of(v, al)) < 0) return NULL;
+	if (v->cursor != k) { v->cursor = k; cf_reset(&v->cf, k); }
+	return game_get_tex(a, k, w, h, &cb);
+}
+
+/* An album's name without the year its folder starts with ("2010 Cerulean"
+ * is Cerulean): the track list's header, whose cover has the year under it
+ * already (owner). The album lists keep it - it is what they sort and jump
+ * by. */
+static const char *muse_name_noyear(const char *name)
+{
+	const char *p = name;
+
+	if (isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ') {
+		p += 5;
+		while (*p == ' ' || *p == '-') p++;
+		if (*p) return p;
+	}
+	return name;
+}
+
+static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
+static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "X", "Remove",
+                                            "L2/R2", "Move" };
+
+static void muse_tracks_draw_list(app *a, const muse_tset *ts, int sel,
+                                  const mu_now *mn, bool loaded, const char *playing)
+{
+	gl_list L;
+	gl_geom g;
+	char line[200], t0[16], t1[16];
+	int al = ts->n > 0 ? muse_album_of_track(ts->trk[sel]) : -1;
+	sysview *v = &a->view[a->sys_cursor];
+
+	g_mtl.ts = ts;
+	g_mtl.playing = playing;
+	g_mtl.state = mn->state;
+	memset(&L, 0, sizeof L);
+	L.key = GL_KEY_TRACKS;
+	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
+	L.wide_header = true;
+	L.help = ts->pl ? MTL_HELP_PL : MTL_HELP;
+	L.nhelp = ts->pl ? 4 : 2;
+	L.n = ts->n;
+	L.cur = sel;
+	L.accent = MUSE_ACCENT;
+	L.ctx = a;
+	L.title = mtl_title;
+	L.value = mtl_value;
+	L.art = mtl_art;
+	L.empty = "No tracks";
+	L.phase = mq_phase(MQ_SHELF, -3, sel);
+	gl_geometry(&g, &L);
+	if (al >= 0) {
+		int y = g_year && g_year[al] > 0 ? g_year[al] : 0;
+		const char *who = g_muse.artists[muse_artist_of(al)].name;
+
+		/* An album's own name is the header; a playlist's track says it. */
+		if (ts->album >= 0) snprintf(line, sizeof line, y ? "%s  \xC2\xB7  %d" : "%s", who, y);
+		else snprintf(line, sizeof line, "%s  \xC2\xB7  %s", who, g_muse.albums[al].name);
+		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	}
+	if (loaded) {
+		mmss(t0, sizeof t0, mn->at);
+		mmss(t1, sizeof t1, mn->len);
+		snprintf(line, sizeof line, "%s%s  %s / %s", mn->state == MU_PAUSED ? "Paused: " : "",
+		         mn->title, t0, t1);
+		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	}
+	if (muse_toast_now())
+		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	else if (ts->n > 0)
+		snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, ts->n);
+
+	texload_drain(a);
+	draw_background(a);
+	if (is_muse(&a->sys.systems[a->sys_cursor])) {
+		SDL_Rect r;
+
+		gl_art_rect(&L, &r, NULL);       /* also puts the view on the cover */
+		prime_toward(a, a->sys_cursor, v->cursor);
+		evict_far(v, TEX_KEEP_NEAR);
+		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+	}
+	gl_draw(a, &L);
+	draw_chrome(a->r);
+	plat_present(a->r);
+}
+
+static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
+{
+	int sel = 0, done = 0, i, home = -1;
 	muse_exit how = MUSE_BACK;
 	menu_row *rows;
-	char (*vals)[24];
-	char heading[300], note[300], t0[16], t1[16];
-	const ml_album *al;
+	char note[300], t0[16], t1[16];
+	sysview *mv = muse_view(a);
+	bool list = mv && &a->view[a->sys_cursor] == mv;   /* borrows Muse's view for covers */
 
-	if (album < 0 || album >= g_muse.nalbums || g_muse.nartists == 0) return MUSE_BACK;
-	al = &g_muse.albums[album];
-	art = muse_artist_of(album);
-	rows = calloc((size_t)al->n + 4, sizeof *rows);
-	vals = calloc((size_t)al->n + 4, sizeof *vals);
-	if (!rows || !vals) { free(rows); free(vals); return MUSE_BACK; }
+	rows = calloc((size_t)ts->n + 4, sizeof *rows);
+	if (!rows) return MUSE_BACK;
+	if (list) home = mv->cursor;      /* the album cursor, put back on the way out */
 
 	/* On the track that is playing, when it is one of these. */
-	if (muse_playing_album(&i) == album) sel = i;
+	{
+		const char *p = musec_path();
+
+		for (i = 0; p[0] && i < ts->n; i++)
+			if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
+	}
 
 	if (now) {
 		how = muse_now_screen(a);
 		if (how != MUSE_BACK) done = 1;
-		else if (muse_playing_album(&i) == album) sel = i;
 	}
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
 	ui_pace pace = {0};
+	gl_scroll gs = { 0 };
 
 	while (!done && !want_quit && a->running) {
 		const mu_now *mn;
@@ -11166,12 +12181,10 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		mn = musec_now();
 		loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 		playing = musec_path();
-		plat_input_poll(&a->in);
+		gl_poll(a, &gs, true);
 
-		snprintf(heading, sizeof heading, "%s\n%s", al->name,
-		         g_muse.artists[art].name);
-		for (i = 0; i < al->n; i++, n++) {
-			const ml_track *t = &g_muse.tracks[al->first + i];
+		for (i = 0; i < ts->n; i++, n++) {
+			const ml_track *t = &g_muse.tracks[ts->trk[i]];
 			/* Every row a value, if only an empty one: a list with a value
 			 * anywhere is laid out in two columns, left-aligned, and one
 			 * without is centered. Without this the list sat centered until
@@ -11188,7 +12201,11 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 
 		/* What is playing, under a rule, even when it is another album's -
 		 * the list is a way to reach music, and the music is the point. */
-		if (loaded) {
+		if (muse_toast_now()) {
+			snprintf(note, sizeof note, "%s", g_muse_toast);
+			rows[n++] = MENU_RULE;
+			rows[n++] = MENU_NOTE(note);
+		} else if (loaded) {
 			mmss(t0, sizeof t0, mn->at);
 			mmss(t1, sizeof t1, mn->len);
 			snprintf(note, sizeof note, "%s%s  -  %s   %s / %s",
@@ -11201,6 +12218,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		if (items > 0) {
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + items - 1) % items;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % items;
+			gl_scroll_apply(&gs, &sel, items);
 		}
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
@@ -11213,18 +12231,27 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		if (a->in.pressed[IN_ACCEPT] && items > 0) {
 			/* The track already playing is not started over: A on it is the
 			 * way to its Now Playing, the same as the row. */
-			if (!loaded || strcmp(playing, g_muse.tracks[al->first + sel].path)) {
-				const char **paths = calloc((size_t)al->n, sizeof *paths);
+			if (!loaded || strcmp(playing, g_muse.tracks[ts->trk[sel]].path)) {
+				const char **paths = calloc((size_t)ts->n, sizeof *paths);
 
 				if (paths) {
-					for (i = 0; i < al->n; i++)
-						paths[i] = g_muse.tracks[al->first + i].path;
+					int al = ts->album >= 0 ? ts->album : muse_album_of_track(ts->trk[0]);
+					bool book = ts->album >= 0 && g_muse.albums[ts->album].book;
+
+					for (i = 0; i < ts->n; i++)
+						paths[i] = g_muse.tracks[ts->trk[i]].path;
 					/* A book's file from its start: choosing one is choosing
 					 * where to listen from, and the place moves with it. */
-					muse_play(paths, al->n, sel, 0, al->book,
-					          al->book ? book_speed(album) : 1.0,
-					          g_muse.artists[art].name, al->name);
+					muse_play(paths, ts->n, sel, 0, book,
+					          book ? book_speed(ts->album) : 1.0,
+					          al >= 0 ? g_muse.artists[muse_artist_of(al)].name : "",
+					          ts->album >= 0 ? g_muse.albums[ts->album].name : ts->head);
 					free(paths);
+					g_muse_from.set = true;
+					g_muse_from.pl = ts->pl != NULL;
+					snprintf(g_muse_from.name, sizeof g_muse_from.name, "%s", ts->pl ? ts->pl : "");
+					g_muse_from.tab = g_muse_list_up ? muse_tab() : -1;
+					g_muse_from.artist = muse_artist_filter();
 				}
 			}
 			open_now = true;
@@ -11239,7 +12266,54 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
 		}
-		/* After a rescan `al` is gone with the old library: not one more
+		if (a->in.pressed[IN_Y] && items > 0) {
+			muse_add_to_playlist(a, ts->trk[sel]);
+			continue;
+		}
+		/* A playlist's own keys (owner): X takes the track out, L2 and R2
+		 * move it up and down a place, the cursor going with it. */
+		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
+			char d[CFG_STR * 2 + 32];
+
+			muse_pl_dir(d, sizeof d);
+			if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
+				int gone = ts->ent[sel];
+
+				for (i = sel; i + 1 < ts->n; i++) {
+					ts->trk[i] = ts->trk[i + 1];
+					ts->ent[i] = ts->ent[i + 1];
+				}
+				ts->n--;
+				for (i = 0; i < ts->n; i++) if (ts->ent[i] > gone) ts->ent[i]--;
+				g_npls = -1;
+				muse_toast("Removed");
+			} else {
+				muse_toast("Could not remove");
+			}
+			continue;
+		}
+		if (ts->pl && items > 1 && (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2))) {
+			int j = sel + (in_repeat(&a->in, IN_R2) ? 1 : -1);
+			char d[CFG_STR * 2 + 32];
+
+			muse_pl_dir(d, sizeof d);
+			if (j >= 0 && j < items) {
+				/* The file's entries trade places; the rows' entry numbers
+				 * stay with the rows, so only the tracks swap here. */
+				if (pl_swap(d, ts->pl, ts->ent[sel], ts->ent[j])) {
+					int t = ts->trk[sel];
+
+					ts->trk[sel] = ts->trk[j];
+					ts->trk[j] = t;
+					sel = j;
+					ui_redraw_now();
+				} else {
+					muse_toast("Could not move");
+				}
+			}
+			continue;
+		}
+		/* After a rescan the library `ts` points into is gone: not one more
 		 * frame from it. */
 		if (a->in.pressed[IN_MENU]) {
 			how = muse_menu(a);
@@ -11250,29 +12324,103 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		/* Back from Now Playing onto the track it had reached, which may be
 		 * several past the one chosen. */
 		if (open_now) {
+			const char *p;
+
 			how = muse_now_screen(a);
 			if (how != MUSE_BACK) break;
-			if (muse_playing_album(&i) == album) sel = i;
+			p = musec_path();
+			for (i = 0; p[0] && i < ts->n; i++)
+				if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
 			continue;
 		}
 
-		/* The rows carry the playing track and its time, so a track
-		 * playing is a frame a second and a paused one is none. */
-		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+		/* The rows are not drawn (the list is), but they carry the playing
+		 * track and its time: a fingerprint that makes a track playing a
+		 * frame a second and a paused one none. */
+		if (!screen_draw_due(a, &pace, menu_fingerprint(ts->head, rows, n, sel))) {
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		muse_backdrop(a);
-		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
-		draw_chrome(a->r);
-		plat_present(a->r);
+		muse_tracks_draw_list(a, ts, sel, mn, loaded, playing);
 	}
 
+	/* The album cursor the track list borrowed for its covers. */
+	if (list && how != MUSE_REBUILT && mv->cursor != home && home >= 0 &&
+	    home < mv->list.count) {
+		mv->cursor = home;
+		cf_reset(&mv->cf, home);
+	}
 	free(rows);
-	free(vals);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	return how;
+}
+
+static muse_exit muse_tracks(app *a, int album, bool now)
+{
+	const ml_album *al;
+	muse_tset ts;
+	int *trk, i;
+	muse_exit how;
+
+	if (album < 0 || album >= g_muse.nalbums || g_muse.nartists == 0) return MUSE_BACK;
+	al = &g_muse.albums[album];
+	if (!(trk = calloc((size_t)al->n + 1, sizeof *trk))) return MUSE_BACK;
+	for (i = 0; i < al->n; i++) trk[i] = al->first + i;
+	ts = (muse_tset){ trk, al->n, album, al->name,
+	                  g_muse.artists[muse_artist_of(album)].name, NULL, NULL };
+	how = muse_tset_run(a, &ts, now);
+	free(trk);
+	return how;
+}
+
+/* A playlist as a track list: its entries that are in the library, each
+ * remembering its line in the file so MENU can remove that one. */
+static muse_exit muse_playlist_open(app *a, int idx, bool now)
+{
+	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], **v;
+	int *trk, *ent, n, i, m = 0;
+	muse_tset ts;
+	muse_exit how;
+
+	if (idx < 0 || idx >= g_npls) return MUSE_BACK;
+	snprintf(name, sizeof name, "%s", g_pls[idx].name);
+	muse_pl_dir(d, sizeof d);
+	if ((n = pl_read(d, name, P_CARD, &v)) < 0) { muse_toast("Could not read it"); return MUSE_BACK; }
+	trk = calloc((size_t)n + 1, sizeof *trk);
+	ent = calloc((size_t)n + 1, sizeof *ent);
+	for (i = 0; trk && ent && i < n; i++) {
+		int t = muse_track_by_path(v[i]);
+
+		if (t >= 0) { trk[m] = t; ent[m] = i; m++; }
+	}
+	pl_free(v, n);
+	if (!trk || !ent) { free(trk); free(ent); return MUSE_BACK; }
+	ts = (muse_tset){ trk, m, -1, name, NULL, name, ent };
+	how = muse_tset_run(a, &ts, now);
+	free(trk);
+	free(ent);
+	g_npls = -1;
+	return how;
+}
+
+/* The playlist (its row in g_pls) the playing music was started from, while
+ * it still holds the track that is playing; else -1. */
+static int muse_from_playlist(void)
+{
+	char d[CFG_STR * 2 + 32], **v;
+	const char *p = musec_path();
+	int i, n, hit = 0;
+
+	if (!g_muse_from.set || !g_muse_from.pl || !p[0]) return -1;
+	muse_playlists_load();
+	for (i = 0; i < g_npls; i++) if (!strcmp(g_pls[i].name, g_muse_from.name)) break;
+	if (i == g_npls) return -1;
+	muse_pl_dir(d, sizeof d);
+	if ((n = pl_read(d, g_muse_from.name, P_CARD, &v)) < 0) return -1;
+	for (int k = 0; k < n && !hit; k++) hit = !strcmp(v[k], p);
+	pl_free(v, n);
+	return hit ? i : -1;
 }
 
 /* SELECT, from anywhere but a running game - the shelf, every menu, and the
@@ -11318,7 +12466,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		g_menu_closing = false;
 		return g_muse_gone;
 	}
-	muse_shelf_screen(a, mn->state == MU_PLAYING || mn->state == MU_PAUSED);
+	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
+	 * one left, whatever is playing (owner, plorpos-era.9). */
+	muse_shelf_screen(a, !g_muse_card && (mn->state == MU_PLAYING || mn->state == MU_PAUSED));
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
 	/* Nothing Muse did closes the menu it may have been opened over. */
@@ -11404,38 +12554,19 @@ static void muse_refilter(sysview *v, int album)
 	ui_redraw_now();
 }
 
-/* Y on the shelf (plorpos-3yv.98): a tap marks or unmarks the album under the
- * cursor; held, the Favorites view on or off. */
+/* Y on an album (plorpos-3yv.98): marks or unmarks the one under the
+ * cursor. */
 static void muse_fav_tap(sysview *v)
 {
 	if (v->list.count <= 0) return;
 	muse_fav_flip(v->list.items[v->cursor].file);
-	/* Unmarked in the view, it leaves it - and the last one ends it. */
+	/* Unmarked on the Favorites tab, it leaves it - and the last one leaves
+	 * the tab empty (muse_order_view ends the filter). */
 	if (g_muse_favs) muse_refilter(v, v->album[v->cursor]);
 	else ui_redraw_now();
 }
 
-static void muse_fav_hold(sysview *v)
-{
-	int al = v->list.count > 0 ? v->album[v->cursor] : -1, k;
-	char dir[LIB_PATH];
-
-	if (!g_muse_favs) {
-		for (k = 0; k < v->list.count; k++) {
-			muse_album_dir(v->album[k], dir, sizeof dir);
-			if (muse_fav_is(dir)) break;
-		}
-		if (k == v->list.count) {
-			g_muse_note_until = SDL_GetTicks() + 2000;
-			ui_redraw_now();
-			return;
-		}
-	}
-	g_muse_favs = !g_muse_favs;
-	muse_refilter(v, al);
-}
-
-/* ---- Muse: Display, Artist List (plorpos-mn1; design at g_muse_artists) ------ */
+/* ---- Muse: the artist filter (plorpos-mn1) ---------------------------------- */
 
 /* The artist the shelf is filtered to, or -1. A Rescan renumbers the library,
  * so an index from an older one is found again by name, and given up when the
@@ -11473,8 +12604,6 @@ static void muse_set_filter(sysview *v, int ar, int album)
 	ui_redraw_now();
 }
 
-enum { MP_LEAVE = -1, MP_FLAT = -2 };
-
 /* The initial an artist is listed under, for the jump. */
 static int muse_initial(int ar)
 {
@@ -11483,49 +12612,501 @@ static int muse_initial(int ar)
 	return isalpha(c) ? toupper(c) : '#';
 }
 
-/* The artist list: one row per artist of the kind shown, with how many albums
- * it has. A picks one (its index), B and SELECT leave Muse (MP_LEAVE), and
- * MENU is Muse's menu, which may turn Display back to Coverflow (MP_FLAT).
- * `start` is the artist to stand on, or -1. Built once, and again after a
- * Rescan; a frame draws only the rows in view and only when something moved. */
-static int muse_artist_pick(app *a, int start)
+/* ---- Muse: the tabs (plorpos-era) -----------------------------------------
+ *
+ * Four tabs, L2 and R2 between them and the footer naming them (owner,
+ * 2026-11-13): Artists, as the old Artist List but drawn as a list; Albums,
+ * every album with its cover and year as a Detailed List shows a game;
+ * Playlists; and Coverflow, the shelf of covers that was Display: Coverflow
+ * before there were tabs (plorpos-era.8). A on an artist opens that artist's
+ * albums the same way, and B comes back to the artist. Showing audiobooks the
+ * tabs are Authors, Books and Coverflow. A tab's number is the same either
+ * way (books skip Playlists), so the one remembered stays meaningful.
+ *
+ * Albums are Muse's own view (the coverflow's): its order, its favorites
+ * filter, its artist filter and its covers, so the list and the coverflow
+ * can never disagree about what is on the shelf. */
+static int g_muse_tab = -1;              /* -1: not read from the db yet */
+
+/* The tabs in footer order. A tab's number never changes, so the one
+ * remembered stays meaningful; the order is what moves (plorpos-era.10). */
+static int g_mt_order[MT_N] = { MT_ARTISTS, MT_ALBUMS, MT_FAVORITES, MT_PLAYLISTS,
+                                MT_COVERFLOW };
+static bool g_mt_on[MT_N] = { true, true, true, true, true };
+
+/* Tab Settings' order and switches (owner, plorpos-era.10): "muse.tabs" is
+ * the tab numbers in order, a '!' before one that is off ("0,1,4,!2,3"). One
+ * order for music and books. A tab missing from it (newer than the setting)
+ * goes on at the end; anything unreadable is the default. */
+static void muse_tabs_load(void)
 {
-	int *ix = NULL, n = 0, sel = 0, ret = MP_LEAVE, i;
-	menu_row *rows = NULL;
-	char (*vals)[12] = NULL;
-	bool build = true, books = muse_books_shown();
+	char buf[64], *p, *e;
+	int order[MT_N], n = 0, t, i;
+	bool on[MT_N], seen[MT_N] = { false };
+
+	db_get_str(db_dev(), "muse.tabs", buf, sizeof buf, "");
+	if (!buf[0]) return;
+	for (p = buf; *p && n < MT_N; p = *e ? e + 1 : e) {
+		bool off = *p == '!';
+
+		t = (int)strtol(p + off, &e, 10);
+		if (e == p + off || (*e && *e != ',') || t < 0 || t >= MT_N || seen[t]) return;
+		seen[t] = true;
+		on[n] = !off;
+		order[n++] = t;
+	}
+	for (t = 0; t < MT_N; t++) if (!seen[t]) { on[n] = true; order[n++] = t; }
+	for (i = 0; i < MT_N; i++) { g_mt_order[i] = order[i]; g_mt_on[order[i]] = on[i]; }
+}
+
+static void muse_tabs_save(void)
+{
+	char buf[64];
+	int len = 0, i;
+
+	for (i = 0; i < MT_N; i++)
+		len += snprintf(buf + len, sizeof buf - (size_t)len, "%s%s%d", i ? "," : "",
+		                g_mt_on[g_mt_order[i]] ? "" : "!", g_mt_order[i]);
+	db_set_str(db_dev(), "muse.tabs", buf);
+}
+
+static bool muse_tab_shown(int t)
+{
+	return t >= 0 && t < MT_N && g_mt_on[t] &&
+	       (t != MT_PLAYLISTS || !muse_books_shown());
+}
+
+static int muse_tab_pos(int t)
+{
+	for (int i = 0; i < MT_N; i++) if (g_mt_order[i] == t) return i;
+	return 0;
+}
+
+/* The next tab shown from `t`, `d` = +1 or -1, wrapping. */
+static int muse_tab_step(int t, int d)
+{
+	int p = muse_tab_pos(t), i;
+
+	for (i = 0; i < MT_N; i++) {
+		p = (p + d + MT_N) % MT_N;
+		if (muse_tab_shown(g_mt_order[p])) return g_mt_order[p];
+	}
+	return t;
+}
+
+/* The first tab shown, in footer order. */
+static int muse_tab_first(void)
+{
+	for (int i = 0; i < MT_N; i++) if (muse_tab_shown(g_mt_order[i])) return g_mt_order[i];
+	return MT_ARTISTS;
+}
+
+static void muse_tab_set(int t);
+
+/* The tab Muse is on, remembered across visits (owner). Before there were
+ * tabs a Display of Coverflow was the shelf of covers: that comes back as the
+ * Coverflow tab, the first time only. */
+static int muse_tab(void)
+{
+	if (g_muse_tab < 0) {
+		int t = db_get_int(db_dev(), "muse.tab", -1);
+
+		if (t < 0) {
+			char d[16];
+
+			db_get_str(db_dev(), "muse.display", d, sizeof d, "");
+			muse_tab_set(!strcmp(d, "coverflow") ? MT_COVERFLOW : MT_ARTISTS);
+		} else {
+			g_muse_tab = t;
+		}
+	}
+	return muse_tab_shown(g_muse_tab) ? g_muse_tab : muse_tab_first();
+}
+
+static void muse_tab_set(int t)
+{
+	g_muse_tab = t;
+	db_set_int(db_dev(), "muse.tab", t);
+}
+
+/* The artists of the kind shown, with their album counts. Built again when
+ * the library or the kind changes. */
+static struct { int *ix; char (*val)[12]; int n, gen; bool books; } g_mar;
+
+static void muse_artists_build(void)
+{
+	bool books = muse_books_shown();
+	int i, cnt = 0;
+
+	if (g_mar.ix && g_mar.gen == g_muse_gen && g_mar.books == books) return;
+	free(g_mar.ix);
+	free(g_mar.val);
+	memset(&g_mar, 0, sizeof g_mar);
+	for (i = 0; i < g_muse.nartists; i++)
+		if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
+	g_mar.ix = calloc((size_t)cnt + 1, sizeof *g_mar.ix);
+	g_mar.val = calloc((size_t)cnt + 1, sizeof *g_mar.val);
+	if (!g_mar.ix || !g_mar.val) return;
+	for (i = 0; i < g_muse.nartists; i++) {
+		if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
+		snprintf(g_mar.val[g_mar.n], sizeof g_mar.val[0], "%d", g_muse.artists[i].n);
+		g_mar.ix[g_mar.n++] = i;
+	}
+	g_mar.gen = g_muse_gen;
+	g_mar.books = books;
+}
+
+static int muse_artist_row(int ar)
+{
+	for (int i = 0; i < g_mar.n; i++)
+		if (g_mar.ix[i] == ar) return i;
+	return 0;
+}
+
+static const char *mar_title(void *ctx, int i) { (void)ctx; return g_muse.artists[g_mar.ix[i]].name; }
+static const char *mar_value(void *ctx, int i) { (void)ctx; return g_mar.val[i]; }
+
+/* An album row without the folder's leading year, which the line under the
+ * cover already shows (owner, plorpos-era.15) - kept when there is no year
+ * to show there. The coverflow keeps the folder's name as it is. */
+static const char *mal_title(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = v->album ? v->album[i] : -1;
+
+	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title);
+	return v->list.items[i].title;
+}
+
+static bool mal_fav(void *ctx, int i)
+{
+	app *a = ctx;
+
+	return muse_fav_is(a->view[a->sys_cursor].list.items[i].file);
+}
+
+/* A tab's name, by tab number, for the kind shown. */
+static const char *muse_tab_name(int t)
+{
+	static const char *const MUSIC[MT_N] = { "Artists", "Albums", "Playlists", "Coverflow", "Favorites" };
+	static const char *const BOOKS[MT_N] = { "Authors", "Books", "Playlists", "Coverflow", "Favorites" };
+
+	return (muse_books_shown() ? BOOKS : MUSIC)[t];
+}
+
+/* The footer's part of a Muse screen: which tabs, in order, and which one is
+ * lit. */
+static void muse_tabs_into(gl_list *L)
+{
+	static const char *names[MT_N];
+	int tab = muse_tab(), n = 0, i;
+
+	for (i = 0; i < MT_N; i++) {
+		int t = g_mt_order[i];
+
+		if (!muse_tab_shown(t)) continue;
+		if (t == tab) L->tab = n;
+		names[n++] = muse_tab_name(t);
+	}
+	L->tabs = names;
+	L->ntabs = n;
+}
+
+/* The tab at footer place `pos` (muse_tabs_into's), or -1. */
+static int muse_tab_at(int pos)
+{
+	for (int i = 0; i < MT_N; i++)
+		if (muse_tab_shown(g_mt_order[i]) && pos-- == 0) return g_mt_order[i];
+	return -1;
+}
+
+/* ---- Muse: Tab Settings (plorpos-era.10) ------------------------------------
+ *
+ * Every tab in footer order, On or Off at the row's end. A, Left or Right
+ * switches the one under the cursor; L2 and R2 move it up and down a place,
+ * the cursor with it - the footer and L2/R2 follow the same order. One of
+ * the tabs both kinds have stays on, so Muse always has a tab to open on. */
+static const char *const MTS_HELP[] = { "A", "On/Off", "L2/R2", "Move", "B", "Back" };
+
+static const char *mts_title(void *ctx, int i) { (void)ctx; return muse_tab_name(g_mt_order[i]); }
+static const char *mts_value(void *ctx, int i) { (void)ctx; return g_mt_on[g_mt_order[i]] ? "On" : "Off"; }
+
+static void muse_tabs_screen(app *a)
+{
+	int sel = muse_tab_pos(muse_tab()), i;
 	ui_pace pace = {0};
+	gl_list L;
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	while (!want_quit && a->running) {
-		if (build) {
-			int cnt = 0;
+		muse_screen_poll();
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; break; }
+		if (power_check(a) == PWR_POWEROFF) { muse_power(a); break; }
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_MENU] || a->in.pressed[IN_SELECT]) break;
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + MT_N - 1) % MT_N;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % MT_N;
+		vol_keys(&a->in);
+		if (a->in.pressed[IN_ACCEPT] || in_repeat(&a->in, IN_LEFT) || in_repeat(&a->in, IN_RIGHT)) {
+			int t = g_mt_order[sel], left = 0;
 
-			free(ix); free(rows); free(vals);
-			books = muse_books_shown();
-			for (i = 0; i < g_muse.nartists; i++)
-				if (g_muse.artists[i].n > 0 && g_muse.artists[i].book == books) cnt++;
-			ix = calloc((size_t)cnt + 1, sizeof *ix);
-			rows = calloc((size_t)cnt + 1, sizeof *rows);
-			vals = calloc((size_t)cnt + 1, sizeof *vals);
-			if (!ix || !rows || !vals) break;
-			for (i = 0, n = 0; i < g_muse.nartists; i++) {
-				if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
-				ix[n] = i;
-				snprintf(vals[n], sizeof vals[n], "%d", g_muse.artists[i].n);
-				rows[n] = (menu_row){ g_muse.artists[i].name, vals[n], true };
-				if (i == start) sel = n;
-				n++;
+			for (i = 0; i < MT_N; i++)
+				if (i != t && i != MT_PLAYLISTS && g_mt_on[i]) left++;
+			if (g_mt_on[t] && t != MT_PLAYLISTS && left == 0) {
+				muse_toast("One tab stays on");
+			} else {
+				g_mt_on[t] = !g_mt_on[t];
+				muse_tabs_save();
 			}
-			if (n == 0) { rows[0] = (menu_row){ "Nothing here", "", false }; }
-			if (sel >= n) sel = n ? n - 1 : 0;
-			build = false;
-			ui_redraw_now();
 		}
+		if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2)) {
+			int j = sel + (in_repeat(&a->in, IN_R2) ? 1 : -1);
+
+			if (j >= 0 && j < MT_N) {
+				int t = g_mt_order[sel];
+
+				g_mt_order[sel] = g_mt_order[j];
+				g_mt_order[j] = t;
+				sel = j;
+				muse_tabs_save();
+			}
+		}
+		if (!screen_draw_due(a, &pace, (Uint32)(sel * 31 + (muse_toast_now() != NULL)))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		memset(&L, 0, sizeof L);
+		L.key = GL_KEY_TABS;
+		L.header = "Tab Settings";
+		L.accent = MUSE_ACCENT;
+		L.n = MT_N;
+		L.cur = sel;
+		L.title = mts_title;
+		L.value = mts_value;
+		L.help = MTS_HELP;
+		L.nhelp = 3;
+		L.toast = muse_toast_now();
+		draw_background(a);
+		gl_draw(a, &L);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
+/* The albums view follows the tab: only the marked ones on Favorites. None
+ * marked, the view stays whole and the tab says so (an empty Muse view reads
+ * as no Muse at all). */
+static void muse_favs_sync(sysview *v, int tab)
+{
+	bool want = tab == MT_FAVORITES;
+
+	if (g_muse_favs == want) return;
+	g_muse_favs = want;
+	muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
+}
+
+/* What a List-display Muse screen shows: the artists, or the albums (all,
+ * favorites, or one artist's). `asel` is the artist row. */
+static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
+static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
+
+static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L)
+{
+	bool books = muse_books_shown();
+	int tab = muse_tab(), ar = muse_artist_filter();
+
+	memset(L, 0, sizeof *L);
+	L->accent = MUSE_ACCENT;
+	L->ctx = a;
+	muse_tabs_into(L);
+	L->toast = muse_toast_now();
+	if (tab == MT_ARTISTS && ar < 0) {
+		L->key = GL_KEY_ARTISTS;
+		L->header = books ? "Authors" : "Artists";
+		L->n = g_mar.n;
+		L->cur = asel;
+		L->title = mar_title;
+		L->value = mar_value;
+		L->empty = "Nothing here";
+		L->phase = mq_phase(MQ_SHELF, -2, asel);
+		return;
+	}
+	if (tab == MT_PLAYLISTS) {
+		muse_playlists_load();
+		L->key = GL_KEY_PLAYLISTS;
+		L->header = "Playlists";
+		L->n = g_npls;
+		L->cur = psel;
+		L->title = mpl_title;
+		L->value = mpl_value;
+		L->empty = "No playlists yet. Y on a track adds one.";
+		L->phase = mq_phase(MQ_SHELF, -4, psel);
+		return;
+	}
+	/* Albums: the view. */
+	L->key = a->sys_cursor + 1;
+	L->header = ar >= 0 ? g_muse.artists[ar].name
+	          : tab == MT_FAVORITES ? (books ? "Favorite Books" : "Favorite Albums")
+	          : books ? "Books" : "Albums";
+	L->n = tab == MT_FAVORITES && !g_muse_favs ? 0 : v->list.count;
+	L->cur = v->cursor;
+	L->title = mal_title;
+	L->fav = mal_fav;
+	L->art = gl_game_art;
+	L->empty = tab != MT_FAVORITES ? "Nothing here"
+	         : books ? "No favorite books yet. Y on a book marks it."
+	         : "No favorite albums yet. Y on an album marks it.";
+	L->phase = title_phase(a);
+	/* As the track list: a long artist's name runs over the cover to the
+	 * battery, and the cover sits between the header and the footer (owner,
+	 * plorpos-era.12). */
+	L->wide_header = true;
+	if (L->n > 0 && v->album) {
+		int al = v->album[v->cursor], y = g_year && g_year[al] > 0 ? g_year[al] : 0;
+		const char *who = ar < 0 ? g_muse.artists[muse_artist_of(al)].name : "";
+		char line[160];
+
+		/* The year, and on a list of every artist's albums whose they are. */
+		if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
+		else if (y)    snprintf(line, sizeof line, "%d", y);
+		else           snprintf(line, sizeof line, "%s", who);
+		if (*line) {
+			gl_geom g;
+
+			gl_geometry(&g, L);
+			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+		}
+	}
+	if (L->n > 0) {
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
+	}
+	/* The header is wide, so a passing word goes under the cover. */
+	if (L->toast && *L->toast && L->nunder < 3)
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
+}
+
+static void muse_list_draw(app *a, sysview *v, int asel, int psel)
+{
+	gl_list L;
+
+	texload_drain(a);
+	muse_list_describe(a, v, asel, psel, &L);
+	draw_background(a);
+	if (L.art) {
+		SDL_Rect r;
+
+		/* Not while a long jump is cutting: the covers in view are the
+		 * cursor's (evict_far's rule, as the coverflow). */
+		prime_toward(a, a->sys_cursor, v->cursor);
+		evict_far(v, TEX_KEEP_NEAR);
+		gl_art_rect(&L, &r, NULL);
+		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+	}
+	gl_draw(a, &L);
+	draw_chrome(a->r);
+	plat_present(a->r);
+}
+
+/* The artist row's letter jump: the next initial, or the top of this one,
+ * else the top of the one before. */
+static int muse_artist_jump(int sel, int dir)
+{
+	int n = g_mar.n, i;
+
+	if (n <= 0) return 0;
+	if (dir > 0) {
+		int c0 = muse_initial(g_mar.ix[sel]);
+
+		for (i = 1; i < n; i++)
+			if (muse_initial(g_mar.ix[(sel + i) % n]) != c0) return (sel + i) % n;
+		return sel;
+	}
+	{
+		int s = sel;
+
+		while (s > 0 && muse_initial(g_mar.ix[s - 1]) == muse_initial(g_mar.ix[sel])) s--;
+		if (s != sel) return s;
+		sel = sel > 0 ? sel - 1 : n - 1;
+		while (sel > 0 && muse_initial(g_mar.ix[sel - 1]) == muse_initial(g_mar.ix[sel])) sel--;
+		return sel;
+	}
+}
+
+/* Muse, until it closes: the tabs, the Coverflow tab among them. `*vp` is
+ * found again after a rescan. `now` with `playing`: straight to that album's
+ * tracks, over the tab it was played from, which B comes back to (owner). */
+static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
+{
+	sysview *v = *vp;
+	int synced = -1;                  /* the tab the albums view was filtered for */
+	ui_pace pace = {0};
+
+	g_mls_asel = g_mls_psel = 0;
+	g_muse_list_up = true;
+	muse_artists_build();
+	if (playing >= 0 && g_muse.albums[playing].book == muse_books_shown()) {
+		int pa = muse_artist_of(playing);
+
+		g_mls_asel = muse_artist_row(pa);
+		if (now) {
+			muse_exit how;
+			int fp = muse_from_playlist();
+
+			/* Back to where it was started: a playlist's tracks over the
+			 * Playlists tab, an album's over the Albums tab or its artist. */
+			if (fp >= 0) {
+				muse_tab_set(MT_PLAYLISTS);
+				g_mls_psel = fp;
+				how = muse_playlist_open(a, fp, true);
+			} else {
+				int ft = g_muse_from.tab;
+
+				if (g_muse_from.set && (ft == MT_ALBUMS || ft == MT_COVERFLOW ||
+				                        ft == MT_FAVORITES) && g_muse_from.artist < 0) {
+					muse_tab_set(ft);
+					g_muse_favs = ft == MT_FAVORITES;
+					muse_set_filter(v, -1, playing);
+				} else {
+					muse_tab_set(MT_ARTISTS);
+					g_muse_favs = false;
+					muse_set_filter(v, pa, playing);
+				}
+				how = muse_tracks(a, playing, true);
+			}
+			if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return; }
+			if (how == MUSE_REBUILT) {
+				if (!(v = muse_shelf_refind(a))) { g_muse_list_up = false; return; }
+				muse_artists_build();
+			}
+		}
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+
+	ui_hit_take();          /* a tap from before this screen is not ours */
+	gl_scroll gs = { 0 };
+	while (!want_quit && a->running) {
+		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
+		bool cover = tab == MT_COVERFLOW, favs = tab == MT_FAVORITES;
+		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
+		bool artists = tab == MT_ARTISTS && !drilled;
+		bool lists = tab == MT_PLAYLISTS;
+		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
+		gl_list L;
+		unsigned ft0, ft1;
+
+		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
+		if (lists) muse_playlists_load();
+		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
+		  : artists ? g_mar.n : lists ? g_npls : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
-		plat_input_poll(&a->in);
+		gl_poll(a, &gs, !cover);   /* the Coverflow tab steps as the shelf does */
+		ft0 = g_ft ? ft_us() : 0;
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
 			pwr_action pa = power_check(a);
@@ -11535,92 +13116,155 @@ static int muse_artist_pick(app *a, int start)
 			if (muse_switch_unwind(a)) break;
 			continue;
 		}
+		if (a->in.pressed[IN_BACK] && drilled && tab == MT_ARTISTS) {
+			/* One level up: the artists, standing on this one. */
+			g_mls_asel = muse_artist_row(muse_artist_filter());
+			muse_set_filter(v, -1, -1);
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+		{
+			int hit = ui_hit_take(), t = -1;   /* a footer tab tapped */
 
-		if (n > 0) {
-			if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
-			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
-			if (in_repeat(&a->in, IN_L1))   sel = ((sel - 8) % n + n) % n;
-			if (in_repeat(&a->in, IN_R1))   sel = (sel + 8) % n;
-			if (in_repeat(&a->in, IN_RIGHT)) {
-				int c0 = muse_initial(ix[sel]);
-
-				for (i = 1; i < n; i++)
-					if (muse_initial(ix[(sel + i) % n]) != c0) { sel = (sel + i) % n; break; }
+			if (hit >= GL_HIT_TAB) t = muse_tab_at(hit - GL_HIT_TAB);
+			if (in_repeat(&a->in, IN_L2) || in_repeat(&a->in, IN_R2))
+				t = muse_tab_step(tab, in_repeat(&a->in, IN_R2) ? 1 : -1);
+			if (t >= 0) {
+				/* Out of an artist's albums onto every album, still on this one. */
+				if (drilled) muse_set_filter(v, -1, v->album && v->list.count > 0
+				                                    ? v->album[v->cursor] : -1);
+				muse_tab_set(t);
+				/* The coverflow stands still on the album the lists were on. */
+				if (t == MT_COVERFLOW && v->list.count > 0) cf_reset(&v->cf, v->cursor);
+				ui_redraw_now();
+				continue;
 			}
-			if (in_repeat(&a->in, IN_LEFT)) {
-				/* The top of this initial, else the top of the one before. */
-				int s = sel;
+		}
+		/* The Coverflow tab moves as the shelf of covers always did: Left
+		 * and Right a card, Up and Down a letter, L1 and R1 a window. */
+		if (cover && n > 0) {
+			int dir = 0;
 
-				while (s > 0 && muse_initial(ix[s - 1]) == muse_initial(ix[sel])) s--;
-				if (s == sel) {
-					sel = sel > 0 ? sel - 1 : n - 1;
-					while (sel > 0 && muse_initial(ix[sel - 1]) == muse_initial(ix[sel])) sel--;
-				} else sel = s;
-			}
+			if (in_repeat(&a->in, IN_LEFT))  { v->cursor = (v->cursor - 1 + n) % n; dir = -1; }
+			if (in_repeat(&a->in, IN_RIGHT)) { v->cursor = (v->cursor + 1) % n; dir = +1; }
+			if (in_repeat(&a->in, IN_DOWN))  v->cursor = shelf_letter_jump(v, +1);
+			if (in_repeat(&a->in, IN_UP))    v->cursor = shelf_letter_jump(v, -1);
+			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
+			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
+		}
+		muse_list_describe(a, v, g_mls_asel, g_mls_psel, &L);
+		if (n > 0 && !cover) {
+			int page = gl_rows(&L);
+
+			if (*cur >= n) *cur = n - 1;
+			if (in_repeat(&a->in, IN_UP))   *cur = (*cur + n - 1) % n;
+			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
+			if (in_repeat(&a->in, IN_L1))   *cur = gl_page_step(*cur, n, page, -1);
+			if (in_repeat(&a->in, IN_R1))   *cur = gl_page_step(*cur, n, page, +1);
+			if (in_repeat(&a->in, IN_RIGHT) && !lists)
+				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
+			if (in_repeat(&a->in, IN_LEFT) && !lists)
+				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
+			gl_scroll_apply(&gs, cur, n);
+			if (albums) cf_reset(&v->cf, v->cursor);
 		}
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
-		if (a->in.pressed[IN_ACCEPT] && n > 0) { ret = ix[sel]; break; }
-		if (a->in.pressed[IN_MENU]) {
-			muse_exit how;
+		/* Y marks the album under the cursor, or unmarks it. */
+		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);
 
-			start = n > 0 ? ix[sel] : -1;
-			how = muse_menu(a);
+		if (a->in.pressed[IN_ACCEPT] && n > 0) {
+			if (artists) {
+				muse_set_filter(v, g_mar.ix[g_mls_asel], -1);
+			} else if (lists) {
+				muse_exit how = muse_playlist_open(a, g_mls_psel, false);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
+					muse_artists_build();
+				}
+			} else if (albums) {
+				muse_exit how = muse_album(a, v, v->cursor);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
+					muse_artists_build();
+				}
+			}
+			ui_redraw_now();
+			continue;
+		}
+		/* Y - the Rotate's long press - on a playlist: Delete (asked first)
+		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
+		 * tab (owner, plorpos-3yv.110.1). */
+		if (a->in.pressed[IN_Y] && lists && n > 0) {
+			static const char *const OPTS[] = { "Delete", "Rename" };
+			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
+			int k;
+
+			muse_pl_dir(d, sizeof d);
+			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
+			k = muse_pick_run(a, name, OPTS, 2);
+			if (k == 0) {
+				snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
+				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
+					muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
+					g_npls = -1;
+					muse_playlists_load();
+					if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
+				}
+			} else if (k == 1) {
+				snprintf(to, sizeof to, "%s", name);
+				if (muse_name_prompt(a, "Rename Playlist", to, (int)sizeof to) && strcmp(to, name)) {
+					if (pl_rename(d, name, to)) snprintf(msg, sizeof msg, "Renamed to %s", to);
+					else snprintf(msg, sizeof msg, "%s already exists", to);
+					g_npls = -1;
+					muse_toast(msg);
+				}
+			}
+			ui_redraw_now();
+			continue;
+		}
+		if (a->in.pressed[IN_MENU]) {
+			muse_exit how = muse_menu(a);
+
 			if (how == MUSE_CLOSE) break;
-			if (!muse_shelf_refind(a)) break;
-			if (!g_muse_artists) { ret = MP_FLAT; break; }
-			if (how == MUSE_REBUILT || books != muse_books_shown()) { build = true; sel = 0; }
+			if (!(v = muse_shelf_refind(a))) break;
+			synced = -1;
+			muse_artists_build();
+			if (g_mls_asel >= g_mar.n) g_mls_asel = 0;
 			ui_redraw_now();
 			continue;
 		}
 
-		/* Nothing but the cursor changes what is drawn. */
-		if (!screen_draw_due(a, &pace, (unsigned)sel + 1u)) {
-			SDL_Delay(IDLE_POLL_MS);
-			continue;
+		if (screen_draw_due(a, &pace, (Uint32)(tab * 7919 + *cur * 31 + drilled * 3 +
+		                                      g_muse_favs + n * 131 + (muse_toast_now() != NULL)))) {
+			ft1 = g_ft ? ft_us() : 0;
+			if (cover) {
+				/* draw_shelf's, as the coverflow; draw_games puts the
+				 * tabs where its rail was. */
+				tick_tint(a);
+				render(a);
+			} else {
+				muse_list_draw(a, v, g_mls_asel, g_mls_psel);
+			}
+			ft_frame(cover ? "Muse" : "Muse list", ft0, ft1, ft_us(), *cur, n);
 		}
-		muse_backdrop(a);
-		g_menu_full = true;
-		menu_draw(a, books ? "Authors" : "Artists", rows, n ? n : 1, n ? sel : -1,
-		          TORTOS_SCREEN_W - menu_pad() * 2, MUSE_ACCENT);
-		g_menu_full = false;
-		draw_chrome(a->r);
-		plat_present(a->r);
+		else
+			SDL_Delay(IDLE_POLL_MS);
 	}
-	free(ix); free(rows); free(vals);
+	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
+	*vp = v;
+	g_muse_list_up = false;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
-	return ret;
-}
-
-/* The artist list, then the shelf onto what it chose. False when Muse is to
- * close. `*v` is found again, a menu inside the list may have rescanned. */
-static bool muse_to_picker(app *a, sysview **v, int start, int album)
-{
-	int ar = muse_artist_pick(a, start);
-	sysview *nv;
-
-	if (ar == MP_LEAVE || want_quit || !a->running || g_muse_gone || g_muse_sw) return false;
-	if (!(nv = muse_shelf_refind(a))) return false;
-	*v = nv;
-	muse_set_filter(nv, ar >= 0 ? ar : -1, album);
-	return true;
-}
-
-/* After the menu (or anything that rebuilds the library): the shelf is to be
- * what Display says - the artist list when it is on and no artist is chosen,
- * all albums when it is off. False when Muse is to close. */
-static bool muse_display_sync(app *a, sysview **v)
-{
-	if (g_muse_artists && muse_artist_filter() < 0) {
-		muse_set_filter(*v, -1, -1);
-		return muse_to_picker(a, v, -1, -1);
-	}
-	if (!g_muse_artists && muse_artist_filter() >= 0) muse_set_filter(*v, -1, -1);
-	return true;
 }
 
 /* MUSE'S SHELF, OPENED ON TOP OF WHATEVER WAS ON SCREEN. Eric's, 2026-09-20.
@@ -11643,12 +13287,8 @@ static bool muse_display_sync(app *a, sysview **v)
 static void muse_shelf_screen(app *a, bool now)
 {
 	int prev_screen = a->screen, prev_sys = a->sys_cursor;
-	bool vert = CARD_DIRS[g_dir].vertical;
-	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
-	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	sysview *v;
 	int muse = -1, i, playing;
-	bool done = false, y_down = false, y_spent = false;
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
@@ -11668,122 +13308,8 @@ static void muse_shelf_screen(app *a, bool now)
 
 		if (k >= 0) { v->cursor = k; cf_reset(&v->cf, k); }
 	}
-	/* Display: Artist List. Opened on the playing album's artist when music
-	 * is on, whose coverflow B then returns to; otherwise the list first. */
 	g_muse_artist = -1;
-	if (g_muse_artists) {
-		int pa = playing >= 0 && g_muse.albums[playing].book == muse_books_shown()
-		         ? muse_artist_of(playing) : -1;
-
-		if (now && pa >= 0) muse_set_filter(v, pa, playing);
-		else if (!muse_to_picker(a, &v, pa, playing)) done = true;
-	}
-	if (!done && now && playing >= 0) {
-		muse_exit how = muse_tracks(a, playing, true);
-
-		if (how == MUSE_CLOSE || g_muse_gone) done = true;
-		else if (how == MUSE_REBUILT) {
-			sysview *nv = muse_shelf_refind(a);
-
-			if (nv) v = nv; else done = true;
-			if (!done && !muse_display_sync(a, &v)) done = true;
-		}
-	}
-
-	/* 0: the first pass draws (away). */
-	ui_pace pace = {0};
-
-	while (!done && !want_quit && a->running) {
-		int n = v->list.count, dir = 0;
-
-		unsigned ft0, ft1;
-
-		muse_screen_poll();
-		if (cover_answers()) ui_redraw_now();
-		plat_input_poll(&a->in);
-		ft0 = g_ft ? ft_us() : 0;
-		if (a->in.quit_requested) { a->running = false; break; }
-		{
-			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) { muse_power(a); break; }
-		}
-		/* B and SELECT both leave, which is the rule everywhere in Muse: one
-		 * button in, the same button out, and B for the level below. */
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
-			if (muse_switch_unwind(a)) break;
-			continue;
-		}
-		if (a->in.pressed[IN_BACK] && g_muse_artists && muse_artist_filter() >= 0) {
-			/* One level up: the artist list, standing on this artist. */
-			int ar = muse_artist_filter();
-
-			muse_set_filter(v, -1, -1);
-			if (!muse_to_picker(a, &v, ar, -1)) break;
-			continue;
-		}
-		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
-
-		if (n > 0) {
-			if (in_repeat(&a->in, back)) { v->cursor = (v->cursor - 1 + n) % n; dir = -1; }
-			if (in_repeat(&a->in, fwd))  { v->cursor = (v->cursor + 1) % n; dir = +1; }
-			if (in_repeat(&a->in, jdn))  v->cursor = shelf_letter_jump(v, +1);
-			if (in_repeat(&a->in, jup))  v->cursor = shelf_letter_jump(v, -1);
-			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
-			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
-			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
-		}
-		vol_keys(&a->in);
-		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
-		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
-
-		/* Y acts on release, so a hold can mean something else: held
-		 * MUSE_FAV_HOLD_MS it is the Favorites view, at once, and that
-		 * release does nothing. A tap whose press and release came in one
-		 * poll shows only as pressed. */
-		if (a->in.down[IN_Y] && !y_spent &&
-		    SDL_GetTicks() - a->in.down_since[IN_Y] >= MUSE_FAV_HOLD_MS) {
-			y_spent = true;
-			muse_fav_hold(v);
-		}
-		if ((y_down || a->in.pressed[IN_Y]) && !a->in.down[IN_Y]) {
-			if (!y_spent) muse_fav_tap(v);
-			y_spent = false;
-		}
-		y_down = a->in.down[IN_Y];
-
-		if (a->in.pressed[IN_ACCEPT]) {
-			/* SELECT from the tracks or Now Playing closes all of Muse, and
-			 * a rescan from their MENU leaves this shelf to be found again. */
-			muse_exit how = muse_album(a, v, v->cursor);
-
-			if (how == MUSE_CLOSE || g_muse_gone) break;
-			if (how == MUSE_REBUILT) {
-				sysview *nv = muse_shelf_refind(a);
-
-				if (!nv) break;
-				v = nv;
-				if (!muse_display_sync(a, &v)) break;
-			}
-		} else if (a->in.pressed[IN_MENU]) {
-			/* Muse's own menu. Sort By reorders this shelf and Rescan
-			 * Folder rebuilds it, so it is found again either way. */
-			sysview *nv;
-
-			if (muse_menu(a) == MUSE_CLOSE) break;
-			if (!(nv = muse_shelf_refind(a))) break;
-			v = nv;
-			if (!muse_display_sync(a, &v)) break;
-		}
-
-		ft1 = g_ft ? ft_us() : 0;
-		if (screen_draw_due(a, &pace, 0)) {
-			tick_tint(a);
-			render(a);
-			ft_frame("Muse", ft0, ft1, ft_us(), v->cursor, v->list.count);
-		} else {
-			SDL_Delay(IDLE_POLL_MS);
-		}
-	}
+	muse_list_screen(a, &v, now, playing);
 
 	/* The shelf goes back to all of its albums for whatever shows it next. */
 	if (muse_artist_filter() >= 0 && muse_shelf_refind(a)) {
@@ -11791,7 +13317,9 @@ static void muse_shelf_screen(app *a, bool now)
 		muse_set_filter(v, -1, -1);
 	}
 	g_muse_artist = -1;
-	evict_far(v, TEX_KEEP_FAR);
+	/* And whole again: the Favorites tab's filter is the tab's. */
+	if (g_muse_favs && v) { g_muse_favs = false; muse_refilter(v, -1); }
+	if (v) evict_far(v, TEX_KEEP_FAR);
 	a->screen = prev_screen;
 	a->sys_cursor = prev_sys;
 	plat_input_flush();
@@ -12338,15 +13866,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[320];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
-	/* Screen Layout -> (Display Mode) is the DS's, <- where there are four
-	 * layouts, Stylus Tap the DS's where there is no panel to touch, and
+	/* Screen Layout and Swap Screens are the DS's (plorpos-jcj), Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
 	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
 	 * Elsewhere the screen is that much shorter (plorpos-3yv.47, .62,
 	 * plorpos-46o.4, plorpos-reo.21). `vis` maps a screen row to its action. */
 	int vis[HK_ROW_COUNT], nact = 0;
 
-	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPBACK, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
+	enum { R_SWAP = HK_ROW_COUNT - 6, R_SWAPSCREENS, R_STYLUS, R_STYLUSMODE, R_BLOW, R_HUD };
 	for (i = 0; i < HK_ROW_COUNT; i++) {
 		bool shown = i < R_SWAP;
 #if defined(PLATFORM_MIYOO)
@@ -12355,9 +13882,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 #endif
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
-			shown = i == R_SWAP || i == R_BLOW;
+			shown = i == R_SWAP || i == R_SWAPSCREENS || i == R_BLOW;
 #elif defined(PLATFORM_GKD)
-			shown = i == R_SWAP || i == R_STYLUS || i == R_BLOW;
+			shown = i == R_SWAP || i == R_SWAPSCREENS || i == R_STYLUS || i == R_BLOW;
 #else
 			/* a stick's cursor is always on: no Stylus Mode (plorpos-6ei.1) */
 			shown = !(plat_two_sticks() && i == R_STYLUSMODE);
@@ -12783,7 +14310,7 @@ static void checkpoint_game(app *a)
  * Playing AND wake the screen; any other button only wakes; the volume keys
  * act without waking. A POWER tap wakes, a hold powers off. Whichever wakes
  * it, the press is used up - A in the dark toggles the music and does not
- * also open the game under the cursor. Muse Settings' Wake Screen On Press
+ * also open the game under the cursor. Playback Settings' Wake Screen On Press
  * set to No (TortOS-28l) keeps it dark instead: Muse's buttons act, every
  * other button is ignored, and only POWER wakes.
  *
@@ -12837,7 +14364,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		vol_keys(&a->in);
 		music_keys();
 		/* The lock as an iPod's hold (TortOS-ib9; the Brick's switch, or
-		 * Muse Settings' Sleep Button Lock everywhere): face and shoulder
+		 * Playback Settings' Sleep Button Lock everywhere): face and shoulder
 		 * buttons, and the Rotate's touch panel (its gestures arrive as
 		 * those buttons), are dropped, not saved for later. Read every
 		 * tick, so flipping the switch here takes effect at once. POWER,
@@ -12955,8 +14482,23 @@ static pwr_action power_check(app *a)
 typedef struct {
 	app    *a;
 	gm_ctx *gm;        /* NULL from the shelf menu: no game to show it on */
-	int     sys;       /* the owner's: a per-system choice, as Display is */
+	int     sys;       /* the owner's, whose default a game falls back to */
+	const game_entry *g; /* the game playing; NULL from the shelf menu */
 } sh_ctx;
+
+/* The game's shader in-game, the shelf's default from its menu. */
+static int sh_cur(app *a, const sh_ctx *c)
+{
+	return c->g ? game_shader(a, c->sys, c->g) : a->view[c->sys].shader;
+}
+
+static sh_ctx sh_game(app *a, gm_ctx *gm)
+{
+	sh_ctx c = { a, gm, 0, NULL };
+
+	c.g = playing(a, &c.sys);
+	return c;
+}
 
 static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -12966,8 +14508,8 @@ static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
 
 	for (i = 0; i < n; i++)
 		rows[i] = (menu_row){ a->shaders.e[i].name,
-		                      i == a->view[c->sys].shader ? "Current" : NULL, true };
-	*heading = SHADER_LABEL;
+		                      i == sh_cur(a, c) ? "Current" : NULL, true };
+	*heading = c->g ? SHADER_LABEL : "Default " SHADER_LABEL;
 	return n;
 }
 
@@ -12981,7 +14523,7 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 	char f[1024], dir[CFG_STR * 2];
 
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (sel == a->view[c->sys].shader) return MENU_DONE;
+	if (sel == sh_cur(a, c)) return MENU_DONE;
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
 	if (!sl_fields(&a->shaders, sel, dir, f, sizeof f)) return MENU_DONE;
 	plat_resident_line("SETDISPLAY\t%s", f);
@@ -12991,8 +14533,7 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
 		return MENU_DONE;
 	}
-	a->view[c->sys].shader = sel;
-	shader_save(a, c->sys);
+	game_shader_save(a, c->sys, c->g, sel);
 	return MENU_DONE;
 }
 
@@ -13001,13 +14542,13 @@ static menu_result sh_power(app *a, void *ctx) { return gm_power(a, ((sh_ctx *)c
 
 static void shader_screen(app *a, gm_ctx *gm)
 {
-	sh_ctx c = { a, gm, (int)(owner_view(a) - a->view) };
+	sh_ctx c = sh_game(a, gm);
 	menu_style st = gm->st;
 
 	st.fixed_w  = 0;
 	st.backdrop = sh_backdrop;
 	st.on_power = sh_power;
-	st.start    = a->view[c.sys].shader;
+	st.start    = sh_cur(a, &c);
 	menu_run(a, &st, sh_build, sh_key, &c);
 }
 
@@ -13025,7 +14566,7 @@ static menu_result shs_key(app *a, void *ctx, in_button key, int sel)
 
 static void shelf_shader_screen(app *a, int sys)
 {
-	sh_ctx c = { a, NULL, sys };
+	sh_ctx c = { a, NULL, sys, NULL };
 	menu_style st = { .accent = MENU_ACCENT, .follow_tint = true,
 	                  .start = a->view[sys].shader };
 
@@ -13039,6 +14580,7 @@ typedef struct {
 	const game_entry *g;
 	int               cur;
 	const char       *tag;
+	bool              gambatte; /* the game's core, whose options carry the palette */
 } pal_ctx;
 
 static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
@@ -13065,7 +14607,7 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
-	if (sel != c->cur && gbpal_opts(sel, p, sizeof p, col, sizeof col)) {
+	if (sel != c->cur && gbpal_opts(sel, c->gambatte, p, sizeof p, col, sizeof col)) {
 		char *eq;
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
@@ -13081,7 +14623,8 @@ static void palette_screen(app *a, gm_ctx *gm)
 {
 	sysview *sv = &a->view[a->sys_cursor];
 	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag };
+	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag,
+	              !strcmp(shelf_core(a, o, sv->list.items[sv->cursor].file), "gambatte") };
 	menu_style st = gm->st;
 
 	c.cur = palette_of(a, o, c.g);
@@ -13093,8 +14636,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 	menu_run(a, &st, pal_build, pal_key, &c);
 }
 
-#if defined(PLATFORM_MIYOO)
-/* A Game Boy shelf's Default Palette, from its system menu: the in-game Palette's list, kept for the
+/* A Game Boy shelf's Default Palette, from its system menu (the Flip's, plorpos-f1p.77; every port's, plorpos-ktq): the in-game Palette's list, kept for the
  * shelf. Only a game that has not chosen its own follows it. A keeps the choice; the next launch
  * draws with it. */
 typedef struct { app *a; int sys; } dp_ctx;
@@ -13127,7 +14669,6 @@ static void default_palette_screen(app *a, int sys)
 
 	menu_run(a, &st, dp_build, dp_key, &c);
 }
-#endif
 
 /* The in-game Disc list (plorpos-gkd.47), an .m3u game's own. Same shape as
  * the Palette list above; the disc is kept per game for the next launch. */
@@ -13231,16 +14772,16 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 #if defined(PLATFORM_MIYOO)
 	/* The Flip's Scanline Filter is On / Off: left and right turn it over, as they do in the shelf menu. */
 	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT)) {
-		sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+		sh_ctx sc = sh_game(a, c);
 
-		sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+		sh_key(a, &sc, IN_ACCEPT, (sh_cur(a, &sc) + 1) % a->shaders.count);
 		return MENU_STAY;
 	}
 #endif
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		ds_fill_step(key == IN_LEFT ? -1 : 1, true);
+		gm_fill_step(a, key == IN_LEFT ? -1 : 1);
 		return MENU_STAY;
 	}
 	/* Which stick is the stylus (plorpos-reo.21.7): saved and sent now, so the
@@ -13297,9 +14838,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_SHADER:
 #if defined(PLATFORM_MIYOO)
 		{	/* On / Off: A toggles, through the list screen's own apply-and-save */
-			sh_ctx sc = { a, c, (int)(owner_view(a) - a->view) };
+			sh_ctx sc = sh_game(a, c);
 
-			sh_key(a, &sc, IN_ACCEPT, (a->view[sc.sys].shader + 1) % a->shaders.count);
+			sh_key(a, &sc, IN_ACCEPT, (sh_cur(a, &sc) + 1) % a->shaders.count);
 		}
 #else
 		shader_screen(a, c);
@@ -13500,10 +15041,12 @@ static void switcher_shelf(app *a)
 }
 
 /* Muse opened from a shelf: if Menu was held inside it, the switcher follows. */
-static void muse_open_shelf(app *a)
+static void muse_open_shelf(app *a, bool card)
 {
 	g_muse_sw_ok = true;
+	g_muse_card = card;
 	muse_open(a, NULL, NULL);
+	g_muse_card = false;
 	g_muse_sw_ok = false;
 	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_launch(a, &g_muse_pick); }
 }
@@ -13603,15 +15146,17 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		return n;
 	}
 	{
-		sysview *v = owner_view(c->a);
+		int sys;
+		const game_entry *g = playing(c->a, &sys);
+		int k = game_dmode(c->a, sys, g);
 
 		for (int i = 0; i < GMN_ROWS; i++) c->ids[i] = i;
 		/* Flags are read at PICO-8's start, so a change waits for a Reset:
 		 * said in the heading's place for as long as it differs from the
 		 * run's own (plorpos-zoq). */
-		if (strcmp(DMODES[v->dmode].name, c->a->pico8_dmode))
+		if (strcmp(DMODES[k].name, c->a->pico8_dmode))
 			*heading = "Reset game to apply";
-		return gm_native_rows(c->in_splore, DMODES[v->dmode].label, rows);
+		return gm_native_rows(c->in_splore, DMODES[k].label, rows);
 	}
 }
 
@@ -13642,11 +15187,11 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 
 	sel = c->ids[sel];
 	if (sel == GMN_DISPLAY && (key == IN_LEFT || key == IN_RIGHT)) {
-		sysview *v = owner_view(a);
+		int sys;
+		const game_entry *g = playing(a, &sys);
 
-		v->dmode = dmode_step(a->sys.systems[v - a->view].tag, v->dmode,
-		                      key == IN_RIGHT ? 1 : -1);
-		display_save(a);
+		game_dmode_save(a, sys, g, dmode_step(a->sys.systems[sys].tag, game_dmode(a, sys, g),
+		                                      key == IN_RIGHT ? 1 : -1));
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
@@ -14366,7 +15911,8 @@ static void launch_one(app *a)
 	 * older card stored for the whole system cannot decide it. */
 	{
 		int pal = palette_of(a, o, &v->list.items[v->cursor]);
-		if (pal >= 0) gbpal_opts(pal, palp, sizeof palp, palc, sizeof palc);
+		if (pal >= 0) gbpal_opts(pal, !strcmp(shelf_core(a, o, romfile), "gambatte"),
+		                         palp, sizeof palp, palc, sizeof palc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
@@ -14570,12 +16116,13 @@ static void launch_one(app *a)
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
-			.shader = shader_fields(a, o, shf, sizeof shf),
+			.shader = shader_fields(a, game_shader(a, o, &v->list.items[v->cursor]), shf, sizeof shf),
 			/* The mode is Diatom's own global and survives from the last
 			 * game, so a system never set would otherwise inherit whatever
 			 * the previous one chose; on RUN so the first frame has it. */
-			.mode   = DMODES[a->view[o].dmode].name,
-			.fill   = is_nds_tag(a->sys.systems[o].tag) ? FILL_NAME[ds_fill_now()] : NULL,
+			.mode   = DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name,
+			.fill   = is_nds_tag(a->sys.systems[o].tag)
+			          ? FILL_NAME[game_fill(a, o, &v->list.items[v->cursor])] : NULL,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -14677,6 +16224,8 @@ static void launch_one(app *a)
 			 * on the path where the player is waiting for the shelf rather
 			 * than for a game to start. */
 			stats_end(NULL, plat_now_ms());
+			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj). */
+			game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
 
 			/* Whatever was earned is sent now, behind the shelf rather than in
 			 * front of it - see ra_flush_start. It used to be sent right here,
@@ -14740,7 +16289,7 @@ static void launch_one(app *a)
 			stats_begin(s->tag, splore ? SPLORE : from, plat_now_ms());
 			fprintf(stderr, "pico8_64 exited %d\n",
 			        run_pico8(a, pico8, s->folder, rom, splore,
-			                  DMODES[a->view[o].dmode].name));
+			                  DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name));
 			stats_asleep(plat_run_asleep_ms());
 			stats_end(NULL, plat_now_ms());
 			if (!a->running) return;
@@ -14777,7 +16326,7 @@ static void launch_one(app *a)
 		argv[n++] = (char *)"--save";            argv[n++] = save;
 		argv[n++] = (char *)"--system";          argv[n++] = bios;
 		argv[n++] = (char *)"--display";
-		argv[n++] = (char *)DMODES[a->view[o].dmode].name;
+		argv[n++] = (char *)DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name;
 		if (gs_auto_resume()) { argv[n++] = (char *)"--load-state"; argv[n++] = st; }
 		argv[n++] = (char *)"--state-on-exit";   argv[n++] = st;
 		if (disc >= 0) {
@@ -14930,10 +16479,7 @@ static void update_systems(app *a)
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
 	 * directions, and only the press says which. */
-	/* The d-pad axis follows the shelf. Vertically the list runs down the
-	 * screen, first at the top, so down advances - see cards.h. */
-	in_button back = CARD_DIRS[g_dir].vertical ? IN_UP : IN_LEFT;
-	in_button fwd  = CARD_DIRS[g_dir].vertical ? IN_DOWN : IN_RIGHT;
+	in_button back = IN_LEFT, fwd = IN_RIGHT;
 	int dir = 0;
 
 	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
@@ -14941,7 +16487,7 @@ static void update_systems(app *a)
 	if (dir) load_ahead(a);
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
-		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a);
+		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a, true);
 		else enter_system(a);
 	}
 	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
@@ -15022,6 +16568,9 @@ static int shelf_letter_jump(sysview *v, int dir)
 	return shelf_group_start(v, i);
 }
 
+/* A game list's touch scroll: read with the shelf loop's poll, used here. */
+static gl_scroll g_shelf_scroll;
+
 static void update_games(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
@@ -15036,14 +16585,14 @@ static void update_games(app *a)
 	 * comes back to the card on the systems row. */
 	if (is_muse(&a->sys.systems[a->sys_cursor])) {
 		a->screen = SCREEN_SYSTEMS;
-		muse_open_shelf(a);
+		muse_open_shelf(a, true);
 		return;
 	}
 	/* The two axes trade roles with the shelf rather than one of them being
 	 * reassigned onto the other: stepping always runs along the row, and the
 	 * letter jump always runs across it. Turning the shelf turns the d-pad
 	 * with it and nothing is left doing two jobs. */
-	bool vert = CARD_DIRS[g_dir].vertical;
+	bool vert = GAMELISTS[g_gl].list;
 	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	int dir = 0;
@@ -15056,8 +16605,18 @@ static void update_games(app *a)
 	 * way round on purpose: C's % truncates toward zero, so on a shelf of
 	 * three games the obvious `(cursor - CF_WINDOW + n*2) % n` lands on -1 and
 	 * the draw walks off the front of the list. */
-	if (in_repeat(&a->in, IN_L1))    v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
-	if (in_repeat(&a->in, IN_R1))    v->cursor = (v->cursor + CF_WINDOW) % n;
+	{
+		if (vert) {
+			int page = gl_page(a);
+
+			if (in_repeat(&a->in, IN_L1)) v->cursor = gl_page_step(v->cursor, n, page, -1);
+			if (in_repeat(&a->in, IN_R1)) v->cursor = gl_page_step(v->cursor, n, page, +1);
+			gl_scroll_apply(&g_shelf_scroll, &v->cursor, n);
+		} else {
+			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
+			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
+		}
+	}
 	/* HERE, AND NOT AT THE END OF THE PASS, because four of the handlers below
 	 * return without reaching the end.
 	 *
@@ -15864,9 +17423,8 @@ static void build_muse_shelf(app *a, bool bg)
 		char show[16];
 
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
+		muse_tabs_load();
 		g_muse_books = !strcmp(show, "books");
-		db_get_str(db_dev(), "muse.display", show, sizeof show, "coverflow");
-		g_muse_artists = !strcmp(show, "artists");
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
@@ -16082,8 +17640,7 @@ static const char *shot_cheevos_game = "Hagane: The Final Conflict";
 static int shot_syn;       /* --synopsis: the card a scraped game opens */
 static int shot_info;
 /* --controls [page] draws MENU > Controls, page 0-3, over whichever screen
- * --screen asked for: the page follows UI Direction, so this is the only way
- * to look at all three without setting the device three times. */
+ * --screen asked for: the page follows Gamelist Layout. */
 static int shot_controls = -1;
 static int shot_art;
 static const char *shot_art_now = "Legend of Zelda, The - A Link to the Past (USA)";
@@ -16944,8 +18501,8 @@ int main(int argc, char *argv[])
 		char set[CFG_STR];
 		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
 		g_cards = cards_index(set);
-		db_get_str(db_dev(), "cards_dir", set, sizeof set, CARDS_DIR_DEFAULT);
-		g_dir = cards_dir_index(set);
+		db_get_str(db_dev(), "gamelist_layout", set, sizeof set, GAMELIST_DEFAULT);
+		g_gl = gamelist_index(set);
 	}
 	a.sys_cursor = 0;
 	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");
@@ -17164,7 +18721,8 @@ int main(int argc, char *argv[])
 	while (a.running) {
 		unsigned ft0, ft1;
 
-		plat_input_poll(&a.in);
+		/* A game list scrolls under the finger (plorpos-3yv.110). */
+		gl_poll(&a, &g_shelf_scroll, a.screen == SCREEN_GAMES && gl_active(&a));
 		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
 
@@ -17236,7 +18794,7 @@ int main(int argc, char *argv[])
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
 		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a); continue; }
+		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a, false); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
 		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */

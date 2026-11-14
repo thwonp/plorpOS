@@ -48,19 +48,31 @@ int main(void)
 	ck(!strcmp(gbpal_label(GBPAL_COUNT), "Auto"), "out of range reads Auto");
 
 	printf("options:\n");
-	ck(gbpal_opts(0, p, sizeof p, c, sizeof c) &&
+	ck(gbpal_opts(0, 0, p, sizeof p, c, sizeof c) &&
 	   !strcmp(p, "mgba_gb_colors_preset=1") &&
 	   !strcmp(c, "mgba_gb_colors=GBC Dark Green →A"),
 	   "Auto: the GBC table, Dark Green where a game is not in it");
-	ck(gbpal_opts(3, p, sizeof p, c, sizeof c) &&
+	ck(gbpal_opts(3, 0, p, sizeof p, c, sizeof c) &&
 	   !strcmp(p, "mgba_gb_colors_preset=0") &&
 	   !strcmp(c, "mgba_gb_colors=GB Pocket"),
 	   "a fixed palette turns the table off");
-	ck(!gbpal_opts(1, p, 8, c, sizeof c), "too small does not fit");
+	ck(!gbpal_opts(1, 0, p, 8, c, sizeof c), "too small does not fit");
+	ck(gbpal_opts(0, 1, p, sizeof p, c, sizeof c) &&
+	   !strcmp(p, "gambatte_gb_colorization=auto"),
+	   "Gambatte's Auto: its own per-game table");
+	ck(gbpal_opts(3, 1, p, sizeof p, c, sizeof c) &&
+	   !strcmp(p, "gambatte_gb_colorization=internal") &&
+	   !strcmp(c, "gambatte_gb_internal_palette=GB - Pocket"),
+	   "the same label is the same palette on Gambatte (plorpos-ssa)");
+	for (i = 1; i < GBPAL_COUNT; i++) {
+		gbpal_opts(i, 1, p, sizeof p, c, sizeof c);
+		snprintf(what, sizeof what, "%-16s %s", gbpal_label(i), c);
+		ck(!strncmp(c, "gambatte_gb_internal_palette=G", 30), what);
+	}
 
 	printf("every entry:\n");
 	for (i = 0; i < GBPAL_COUNT; i++) {
-		gbpal_opts(i, p, sizeof p, c, sizeof c);
+		gbpal_opts(i, 0, p, sizeof p, c, sizeof c);
 		snprintf(what, sizeof what, "%-16s %s", gbpal_label(i), c + strlen("mgba_gb_colors="));
 		ck(declared(c + strlen("mgba_gb_colors=")) && gbpal_find(gbpal_label(i)) == i, what);
 		for (j = 0; j < i; j++)

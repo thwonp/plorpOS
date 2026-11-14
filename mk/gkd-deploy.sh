@@ -77,8 +77,16 @@ case $WHAT in boot)
 esac
 case $WHAT in vendor)
 	put "$ROOT/vendor/cores/"* "$GKD:$P/cores/"
-	# The GKD's own builds (mk/build-melondsds.sh, mk/build-dsperate.sh).
+	# The GKD's own builds (mk/build-dsperate.sh).
 	put "$ROOT/vendor/cores-gkd/"* "$GKD:$P/cores/"
+	# The GB/GBC and GBA defaults since plorpos-881, built for every aarch64
+	# port (mk/build-gambatte-core.sh, mk/fetch-armgba-core.sh), and the
+	# PokeDaisy cores the Core rows switch to (ALT_CORES): mk/payload.sh ships
+	# them all to the GKD from cores-brick too - without them a game turned to
+	# PokeDaisy fails with core_missing (plorpos-49j).
+	put "$ROOT/vendor/cores-brick/gambatte_libretro.so" "$ROOT/vendor/cores-brick/armgba_libretro.so" \
+	    "$ROOT/vendor/cores-brick/pokedaisy_gba_libretro.so" "$ROOT/vendor/cores-brick/pokedaisy_gbc_libretro.so" \
+	    "$ROOT/vendor/cores-brick/pokedaisy_ds_libretro.so" "$GKD:$P/cores/"
 	echo "  + cores"
 esac
 $S sync

@@ -311,8 +311,16 @@ static void the_extras(void)
 
 static void how_long_ago(void)
 {
-	long now = (long)time(NULL);
+	/* Local noon today: whole days back from 23:xx cross a fall-back DST
+	 * change into the day after, and "3w ago" read "2w ago" for an hour a
+	 * night (2026-11-13). */
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+	long now;
 	char b[16];
+
+	tm.tm_hour = 12; tm.tm_min = tm.tm_sec = 0; tm.tm_isdst = -1;
+	now = (long)mktime(&tm);
 
 	printf("how long ago it reads:\n");
 	stats_ago(0, now, b, sizeof b);       ck(!strcmp(b, "never"), "never played");

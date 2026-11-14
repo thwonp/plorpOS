@@ -18,8 +18,12 @@ const char *gbpal_label(int i);
 /* The entry labelled `label`; 0 (Auto) for NULL, "" or a label not listed. */
 int gbpal_find(const char *label);
 
-/* "mgba_gb_colors_preset=N" and "mgba_gb_colors=<value>" for entry i, the
- * shape plat_coreopt hands out. False if either does not fit. */
-int gbpal_opts(int i, char *preset, size_t pcap, char *colors, size_t ccap);
+/* The two core options that make entry i, in the shape plat_coreopt hands
+ * out: "mgba_gb_colors_preset=N" and "mgba_gb_colors=<value>" for an mGBA core
+ * (mGBA, PokeDaisy's Game Boy core), Gambatte's colorization pair when
+ * `gambatte`. One list for both, kept by label, so a game's palette and a
+ * shelf's default survive a change of core (plorpos-ssa). False if either
+ * does not fit. */
+int gbpal_opts(int i, int gambatte, char *preset, size_t pcap, char *colors, size_t ccap);
 
 #endif

@@ -39,8 +39,8 @@ typedef enum {
 	CTL_PAGES
 } ctl_page;
 
-/* Which way the shelves run - UI Direction, as cards.h stores it. */
-typedef enum { CTL_HORIZONTAL, CTL_VERTICAL } ctl_dir;
+/* Which way the game shelf steps - Gamelist Layout, as cards.h stores it. */
+typedef enum { CTL_COVERFLOW, CTL_LIST } ctl_dir;
 
 /* Room for the longest page and its footer, with a little spare. */
 #define CTL_MAX_ROWS 10

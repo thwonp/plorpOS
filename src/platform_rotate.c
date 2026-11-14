@@ -326,6 +326,7 @@ void plat_touch_free(bool on)
 bool plat_touch_drag_get(touch_drag_state *d)
 {
 	memset(d, 0, sizeof *d);
+	d->down = touch.fingers > 0;
 	if (touch.rel) {
 		d->released = true;
 		d->dx = touch.rdx; d->dy = touch.rdy;
@@ -339,6 +340,11 @@ bool plat_touch_drag_get(touch_drag_state *d)
 	d->dx = touch.x - touch.x0;
 	d->dy = touch.y - touch.y0;
 	return true;
+}
+
+void plat_touch_catch(void)
+{
+	if (touch.fingers > 0) touch.caught = true;
 }
 
 void plat_input_flush(void)

@@ -68,13 +68,34 @@ for one core is harmless everywhere else. They are sent **before** the game
 loads, because a core reads its `(Restart)` options during load and one set
 afterwards does nothing until the next launch.
 
-**Game Boy palettes** are per game rather than per system: the in-game menu's
-Palette row stores `palette.GB.<rom file>` (the label, e.g. `GB Pocket`), and a
-game with no row plays **Auto** - what a Game Boy Color does with nothing held,
-its own colours for the 144 games in its boot ROM and Dark Green for the rest.
-Every Game Boy launch sends the game's `mgba_gb_colors_preset` and
-`mgba_gb_colors` after the core options above, so a `coreopt.GB.mgba_gb_colors`
-stored on an older card is overridden. A save state does not carry the palette.
+**Game Boy palettes** are per game on the Game Boy and Color shelves (the Color
+shelf's original Game Boy games only): the in-game menu's Palette row stores
+`palette.<TAG>.<rom file>` (the label, e.g. `GB Pocket`), and a game with no row
+plays the shelf menu's **Default Palette** (`palettedef.<TAG>`, **Auto** until
+set) - Auto is what a Game Boy Color does with nothing held, its own colours for
+the games in its boot ROM and Dark Green for the rest. The labels are one list
+for every core: each launch sends the game's palette as its core reads it
+(Gambatte's `gambatte_gb_colorization` and `gambatte_gb_internal_palette`, or
+mGBA's `mgba_gb_colors_preset` and `mgba_gb_colors`) after the core options
+above, so a game keeps its palette when its Core changes. A save state does not
+carry the palette.
+
+**Display defaults and per-game overrides.** The shelf menu's **Default Display
+Mode** (the DS's **Default Layout** and **Default Display**) and **Default
+Shader** are the shelf's (`display.<TAG>`, `shader.<TAG>`, `dsfill`); the in-game
+menu's Display, Shader and the DS's Layout and Display are the one game's
+(`display.<TAG>.<rom file>`, `shader.<TAG>.<rom file>`, `dsfill.<TAG>.<rom
+file>`), and a DS game keeps the screen **Swap Screens** left big
+(`dsswap.<TAG>.<rom file>`), all in `tortos.db`. A game without its own plays at
+the shelf's default. The shelf menu's **Reset Display Overrides** deletes that
+shelf's per-game rows (and, on the Game Boy shelves, its per-game palettes).
+
+**Cores per game.** The Game Boy, Color and Advance shelves' Core row turns the
+game under the cursor to another core (`engine.<TAG>/<rom file>`): Gambatte
+(Game Boy and Color) or armGBA (Advance) by default, PokeDaisy, or mGBA. A game
+with no row plays the default. A save state is its core's own, so a game played
+on mGBA before can be moved: turn it to mGBA, load its state, save in the game,
+then turn it back - the in-game save (`.srm`) is the same file for every core.
 
 **Multi-disc games** are a folder holding the discs and an `.m3u` that lists
 them, one file name per line (`Roms/PlayStation/Policenauts/Policenauts.m3u`);
