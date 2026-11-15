@@ -15578,7 +15578,9 @@ static void pm_data(char *out, size_t n, const char *rel)
  * folder: sd/<device>/portmaster on the card (plorpos-46o.5). */
 static void pm_here(char *out, size_t n, const char *leaf)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLATFORM_RGDS)	/* before GKD: the RG DS build defines both */
+	snprintf(out, n, "%s/rgds/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_GKD)
 	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_ROTATE)	/* before H700: the Rotate build defines both */
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);

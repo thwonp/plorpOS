@@ -92,6 +92,12 @@ if [ "$PLATFORM" = gkd ]; then
 elif [ "$PLATFORM" = rgds ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/rgds/launch.sh" "$P/"
+	# PortMaster: the GKD's runner (the same ROCKNIX) with the RG DS's pad.
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	mkdir -p "$P/rgds/portmaster"
+	cp "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
+	   "$ROOT/vendor/portmaster/PortMaster.zip" "$B/portfullscreen.so" "$P/rgds/portmaster/"
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
 elif [ "$PLATFORM" = h700 ]; then
@@ -173,8 +179,8 @@ fi
 # and Ports shelves too, its own builds of their cores first, and PokeDaisy DS
 # for the DS shelf's Core row (plorpos-oe0.44).
 if [ "$PLATFORM" = rgds ]; then
-	# The DS shelf; no Ports shelf until the RG DS has a PortMaster runner.
-	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	# The DS and Ports shelves, as the GKD (plorpos-rgds.9).
+	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -214,7 +220,7 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
-rgds) chmod +x "$P/launch.sh" "$P/musectl"
+rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"; exit 0 ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;

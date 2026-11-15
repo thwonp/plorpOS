@@ -32,7 +32,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),rgds)
-all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl
+all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -215,6 +215,13 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 # sysroot, whose ROCKNIX is newer (FFmpeg 9.0).
 build/rgds/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/rgds creds
+
+# PortMaster's fullscreen shim, as the GKD's (tools/portfullscreen.c).
+build/rgds/portfullscreen.so: tools/portfullscreen.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
+		-I/work/sysroot-rgds/usr/include/SDL2 -o $@ $< -ldl
 
 build/rgds/tortos.elf build/rgds/muse build/rgds/musectl &: \
                       $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rgds/ss_creds.h \

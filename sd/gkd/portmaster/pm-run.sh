@@ -58,6 +58,14 @@ if [ ! -e /run/plorpos-fullscreen ]; then
 fi
 
 # Always: 2 KB, and ROCKNIX's BusyBox has no cmp.
+# PortMaster's first run on ROCKNIX copies /storage/.config/PortMaster/
+# gamecontrollerdb.txt, which EmulationStation's setup leaves there. A system
+# that never ran EmulationStation (the RG DS image, plorpos-rgds.9) has none
+# and PortMaster stopped with FileNotFoundError: give it ROCKNIX's own database.
+if [ -d /storage/.config/PortMaster ] && [ ! -f /storage/.config/PortMaster/gamecontrollerdb.txt ] &&
+   [ -f /storage/.config/SDL-GameControllerDB/gamecontrollerdb.txt ]; then
+	cp /storage/.config/SDL-GameControllerDB/gamecontrollerdb.txt /storage/.config/PortMaster/
+fi
 cp "$HERE/control.txt" "$PM/control.txt"
 
 cd "$(dirname "$1")" || exit 1

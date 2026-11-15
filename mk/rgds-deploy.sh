@@ -30,7 +30,10 @@ case $WHAT in elf)
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" | ssh $SSH_OPTS "$RGDS" "cat > $P/systems.cfg"
 	swap "$ROOT/build/rgds/muse" muse
 	swap "$ROOT/build/rgds/musectl" musectl
-	echo "  + launcher, muse, musectl"
+	$S "mkdir -p $P/rgds/portmaster"
+	put "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
+	    "${VENDOR:-$ROOT/vendor}/portmaster/PortMaster.zip" "$ROOT/build/rgds/portfullscreen.so" "$RGDS:$P/rgds/portmaster/"
+	echo "  + launcher, muse, musectl, PortMaster runner"
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$RGDS:$P/cards/"
