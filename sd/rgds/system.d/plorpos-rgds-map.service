@@ -1,0 +1,19 @@
+# The RG DS's Home/Back key. ROCKNIX's InputPlumber map for the RG DS sends it
+# as "gamepad: button: KeyF1", which InputPlumber rejects ("Invalid or
+# unimplemented button: KeyF1", ROCKNIX 20261101), so the key does nothing. It
+# is a keyboard key: the same map with that one target corrected, written to
+# /run and bound over the read-only original. plorpOS reads F1 from
+# InputPlumber's keyboard as Home (src/platform_gkd.c, plorpos-rgds.3). A
+# ROCKNIX that fixes its map leaves the sed with nothing to change.
+#
+# Its own unit, not an ExecStartPre of inputplumber.service: that unit has
+# ProtectSystem=, and a mount made inside its namespace is gone before
+# InputPlumber starts (measured 2026-11-15, "+" prefix included).
+[Unit]
+Description=plorpOS: correct the RG DS InputPlumber map (Home key)
+Before=inputplumber.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'umount /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml 2>/dev/null; sed "/event_code: BTN_BACK/,/button: KeyF1/{/gamepad:/d;s/        button: KeyF1/      keyboard: KeyF1/}" /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml > /run/plorpos-rgds-map.yaml && mount --bind /run/plorpos-rgds-map.yaml /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml'
