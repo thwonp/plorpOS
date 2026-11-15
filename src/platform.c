@@ -2182,6 +2182,9 @@ static int diatom_wait(void)
 #ifdef __linux__
 		{
 			struct input_event ev;
+#if defined(PLATFORM_H700)
+			bool lid_tap = false;
+#endif
 			while (fd_power >= 0 &&
 			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 #if defined(PLATFORM_MIYOO)
@@ -2189,7 +2192,16 @@ static int diatom_wait(void)
 #endif
 				if (ev.type == EV_KEY && ev.code == KEY_POWER)
 					pwr_down = ev.value != 0;
+#if defined(PLATFORM_H700)
+				if (ev.type == EV_KEY && ev.code == LID_CLOSE_KEY && ev.value == 1)
+					lid_tap = true;
+#endif
 			}
+#if defined(PLATFORM_H700)
+			/* A closed lid is a POWER tap here too, as on the shelf and in a
+			 * one-shot child: down, and up on the call below (plorpos-31p). */
+			if (lid_tap && !sent_stop && !pwr_down) plat_power_tap_or_hold(true);
+#endif
 
 			/* plat_input_poll isn't running - the game owns input - so this
 			 * is the only place watching the level at all; checked every
