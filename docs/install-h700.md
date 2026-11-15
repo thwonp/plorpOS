@@ -25,6 +25,7 @@ everything in it to the root of a FAT32 or exFAT card:
 System/       the frontend hook BaseOS looks for (launch_frontend.sh)
 TortOS/       plorpOS itself
 Roms/ Bios/ Saves/ Music/ Audiobooks/   for your games and files; Saves/ has a folder per console
+INSTALL.md    this guide
 ```
 
 Put your games in `Roms/` (one folder per system, as `TortOS/systems.cfg`
@@ -37,13 +38,27 @@ plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
 
 ## Updating from an earlier version
 
-Copy everything in the new zip onto the plorpOS card, replacing what's there.
-Your settings, saves, play time and achievements live in `.userdata/` and
-`Saves/` and stay as they are. Restart the device afterwards.
+Copy everything in the new zip onto the plorpOS card (TF2), replacing what's
+there. Your settings, saves, play time and achievements live in `.userdata/`
+and `Saves/` and stay as they are.
+
+## Adding games over Wi-Fi
+
+1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+2. Open **Over The Hare**. It shows an address and a PIN.
+3. Open that address in a browser on your phone or computer and type the PIN.
+4. Drag games into their console's folder, albums into `Music` or books into
+   `Audiobooks`. They're on the shelf when you leave the screen.
+
+The PIN is new every time you open Over The Hare.
 
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
+The shelf's Core row picks DSperate-lr (the default) or PokeDaisy DS for the
+game under the cursor (the Pokemon games' companion: Party, Dex, Map, Bag and
+Guide from the game).
+
 There are three layouts: **Overlay**, one screen filling the display at 4:3 and
 the other, 80% opaque, over its bottom-right corner; **Single Screen**, one
 screen at full height; and **Hybrid**, one screen at twice the DS's size and the
@@ -69,27 +84,7 @@ core to leave a frame's drawing out rather than slow down (an approach from
 runs a few percent slow in its busiest stretches. Rewind is off for the DS
 (each state is about 6 MB); saving and loading a state works.
 
-## Notes
-
-- **Saved Wi-Fi networks** live on the plorpOS card, in
-  `.userdata/rgsp/wpa_supplicant.conf`, with their passwords.
-- **Brightness:** hold Menu and press Volume +/-.
-- **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
-  the device from that sleep. Once it has gone on into a deep sleep, only
-  POWER wakes it.
-- **Logs** are in `.userdata/rgsp/logs/` on the plorpOS card.
-- **Native PICO-8 and Splore** need `pico8_64` and `pico8.dat` from PICO-8's
-  Raspberry Pi download, in `Bios/`. Without them the fake-08 core plays carts.
-- **Muse** plays mp3, aac, m4a/m4b, flac, ogg, opus and wav from `Music/` and
-  `Audiobooks/`.
-- **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
-  BaseOS installs them on the next start. plorpOS leaves unknown files there
-  alone.
-- **Over USB** (for developers): BaseOS offers `adb`, but only with a
-  USB-A to USB-C cable attached before the device is turned on. A USB-C to
-  USB-C cable from a USB-C-only computer powers nothing and connects nothing.
-
-## Ports (PortMaster)
+## Ports
 
 The **Ports** shelf is last. Its first entry is **PortMaster**; open it with
 the device on Wi-Fi to install ports, which land in `Roms/Ports/` and appear
@@ -105,7 +100,7 @@ What to expect:
   Reset, Quit); Quit ends the port and returns to the shelf.
 - PortMaster needs python and bash, which BaseOS lacks, so they ship as one
   read-only image, `TortOS/h700/portmaster/pmtools.squashfs`, mounted only
-  while a port runs. The zip grows by about 48 MB (29 to 77) for it and PortMaster.
+  while a port runs.
 - Ports that need a game's own files (Downwell, for one, wants your GOG
   installer or Steam `data.win`) have to be given them: put them where the
   port's page says. A port may also download a runtime the first time (Java
@@ -122,6 +117,39 @@ What to expect:
   (Mindustry steers its cursor with the left stick) cannot be played there.
 - A port that is killed mid-run (power button hold) leaves a mount or two
   behind; the next port clears them.
+
+## Native PICO-8
+
+plorpOS can run PICO-8 itself, with Splore, instead of the fake-08 core.
+PICO-8 is sold by Lexaloffle and is not included.
+
+1. From your PICO-8 download for **Raspberry Pi**, copy `pico8_64` and
+   `pico8.dat` into `Bios/`.
+2. On the PICO-8 shelf, open the shelf menu and set **Core** to **Pico-8
+   Native**. fake-08 stays the default; the same row switches back.
+3. **Splore** is the first entry on the PICO-8 shelf whenever `Bios/pico8_64`
+   is there. It needs Wi-Fi.
+
+Native PICO-8 has no save states or rewind.
+
+## Notes
+
+- **Saved Wi-Fi networks** live on the plorpOS card, in
+  `.userdata/<device>/wpa_supplicant.conf` (`<device>` is
+  `rgsp` on the RG SP), with their passwords.
+- **Brightness:** hold Menu and press Volume +/-.
+- **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
+  the device from that sleep. Once it has gone on into a deep sleep, only
+  POWER wakes it.
+- **Logs** are in `.userdata/<device>/logs/` on the plorpOS card.
+- **Muse** plays mp3, aac, m4a/m4b, flac, ogg, opus and wav from `Music/` and
+  `Audiobooks/`.
+- **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
+  BaseOS installs them on the next start. plorpOS leaves unknown files there
+  alone.
+- **Over USB** (for developers): BaseOS offers `adb`, but only with a
+  USB-A to USB-C cable attached before the device is turned on. A USB-C to
+  USB-C cable from a USB-C-only computer powers nothing and connects nothing.
 
 ## Removing plorpOS
 

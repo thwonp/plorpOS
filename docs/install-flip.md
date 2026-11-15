@@ -1,7 +1,7 @@
 # Installing on a Miyoo Mini Flip
 
-plorpOS 1.0 for the Miyoo Mini Flip. The Flip has 128 MB of RAM (about 101 MB
-usable) and no swap, which decides what runs; see "Limits".
+The Flip has 128 MB of RAM (about 101 MB usable) and no swap, which decides
+what runs; see "Limits".
 
 ## What this zip is
 
@@ -21,16 +21,19 @@ Miyoo's MainUI.
 
 ## Install
 
-1. Start from an empty FAT32 card, or back up the card you have. If it has a
-   `.tmp_update/` folder from another firmware, that firmware stops booting:
-   the zip replaces its `updater`.
-2. Unzip. Copy everything in it to the root of the card, merging folders.
-   It adds:
+1. Start from an empty FAT32 card (exFAT is untested), or back up the card
+   you have. If it has a `.tmp_update/` folder from another firmware, that
+   firmware stops booting: the zip replaces its `updater`.
+2. Download `plorpOS-v<version>-flip.zip` from
+   [Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it.
+   Copy everything in it to the root of the card, merging folders. It adds:
    ```
    .tmp_update/updater   the boot hook
    TortOS/               the launcher, diatom, Muse, cores, ssh, the Wi-Fi driver, fonts, cards
    Roms/<console>/       empty folders named as the shelves expect
    Bios/  Saves/
+   MD5SUMS               a checksum for every file
+   INSTALL-FLIP.md       this guide
    ```
 3. Put your ROMs in `Roms/<console>/`.
 4. Firmware (Sega CD, PlayStation, PC Engine CD, Neo Geo) is looked for in
@@ -41,6 +44,22 @@ Miyoo's MainUI.
    the card root.
 6. Eject, put the card in, power on.
 
+## Updating from an earlier version
+
+Copy everything in the new zip onto the card, replacing what's there. Your
+settings, saves, play time and achievements live in `.userdata/` and `Saves/`
+and stay as they are.
+
+## Adding games over Wi-Fi
+
+1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+2. Open **Over The Hare**. It shows an address and a PIN.
+3. Open that address in a browser on your phone or computer and type the PIN.
+4. Drag games into their console's folder or albums into `Music`. They're on
+   the shelf when you leave the screen.
+
+The PIN is new every time you open Over The Hare.
+
 ## Shelves and cores
 
 | Shelf (`Roms/` folder) | Core |
@@ -49,14 +68,14 @@ Miyoo's MainUI.
 | SNES | Snes9x 2005 Plus, or Supafaust per game |
 | Game Boy, Game Boy Color | Gambatte |
 | Game Boy Advance | gpSP |
-| Genesis, Master System, Game Gear, Sega CD, Sega 32X | PicoDrive |
+| Genesis, Master System, Game Gear, Sega CD, 32X | PicoDrive |
 | TurboGrafx-16 | Beetle PCE Fast |
 | Neo Geo | FB Alpha 2012 Neo Geo |
 | Neo Geo Pocket, Neo Geo Pocket Color | RACE, or Beetle NeoPop per game |
 | PlayStation | PCSX ReARMed |
 | Arcade (FBA 2012) | FB Alpha 2012 |
 | Arcade (MAME 2000) | MAME 2000 |
-| PICO-8 | fake-08, or PICO-8 itself (see "Native PICO-8") |
+| Pico-8 | fake-08, or PICO-8 itself (see "Native PICO-8") |
 
 A shelf with two cores has a **Core** row in its shelf menu, set per game: it
 turns the game under the cursor to the other core and back. Save states belong
@@ -85,7 +104,7 @@ RPG), where Snes9x 2005 Plus stays the better pick.
 
 ## Game Boy and Game Boy Color
 
-Both run on Gambatte, which replaced mGBA in this release: it costs about half
+Both run on Gambatte, which replaced mGBA in v1.9: it costs about half
 as much per frame on the Flip.
 
 - **Palettes**: a Game Boy game takes its colours from the **Palette** row of
@@ -106,7 +125,7 @@ scanline look on or off per system. It is drawn by the Flip's 2D engine and
 costs nothing measurable. It needs the game shown at twice its size or more;
 smaller pictures are drawn plainly. It does not apply to native PICO-8.
 
-## Native PICO-8 (bring your own)
+## Native PICO-8
 
 plorpOS can run PICO-8 itself instead of the fake-08 core, with Splore, its
 cart browser. PICO-8 is sold by Lexaloffle and is **not** part of this zip.
@@ -155,7 +174,7 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 - **Online features** (RetroAchievements sign-in, art and name downloads,
   Splore) use a curl bundled in `TortOS/` because the Flip's firmware has none.
   They need Wi-Fi; RetroAchievements sign-in has not been tested end to end.
-- **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
+- **Nintendo DS, Ports, Lynx, WonderSwan, Atari, 7800**: no shelves.
 - Super Nintendo's Star Fox (Super FX) holds full speed by leaving out an
   occasional frame draw (about 4% of frames in testing); the emulation itself
   runs at stock speed.
@@ -182,12 +201,6 @@ plorpOS again, fix the card from a PC and rename `.tmp_update.off` back to
 `.tmp_update/updater`.** The firmware reads that as a failed update and deletes
 the whole `.tmp_update/` folder.
 
-## Uninstall
-
-Delete `TortOS/` and `.tmp_update/`; the Flip then boots Miyoo's MainUI. Your
-`Roms/`, `Bios/` and `Saves/` stay as they are. If you installed the fast-boot
-update, undo it as its guide says.
-
 ## Optional: faster boot
 
 A separate download, **plorpOS Flip fast boot** (`plorpOS-flip-fast-boot.zip`
@@ -196,3 +209,9 @@ partition of its internal storage. It is not needed and not part of this zip.
 Its own guide (`FAST-BOOT.md`, in that download) has the steps and how to undo
 it: the update starts only when you hold MENU while plugging in the USB cable
 with the Flip off. It is for the stock firmware build 202510011046 only.
+
+## Removing plorpOS
+
+Delete `TortOS/` and `.tmp_update/`; the Flip then boots Miyoo's MainUI. Your
+`Roms/`, `Bios/` and `Saves/` stay as they are. If you installed the fast-boot
+update, undo it as its guide says.

@@ -47,12 +47,17 @@ Saves/       one folder per console, ready for saves from another device
 The first boot installs the hook, and every boot after that comes up in
 plorpOS.
 
+## Updating from an earlier version
+
+Copy everything in the new zip onto the card, replacing what's there. Your
+settings, saves, play time and achievements live in `.userdata/` and `Saves/`
+and stay as they are.
+
 ## Adding games over Wi-Fi
 
-1. Join a network under **MENU > Network Services > Wi-Fi**.
-2. Open **MENU > Network Services > Over The Hare**. It shows an address and a
-   PIN.
-3. Open that address in a browser on your phone or computer, and type the PIN.
+1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+2. Open **Over The Hare**. It shows an address and a PIN.
+3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into
    `Audiobooks`. They're on the shelf when you leave the screen.
 
@@ -60,7 +65,11 @@ The PIN is new every time you open Over The Hare.
 
 ## Nintendo DS
 
-Put `.nds` files in `Roms/Nintendo DS/`. The Brick has three layouts: **Overlay**,
+Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks
+DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the
+Pokemon games' companion: Party, Dex, Map, Bag and Guide from the game).
+
+The Brick has three layouts: **Overlay**,
 one screen filling the display and the other, 80% opaque, over its bottom-right
 corner; **Single Screen**, one screen fullscreen; and **Hybrid**, one screen at
 three times the size of the other, which sits against its right edge. The shelf
@@ -108,6 +117,20 @@ Ports work on the Brick and Brick Pro, but support is still experimental: a
 port that runs on another handheld may not run here. 32-bit (box86) ports such
 as Shovel Knight don't run on the Brick.
 
+## Native PICO-8
+
+plorpOS can run PICO-8 itself, with Splore, instead of the fake-08 core.
+PICO-8 is sold by Lexaloffle and is not included.
+
+1. From your PICO-8 download for **Raspberry Pi**, copy `pico8_64` and
+   `pico8.dat` into `Bios/`.
+2. On the PICO-8 shelf, open the shelf menu and set **Core** to **Pico-8
+   Native**. fake-08 stays the default; the same row switches back.
+3. **Splore** is the first entry on the PICO-8 shelf whenever `Bios/pico8_64`
+   is there. It needs Wi-Fi.
+
+Native PICO-8 has no save states or rewind.
+
 ## Audio output
 
 On the plain Brick, a plugged-in 3.5 mm cable takes priority even when Audio
@@ -123,7 +146,7 @@ Before you reformat the card or give the Brick away:
 - **Copy `TortOS/bootlogo.stock.bmp` and `TortOS/splash.stock.png` somewhere
   safe.** They're the Brick's original boot pictures, and the card holds the
   only copy.
-- **Forget your Wi-Fi networks** with X on the Wi-Fi screen. Their passwords
+- **Forget your Wi-Fi networks** with X in Network Services. Their passwords
   are stored on the Brick, not on the card.
 
 <details>
@@ -136,7 +159,7 @@ plorpOS isn't on it:
 /usr/trimui/bin/runtrimui.sh            the hook
 /usr/trimui/bin/runtrimui-original.sh   the stock hook, moved aside
 /usr/trimui/bin/setbright               brightness before the boot animation,
-/usr/trimui/bin/tortos-bootbright.sh    both copied again every boot
+/usr/trimui/bin/tortos-bootbright.sh    both installed on the first boot
 /etc/init.d/runtrimui                   patched to call the line above
 /etc/init.d/runtrimui.tortos-bak        the version before that patch
 /etc/splash.png                         the loading splash

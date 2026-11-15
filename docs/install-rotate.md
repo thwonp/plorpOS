@@ -71,7 +71,24 @@ Music/           Muse's music
 Saves/           saves, per console
 ```
 
-## 4. Controls
+## Updating from an earlier version
+
+Download the Rotate update zip from
+[Releases](https://github.com/thwonp/plorpOS/releases/latest) and copy its `plorpOS/` folder over the
+one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
+underneath (the kernel, for one) comes only as a new card image.
+
+## Adding games over Wi-Fi
+
+1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+2. Open **Over The Hare**. It shows an address and a PIN.
+3. Open that address in a browser on your phone or computer and type the PIN.
+4. Drag games into their console's folder or albums into `Music`. They're on the shelf when you leave
+   the screen.
+
+The PIN is new every time you open Over The Hare.
+
+## Controls
 
 Open: the buttons as on the other devices. Menu held with Vol+/Vol- sets the
 brightness.
@@ -117,9 +134,21 @@ PortMaster is the first entry on the Ports shelf. Open it on Wi-Fi to install po
 `Roms/Ports/` and on the shelf. This is unofficial support: report problems to plorpOS, not the
 PortMaster team.
 
-## Updating
+## Native PICO-8
 
-From an earlier version, download the Rotate update zip from
-[Releases](https://github.com/thwonp/plorpOS/releases/latest) and copy its `plorpOS/` folder over the
-one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
-underneath (the kernel, for one) comes only as a new card image.
+plorpOS can run PICO-8 itself, with Splore, instead of the fake-08 core.
+PICO-8 is sold by Lexaloffle and is not included.
+
+1. From your PICO-8 download for **Raspberry Pi**, copy `pico8_64` and
+   `pico8.dat` into `Bios/`.
+2. On the PICO-8 shelf, open the shelf menu and set **Core** to **Pico-8
+   Native**. fake-08 stays the default; the same row switches back.
+3. **Splore** is the first entry on the PICO-8 shelf whenever `Bios/pico8_64`
+   is there. It needs Wi-Fi.
+
+Native PICO-8 has no save states or rewind.
+
+## Removing plorpOS
+
+Take the card out: the Rotate starts its Android. The SPL from step 0 stays in `splloader`; without a
+plorpOS or base618 card the unit boots Android as before.

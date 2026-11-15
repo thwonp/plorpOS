@@ -85,28 +85,7 @@ Saves/       one folder per console, ready for saves from another device
 `Roms/Pico-8/` also holds a hidden file, `.disable_splore`. Keep it: without it
 ROCKNIX puts an empty `Splore.png` there at every boot, for its own
 EmulationStation, and it would show up as a broken cart. It doesn't turn off
-Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
-
-**Nintendo DS:** put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core
-row picks DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the Pokemon games'
-companion: Party, Dex, Map, Bag and Guide from the game). The layouts are
-**Overlay**, **Offset** (one screen big, the other small), **Even Split** and
-**Single Screen**: the shelf menu's **Default Layout** sets the shelf's, the
-in-game **Layout** row the game's own. The **Screen Layout** hotkey (MENU + X by
-default) steps through them; the **Swap Screens** hotkey puts the other screen in
-the big place (nothing to swap on Even Split) and is remembered for each game. The
-Display row sets Single Screen and the Overlay's big screen to **Aspect**,
-**Stretch** or **Integer**, centered. The stick moves a stylus cursor over
-the bottom screen and R2 touches; the cursor hides after 2 s still.
-
-**Ports:** open PortMaster, the first entry on the Ports shelf, with the GKD on
-Wi-Fi; the ports it installs land in `Roms/Ports/` and on the shelf. PortMaster
-itself is kept in `.userdata/shared/portmaster/`. It's unofficial support: report
-problems to plorpOS, not the PortMaster team.
-Ports open fullscreen; fixed-resolution SDL games are scaled to fit.
-
-Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
-**`games-external`** samba share, or connecting to it using "Over the Hare".
+Splore in plorpOS.
 
 ## 4. Turn it off, insert the card, turn it on
 
@@ -123,6 +102,57 @@ Copy everything inside the new `copy_to_sd/` onto the card, replacing what's
 there. Your settings, saves, play time and achievements live in `.userdata/`
 and `Saves/` and stay as they are. The `system.d/` files are the same as
 before; leave them.
+
+## Adding games over Wi-Fi
+
+1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+2. Open **Over The Hare**. It shows an address and a PIN.
+3. Open that address in a browser on your phone or computer and type the PIN.
+4. Drag games into their console's folder, albums into `Music` or books into
+   `Audiobooks`. They're on the shelf when you leave the screen.
+
+The PIN is new every time you open Over The Hare.
+
+With Samba on (Network Services), the card is also the **`games-external`**
+share.
+
+## Nintendo DS
+
+Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks
+DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the
+Pokemon games' companion: Party, Dex, Map, Bag and Guide from the game).
+
+The layouts are **Overlay**, **Offset** (one screen big, the other small),
+**Even Split** and **Single Screen**: the shelf menu's **Default Layout** sets
+the shelf's, the in-game **Layout** row the game's own. The **Screen Layout**
+hotkey (MENU + X by default) steps through them; the **Swap Screens** hotkey
+puts the other screen in the big place (nothing to swap on Even Split) and is
+remembered for each game. The Display row sets Single Screen and the Overlay's
+big screen to **Aspect**, **Stretch** or **Integer**, centered. The stick moves
+a stylus cursor over the bottom screen and R2 touches; the cursor hides after
+2 s still.
+
+## Ports
+
+PortMaster is the first entry on the Ports shelf. Open it on Wi-Fi to install
+ports; they land in `Roms/Ports/` and on the shelf. PortMaster itself is kept in
+`.userdata/shared/portmaster/`. This is unofficial support: report problems to
+plorpOS, not the PortMaster team. Ports open fullscreen; fixed-resolution SDL
+games are scaled to fit.
+
+## Native PICO-8
+
+plorpOS can run PICO-8 itself, with Splore, instead of the fake-08 core.
+PICO-8 is sold by Lexaloffle and is not included.
+
+1. From your PICO-8 download for **Raspberry Pi**, copy `pico8_64` and
+   `pico8.dat` into `Bios/`.
+2. On the PICO-8 shelf, open the shelf menu and set **Core** to **Pico-8
+   Native**. fake-08 stays the default; the same row switches back.
+3. **Splore** is the first entry on the PICO-8 shelf whenever `Bios/pico8_64`
+   is there. It needs Wi-Fi.
+
+Native PICO-8 has no save states or rewind.
 
 ## If it starts EmulationStation instead
 

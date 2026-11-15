@@ -18,8 +18,9 @@ keys, its game menu and its power key work as before.
 
 ## 1. Flash the card
 
-Download **`plorpOS-nano-v<version>-sdcard.zip`**, unzip the image, and flash it to a microSD
-card with [Rufus](https://rufus.ie/en/) or any other image tool. Flashing **wipes the card**.
+Download **`plorpOS-nano-v<version>-sdcard.zip`** from
+[plorpos-v1.5.5](https://github.com/thwonp/plorpOS/releases/tag/plorpos-v1.5.5)
+(the Nano's latest release), unzip the image, and flash it to a microSD card with [Rufus](https://rufus.ie/en/) or any other image tool. Flashing **wipes the card**.
 
 Put the card in the Nano and turn it on. The first start sets the card up -
 FunKey's six steps on the screen, under a minute - and then the shelf comes
@@ -31,6 +32,28 @@ Power off the Nano (hold the power button) and put the card in the computer -
 or leave it in and connect the Nano by USB: it starts as a USB drive (mount button is in settings). The
 card's big partition holds `plorpOS`, `Music`, `Bios`, `Roms` (one folder per
 console) and `FunKey`. **Do not format the other partitions if Windows asks you to.**
+
+## Updating from an earlier version
+
+Download **`plorpOS-nano-v<version>-UPDATE.zip`** from [plorpos-v1.5.5](https://github.com/thwonp/plorpOS/releases/tag/plorpos-v1.5.5), unzip it, and copy the `plorpOS`
+folder inside over the one on the card (USB drive, or the card in the
+computer). At the next start the Nano installs it - FunKey's message
+**INSTALLING PLORPOS** - and restarts once by itself. Your settings, saves and
+lists stay. If an install fails the Nano starts the version it had and leaves
+`plorpOS/update-failed.log` on the card.
+
+**From plorpOS nano v0.2**: games moved into `Roms/`, and some console folders
+were renamed (table below). Flash this image, or move the console folders
+into `Roms/` by hand and rename `Sega Genesis`, `Sega Master System`,
+`PCE-TurboGrafx`, `PS1`, `MAME 2000` and `Final Burn Alpha 2012` - in
+`Saves/` too (`PICO-8` and `Atari lynx` work as they are: the card ignores
+case). Recently Played and Favorites forget the games of renamed folders.
+
+**From plorpOS nano v0.1** (the adb install): flash this image once. Flashing
+wipes the card, so first copy off your music, games, BIOS files and
+`FunKey/.picoarch/` (your saves are in its `data/` folders). Afterwards put
+BIOS files in `Bios/` and copy the `.srm` / `.sav` / `.st*` files of each game
+into `Saves/<console folder>/`; their names already match.
 
 ## What goes where on the card
 
@@ -149,28 +172,6 @@ the music stops, paused, on the speaker.
 
 The Nano has one USB port, so a DAC and a computer cannot be connected at the
 same time.
-
-## Updating
-
-Download **`plorpOS-nano-v<version>-UPDATE.zip`**, unzip it, and copy the `plorpOS`
-folder inside over the one on the card (USB drive, or the card in the
-computer). At the next start the Nano installs it - FunKey's message
-**INSTALLING PLORPOS** - and restarts once by itself. Your settings, saves and
-lists stay. If an install fails the Nano starts the version it had and leaves
-`plorpOS/update-failed.log` on the card.
-
-**From plorpOS nano v0.2**: games moved into `Roms/`, and some console folders
-were renamed (table above). Flash this image, or move the console folders
-into `Roms/` by hand and rename `Sega Genesis`, `Sega Master System`,
-`PCE-TurboGrafx`, `PS1`, `MAME 2000` and `Final Burn Alpha 2012` - in
-`Saves/` too (`PICO-8` and `Atari lynx` work as they are: the card ignores
-case). Recently Played and Favorites forget the games of renamed folders.
-
-**From plorpOS nano v0.1** (the adb install): flash this image once. Flashing
-wipes the card, so first copy off your music, games, BIOS files and
-`FunKey/.picoarch/` (your saves are in its `data/` folders). Afterwards put
-BIOS files in `Bios/` and copy the `.srm` / `.sav` / `.st*` files of each game
-into `Saves/<console folder>/`; their names already match.
 
 ## Connecting
 
