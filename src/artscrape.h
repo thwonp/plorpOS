@@ -71,6 +71,15 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_d
                const char *only);
 void art_cancel(void);
 
+/* A shelf whose art is already on the card - Ports, where every port ships its
+ * own picture and gameinfo.xml, and no catalog online knows them (plorpos-3jv).
+ * The run hands such a shelf to this instead of the network: `only` as for
+ * art_begin, and what it found, could not find and left alone ADDED to the
+ * counts. Unset, the shelf is reported as not in the table. */
+typedef void (*art_local_fn)(const char *folder, const char *only,
+                             int *found, int *missing, int *had);
+void art_set_local(art_local_fn fn);
+
 /* One unit of work, so the caller can draw between them. Returns:
  *
  *    1  still going    - `now` says what it is doing

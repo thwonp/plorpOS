@@ -39,6 +39,7 @@ static const struct { const char *folder; int id; } SYS[] = {
 	{ "Game Boy Color",       10 },
 	{ "Neo Geo Pocket Color", 82 },
 	{ "Game Boy Advance",     12 },
+	{ "Nintendo DS",          15 },   /* Skyscraper's idmap, 2026-11-15 (plorpos-9fh) */
 };
 
 int ss_system_id(const char *folder)
