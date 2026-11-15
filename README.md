@@ -42,6 +42,7 @@ plorpOS started as a fork of [TortOS](https://tortos.games/) for the TrimUI Bric
 | GKD 350H Ultra | On top of the stock ROCKNIX, at the screen's full resolution | [Installing on the GKD](docs/install-gkd.md) |
 | Anbernic RG Rotate | A card image ([base618](https://github.com/thwonp/base618), Linux). Android stays on the device | [Installing on the RG Rotate](docs/install-rotate.md) |
 | Anbernic RG SP, RG34xxSP, RG35XX H | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [Installing on an H700](docs/install-h700.md) |
+| Miyoo Mini Flip | From the card, on the stock firmware | [Installing on the Mini Flip](docs/install-flip.md) |
 | Anbernic RG Nano | **plorpOS nano**, a pared down music-first version, as a card image | [Installing on the RG Nano](docs/install-nano.md) |
 
 Everything below is about the full plorpOS. The Nano's guide lists what nano does.
@@ -53,13 +54,13 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 - **Games load super fast** - libretro emulators live in resident memory.
 - **Game switcher** to quickly access recent games from any screen. 
 - **Auto-save and resume** (configurable), **Rewind**, **fast-forward**, **Turbo mode** and other features you should expect.
-- **Fifteen shader presets**, Game Boy palettes, and Aspect, Stretch or Integer scaling.
+- **Sixteen shader presets**, Game Boy palettes, and Aspect, Stretch or Integer scaling (plus Integer Overscale on the square GKD and RG Rotate screens).
 - **RetroAchievements,** signed in on the device. A game's set downloads once and then works offline; unlocks made offline are sent later.
 
-- **Nintendo DS** runs full speed **on every device** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with PokeDaisy DS (its Pokemon companion: Party, Dex, Map, Bag, Guide) as a per-game option.
+- **Nintendo DS** runs full speed **on every device but the Miyoo Mini Flip** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with PokeDaisy DS (its Pokemon companion: Party, Dex, Map, Bag, Guide) as a per-game option.
     - Multiple Layout / Scaling options, Stylus emulation (and touch support), Microphone emulation.
 
-- **Portmaster** (UNOFFICIALLY SUPPORTED) on every device. Most games seem to run great but this is experimental. Report problems to plorpOS, NOT the PortMaster team.
+- **Portmaster** (UNOFFICIALLY SUPPORTED) on every device but the Miyoo Mini Flip. Most games seem to run great but this is experimental. Report problems to plorpOS, NOT the PortMaster team.
 - **PICO-8 Native** works with Raspberry Pi files placed in `Bios/`. Carts you play in Splore land on the shelf with their artwork.
 
 - **Scrape** box art / metatdata on-device, or import from gamelist.xml.
@@ -68,15 +69,16 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 ## Supported systems
 | Console | Put games in | File types | Core | Bios |
 |---|---|---|---|---|
-| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano uses `pico_dyn` instead of `pico8_64`) |
+| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 | `pico8.dat`,`pico8_64` (RG Nano and Miyoo Mini Flip use `pico8_dyn` instead of `pico8_64`) |
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo | Per game - I recommend using non-merged ROMs |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | Gambatte, or PokeDaisy or mGBA (per game) | - |
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | Gambatte, or PokeDaisy or mGBA (per game) | - |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | armGBA, or PokeDaisy over armGBA or mGBA (per game) | Optional: `gba_bios.bin` |
-| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms |
+| Nintendo DS | `Roms/Nintendo DS` | `.nds` | DSperate-lr, or PokeDaisy DS (per game) | `bios7.bin`, `bios9.bin`, `firmware.bin` (only needed for encrypted Roms) |
 | Super Nintendo | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 | - |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm | - |
-| Sega Genesis, 32X | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip`  | PicoDrive | - |
+| Sega Genesis | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip`  | PicoDrive | - |
+| Sega 32X | `Roms/Genesis` or `Roms/32X` | `.32x` `.zip` | PicoDrive | - |
 | Sega CD | `Roms/Genesis` or `Roms/Sega CD` | `.chd` `.cue` `.m3u` | PicoDrive | `bios_CD_U.bin`, `bios_CD_E.bin`, `bios_CD_J.bin` |
 | Sega Master System | `Roms/Master System` | `.sms` `.zip` | PicoDrive | - |
 | Sega Game Gear | `Roms/Game Gear` | `.gg` `.zip` | PicoDrive | - |
@@ -91,12 +93,14 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 
 Sega CD and 32X games can live in `Roms/Genesis` or use their own folders to split them into their own shelf.
 
+The Miyoo Mini Flip uses lighter cores on some shelves and splits Arcade in two; see [its guide](docs/install-flip.md#shelves-and-cores).
+
 ## Install
 
 Each handheld sets up a little differently, so follow its guide from the [Devices](#devices) table. The short version:
 
 1. Download the zip (or card image) for your device from [Releases](https://github.com/thwonp/plorpOS/releases/latest).
-2. Put it on a microSD card as the guide says. On the Brick, GKD and H700 handhelds that means formatting the card exFAT and copying the zip's contents over; the RG Rotate and RG Nano get a flashed image.
+2. Put it on a microSD card as the guide says. On the Brick, GKD and H700 handhelds that means formatting the card exFAT and copying the zip's contents over (FAT32 on the Miyoo Mini Flip); the RG Rotate and RG Nano get a flashed image.
 3. Put the card in and turn the device on. The first boot finishes the install.
 4. Add games to the folders in `Roms/`, from the computer now or over Wi-Fi later.
 
@@ -127,7 +131,7 @@ The PIN is new every time you open Over The Hare.
 | **L1/R1** | Jump a screenful |
 | **MENU** | Settings for the device, or for the shelf you're in |
 | **SELECT** | Muse, the music and audiobook player. Press it again to close |
-| **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's lid is a tap |
+| **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's or Mini Flip's lid is a tap (Flip: **Lid Close** in System Settings turns that off) |
 
 **In a game,** MENU opens the in-game menu and holding it opens the game switcher. SELECT in that menu opens Muse. A tap of POWER saves and sleeps; holding it saves and turns the device off.
 
@@ -147,7 +151,7 @@ Check the folder name against the table above, spelled exactly, and that the fil
 <details>
 <summary><b>A game has no box art.</b></summary>
 
-**MENU > Game Settings > Scraping > Box Art** fetches every missing cover over Wi-Fi. Sign in to a free [ScreenScraper](https://www.screenscraper.fr) account under **MENU > Game Settings > Scraping > ScreenScraper** and it asks there first, and brings each game's year, genre and synopsis for its details screen. Without an account, or for a game ScreenScraper doesn't have, it uses [libretro's thumbnail collection](https://thumbnails.libretro.com), looking a game up by its file name and, for zipped games, by checksum.
+**MENU > Game Settings > Scraping > Box Art** fetches every missing cover over Wi-Fi. Sign in to a free [ScreenScraper](https://www.screenscraper.fr) account under **MENU > Game Settings > Scraping > ScreenScraper** and it asks there first, and brings each game's year, genre and synopsis for its details screen. Without an account, or for a game ScreenScraper doesn't have, it uses [libretro's thumbnail collection](https://thumbnails.libretro.com), looking a game up by its file name and, for zipped games, by checksum. Ports need no network: Box Art takes each port's picture and details from the `gameinfo.xml` PortMaster installed with it.
 
 Some games aren't in either collection, like fan translations and homebrew. Add your own: a PNG named exactly like the game file, in `Roms/<console>/.media/`. `Black Castle.gb` wants `Black Castle.png`. Around 512 pixels on the long side is plenty.
 
@@ -165,10 +169,10 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are seven actions: **Fast Forward (Hold)** and **Rewind** (both work while held), **Fast Forward (Toggle)** (a press turns fast-forward on, the next press off; it also stops when you load a state or quit the game), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Screen Layout** (the next screen layout; MENU + X by default on the GKD and Rotate), **Swap Screens** (the other screen big, remembered per game) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
+Open **Hotkeys** in the in-game menu. There are seven actions: **Fast Forward (Hold)** and **Rewind** (both work while held), **Fast Forward (Toggle)** (a press turns fast-forward on, the next press off; it also stops when you load a state or quit the game), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). A Nintendo DS game adds **Screen Layout** (the next screen layout; MENU + X by default on the GKD and Rotate), **Swap Screens** (the other screen big, remembered per game) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad), plus **HUD Focus** for PokeDaisy DS (the cursor onto its HUD). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **Modifiers** are buttons you hold for a chord, like MENU + X. Each hotkey has its own: hold the modifier when you press the trigger and the screen shows it, so Fast Forward (Hold) on L Stick Click + A and Rewind on MENU + A work side by side. The modifiers each device offers:
-- **Brick, RG SP:** Menu or Select.
+- **Brick, RG SP, RG Rotate, Miyoo Mini Flip:** Menu or Select.
 - **Brick Pro, RG34xxSP, RG35XX H:** Menu, Select or L Stick Click.
 - **GKD:** Menu, Home, Stick Click or Select.
 
@@ -176,6 +180,7 @@ A tap of MENU still opens the in-game menu when you let go, unless you pressed a
 
 **Triggers:**
 - **L1, R1, L2, R2, A, B, X, Y:** with a modifier held, or alone. A button bound alone does the action instead of its job in that console's games.
+- **Fn1, Fn2** (Brick, Brick Pro): with a modifier held, or alone.
 - **D-pad and left stick directions:** with a modifier held only, so moving always works.
 - **The right stick** (Brick Pro, RG34xxSP, RG35XX H): its four directions and its click, with a modifier held or alone. Games never see it, so binding it alone costs nothing.
 - **Nintendo DS:** no stick direction is a trigger, since the stylus uses the stick.
@@ -189,9 +194,9 @@ One button can hold several actions: one alone and one under each modifier. On a
 
 Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotkey. Then, in a game:
 
-- **Press Turbo Assign, then a button.** That button is turbo now: hold it and it presses itself about ten times a second. The press that picks it isn't sent to the game.
+- **Press Turbo Assign, then the button to turbo, then the button to put it on.** Turbo Assign + A + X makes X a turbo A: hold X and A is pressed about ten times a second. Turbo Assign + A + A makes A its own turbo. The picking presses aren't sent to the game.
 - **Do the same again** to make that button normal again. Several buttons can be turbo at once.
-- **Press Turbo Assign twice** to change your mind before picking a button.
+- **Press Turbo Assign again** before the last press to cancel.
 - **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
 A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo Assignments** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
@@ -209,12 +214,14 @@ They're under **MENU > System Settings**. The device has two ways to rest: **sle
 
 Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse's own **Screen Off** setting decides when the screen goes dark instead. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
 
+**Miyoo Mini Flip:** no suspend and no Auto Off. **Sleep Poweroff** (default 2 minutes) powers a sleeping Flip off instead.
+
 </details>
 
 <details>
 <summary><b>Can I use Bluetooth headphones?</b></summary>
 
-Yes. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search and **A** to pair. They reconnect by themselves from then on. Wired headphones always win when they're plugged in.
+Yes, except on the Miyoo Mini Flip. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search and **A** to pair. They reconnect by themselves from then on. Wired headphones always win when they're plugged in.
 
 The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
 
@@ -239,14 +246,14 @@ Put each book in its own folder in `Audiobooks/`, with an author's folder above 
 <details>
 <summary><b>Where are my saves?</b></summary>
 
-Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the console folder is named like its `Roms/` folder, and the release comes with one for every console, so saves from another device can go straight in. A game's battery save is written at most once a minute while you play, and always when you open the in-game menu, sleep or quit. If you upgraded a Brick from plorpOS v1.1 or TortOS, move the old saves loose in `Saves/` into those folders - see [Upgrading a TortOS card](docs/install-brick.md#upgrading-a-tortos-card). Save states, the autosave included, are in `.userdata/shared/.tortos/`, one folder per console. Neo Geo Pocket Color games write no `.srm`, so their progress lives in the autosave.
+Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the console folder is named like its `Roms/` folder, and the release comes with one for every console, so saves from another device can go straight in. A game's battery save is written at most once a minute while you play, and always when you open the in-game menu, sleep or quit. An update leaves them in place (Brick: [Updating from an earlier version](docs/install-brick.md#updating-from-an-earlier-version)). Save states, the autosave included, are in `.userdata/shared/.tortos/`, one folder per console. Neo Geo Pocket Color games write no `.srm`, so their progress lives in the autosave.
 
 </details>
 
 <details>
 <summary><b>Something went wrong. How do I send the logs?</b></summary>
 
-Open **MENU > Network Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick), `.userdata/gkd/logs/` (GKD) or `.userdata/rgsp/logs/` (RG SP) on the card.
+Open **MENU > Network Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/<device>/logs/` on the card: `tg3040` (Brick), `gkd`, `rotate`, `miyooflip`, or on an H700 its BaseOS device name (`rgsp` on the RG SP).
 
 </details>
 

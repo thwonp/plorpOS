@@ -6,8 +6,9 @@ every control, menu row and setting, and the reasons behind them.
 ## Installing
 
 Each handheld has its own guide: [TrimUI Brick](install-brick.md),
-[GKD 350H Ultra](install-gkd.md), [RG Rotate](install-rotate.md) and
-[H700](install-h700.md) (RG SP, RG34xxSP, RG35XX H). The BIOS files each
+[GKD 350H Ultra](install-gkd.md), [RG Rotate](install-rotate.md),
+[H700](install-h700.md) (RG SP, RG34xxSP, RG35XX H),
+[Miyoo Mini Flip](install-flip.md) and [RG Nano](install-nano.md). The BIOS files each
 console needs are in the README's
 [Supported systems](../README.md#supported-systems). Building it yourself is in
 [building.md](building.md).
@@ -34,11 +35,11 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **Right stick, stick clicks** (Brick Pro, RG34xxSP, RG35XX H) | never seen by games (the bundled cores are all digital, except DSperate's opt-in analog patches, which read the sticks), except as the Nintendo DS stylus when **Stylus Stick** picks it, but hotkeys: the left click can be a modifier, and the right stick's directions and click are triggers with a modifier or alone (no stick direction on the Nintendo DS, where R Stick Click is Stylus Tap by default). The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. Native PICO-8 has Continue, Display, Reset, Splore, Quit (PortMaster ports: Continue, Reset, Quit); its Display is the same per-system Display Mode (Stretch, Aspect, Integer), saved at once but read only when PICO-8 starts, so a changed value shows "Reset game to apply" until the game is reset. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) under Hotkeys |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader (Scanline Filter on the Miyoo Mini Flip), Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. Native PICO-8 has Continue, Display, Reset, Splore, Quit (PortMaster ports: Continue, Reset, Quit); its Display is the same per-system Display Mode (Stretch, Aspect, Integer), saved at once but read only when PICO-8 starts, so a changed value shows "Reset game to apply" until the game is reset. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) below Hotkeys |
 | **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
-| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
+| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later (the Miyoo Mini Flip has no suspend: it powers off after **Sleep Poweroff**); a tap wakes it. A hold powers off. In a game, the game is saved first either way |
 
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
@@ -48,7 +49,7 @@ were, or back into the game - and B goes back one screen at a time.
 
 **plorpOS carries this table itself**, under **MENU > Controls**: five pages
 that left and right step through - moving, the shelf, a game, Muse, and the
-buttons that work anywhere. It is the copy that is always to hand, and the one
+buttons that work anywhere (the RG Rotate adds a sixth, Touch). It is the copy that is always to hand, and the one
 that follows your Gamelist Layout, so the page shows the axes as they are on
 your device. This guide is the long version of the
 same thing.
@@ -59,10 +60,10 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, and on the RG Rotate **SSH**; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
-| **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, and on the RG Rotate and Miyoo Mini Flip **SSH**; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget. Not on the Miyoo Mini Flip |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
-| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
+| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing` |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **Gamelist Layout**: `Coverflow`, `Detailed List` or `Art List`, how a game shelf is drawn. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else. **Ports Tile**: `Visible` or `Hidden`, whether the Ports card is on the systems row (only listed on devices that have one; hiding it does not delete anything, and Ports games in Favorites and the switcher wait for it to come back) |
 | **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Off` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what both Fast Forward hotkeys (Hold and Toggle) run at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Download Achievement Sets**: every game's set onto the card at once, for playing offline; games already cached are skipped, and the panel counts the games with no achievements to earn. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
 | **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
@@ -107,19 +108,30 @@ The system menu opens on a shelf of games and applies to that system alone:
 
 | | |
 |---|---|
-| **Core** | which libretro core runs them |
+| **Core** | which core runs them. Switchable per game (the one under the cursor) on Game Boy, Game Boy Color, Game Boy Advance and Nintendo DS (and the Miyoo Mini Flip's SNES and Neo Geo Pockets); on PICO-8, fake-08 or native for the whole shelf. Elsewhere it only names the core |
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
-| **Default Display Mode** | left/right cycles it; saved the moment it changes. On the DS shelf it is **Default Layout**. A game whose Display you set in the in-game menu keeps its own |
+| **Default Display Mode** | `Stretch`, `Aspect`, `Integer`, and `Integer Overscale` (the next whole size, edges cropped) on the square GKD and RG Rotate screens. Left/right cycles it; saved the moment it changes. On the DS shelf it is **Default Layout**. A game whose Display you set in the in-game menu keeps its own |
 | **Default Palette** | Game Boy and Game Boy Color shelves: the palette a game starts with until you pick one in the in-game menu |
 | **Default Display** | DS shelf only: **Aspect**, **Stretch** or **Integer** for Top Only, Bottom Only and the Overlays' big screen; only the choices that change the picture on that panel, none on the Brick |
 | **Default Shader** | the console's shader (**Default Scanline Filter** on the Miyoo Mini Flip): left/right steps through the list, A opens it; a game whose Shader you set in the in-game menu keeps its own; greyed on PICO-8 running native |
 | **Box Art** | fetch what this system is missing, and nothing else |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |
-| **Reset Display Overrides** | only while a game of this shelf has its own Display, Shader or DS Display: asks Yes/No, then puts every game back on the shelf's defaults |
+| **Reset Display Overrides** | every shelf but Ports: asks Yes/No, then puts every game on the shelf back on its defaults (Display, Shader, Palette, DS Layout and Display) |
 
 On Favorites the menu is only Sort By. The rest is about one
 console, and a game there keeps its own Display, or its console's default,
 wherever it was started from.
+
+**X** on a game opens its info screen:
+
+| | |
+|---|---|
+| **Synopsis** | the scraped description; A opens it. Synopsis, Year and Genre appear only once the game has been scraped |
+| **Year**, **Genre** | from the scrape |
+| **Achievements** | earned / total; A opens the list |
+| **Get Box Art** / **Replace Box Art** | fetch a cover for this game alone (needs Wi-Fi); a cover already there stays unless a new one is found |
+| **Rename** | the name shown on the shelf, typed on the keyboard; the file keeps its name, and a rescrape never undoes it. Empty gives back the old name |
+| **Delete Game** | asked first; removes the file from the card (saves stay). On Ports it runs PortMaster's uninstall, saves included |
 
 Display Mode is per-system, because a Game Boy and a Genesis do not want the
 same answer. Set here it applies from the next launch; the same row in the
@@ -270,7 +282,7 @@ is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
 Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
 Rescan Folder for music copied on while the device was running, and Playback
-Settings.
+Settings (not on the Miyoo Mini Flip).
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -399,8 +411,8 @@ the same buttons keep working for 30 seconds, so a pause in the dark can be
 undone in the dark. Then the device suspends, or with Auto Off it powers
 down. NextUI pauses the music to sleep; this is plorpOS's own.
 
-For a pocket, lock the buttons. On every device that is **Sleep Button Lock** in Muse
-Settings (Off/On); while it is on and the music plays with the screen dark, the face
+For a pocket, lock the buttons. On every device but the Miyoo Mini Flip that is **Sleep Button Lock** in
+Playback Settings (Off/On); while it is on and the music plays with the screen dark, the face
 and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
 Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
@@ -438,8 +450,7 @@ Three things about that are yours to choose, and they are independent.
 **UI Theme** picks the art. `Plain Jane` is a drawn card per system, with the
 name on it. `Fancy Pants` is a photograph of the console itself, background
 removed, and because a photograph does not name itself the shelf writes the
-name underneath. A theme is a directory under `res/cards/`, so adding one is
-dropping in a folder - no code and no configuration.
+name underneath. The art is in `TortOS/cards/` on the card.
 
 **System Order** picks the order of the systems. `Year` is release order, with
 PICO-8 and Arcade first. `A-Z` is by name. `Maker` groups them - Arcade,
@@ -448,7 +459,7 @@ Favorites stays first and Muse last whichever you pick, and the shelf reorders
 the moment you change it.
 
 **Gamelist Layout** picks how a game shelf looks. The systems row is always
-the row above; this is about the games inside a system, and Favorites, Recents
+the row above; this is about the games inside a system, and Favorites
 and Ports follow it too. Muse keeps its own shelf.
 
 `Coverflow` is the row above, with box art.
@@ -480,6 +491,9 @@ Card art comes from, in order:
    which for a game in progress is a better card than any box;
 3. a generated slab: the system's color, the title, and the title's first
    letter enormous and barely there behind it.
+
+On Ports, Box Art needs no network: it takes each port's picture and
+details from the `gameinfo.xml` PortMaster installed with it.
 
 **Adding a cover by hand.** Some games have no cover anywhere the fetch looks -
 fan translations, homebrew, a dump no catalog lists. Put one in yourself over
