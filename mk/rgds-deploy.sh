@@ -6,7 +6,7 @@
 # (plorpos-rgds.6); on a stock ROCKNIX card used for development it is a plain
 # directory on /storage, which this creates.
 #
-# Usage: mk/rgds-deploy.sh [elf|res]
+# Usage: mk/rgds-deploy.sh [elf|res|vendor|diatom|boot]
 #        RGDS=root@<ip> SSH_OPTS="-i <key>" to reach the device
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -40,6 +40,29 @@ case $WHAT in res)
 	put "$ROOT/res/fonts/menu.ttf" "$RGDS:$P/res/web/menu.ttf"
 	put "$ROOT/res/shaders/"* "$RGDS:$P/shaders/"
 	echo "  + assets"
+esac
+case $WHAT in diatom)
+	D=${DIATOM_ELF:-$ROOT/../diatom-rgds/build/rgds/diatom}
+	[ -f "$D" ] || { echo "no diatom at $D (set DIATOM_ELF)"; exit 1; }
+	swap "$D" diatom
+	echo "  + diatom"
+esac
+case $WHAT in boot)
+	put "$ROOT/sd/rgds/launch.sh" "$RGDS:$P/"
+	$S "mkdir -p /storage/.config/system.d"
+	put "$ROOT/sd/rgds/system.d/"* "$RGDS:/storage/.config/system.d/"
+	$S "systemctl daemon-reload"
+	echo "  + boot (from the next boot)"
+esac
+case $WHAT in vendor)
+	# The aarch64 cores every ROCKNIX port takes, as mk/gkd-deploy.sh. VENDOR:
+	# a worktree has no vendor/ of its own (mk/fetch-vendor.sh).
+	V=${VENDOR:-$ROOT/vendor}
+	put "$V/cores/"* "$V/cores-gkd/"* "$RGDS:$P/cores/"
+	put "$V/cores-brick/gambatte_libretro.so" "$V/cores-brick/armgba_libretro.so" \
+	    "$V/cores-brick/pokedaisy_gba_libretro.so" "$V/cores-brick/pokedaisy_gbc_libretro.so" \
+	    "$V/cores-brick/pokedaisy_ds_libretro.so" "$RGDS:$P/cores/"
+	echo "  + cores"
 esac
 $S sync
 echo "deployed '$WHAT' to $RGDS"
