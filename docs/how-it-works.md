@@ -167,7 +167,7 @@ not a second and a half of re-initializing a display.
   was left; if not it starts fresh. Games Auto-Resume off (Game Settings)
   hands none over, and the autosave is still written on the way out.
 - **Manual save and load**, six slots, from the in-game menu (`MENU`).
-  Silent - the device shows no in-game chrome.
+  No pop-up confirms it.
 
 States are keyed on the system's **`Roms/` folder**, and battery `.srm` files
 are named after the ROM, in `Saves/<Roms folder>/` on every port, beside whatever the core keeps there itself (memory
