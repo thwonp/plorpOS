@@ -1,14 +1,18 @@
-# How TortOS works
+# How plorpOS works
 
-The design metric is **speed**, and one decision carries most of it: **TortOS
+This covers the ports that run the launcher and diatom: Brick, GKD, H700,
+Rotate and Mini Flip. The RG Nano runs nanoshelf and PicoArch instead
+([install-nano.md](install-nano.md)).
+
+The design metric is **speed**, and one decision carries most of it: **plorpOS
 never starts a process to run a game.**
 
-A cold start costs about 1100 ms on this hardware and almost none of it is the
+A cold start costs about 1100 ms on the TrimUI Brick and almost none of it is the
 game - it is SDL, an EGL context, audio and settings. So the emulator comes up
-once during the boot animation and stays up for the whole session, and a game
+once at boot and stays up for the whole session, and a game
 arrives as a single line on a socket.
 
-Every number in this file was measured on the device rather than estimated,
+Every number in this file was measured on the TrimUI Brick rather than estimated,
 but they were not all measured on the same day. The boot profile below was
 re-taken 2026-09-13, and the 975 MB on 2026-09-07. The launch timings and the
 core footprint date from when the resident emulator landed and have not been
@@ -18,7 +22,7 @@ profile now says cold or warm, on which card, with how many games.
 
 ## Where the time goes
 
-Starting a game on this hardware costs about **1100 ms**, and almost none of it
+Starting a game on the Brick costs about **1100 ms**, and almost none of it
 is the game:
 
 | | |
@@ -28,13 +32,13 @@ is the game:
 | audio and settings | ~140 ms |
 | **actually opening the ROM** | **~36 ms** |
 
-Everything except the last line is the cost of *starting a process*. So TortOS
+Everything except the last line is the cost of *starting a process*. So plorpOS
 does not start one.
 
 ### The resident emulator
 
-[Diatom](https://github.com/ericreinsmidt/diatom) - an MIT libretro frontend
-built for this device - comes up on a Unix socket during the boot animation
+[Diatom](https://github.com/thwonp/diatom) - an MIT libretro frontend
+originally written by Eric Reinsmidt for the Brick - comes up on a Unix socket at boot
 and stays up for the life of the session. The launcher hands it a game as a
 `RUN` line carrying the core, the ROM, and the paths where the resume state
 and the card preview live, and reads back what actually happened: `RUNNING`,
@@ -42,12 +46,14 @@ and the card preview live, and reads back what actually happened: `RUNNING`,
 
 A warm launch - the process up, the core already mapped - is **26 to 44 ms**
 from `RUN` to `RUNNING`, and about 70 ms from pressing A, measured on Contra
-on the device. Every core is mapped at startup, during the boot animation, and
-never unloaded, so no launch pays for opening one: six mapped plus one running
-measured **15.0 MB** against the device's 975, which is what makes holding all
-of them affordable rather than reckless. All nine on the Brick - FBNeo, PCSX
-ReARMed and fake-08 included - cost 31 MB of free memory at boot, and the
-least free in any game measured was 604 MB. They are opened `RTLD_LOCAL`, so
+on the Brick. Every core is mapped at startup and
+never unloaded, so no launch pays for opening one (not on the Mini Flip: with
+101 MB it maps a core on first use). Six mapped plus one running measured
+**15.0 MB** against the Brick's 975 MB, which is what makes holding all of them
+affordable rather than reckless. The nine cores the Brick shipped then - FBNeo,
+PCSX ReARMed and fake-08 included - cost 31 MB of free memory at boot, and the
+least free in any game measured was 604 MB; the DS, Gambatte, armGBA and
+PokeDaisy cores came later and are not in those figures. They are opened `RTLD_LOCAL`, so
 libraries exporting the same twenty `retro_*` symbols cannot see each other.
 
 Mapping them replaced reading them. The boot script used to pull the cores into
@@ -73,10 +79,10 @@ first second after boot, or if it has died - the launcher runs the same
 `diatom` binary standalone, one process for that game, and starts a fresh
 resident once the display is back.
 
-### The boot animation runs *behind* startup
+### The boot animation runs *behind* startup (Brick only)
 
 An animation that adds its own length to the boot is a delay with a picture on
-it. TortOS plays its 2.4s animation in the background while the launcher does
+it. On the Brick, plorpOS plays its 2.4s animation in the background while the launcher does
 its entire startup - the card scan, GL init, font and card decode - and while
 the resident emulator builds its context and maps the cores it needs.
 
@@ -90,7 +96,7 @@ The same idle seconds pull the emulator, the cores and their libraries into the
 page cache. Cold reads of that set measure ~190 ms against ~30 ms warm.
 
 Startup phases are logged rather than guessed at. Both columns below are from
-one device boot on the main card - 1708 games across eleven systems - measured
+one Brick boot on the main card - 1708 games across eleven systems - measured
 2026-09-13. Cold is the first launcher of that boot; warm is the same launcher
 restarted with the page cache already hot. A second boot reproduced all eight
 figures within 5%. The figures are cumulative from process start, not per
@@ -123,7 +129,7 @@ is recorded here rather than quietly rounded away.
 ### Card art is decoded off the render thread
 
 The shelf asks for every visible card every frame, and a card that is not
-decoded yet used to be decoded right there, inside the frame. On this device
+decoded yet used to be decoded right there, inside the frame. On the Brick
 that is 14-60 ms against a 16.7 ms budget, so arriving somewhere the cache did
 not reach meant one frame doing seven decodes and taking 100-400 ms. It did
 not read as slowness, it read as the shelf stopping.
@@ -146,7 +152,8 @@ after those covers were resized. They sleep when there is nothing to decode.
 ### The launcher never goes away
 
 With a resident emulator there is nothing to tear down, so the launcher keeps
-its own GL context through the whole game. Coming back from a game is a frame,
+its own GL context through the whole game (on the Mini Flip, which has no GPU,
+its software renderer). Coming back from a game is a frame,
 not a second and a half of re-initializing a display.
 
 ## Saves
@@ -163,7 +170,7 @@ not a second and a half of re-initializing a display.
   Silent - the device shows no in-game chrome.
 
 States are keyed on the system's **`Roms/` folder**, and battery `.srm` files
-are named after the ROM, in `Saves/<Roms folder>/` on both devices, beside whatever the core keeps there itself (memory
+are named after the ROM, in `Saves/<Roms folder>/` on every port, beside whatever the core keeps there itself (memory
 cards, `fbneo/`), so the same title on two shelves has two saves. The **tag** in `systems.cfg` keys
 something else: the per-system display mode, the sort order, and the favorites
 list. This
@@ -190,10 +197,11 @@ every 100 ms against a core running at 60 Hz. That is six frames per poll, so
 five of every six are invisible to it and unlocks would be missed silently.
 The launcher declares which console the game is and hands over the set, and
 diatom watches every frame
-(its ADR-0025 and ADR-0026).
+(its [ADR-0025](https://github.com/thwonp/diatom/blob/main/docs/decisions/0025-achievements-belong-to-the-frontend.md)
+and [ADR-0026](https://github.com/thwonp/diatom/blob/main/docs/decisions/0026-achievements-on-the-launcher-protocol.md)).
 
 **The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> Achievements Sign-In,
-and the first time you launch a game TortOS hashes the ROM, asks
+and the first time you launch a game plorpOS hashes the ROM, asks
 RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
 that the launch is instant and works with Wi-Fi off.
@@ -214,9 +222,9 @@ A DS game is hashed the way RetroAchievements does it - header, ARM9, ARM7 and
 icon, read where the header points - through rcheevos' own `hash_rom.c`, not
 as the whole 128 MB cartridge.
 
-That needs HTTPS, which the Brick turns out to have: `curl 7.54.1` against
-`OpenSSL/1.1.0i`. What it does not have is anything to trust, so
-`res/ssl/cacert.pem` ships with the launcher - see
+That needs HTTPS. The Brick has `curl 7.54.1` against `OpenSSL/1.1.0i` but
+nothing to trust, and the Mini Flip has no curl (it ships its own), so
+`res/ssl/cacert.pem` ships on every card - see
 [its README](../res/ssl/README.md) for the measurement. Only the password is
 typed; RetroAchievements answers with a token, and that is what is stored.
 

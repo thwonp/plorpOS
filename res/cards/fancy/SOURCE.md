@@ -99,3 +99,14 @@ shelf): Evan Amos's `File:Nintendo-DS-Lite-Black-Open.png` (public domain,
 own work), processed the same way - trimmed to its alpha, longest side 369.
 The DS Lite rather than the original DS, by the user's choice; the classic
 card (tools/gendscard.py) draws the Lite too.
+
+## FBA2012.png, MAME2000.png
+
+The Mini Flip's two Arcade shelves (FBA 2012 and MAME 2000; plorpos-f1p.59).
+Edited by the plorpOS owner from the FBNeo card art (ARCADE.png above).
+
+## PORTS.png
+
+The Ports shelf (PortMaster; plorpos-3yv.86.3). The official PortMaster logo,
+edited in GIMP by the plorpOS owner. The logo is PortMaster's and identifies
+the platform, like the console trade dress above.

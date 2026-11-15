@@ -16,9 +16,11 @@ to reverse belongs in a comment or in `docs/`. An ADR is for a decision that is
 expensive to reverse, that a reasonable person would question later, or where
 the rejected option was genuinely tempting.
 
-TortOS is the consumer side of a two-project pair; diatom keeps its own
-decisions in its own tree, and anything crossing the socket between them is
-recorded on the diatom side because that is where the protocol is defined.
+plorpOS is the consumer side of a two-project pair; diatom keeps its own
+decisions in [its own tree](https://github.com/thwonp/diatom/tree/main/docs/decisions),
+and anything crossing the socket between them is recorded on the diatom side
+because that is where the protocol is defined. The ADR numbers the other docs
+cite (0023, 0025, 0026, ...) are diatom's unless they say otherwise.
 
 | # | Title | Status |
 |---|---|---|

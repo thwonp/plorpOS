@@ -1,127 +1,140 @@
-# Building TortOS
+# Building plorpOS
 
-Everything cross-compiles in TortOS's own toolchain image - a stock Debian
-cross-compiler pinned by digest, built by `mk/toolchain.Dockerfile`, linking
-against the device's own SDL2 in `sysroot/`. So the only host requirements are
-Docker and (for regenerating art) Python with Pillow, plus ffmpeg.
+Everything cross-compiles in Docker, so the host needs Docker (rootless podman
+works), Python 3 with Pillow and ffmpeg (only for regenerating art), and
+`sshpass` for the Brick's `make deploy`. No device is needed to build, except
+`mk/fetch-sysroot.sh` (Brick) and `mk/fetch-gkd-sysroot.sh` (GKD), which pull
+the device's own libraries.
 
-```sh
-make toolchain  # the cross-compiler      -> tortos-toolchain   (once)
-mk/fetch-sysroot.sh  # the device's SDL2  -> sysroot/           (once, needs adb)
-make            # the launcher            -> build/tortos.elf
-make vendor     # five libretro cores     -> vendor/
-mk/build-mgba-bridge.sh  # the sixth      -> vendor/            (see below)
-mk/build-gambatte-core.sh  # Game Boy/Color -> vendor/cores-brick (libretro pin, hash-pinned)
-mk/fetch-armgba-core.sh    # Game Boy Advance -> vendor/cores-brick (armGBA v1.6 release, hash-pinned)
-make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v$(VERSION).zip
-make native     # host build of the launcher, for working on how it looks
-make boot       # regenerate the boot animation
-make check      # every check below, offline, in a second or two
-```
+Every target takes `PLATFORM=` (default `brick`) and builds into
+`build/<platform>/` (the Brick into `build/`). One version number for every
+port: `VERSION` in the Makefile.
 
-**mGBA is built rather than fetched, and is meant to stop being.** Every MBC2
-Game Boy cartridge segfaults on the buildbot core - Kirby's Pinball Land, Wave
-Race, Golf, X, both Final Fantasy Legends - a regression reported as
-mgba-emu/mgba#3859 and fixed upstream the same day, but in no downloadable core
-because libretro builds mGBA from a fork that has not synced.
-`mk/build-mgba-bridge.sh` builds that same pinned tree with only upstream's own
-fix applied, hardened to match the official build. Without it `make payload`
-refuses the card rather than shipping one without mGBA, which every aarch64
-card carries as the Game Boy, Color and Advance shelves' third Core (Gambatte
-and armGBA are their defaults). Restore the fetch and delete the
-script the day that fork syncs.
-
-`make payload` needs a built diatom binary (`DIATOM_ELF`, defaulting to a
-sibling checkout).
-
-**The other ports** build the same way with `PLATFORM=` on every target, into
-`build/<platform>/` against a sysroot of their own:
+## Once
 
 ```sh
-mk/fetch-gkd-sysroot.sh        # GKD 350H Ultra (ROCKNIX)      -> sysroot-gkd/
-make PLATFORM=gkd && make PLATFORM=gkd payload
-mk/fetch-h700-sysroot.sh       # Anbernic H700 (BaseOS)        -> sysroot-h700/
-make PLATFORM=h700 && make PLATFORM=h700 payload
-mk/fetch-rotate-sysroot.sh     # Anbernic RG Rotate (base618)  -> sysroot-rotate/
-make PLATFORM=rotate
-ROTATE_STAGE=out/rotate mk/rotate-deploy.sh stage   # the plorpOS/ folder (update zip)
-mk/rotate-image.sh             # the card image, from the saved base in work/ (READ_DEVICE=1 refreshes it from a Rotate over ssh)
+make toolchain                  # tortos-toolchain image (mk/toolchain.Dockerfile)
+make vendor                     # fetched cores, hash-pinned, + PortMaster.zip -> vendor/
 ```
 
-BaseOS has no SDL2 or FFmpeg of its own, so `mk/fetch-h700-sysroot.sh` builds
-both from source (about ten minutes) and `make PLATFORM=h700 payload` ships
-those libraries in `TortOS/lib/`. Its FFmpeg is configured with
-`--disable-everything` and a short filter list: a filter Muse starts using
-must be added to that list, or every track fails to open on the H700 alone.
+## Cores every aarch64 card ships
 
-`make check` runs before every commit. Each part can be run alone, and each
-exists because something once broke in a way nothing noticed:
+`make payload` refuses a card whose `systems.cfg` names a core `vendor/` does
+not have, and names the script to run. Each script pins its own hashes:
 
-| | |
+| Script | Core | Into |
+|---|---|---|
+| `mk/build-mgba-bridge.sh` | mGBA (buildbot core crashes on MBC2 carts; delete the script when libretro's fork syncs) | `vendor/cores` |
+| `mk/build-pcsx-rearmed.sh` | PlayStation | `vendor/cores` |
+| `mk/build-fbneo.sh` | Arcade, Neo Geo | `vendor/cores` |
+| `mk/build-fake08.sh` | PICO-8 (fake-08) | `vendor/cores` |
+| `mk/build-gambatte-core.sh` | Game Boy, Color | `vendor/cores-brick` |
+| `mk/fetch-armgba-core.sh` | Game Boy Advance | `vendor/cores-brick` |
+| `mk/build-pokedaisy-gba-core.sh`, `-gbc-core.sh`, `-ds-core.sh` | PokeDaisy | `vendor/cores-brick` |
+
+The buildbot versions of pcsx_rearmed, fbneo and fake08 need a newer glibc
+than the Brick's 2.33; that is why they are built.
+
+## Per device
+
+Every payload also needs a diatom built for the same platform: `DIATOM_ELF`,
+default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
+
+| Device | Sysroot | Extra prerequisites | Build and package |
+|---|---|---|---|
+| TrimUI Brick / Brick Pro | `mk/fetch-sysroot.sh` (adb) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-brick.sh` | `make && make payload` -> `out/sd/`, `out/plorpOS-brick-v<VER>.zip` |
+| GKD 350H Ultra | `mk/fetch-gkd-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`) | `make PLATFORM=gkd && make PLATFORM=gkd payload` -> `out/gkd/`, zip |
+| Anbernic H700 (BaseOS) | `mk/fetch-h700-sysroot.sh` (~10 min) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-h700.sh`, `mk/build-sdl2-armhf.sh` | `make PLATFORM=h700 && make PLATFORM=h700 payload` -> `out/h700/`, zip |
+| RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`); image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `ROTATE_STAGE=out/rotate mk/rotate-deploy.sh stage` (update folder) and `mk/rotate-image.sh` (card image) |
+| Miyoo Mini Flip | `mk/fetch-miyoo-sysroot.sh` | `docker build -t miyoo-toolchain -f mk/miyoo-toolchain.Dockerfile mk`; cores: `sh mk/flip-cores/build-all.sh` | `make PLATFORM=miyoo`, then `mk/miyoo-deploy.sh package` and `verify` |
+| RG Nano | `mk/fetch-nano-sdk.sh` | none | `make nano-zip` (update zip), `make nano-kernel && make nano-image` (card image) |
+
+Notes:
+
+- **H700:** BaseOS has no SDL2 or FFmpeg, so the sysroot builds both and the
+  payload ships them in `TortOS/lib/`. Its FFmpeg is `--disable-everything`
+  plus a short filter list: a filter Muse starts using must be added there, or
+  every track fails to open on the H700 alone.
+- **Rotate:** `mk/rotate-image.sh` builds from the saved base in `work/`;
+  `READ_DEVICE=1` refreshes it from a Rotate over ssh.
+- **Flip:** cores are built from pinned source, see
+  [mk/flip-cores/README.md](../mk/flip-cores/README.md). `package` writes
+  `plorpOS-flip-v<VER>.zip` to `OUT` and also needs `FLIP_CURL`
+  (`mk/flip-cores/build-curl.sh`) and `FLIP_INPUTS` (the pinned Wi-Fi driver);
+  the defaults point outside the repo.
+- **Nano:** a different stack (nanoshelf + PicoArch on FunKey-OS); see
+  [install-nano.md](install-nano.md#sources-and-licences).
+- **Box art:** a release needs the ScreenScraper developer pair in
+  `.screenscraper.env` (gitignored). Without it `make payload` refuses;
+  `ALLOW_NO_SS=1` packages anyway.
+- `make install-card CARD=<mount>` copies the Brick payload to a mounted card,
+  adding files only.
+
+## Checks
+
+```sh
+make check          # every check, offline, needs no device
+make check-menus    # any one alone
+```
+
+The list is `CHECKS` in the Makefile. Each exists because something once broke
+without anyone noticing.
+
+| Area | Checks |
 |---|---|
-| `check-menus` | what each menu CONTAINS in a given state, with no renderer and no device |
-| `check-audioout` | where sound goes given a cable, a headset and a setting - all eight combinations |
-| `check-idle` | the idle clock behind Auto Sleep and Auto Off, including the charger case and the counter wrapping |
-| `check-cheevos` | the achievement half: parsing and filtering |
-| `check-rahash` | the C and Python ROM hashers agree, over the whole library |
-| `check-raset` | the C and Python set converters agree (needs `RA_USER`/`RA_PASS`) |
-| `check-artscrape` | two name normalizers agree on every candidate |
-| `check-artrun` | whole Box Art runs against a fake network: Replace keeps a cover it cannot better, and a checksum names the ROM in a zip, not the readme beside it |
-| `check-hare` | nothing on the file server is reachable without the PIN |
-| `check-httpd` | request parsing, including the malformed ones |
-| `check-xfer` | upload paths cannot escape the directory they were aimed at |
-| `check-db` | a shipped default never overwrites a choice, and the two scopes stay apart |
-| `check-stats` | play time is recorded, and a LAUNCH still writes nothing |
-| `check-sort` | a shelf sorts the way it says it does, and the same shelf twice the same way |
-| `check-bt` | a device name from the air is only ever data; an address is validated |
-| `check-backlog` | the backlog still says what is left, and has been swept recently |
+| Menus and screens | `check-menus` (what each menu contains in a given state, no renderer), `check-controls`, `check-hkbind`, `check-btnmap`, `check-shaderlist`, `check-gamelist`, `check-sort`, `check-sysorder`, `check-titles`, `check-paused` |
+| Settings and device state | `check-db`, `check-stats`, `check-clock`, `check-idle`, `check-battery`, `check-audioout`, `check-gbpal` |
+| Network and file server | `check-hare`, `check-httpd`, `check-xfer`, `check-bt` |
+| Achievements | `check-cheevos`, `check-rahash`, `check-raset` (C and Python agree; `raset` needs `RA_USER`/`RA_PASS`, skips without) |
+| Box art | `check-artscrape`, `check-artrun`, `check-ss` |
+| Muse | `check-muselib`, `check-musequeue`, `check-museart`, `check-playlist` |
+| Other | `check-logpack`, `check-backlog` |
 
-They are offline and need no device. A screen's rows are a pure function of
-its state precisely so the first two can exist - see `docs/decisions/`.
+`check-paused` skips without host SDL2/SDL_ttf headers; `check-titles` needs
+sqlite3.
 
-The host build renders exactly what the handheld renders, and can be asked for
-a single frame:
+## Host build
+
+`make native` builds the launcher for the host (`build-native/tortos`). It
+renders what the handheld renders and can write a single frame:
 
 ```sh
 TORTOS_ROOT=… TORTOS_ROMS=… TORTOS_FONT=res/fonts/menu.ttf \
   build-native/tortos --shot /tmp/shelf.png --screen games
 ```
 
-`--menu [row]` draws the TortOS menu over that shelf, and `--slots <n>
-[aspect]` draws one frame of the save/load carousel over synthetic game
-frames - the two screens that otherwise need a game running on a device before
-they can be looked at. `--jump <n>` applies n letter-jumps first (negative for
-up), so where the d-pad lands on a real library can be checked without a hand
-on the device. Every shot names the screen and the focused item on stderr, so
-a sequence of them reads back as a list of what was actually drawn.
+- `--menu [row]` draws the MENU over that shelf.
+- `--slots <n> [aspect]` draws the save/load carousel over synthetic frames.
+- `--jump <n>` applies n letter-jumps first (negative for up).
+
+Each shot prints the screen and focused item on stderr.
 
 ## On device
 
-```sh
-make adb          # push everything over USB
-make adb-elf      # just the launcher
-make adb-restart  # kill the launcher so launch.sh picks the new one up
-make adb-log
-```
-
-**Never `kill` `launch.sh` itself.** The boot hook's failsafe powers the device
-off when the launch loop exits.
+| Device | Script | Notes |
+|---|---|---|
+| Brick | `make adb`, `adb-elf`, `adb-res`, `adb-vendor`, `adb-restart`, `adb-restart-all`, `adb-run`, `adb-log` (`mk/adb-deploy.sh`); or `make deploy` / `restart` / `logs` over ssh (`BRICK=<ip>`) | Brick only. Never kill `launch.sh`: the boot hook's failsafe powers the device off when the launch loop exits |
+| GKD | `mk/gkd-deploy.sh elf\|res\|vendor\|diatom\|boot`; `make PLATFORM=gkd deploy` / `logs` | ssh, `GKD=root@<ip>` |
+| H700 | `mk/h700-deploy.sh elf\|diatom\|muse\|all\|ds` | adb; cable attached at power-on |
+| Rotate | `mk/rotate-deploy.sh elf\|diatom\|all\|boot\|stage` | ssh, `ROTATE_HOST`, `ROTATE_KEY` |
+| Flip | `mk/miyoo-deploy.sh all\|elf\|diatom\|cores\|hook` | ssh over Wi-Fi only (USB is charge-only), `MIYOO=root@<ip>` |
 
 ## Layout
 
 ```
-src/            the launcher (MIT)
-docs/           the guide, how it works, configuration and building; why the
-                code is shaped the way it is, in docs/decisions/; and the
-                rules a menu follows, in docs/menus.md
-mk/             cross build, payload, deployment
-tools/          the boot-animation and card generators, setbright, the
-                achievement fetcher, and the checks
-res/            the boot animation, the system cards, the font, Over The
-                Hare's page, and the marks and screenshots the README shows
-config/         systems.cfg as shipped; the rest is compiled in
-sd/             the boot hook and launch.sh as they land on the card
-sysroot/        fetched: the device's own SDL2, for linking (mk/fetch-sysroot.sh)
-vendor/         the libretro cores: five fetched and hash-pinned, mGBA
-                built by mk/build-mgba-bridge.sh
+src/            the launcher; src/platform_<device>.c per port, src/muse/ the audio player
+tools/          checks, card/boot generators, musectl, btplayer, setbright, PICO-8 shims
+config/         systems.cfg (every port) and systems-rotate.cfg (DS, Ports rows)
+sd/             per-device boot and session scripts: tortos/ (Brick launch.sh), brick/,
+                trimui/, gkd/, h700/, rotate/, miyoo/
+mk/             cross build, core builds, payload, deploy and image scripts;
+                flip-cores/, flip-fw/, patches/, pgo/
+res/            boot animation, system cards, fonts, shaders, CA bundle, Over The
+                Hare's page, Nano boot logo
+third_party/    vendored libchdr and rcheevos
+docs/           guides, install pages, how it works, menus, decisions/
+fetched/built (gitignored):
+sysroot*/       per-device SDL2/FFmpeg to link against; sdk-nano/ for the Nano
+vendor/         cores (cores/, cores-brick/, cores-gkd/, cores-rotate/) and portmaster/
+build*/, out/   build outputs and payloads
 ```

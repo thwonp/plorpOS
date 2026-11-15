@@ -1,11 +1,12 @@
-# TortOS's own toolchain: a stock Debian cross-compiler pinned by digest, with
-# the device's SDL2 in sysroot/. Every dependency is TortOS's own or the
-# TrimUI's SDK. Build it once with `make toolchain`, and the sysroot once with
-# `mk/fetch-sysroot.sh` (needs the device on adb).
+# plorpOS's own toolchain: a stock Debian cross-compiler pinned by digest, with
+# the device's SDL2 in sysroot/. Build it once with `make toolchain`, and the
+# Brick sysroot once with `mk/fetch-sysroot.sh` (needs the device on adb).
+# docs/building.md covers every port.
 IMAGE := tortos-toolchain
-# Which device: brick (the Brick and Brick Pro, the default) or gkd (the GKD
-# 350H Ultra, into build/gkd/ against sysroot-gkd/ - see mk/fetch-gkd-sysroot.sh).
-# Each build compiles one device file, src/platform_$(PLATFORM).c.
+# Which device: brick (the Brick and Brick Pro, the default), gkd, h700, rotate,
+# miyoo (the Mini Flip) or nano. The Brick builds into build/ against sysroot/,
+# the others into build/<platform>/ against sysroot-<platform>/ (the Nano:
+# sdk-nano/, mk/nano.mk). All but the Nano compile one device file, src/platform_$(PLATFORM).c.
 PLATFORM ?= brick
 # The GKD, over ssh with its key. ROCKNIX, so no password to leak.
 GKD ?= root@192.168.0.55

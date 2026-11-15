@@ -5,8 +5,8 @@ deliberate:
 
 | | holds | why it is separate |
 |---|---|---|
-| `.userdata/<platform>/tortos.db` | volume, brightness, Auto Sleep, Auto Off, audio output, Wi-Fi, Bluetooth, display mode per system, and the RetroAchievements and ScreenScraper accounts | per handheld. A card moved to another device should not carry the first one's screen and speaker settings, or its account token |
-| `.userdata/shared/.tortos/library.db` | timezone, startup system, core options | per card. It travels with the library, the same way favorites and earned achievements do |
+| `.userdata/<platform>/tortos.db` | volume, brightness, Auto Sleep, Auto Off, audio output, radios, UI and Muse preferences, display mode, shader and core per shelf and per game, and the RetroAchievements and ScreenScraper accounts | per handheld. A card moved to another device should not carry the first one's screen and speaker settings, or its account token |
+| `.userdata/shared/.tortos/library.db` | timezone, startup system, core options, hotkeys, favorites, recents, play time, achievements, palettes, disc choices | per card. It travels with the library, the same way favorites and earned achievements do |
 
 The shipped defaults are **compiled into the launcher** and seed whichever
 database is missing them, so there is no config file to ship, none to drift from
@@ -26,9 +26,9 @@ of them is reachable from a menu.
 
 ## What the boot script reads
 
-`launch.sh` needs five values before `tortos.elf` exists - the panel brightness
-for before the boot animation, the timezone, and whether each radio should come
-up. It is POSIX shell and cannot read a database, so the launcher exports
+`launch.sh` needs four values before `tortos.elf` exists - the panel brightness,
+the timezone, and whether Wi-Fi and Bluetooth come up (the Flip adds a fifth,
+whether ssh starts). It is POSIX shell and cannot read a database, so the launcher exports
 `.userdata/<platform>/boot.env` and the script sources it.
 
 That file is **derived, never authoritative**. Delete it and the next boot runs
@@ -39,15 +39,19 @@ shorter rather than longer.
 ## `systems.cfg`, which is still a file
 
 `TortOS/systems.cfg` is the one that did not move, because it is **build input
-rather than a setting**. `mk/payload.sh` reads it twice on the host: once to
+rather than a setting**. The payload scripts read it twice on the host
+(`mk/plorpos-files.sh`): once to
 refuse a card whose `systems.cfg` names cores that `vendor/` does not have -
 which is how a card was nearly built with four of nine systems dead - and once
 to create the ROM folders. Neither can wait for a database that only exists on
 the device.
 
 ```
-sys | display name | Roms/ folder | core | tag | card art | accent | extensions | disc bios
+sys | display name | Roms/ folder | core | tag | card art | accent | extensions | disc bios | maker
+makers|Arcade|Nintendo|Sega|...
 ```
+
+`maker` and the single `makers|` line drive System Order's `Maker` grouping.
 
 The **tag** keys the per-system display mode and the favorites list. It is not
 what saves and states hang off - states are keyed on the folder and `.srm` files
@@ -138,7 +142,7 @@ Two things, each for a reason:
 
 | | |
 |---|---|
-| `cheevos-active.set` | Diatom reads it, handed over as a path on RUN under its ADR-0026. Moving it would mean diatom linking sqlite and learning the schema |
+| `cheevos-active.set` | Diatom reads it, handed over as a path on RUN under its [ADR-0026](https://github.com/thwonp/diatom/blob/main/docs/decisions/0026-achievements-on-the-launcher-protocol.md). Moving it would mean diatom linking sqlite and learning the schema |
 | `systems.cfg` | build input rather than a setting, as above |
 
 Everything else is in one of the two databases. Favorites are rows keyed

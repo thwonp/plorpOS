@@ -10,7 +10,11 @@
 
 ## Why it is here
 
-The Brick ships `curl 7.54.1` linked against `OpenSSL/1.1.0i`, so it can speak
+Every port ships it (`mk/plorpos-files.sh`) and the launcher passes it to curl
+for every HTTPS request. The Mini Flip's firmware has no curl at all, so the
+Flip carries its own (`mk/flip-cores/build-curl.sh`) beside this file.
+
+It was added for the Brick, which ships `curl 7.54.1` linked against `OpenSSL/1.1.0i`, so it can speak
 HTTPS. What it does not ship is anything to trust: there is no `/etc/ssl/certs`,
 no `ca-certificates` package, and every TLS handshake fails with
 `ssl_verify_result=20` - "unable to get issuer cert locally". Measured on the

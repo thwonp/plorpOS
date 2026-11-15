@@ -1,6 +1,6 @@
 # Text menus
 
-Every list-shaped screen in TortOS is drawn by one function, `menu_draw` in
+Every list-shaped screen in plorpOS is drawn by one function, `menu_draw` in
 `src/main.c`. This is what a menu is, what the pieces mean, and which rules a
 new screen has to follow. It exists because on 2026-09-04 a single evening
 turned up five defects that were all the same defect: `menu_draw` abstracts
@@ -37,12 +37,10 @@ it. Left-aligned it reads as one more row you have failed to be able to select.
 walks every row lets the cursor rest on one, and then A does nothing and the
 screen looks broken. Screens on `menu_run` get this for free.
 
-Audited 2026-09-04, and this file previously overstated it. Most `menu_draw`
-callers pass `sel = -1`: they are panels with no cursor, and the bug cannot
-reach them. Only four screens move a cursor over a row list - `game_info_screen`,
-`tortos_menu`, `cheevos_screen` and `game_menu` - and they still walk every row
-with `(sel + 1) % n`. They are only actually wrong where they have a dead row to
-land on, which is not all of them.
+Most `menu_draw` callers pass `sel = -1`: they are panels with no cursor, and
+the bug cannot reach them. Of the screens that move a cursor over a row list,
+only `cheevos_screen` still walks every row by hand with `(sel + 1) % n`;
+`game_info_screen`, `tortos_menu` and `game_menu` are on `menu_run`.
 
 Do not write the walk by hand in a new screen. Use `menu_run`, where the step is
 `menu_step_sel` - a **bounded** walk, not a `do/while`. A menu can legitimately
@@ -92,8 +90,8 @@ ADR-0001 says the decision has failed if it stops being true. The Wi-Fi screen's
 pure half lives in `src/wifi_menu.c` for exactly this reason, and
 `tools/menu-check.c` links it without SDL.
 
-Every menu is on it: the Wi-Fi screen, both MENU-button menus, the game info
-screen and the in-game menu. Each is a `build`, an `on_key` and a `menu_style`,
+Every menu but the achievements list (`cheevos_screen`) is on it: the Wi-Fi
+screen, both MENU-button menus, the game info screen and the in-game menu. Each is a `build`, an `on_key` and a `menu_style`,
 and none of them writes a loop.
 
 `menu_style` is the half that needs the renderer: a fixed width, an accent,

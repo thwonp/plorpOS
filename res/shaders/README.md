@@ -1,7 +1,9 @@
 # Shaders
 
-GLSL shaders for diatom's GLES path on the GKD 350H Ultra and the Brick (plorpos-gkd.72, plorpos-reo.4),
-listed for the in-game menu by `shaders.cfg`. They are third-party files,
+GLSL shaders for diatom's GLES path on every port with a GPU - Brick, GKD, H700
+and Rotate (plorpos-gkd.72, plorpos-reo.4) - listed for the in-game menu by
+`shaders.cfg`. The Mini Flip has no GPU; `sd/miyoo/shaders.cfg` gives it one
+blitter filter instead. They are third-party files,
 copied unmodified - headers, notices and all - from NextUI
 (`skeleton/BASE/Shaders/glsl`, LoveRetro/NextUI at 73522546), which collected
 them from the libretro shader repositories. NextUI's own license does not
@@ -28,4 +30,4 @@ The three conversions were traced to their libretro common-shaders originals
 in plorpos-4g4 (2026-10-03). edge1pixel.glsl is the one with no terms found
 anywhere: no license could be found, it is kept as published, credited to
 decavoid, and THIRD-PARTY-LICENSES.md says so (plorpos-gkd.81). a71b077 brought 16 files; 54cd96b removed four (scale3x,
-sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving these 12; plorpos-gkd.86.1 added PT_SkyWalker541.glsl, unmodified, from its own repository.
+sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving 12; plorpos-gkd.86.1 added PT_SkyWalker541.glsl and plorpos-qim fakelottes-geom-mini.glsl, each unmodified from its own repository - 14 in all.
