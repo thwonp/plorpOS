@@ -27,5 +27,5 @@ done
 # beside this folder there, and nowhere else.
 CURL=curl
 [ -x "${0%/*}/../curl" ] && CURL=${0%/*}/../curl
-exec "$CURL" -fsSL --cacert /mnt/SDCARD/TortOS/cacert.pem -o "$out" \
+exec "$CURL" -fsSL --cacert /mnt/SDCARD/plorpOS/cacert.pem -o "$out" \
 	${post:+--data-binary "@$post"} "$url"

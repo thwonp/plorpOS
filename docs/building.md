@@ -50,7 +50,7 @@ mk/rotate-image.sh             # the card image, from the saved base in work/ (R
 
 BaseOS has no SDL2 or FFmpeg of its own, so `mk/fetch-h700-sysroot.sh` builds
 both from source (about ten minutes) and `make PLATFORM=h700 payload` ships
-those libraries in `TortOS/lib/`. Its FFmpeg is configured with
+those libraries in `plorpOS/lib/`. Its FFmpeg is configured with
 `--disable-everything` and a short filter list: a filter Muse starts using
 must be added to that list, or every track fails to open on the H700 alone.
 

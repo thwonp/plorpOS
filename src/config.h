@@ -15,7 +15,7 @@ typedef struct {
 	                       * Saves/ folder is the ROM folder's name). Three
 	                       * characters at most: this array is the limit, and a
 	                       * longer tag is silently truncated into it. */
-	char card[CFG_STR];   /* card art filename under TortOS/cards/ */
+	char card[CFG_STR];   /* card art filename under plorpOS/cards/ */
 	unsigned accent;      /* 0xRRGGBB, tints the focus glow and the rail */
 	char exts[CFG_STR];   /* which extensions in that folder are games; empty
 	                       * means everything, which also means save files and

@@ -58,4 +58,4 @@ Notes:
   them in `lrbench`, and ~18 MB more RAM than snes9x2005_plus.
 - Patches are applied with `git apply --directory=...` from the repo root: a
   plain `git apply` inside this repo's `build/` silently skips every file.
-- `build-curl.sh` (static curl + Mbed TLS, `TortOS/curl`) is separate.
+- `build-curl.sh` (static curl + Mbed TLS, `plorpOS/curl`) is separate.

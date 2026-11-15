@@ -7,7 +7,9 @@
 # does, and a launcher that cannot start would then loop forever. So a failing
 # launcher ends in a sleep, with the reason in the log.
 SD=/mnt/SDCARD
-DIR=$SD/TortOS
+DIR=$SD/plorpOS
+# TortOS/ on a card the rename has not reached yet (plorpos-nzi).
+[ -d "$DIR" ] || DIR=$SD/TortOS
 
 # Which device: BaseOS writes it at build time. The userdata directory is per
 # device, so one card can move between H700s without mixing their settings.
@@ -36,6 +38,8 @@ mkdir -p "$LOGS" "$SD/Bios" "$SD/Saves" "$SD/Roms" "$SD/.userdata/shared"
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
 echo "plorpOS on $BASEOS_MODEL, BaseOS $BASEOS_VERSION, uptime $(cut -d' ' -f1 /proc/uptime)" >> "$LOG"
+# The install folder's rename (plorpos-nzi): what is left of TortOS/ moves in.
+[ -f "$SD/plorpOS/folder-move.sh" ] && sh "$SD/plorpOS/folder-move.sh" "$SD" >> "$LOG" 2>&1
 
 # Wi-Fi as the player left it (boot.env, which the launcher writes on every
 # change): join the saved networks in the background, so the shelf never waits

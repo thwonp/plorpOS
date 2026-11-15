@@ -33,13 +33,13 @@
  * it, so the Brick's spelling holds. The userdata directory is the device's:
  * launch_frontend.sh sets TORTOS_USERDATA from /etc/baseos-release, and this
  * default is the RG SP's, the card's existing one. */
-const char *P_ROOT = "/mnt/SDCARD/TortOS";
+const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/rgsp";
 const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
-const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
-const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
+const char *P_WEB = "/mnt/SDCARD/plorpOS/res/web";
+const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
@@ -51,12 +51,12 @@ const char *const plat_child_env[] = {
 	NULL
 };
 /* Our SDL2 lives on the card; BaseOS has no aarch64 one. */
-const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib";
+const char plat_child_libpath[] = ":/mnt/SDCARD/plorpOS/lib";
 /* Native PICO-8 quiet while Muse plays, as on the Brick (child_quiet). */
-const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
+const char *const plat_pico8_preload = "/mnt/SDCARD/plorpOS/pico8sdl.so";
 /* Splore downloads with wget, and BaseOS's BusyBox wget has no TLS: the
  * shim in this folder hands them to its curl (sd/tortos/pico8/wget). */
-const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
+const char *const plat_pico8_path = "/mnt/SDCARD/plorpOS/pico8";
 
 bool plat_is_brick_pro(void) { return false; }
 /* The RG35XX H has two sticks and the RG SP none, from the same build: the
@@ -742,7 +742,7 @@ bool plat_sleep_supported(void)
 	return strstr(st, "mem") != NULL && access(POWER_STATE, W_OK) == 0;
 }
 
-/* One of TortOS/radio.sh's functions (sd/h700/radio.sh), as the Brick's
+/* One of plorpOS/radio.sh's functions (sd/h700/radio.sh), as the Brick's
  * radio_sh_call does it: the script's path as $0, never pasted into the
  * command, and `fn` always a literal from below. Waited for, or detached for
  * the bring-up after a wake, so its seconds never hold the wake up. */

@@ -71,9 +71,10 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
    [Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems).
 
 ```
-TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
+plorpOS/     tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
              menu.ttf  cacert.pem  LICENSE  NOTICE  ...
              cards/  cores/  res/  shaders/  LICENSES/
+TortOS/      launch.sh only, for a GKD set up before v1.10 (see Updating)
 Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console,
              Nintendo DS/ and Ports/ among them
 Music/
@@ -124,10 +125,16 @@ there. Your settings, saves, play time and achievements live in `.userdata/`
 and `Saves/` and stay as they are. The `system.d/` files are the same as
 before; leave them.
 
+Before v1.10 the launcher's folder was `TortOS/`. The first start after
+updating moves whatever is still in it that the new `plorpOS/` does not have
+(your own PICO-8 files, for one) and deletes the rest. `TortOS/launch.sh`
+stays: the `system.d/` files of a GKD set up before v1.10 start it, and it
+starts plorpOS.
+
 ## If it starts EmulationStation instead
 
 - **The card isn't in, or isn't readable.** ROCKNIX mounts it at
-  `/storage/games-external`; check it's exFAT and that `TortOS/launch.sh` is on
+  `/storage/games-external`; check it's exFAT and that `plorpOS/launch.sh` is on
   it.
 - **The services aren't in place.** The `config` share should hold
   `system.d/essway.service.d/plorpos.conf` and the other two, each in its own
@@ -150,6 +157,6 @@ root password, `rocknix` unless you've changed it.
 ## Removing plorpOS
 
 Take the card out: the GKD starts EmulationStation. To remove it for good,
-delete the three folders (`essway.service.d`, `input.service.d`,
-`rocknix-automount.service.d`) from the `config` share's `system.d`, and
-restart.
+delete `plorpOS/` and `TortOS/` from the card and the three folders
+(`essway.service.d`, `input.service.d`, `rocknix-automount.service.d`) from
+the `config` share's `system.d`, and restart.

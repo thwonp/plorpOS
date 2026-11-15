@@ -31,13 +31,13 @@
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
  * SD card, as ROCKNIX mounts it; userdata per device, as on the Brick. */
-const char *P_ROOT = "/storage/games-external/TortOS";
+const char *P_ROOT = "/storage/games-external/plorpOS";
 const char *P_CARD = "/storage/games-external";
 const char *P_ROMS = "/storage/games-external/Roms";
 const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
 const char *P_SHARED = "/storage/games-external/.userdata/shared";
-const char *P_WEB = "/storage/games-external/TortOS/res/web";
-const char *P_FONT = "/storage/games-external/TortOS/menu.ttf";
+const char *P_WEB = "/storage/games-external/plorpOS/res/web";
+const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {

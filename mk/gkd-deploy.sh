@@ -18,7 +18,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WHAT=${1:-elf}
 GKD=${GKD:-root@192.168.0.55}
 CARD=/storage/games-external
-P=$CARD/TortOS
+P=$CARD/plorpOS
 
 S="ssh -o ConnectTimeout=5 $GKD"
 $S true 2> /dev/null || { echo "no GKD over ssh at $GKD"; exit 1; }

@@ -7,13 +7,13 @@
 # up in TortOS.
 #
 # GKD (PLATFORM=gkd): out/gkd/, the two folders docs/install-gkd.md installs -
-# copy_to_sd/ (TortOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
+# copy_to_sd/ (plorpOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
 # Saves/) for the card and system.d/ for the GKD's storage - and that guide as
 # INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
 #
 # H700 (PLATFORM=h700): out/h700/, the TF2 card's root as docs/install-h700.md
-# describes it - System/launch_frontend.sh (BaseOS's frontend hook), TortOS/
-# with the SDL2 and FFmpeg libraries BaseOS lacks in TortOS/lib/, and the empty
+# describes it - System/launch_frontend.sh (BaseOS's frontend hook), plorpOS/
+# with the SDL2 and FFmpeg libraries BaseOS lacks in plorpOS/lib/, and the empty
 # folders - plus that guide as INSTALL.md. BaseOS itself is the user's, on TF1.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,7 +36,7 @@ else
 	CARD=$OUT
 	ZIP=$ROOT/out/plorpOS-brick-v$VERSION.zip
 fi
-P=$CARD/TortOS
+P=$CARD/plorpOS
 
 [ -f "$B/tortos.elf" ] || { echo "run make PLATFORM=$PLATFORM first"; exit 1; }
 # A release ships with the ScreenScraper developer pair built in, or box art
@@ -61,10 +61,14 @@ mkdir -p "$P/cards" "$P/cores" "$P/res/web" \
          "$CARD/Roms" "$CARD/Music" "$CARD/Audiobooks" "$CARD/Bios" "$CARD/Saves"
 
 cp "$B/tortos.elf" "$P/"
+cp "$ROOT/sd/tortos/folder-move.sh" "$P/"   # TortOS/ -> plorpOS/ on an updated card (plorpos-nzi)
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
 if [ "$PLATFORM" = gkd ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/gkd/launch.sh" "$P/"
+	# Drop-ins from before the rename start TortOS/launch.sh (plorpos-nzi).
+	mkdir -p "$CARD/TortOS"
+	cp "$ROOT/sd/gkd/tortos-launch.sh" "$CARD/TortOS/launch.sh"
 	# The three systemd drop-ins, folders and all: each .conf only works
 	# inside its <service>.service.d/.
 	cp -R "$ROOT/sd/gkd/system.d" "$OUT/"
@@ -155,7 +159,7 @@ if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 fi
-# Everything else in TortOS/ that every device ships, cores included (one
+# Everything else in plorpOS/ that every device ships, cores included (one
 # list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
 # and Ports shelves too, its own builds of their cores first, and PokeDaisy DS
 # for the DS shelf's Core row (plorpos-oe0.44).

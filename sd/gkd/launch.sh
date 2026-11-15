@@ -25,7 +25,7 @@ if [ -z "$PLORPOS_INHIBITED" ]; then
 fi
 
 CARD=/storage/games-external
-DIR=$CARD/TortOS
+DIR=$CARD/plorpOS
 LOGS=$CARD/.userdata/gkd/logs
 mkdir -p "$LOGS" "$CARD/Saves" "$CARD/Bios"
 # Ten boots kept, newest first, as on the Brick (sd/tortos/launch.sh), so
@@ -39,11 +39,15 @@ done
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
 
+# The install folder's rename (plorpos-nzi): what is left of TortOS/ moves in;
+# TortOS/launch.sh stays, for the drop-ins of a GKD installed before it.
+sh "$DIR/folder-move.sh" "$CARD" launch.sh >> "$LOG" 2>&1
+
 # The resident emulator, as on the Brick. A child of this script, so it lives
 # through launcher restarts; respawn_resident starts it again if it dies.
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {
-	pgrep -f "TortOS/diatom --socket" > /dev/null && return
+	pgrep -f "plorpOS/diatom --socket" > /dev/null && return
 	rm -f "$TORTOS_DIATOM_SOCKET"
 	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 		--save "$CARD/Saves" --system "$CARD/Bios" >> "$LOG" 2>&1 &
@@ -84,7 +88,7 @@ done
 
 echo "launcher failed $FAILS times; falling back to ES" >> "$LOG"
 touch $FALLBACK
-pkill -f "TortOS/diatom --socket"
+pkill -f "plorpOS/diatom --socket"
 systemctl start input.service
 # essway restarts this script (Restart=always), which sees the flag and runs
 # ES outside the inhibitor.

@@ -8,7 +8,7 @@
 
 # Exported for radio.sh: plat_sleep() runs it in a shell of its own, which
 # sees only the launcher's environment (TortOS-1jx).
-export TORTOS_DIR=/mnt/SDCARD/TortOS
+export TORTOS_DIR=/mnt/SDCARD/plorpOS
 SDCARD=/mnt/SDCARD
 
 export PLATFORM=tg3040
@@ -344,6 +344,9 @@ LOG=$LOGS_PATH/tortos.log
 	[ -f "$LOG.prev" ] && mv -f "$LOG.prev" "$LOG.1"
 ) &
 
+# The install folder's rename (plorpos-nzi): what is left of TortOS/ moves in.
+sh "$TORTOS_DIR/folder-move.sh" /mnt/SDCARD >> "$LOG" 2>&1
+
 # The resident emulator. It holds the GL context and every core between
 # games, which takes a launch from ~1100ms to ~200ms. Started here so its ~1s
 # of setup happens during the boot animation alongside the launcher's own --
@@ -363,7 +366,7 @@ export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 # calls left behind: sh fails a missing function quietly, so every boot ran its
 # first game the old way, where a POWER tap powers off (TortOS-5bu).
 start_resident() {
-	pgrep -f "TortOS/diatom --socket" > /dev/null && return
+	pgrep -f "plorpOS/diatom --socket" > /dev/null && return
 	rm -f "$TORTOS_DIATOM_SOCKET"
 	LD_LIBRARY_PATH=/usr/trimui/lib \
 		"$TORTOS_DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" \

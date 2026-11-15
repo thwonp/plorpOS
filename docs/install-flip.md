@@ -12,8 +12,8 @@ Miyoo's MainUI.
 
 - **Cores** are built from pinned upstream source for the Flip
   (`mk/flip-cores/cores.lock` in the source tree lists each one's commit and
-  licence; `TortOS/THIRD-PARTY-LICENSES.md` on the card).
-- **Wi-Fi driver**: `TortOS/8188fu.ko`, Miyoo's own Realtek RTL8188FU module
+  licence; `plorpOS/THIRD-PARTY-LICENSES.md` on the card).
+- **Wi-Fi driver**: `plorpOS/8188fu.ko`, Miyoo's own Realtek RTL8188FU module
   for the Flip's kernel, unmodified. The stock firmware loads the radio driver
   from the SD card and has none of its own.
 - **ssh** (dropbear), off until you switch it on (see "Wi-Fi and ssh").
@@ -28,7 +28,7 @@ Miyoo's MainUI.
    It adds:
    ```
    .tmp_update/updater   the boot hook
-   TortOS/               the launcher, diatom, Muse, cores, ssh, the Wi-Fi driver, fonts, cards
+   plorpOS/              the launcher, diatom, Muse, cores, ssh, the Wi-Fi driver, fonts, cards
    Roms/<console>/       empty folders named as the shelves expect
    Bios/  Saves/
    ```
@@ -135,11 +135,11 @@ Wi-Fi is switched on in the plorpOS menu, Network Services. Its **SSH** row
 starts an ssh server on port 22 and is **off** on a fresh card. Log in as
 **`plorpos`**, password **`plorpos`** (a root account; it starts in the card's
 root folder). Keys work too: put your public key (for example the contents of
-`~/.ssh/id_ed25519.pub`) in `TortOS/ssh/authorized_keys` on the card, one key
+`~/.ssh/id_ed25519.pub`) in `plorpOS/ssh/authorized_keys` on the card, one key
 per line, and log in as `plorpos` or `root`. Anyone on your network who knows
 the default password can log in while SSH is on, so switch it off when you do
 not need it. The server's own host key is made the first time it starts and
-kept in `TortOS/ssh/`. The setting survives a reboot. The card has no sftp
+kept in `plorpOS/ssh/`. The setting survives a reboot. The card has no sftp
 server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 
 ## Limits
@@ -153,7 +153,7 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
   one game (Ace Combat 2) was checked at length, and memory is tight, so other
   titles may not run as well. Rewind is not offered for it.
 - **Online features** (RetroAchievements sign-in, art and name downloads,
-  Splore) use a curl bundled in `TortOS/` because the Flip's firmware has none.
+  Splore) use a curl bundled in `plorpOS/` because the Flip's firmware has none.
   They need Wi-Fi; RetroAchievements sign-in has not been tested end to end.
 - **Lynx, WonderSwan, Atari, 7800**: no shelves yet.
 - Super Nintendo's Star Fox (Super FX) holds full speed by leaving out an
@@ -171,20 +171,30 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 
 ## If plorpOS cannot start
 
-When `TortOS/launch.sh` is missing, or the launcher fails five times in a row,
+When `plorpOS/launch.sh` is missing, or the launcher fails five times in a row,
 the hook hands the Flip back to Miyoo's stock MainUI and renames itself to
 `.tmp_update.off` (the stock firmware would otherwise delete it). To boot
 plorpOS again, fix the card from a PC and rename `.tmp_update.off` back to
-`.tmp_update`. An empty file `TortOS/.boot-idle` makes the hook wait instead
+`.tmp_update`. An empty file `plorpOS/.boot-idle` makes the hook wait instead
 (useful with ssh on).
 
 **Never kill the process that stock `/customer/main` started from
 `.tmp_update/updater`.** The firmware reads that as a failed update and deletes
 the whole `.tmp_update/` folder.
 
+## Updating from an earlier version
+
+Copy everything in the new zip onto the card, replacing what's there. Your
+settings, saves, play time and achievements live in `.userdata/` and `Saves/`
+and stay as they are.
+
+Before v1.10 the launcher's folder was `TortOS/`. The first start after
+updating moves whatever is still in it that the new `plorpOS/` does not have
+(your own PICO-8 files, for one) and deletes the rest.
+
 ## Uninstall
 
-Delete `TortOS/` and `.tmp_update/`; the Flip then boots Miyoo's MainUI. Your
+Delete `plorpOS/` and `.tmp_update/`; the Flip then boots Miyoo's MainUI. Your
 `Roms/`, `Bios/` and `Saves/` stay as they are. If you installed the fast-boot
 update, undo it as its guide says.
 

@@ -5,7 +5,7 @@
  *
  * Hare puts a file manager on the LAN. Everything else in it is a
  * convenience; this is the part that decides whether a stranger on the same
- * Wi-Fi can write to /mnt/SDCARD/TortOS/tortos.elf. So the escapes get
+ * Wi-Fi can write to /mnt/SDCARD/plorpOS/tortos.elf. So the escapes get
  * written down as cases, including the ones that only work against a
  * plausible-looking implementation:
  *
@@ -133,7 +133,7 @@ int main(void)
 			{ "/mnt/SDCARD/Bios/sub",                         XFER_DEL_EMPTY },
 			{ "/mnt/SDCARD/.userdata/shared/.tortos/NES",     XFER_DEL_EMPTY },
 			{ "/mnt/SDCARD/Roms/",                            XFER_DEL_NO },
-			{ "/mnt/SDCARD/TortOS",                           XFER_DEL_NO },
+			{ "/mnt/SDCARD/plorpOS",                           XFER_DEL_NO },
 			{ "/mnt/SDCARD/Musical",                          XFER_DEL_NO },
 		};
 		size_t k;
@@ -148,23 +148,23 @@ int main(void)
 	}
 
 	printf("  climbing out, in every shape:\n");
-	deny("roms/../TortOS/tortos.elf", "the launcher, overwritable from a phone");
+	deny("roms/../plorpOS/tortos.elf", "the launcher, overwritable from a phone");
 	deny("roms/..", "one level is all it takes");
-	deny("music/../TortOS", "up out of the Music root");
+	deny("music/../plorpOS", "up out of the Music root");
 	deny("..", "no root at all, just up");
-	deny("../TortOS", "up, before any root");
-	deny("roms/NES/../../TortOS", "past the root from inside a subfolder");
+	deny("../plorpOS", "up, before any root");
+	deny("roms/NES/../../plorpOS", "past the root from inside a subfolder");
 	deny("roms/a/../../b", "a check that only reads the first component");
-	deny("roms/NES/..%2f..%2fTortOS", "a slash that only exists after decoding");
-	deny("roms/%2e%2e/TortOS", "dots that only exist after decoding");
-	deny("roms/%2E%2E/TortOS", "the same, in upper case");
-	deny("roms/.%2e/TortOS", "half encoded, half not - '.' plus '%2e' is '..'");
-	deny("/mnt/SDCARD/TortOS/tortos.elf", "an absolute path, asked for plainly");
+	deny("roms/NES/..%2f..%2fplorpOS", "a slash that only exists after decoding");
+	deny("roms/%2e%2e/plorpOS", "dots that only exist after decoding");
+	deny("roms/%2E%2E/plorpOS", "the same, in upper case");
+	deny("roms/.%2e/plorpOS", "half encoded, half not - '.' plus '%2e' is '..'");
+	deny("/mnt/SDCARD/plorpOS/tortos.elf", "an absolute path, asked for plainly");
 	deny("/roms/NES", "absolute, wearing a root's name");
 	deny("cores/fceumm_libretro.so", "a root that is deliberately not offered");
 	deny("tortos/tortos.elf", "a root that does not exist");
 	deny("", "nothing at all");
-	deny("roms%2fNES%2f..%2f..%2fTortOS", "the whole path encoded");
+	deny("roms%2fNES%2f..%2f..%2fplorpOS", "the whole path encoded");
 
 	printf("  malformed escapes are refused, not passed through:\n");
 	/* A decoder that emits a literal '%' for a bad escape hands the next

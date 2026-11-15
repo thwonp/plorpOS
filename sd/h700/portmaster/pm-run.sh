@@ -35,8 +35,8 @@ mount -t squashfs -o loop,ro "$HERE/pmtools.squashfs" "$TOOLS" || exit 1
 export PATH=$TOOLS/bin:$TOOLS/python/bin:$PATH
 # Our SDL2 (BaseOS has no aarch64 one) and what a port may ask of it.
 # lib32: our SDL2 for 32-bit ports, ahead of the firmware's (mk/build-sdl2-armhf.sh).
-export LD_LIBRARY_PATH=$CARD/TortOS/lib:$CARD/TortOS/lib32:$TOOLS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-export SSL_CERT_FILE=$CARD/TortOS/cacert.pem
+export LD_LIBRARY_PATH=$CARD/plorpOS/lib:$CARD/plorpOS/lib32:$TOOLS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export SSL_CERT_FILE=$CARD/plorpOS/cacert.pem
 
 if [ "$1" = --uninstall ]; then
 	cd "$PM" || exit 1

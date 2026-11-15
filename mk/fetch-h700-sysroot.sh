@@ -32,7 +32,7 @@
 # protocol, and src/muse/dec.c's filter chain (atempo for SPEED, volume for
 # its 2 dB headroom - without it every track failed, plorpos-xpt.5). Cover art is
 # the attached picture's bytes, so no image decoder. Shared, to ship as
-# TortOS/lib/ beside SDL with the LGPL's text (usr/lib/COPYING.LGPLv2.1),
+# plorpOS/lib/ beside SDL with the LGPL's text (usr/lib/COPYING.LGPLv2.1),
 # which keeps its relinking terms simple; see THIRD-PARTY-LICENSES.md.
 #
 # ALSA's headers and import library come from Debian bullseye - the snapshot
