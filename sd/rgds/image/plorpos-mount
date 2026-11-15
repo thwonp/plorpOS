@@ -1,0 +1,22 @@
+#!/bin/sh
+# The plorpOS partition, mounted directly (plorpos-rgds.12). Runs as
+# rocknix-automount.service in the image (mk/rgds-image.sh) in place of
+# ROCKNIX's /usr/bin/automount, which searches every disk for a games
+# partition and took 2-3 s of the boot. The card's layout is known here: the
+# exFAT partition sd/rgds/image/fs-resize made, labelled PLORPOS. Anything
+# else - no such partition, a mount that fails - is automount's, as before.
+M=/storage/games-external
+grep -q " $M " /proc/mounts && exit 0
+D=$(blkid -L PLORPOS)
+if [ -n "$D" ] && [ ! -e /storage/.please_resize_me ]; then
+	modprobe -q exfat
+	mkdir -p $M
+	if mount -t exfat "$D" $M; then
+		# As automount leaves it: no overlay on exFAT, and ROCKNIX's roms
+		# path (PortMaster's tools look there) on the card.
+		touch /storage/.ms_unsupported
+		[ -d $M/roms ] && mount --bind $M/roms /storage/roms
+		exit 0
+	fi
+fi
+exec /usr/bin/automount

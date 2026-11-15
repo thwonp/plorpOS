@@ -1,0 +1,69 @@
+#!/bin/bash
+# plorpOS on the Anbernic RG DS: ROCKNIX's start-up, launcher first
+# (plorpos-rgds.12). Takes the place of ROCKNIX's /usr/bin/autostart in the
+# image (mk/rgds-image.sh) and runs the same scripts from /usr/lib/autostart,
+# in a different order:
+#
+#   1. what the screen and the launcher need: the device's settings, the
+#      card, the GPU driver, brightness, the sound path, sway's config;
+#   2. sway and the launcher;
+#   3. everything else, behind the shelf.
+#
+# ROCKNIX runs all of it before the screen starts, which was 5 s of a 17 s
+# boot. Scripts that only serve what the image removed (EmulationStation,
+# RetroArch, Moonlight, ROCKNIX's own USB gadgets) are not run at all; one
+# this file does not name, from a newer ROCKNIX, runs in part 3.
+#
+# Derived from ROCKNIX's autostart (GPL-2.0, JELOS and ROCKNIX).
+. /etc/os-release
+
+BOOTLOG=/var/log/boot.log
+A=/usr/lib/autostart
+FIRST="001-setup 003-gpudriver 006-display 050-audio 111-sway-init"
+# 081-usbgadget would also take the USB port back from adb (sd/rgds/adb).
+SKIP="001-controller 001-emulationstation 001-sync-modules 003-logging
+      010-moonlight 010-pico8 010-uimode 020-configs 020-set_audio_latency
+      055-hdmi-check 081-usbgadget 050-es_settings 110-retroarch-joypad
+      modules.keep"
+
+# With the seconds since power-on, and without starting a process: this runs
+# while the boot is at its busiest, where each one costs a tenth of a second.
+log() {
+	local up
+	read -r up _ < /proc/uptime
+	printf '%(%a %b %e %T %Z %Y)T [%s]: Autostart: %s\n' -1 "$up" "$*" >> $BOOTLOG
+}
+listed() { case " $(echo $2) " in *" $1 "*) return 0 ;; esac; return 1; }
+run() { [ -f "$1" ] || return 0; log "Run $1"; "$1" >> $BOOTLOG 2>&1; }
+
+performance 2> /dev/null
+
+# The quirks are a dozen lines each, most of them writing one profile file:
+# read into a copy of this shell rather than each started as a program.
+for script in "$A/quirks/platforms/$HW_DEVICE"/* "$A/quirks/devices/$QUIRK_DEVICE"/*; do
+	[ -f "$script" ] || continue
+	listed "${script##*/}" "$SKIP" && continue
+	log "Run $script"
+	( . "$script" ) >> $BOOTLOG 2>&1
+done
+systemctl start rocknix-automount
+for name in $FIRST; do run "$A/common/$name"; done
+
+# The quirks above wrote the profile UI_SERVICE comes from.
+. /etc/profile
+rm -f /run/rocknix/start.games
+touch /run/rocknix/start.games >> $BOOTLOG 2>&1
+# ROCKNIX's volume, set where it always was: after the sound path, before
+# the launcher. The image takes this unit's wait for the end of start-up away.
+systemctl start volume-fixup >> $BOOTLOG 2>&1
+log "Starting $UI_SERVICE..."
+systemctl --no-block start $UI_SERVICE >> $BOOTLOG 2>&1
+
+for script in $A/common/* "$A/$HW_DEVICE"/* /storage/.config/autostart/*; do
+	name=${script##*/}
+	listed "$name" "$FIRST" || listed "$name" "$SKIP" || run "$script"
+done
+wait
+
+$(get_setting system.cpugovernor) >> $BOOTLOG 2>&1
+log "Autostart complete..."

@@ -20,6 +20,12 @@
 #   - plorpos-bootlogo.service repaints the plorpOS logo once systemd is up,
 #     the "==> Configuring ..." lines ROCKNIX's start-up prints under it are
 #     silenced, and /etc/issue says plorpOS and which ROCKNIX it is built on.
+#   - A faster boot (plorpos-rgds.12): ROCKNIX's start-up runs launcher
+#     first (sd/rgds/image/autostart), the plorpOS partition is mounted
+#     directly (sd/rgds/image/plorpos-mount), and the screen no longer waits
+#     for the network services.
+# in the loaders: u-boot's two-second autoboot wait is gone
+# (mk/rgds-uboot-nodelay.py),
 # and on p1: extlinux.conf names the RG DS's device tree, and post-flash.sh
 # (sd/rgds/image) with plorpos-bootlogo.raw draws the plorpOS logo in the
 # initramfs where ROCKNIX's would be.
@@ -77,7 +83,8 @@ grep -q "/device_trees/$FDT" "$W/p1/extlinux/extlinux.conf"
 
 echo "trimming SYSTEM (a few minutes)"
 cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
-cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$W/in/"
+cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$ROOT/sd/rgds/image/autostart" \
+   "$ROOT/sd/rgds/image/plorpos-mount" "$W/in/"
 # The wordmark, centred on black at half the panel's width, as the panel's
 # own framebuffer: 640x480, 4 bytes a pixel, blue first.
 cp "$ROOT/sd/rgds/image/post-flash.sh" "$W/p1/"
@@ -123,6 +130,26 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	install -m 644 /w/in/plorpos-bootlogo.service usr/lib/systemd/system/
 	mkdir -p usr/lib/systemd/system/sysinit.target.wants
 	ln -sf ../plorpos-bootlogo.service usr/lib/systemd/system/sysinit.target.wants/
+	# A faster boot (plorpos-rgds.12). Each edit is checked: a ROCKNIX whose
+	# units read differently keeps its own order, and says so here.
+	U=usr/lib/systemd/system
+	install -m 755 /w/in/autostart usr/bin/autostart
+	install -m 755 /w/in/plorpos-mount usr/lib/rocknix/plorpos-mount
+	sed -i "s|^ExecStart=/usr/bin/automount\$|ExecStart=/usr/lib/rocknix/plorpos-mount|" $U/rocknix-automount.service
+	# The screen and the start-up scripts waited for iwd and NetworkManager.
+	sed -i "s|^After=multi-user.target\$|After=basic.target|" $U/seatd.service
+	sed -i "s|^After=multi-user.target rocknix-automount.service\$|After=basic.target seatd.service rocknix-automount.service\nWants=seatd.service|" $U/sway.service
+	sed -i "s|^After=network.target graphical.target userconfig.service\$|After=basic.target userconfig.service|" $U/rocknix-autostart.service
+	# autostart starts this itself, before the launcher; left waiting for the
+	# end of start-up it would hold the launcher back with it.
+	sed -i "/^After=rocknix.target\$/d" $U/volume-fixup.service
+	rm -f $U/rocknix.target.wants/volume-fixup.service
+	grep -q "plorpos-mount" $U/rocknix-automount.service &&
+	grep -q "^After=basic.target\$" $U/seatd.service &&
+	grep -q "^Wants=seatd.service\$" $U/sway.service &&
+	grep -q "^After=basic.target userconfig.service\$" $U/rocknix-autostart.service &&
+	! grep -q "^After=rocknix.target\$" $U/volume-fixup.service ||
+		echo "boot order: a unit was not as expected in this ROCKNIX; check the boot" >&2
 	V=$(sed -n "s/^OS_VERSION=\"\(.*\)\"/\1/p" etc/os-release)
 	printf "plorpOS for the Anbernic RG DS\n... built on ROCKNIX %s\n" "$V" > etc/issue
 	mksquashfs /w/root /w/p1/SYSTEM -comp zstd -Xcompression-level 19 -b 1M -noappend -no-progress > /dev/null
@@ -153,5 +180,6 @@ label: gpt
 start=$P1_START, size=$P1_SECTORS, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name="system", attrs="LegacyBIOSBootable"
 start=$P2_START, size=$P2_SECTORS, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="storage"
 SFD
+"$ROOT/mk/rgds-uboot-nodelay.py" "$OUT"
 rm -rf "$W"
 ls -l "$OUT" | awk '{printf "image: %s (%.0f MB)\n", $NF, $5 / 1048576}'
