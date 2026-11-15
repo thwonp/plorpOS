@@ -16,8 +16,31 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 G=/sys/kernel/config/usb_gadget/plorpos-adb
 FFS=/dev/usb-ffs/adb       # adbd's own fixed path
 UDC=$(ls /sys/class/udc 2> /dev/null | head -n1)
+WATCH=/run/plorpos-adb-watch.pid
+
+# The RK3566's port can come up deaf ("dwc3: failed to enable ep0out"): the
+# gadget is bound, the computer sees a device and gets no answer. Its endpoint
+# 0 reads "control" once it has really started.
+healthy() { grep -q control /sys/kernel/debug/usb/$UDC/ep0out/transfer_type 2> /dev/null; }
+
+# Until it has: every two seconds, with a cable in, let go of the port and
+# take it again. Ends itself the first time the port answers, or at stop.
+watch() {
+	while sleep 2; do
+		[ "$(cat $WATCH 2> /dev/null)" = "$$" ] && [ -d $G ] || exit 0
+		healthy && break
+		/usr/bin/usbgadget is_cable_connected || continue
+		echo disconnect > /sys/class/udc/$UDC/soft_connect 2> /dev/null
+		echo "" > $G/UDC 2> /dev/null
+		sleep 0.5
+		echo "$UDC" > $G/UDC 2> /dev/null
+		sleep 2
+	done
+	rm -f $WATCH
+}
 
 stop() {
+	rm -f $WATCH
 	[ -d $G ] && echo "" > $G/UDC 2> /dev/null
 	P=$(pidof adbd) && kill $P
 	i=0
@@ -59,14 +82,15 @@ start() {
 	i=0
 	while [ ! -e $FFS/ep1 ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 	echo "$UDC" > $G/UDC || { echo "adb: the gadget did not start"; stop; return 1; }
-	# The RK3566's port, started with no cable in, has to be told so, or a
-	# cable plugged in later is never seen; ROCKNIX's udev rule then connects it.
-	/usr/bin/usbgadget trigger > /dev/null 2>&1
+	sleep 1
+	healthy && return 0
+	/bin/sh "$0" watch > /dev/null 2>&1 &
 	return 0
 }
 
 case $1 in
 start) start ;;
 stop)  stop ;;
+watch) echo $$ > $WATCH; watch ;;
 *)     echo "usage: adb.sh start|stop"; exit 2 ;;
 esac
