@@ -25,6 +25,13 @@ if [ "$PLATFORM" = gkd ]; then
 	OUT=$ROOT/out/gkd
 	CARD=$OUT/copy_to_sd
 	ZIP=$ROOT/out/plorpOS-gkd-v$VERSION.zip
+elif [ "$PLATFORM" = rgds ]; then
+	# The RG DS (plorpos-rgds): no zip - out/rgds/card is what mk/rgds-image.sh
+	# packs onto the image's exFAT partition.
+	B=$ROOT/build/rgds
+	OUT=$ROOT/out/rgds
+	CARD=$OUT/card
+	ZIP=
 elif [ "$PLATFORM" = h700 ]; then
 	B=$ROOT/build/h700
 	OUT=$ROOT/out/h700
@@ -37,6 +44,7 @@ else
 	ZIP=$ROOT/out/plorpOS-brick-v$VERSION.zip
 fi
 P=$CARD/TortOS
+[ "$PLATFORM" != rgds ] || P=$CARD/plorpOS     # plorpOS/ from the start (plorpos-nzi)
 
 [ -f "$B/tortos.elf" ] || { echo "run make PLATFORM=$PLATFORM first"; exit 1; }
 # A release ships with the ScreenScraper developer pair built in, or box art
@@ -81,6 +89,11 @@ if [ "$PLATFORM" = gkd ]; then
 	cp "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$P/gkd/portmaster/"
 	cp "$B/portfullscreen.so" "$P/gkd/portmaster/"
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
+elif [ "$PLATFORM" = rgds ]; then
+	cp "$B/musectl" "$P/"
+	cp "$ROOT/sd/rgds/launch.sh" "$P/"
+	mkdir -p "$CARD/Roms/Pico-8"
+	touch "$CARD/Roms/Pico-8/.disable_splore"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
@@ -159,7 +172,11 @@ fi
 # list with the Rotate's card, plorpos-3yv.89). The GKD has the Rotate's DS
 # and Ports shelves too, its own builds of their cores first, and PokeDaisy DS
 # for the DS shelf's Core row (plorpos-oe0.44).
-if [ "$PLATFORM" = gkd ]; then
+if [ "$PLATFORM" = rgds ]; then
+	# The DS shelf; no Ports shelf until the RG DS has a PortMaster runner.
+	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
+elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 elif [ "$PLATFORM" = brick ]; then
@@ -197,6 +214,8 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+rgds) chmod +x "$P/launch.sh" "$P/musectl"
+      du -sh "$OUT"; echo "payload ready: $CARD"; exit 0 ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;

@@ -1,0 +1,70 @@
+#!/bin/sh
+# plorpOS on the Anbernic RG DS: the card's first boot (plorpos-rgds.6).
+#
+# This takes the place of ROCKNIX's /usr/lib/rocknix/fs-resize in the plorpOS
+# image (mk/rgds-image.sh), and like it runs once, from fs-resize.service, when
+# /storage/.please_resize_me exists. ROCKNIX's grows /storage (partition 2) to
+# the end of the card. This one gives /storage a fixed size and makes the rest
+# an exFAT partition a computer can read - Roms, Bios, Saves and plorpOS -
+# which ROCKNIX's automount then mounts at /storage/games-external as it would
+# a second card.
+#
+# Derived from ROCKNIX's fs-resize (GPL-2.0, ROCKNIX and JELOS).
+STORAGE_END_MIB=3088      # p2: 1040 MiB (after the loaders and p1) + 2048 MiB
+PAYLOAD=/flash/plorpos-payload.tar
+
+say() { echo "$*"; echo "$*" >> "$LOG"; }
+run() { say "> $*"; "$@" >> "$LOG" 2>&1; }
+
+if [ -e /storage/.please_resize_me ]; then
+	mount -o remount,rw /flash
+	LOG=/flash/fs-resize.log
+	date -Iseconds >> $LOG
+	if [ -d /storage/.config ] || [ -d /storage/.cache ]; then
+		rm -f /storage/.please_resize_me
+		sync
+		say "Already initialised; nothing to do."
+		mount -o remount,ro /flash
+		reboot -f
+	fi
+	PART=$(grep " /storage " /proc/mounts | cut -d" " -f1 | grep '[0-9]$')
+	case $PART in
+	/dev/mmcblk*|/dev/nvme*) DISK=${PART%p[0-9]}; P3=${DISK}p3; P1=${DISK}p1 ;;
+	*)                       DISK=${PART%[0-9]};  P3=${DISK}3;  P1=${DISK}1 ;;
+	esac
+	rm -f /storage/.please_resize_me
+	sync
+	say "DISK: $DISK  PART: $PART"
+	if [ -n "$DISK" ] && [ -n "$PART" ]; then
+		umount "$PART"
+		echo ""
+		echo "plorpOS is preparing the card. This takes about a minute."
+		echo "Please do not turn the RG DS off."
+		echo ""
+		run sgdisk -e "$DISK"                       # the backup GPT, to the card's real end
+		run parted -s -f -m "$DISK" unit MiB resizepart 2 ${STORAGE_END_MIB}MiB
+		run e2fsck -f -p "$PART"
+		run resize2fs "$PART"
+		run tune2fs "$PART" -U random
+		run fatlabel -i -r "$P1"
+		run parted -s -f -m "$DISK" unit MiB mkpart games ${STORAGE_END_MIB}MiB 100%
+		run parted -s -f -m "$DISK" set 3 msftdata on
+		i=0
+		while [ ! -b "$P3" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+		run mkfs.exfat -L PLORPOS "$P3"
+		mkdir -p /tmp/games
+		if run mount -t exfat "$P3" /tmp/games; then
+			say "Copying plorpOS..."
+			run tar -xf "$PAYLOAD" -C /tmp/games
+			sync
+			run umount /tmp/games
+		fi
+		sync
+		say "Done. Restarting."
+	else
+		say "The card's partitions were not found; nothing was changed."
+	fi
+	mount -o remount,ro /flash
+	sleep 2
+fi
+reboot -f > /dev/null 2>&1
