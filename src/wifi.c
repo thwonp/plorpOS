@@ -807,11 +807,13 @@ bool wifi_svc_set(wifi_svc s, bool on)
 #define SSHD_MARK  "/storage/.cache/services/sshd.conf"  /* sshd.service's condition */
 #define SAVES_DIR  "/storage/games-external/Saves"
 
+#ifndef PLATFORM_RGDS   /* no ConnMan there: nm() below */
 static int cm(char *out, size_t cap, const char *a, const char *b, const char *c)
 {
 	char *argv[] = { (char *)CONNMANCTL, (char *)a, (char *)b, (char *)c, NULL };
 	return run(argv, out, cap);
 }
+#endif
 
 static void wifictl(const char *verb)
 {
@@ -868,6 +870,78 @@ static bool cfg_set(const char *key, const char *val)
 	return atomic_commit(out, CFG);
 }
 
+#ifdef PLATFORM_RGDS
+/* The RG DS's ROCKNIX (20261101) runs NetworkManager and iwd, and has no
+ * ConnMan: its wifictl is `enable`/`disable` (rfkill) and `connect`, which
+ * joins wifi.ssid with wifi.key through nmcli and names the connection after
+ * the SSID. The keys in system.cfg are still what its boot scripts go by, so
+ * the design above stands - this only asks NetworkManager, not ConnMan, what
+ * is on, in range and connected (plorpos-rgds.8). */
+#define NMCLI "/usr/bin/nmcli"
+static int nm(char *out, size_t cap, const char *a, const char *b, const char *c,
+              const char *d, const char *e, const char *f)
+{
+	char *argv[] = { (char *)NMCLI, (char *)a, (char *)b, (char *)c, (char *)d,
+	                 (char *)e, (char *)f, NULL };
+	return run(argv, out, cap);
+}
+
+static bool powered(void)
+{
+	char out[64];
+	return nm(out, sizeof out, "-t", "-f", "WIFI", "radio", NULL, NULL) == 0 &&
+	       !strncmp(out, "enabled", 7);
+}
+
+/* One `nmcli -t` line's last field, cut off; ':' inside a value is "\:", so
+ * the last unescaped one is the separator. NULL when there is none. */
+static char *nm_cut_last(char *line)
+{
+	char *p = line + strlen(line);
+
+	while (p > line) {
+		p--;
+		if (*p == ':' && (p == line || p[-1] != '\\')) { *p = '\0'; return p + 1; }
+	}
+	return NULL;
+}
+
+/* "\:" and "\\" back to the characters, in place. */
+static void nm_unescape(char *v)
+{
+	char *w = v;
+	for (; *v; v++) {
+		if (*v == '\\' && (v[1] == ':' || v[1] == '\\')) v++;
+		*w++ = *v;
+	}
+	*w = '\0';
+}
+
+/* The wifi device's row of `dev status`: its name, state and connection. */
+static bool nm_wifi_dev(char *dev, int dcap, char *state, int scap, char *conn, int ccap)
+{
+	char buf[2048], *line, *save;
+
+	if (nm(buf, sizeof buf, "-t", "-f", "TYPE,DEVICE,STATE,CONNECTION", "dev", "status", NULL) != 0)
+		return false;
+	for (line = strtok_r(buf, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+		char *d, *st, *c;
+
+		if (strncmp(line, "wifi:", 5)) continue;
+		d = line + 5;
+		if (!(st = strchr(d, ':'))) continue;
+		*st++ = '\0';
+		if (!(c = strchr(st, ':'))) continue;
+		*c++ = '\0';
+		nm_unescape(c);
+		snprintf(dev, (size_t)dcap, "%s", d);
+		snprintf(state, (size_t)scap, "%s", st);
+		snprintf(conn, (size_t)ccap, "%s", c);
+		return true;
+	}
+	return false;
+}
+#else
 /* The radio is on when ConnMan's wifi technology is powered. */
 static bool powered(void)
 {
@@ -900,7 +974,9 @@ static bool cm_line(char *line, char *state, char **name, char **id)
 	*name = line + 4;
 	return (*name)[0] != '\0';              /* hidden: no name to show */
 }
+#endif /* !PLATFORM_RGDS: powered() and cm_line() */
 
+#ifndef PLATFORM_RGDS
 /* One field of `connmanctl services <id>`, up to the end of its line. */
 static bool cm_field(const char *id, const char *field, char *out, int cap)
 {
@@ -919,13 +995,22 @@ static bool cm_field(const char *id, const char *field, char *out, int cap)
 	out[n] = '\0';
 	return true;
 }
+#endif
 
 bool wifi_up(void)
 {
 	int i;
 
 	if (powered()) return true;
+#ifdef PLATFORM_RGDS
+	/* This wifictl only lifts rfkill: the key the boot scripts read, and
+	 * NetworkManager's own switch, are set here. */
+	cfg_set("wifi.enabled", "1");
+	wifictl("enable");
+	nm(NULL, 0, "radio", "wifi", "on", NULL, NULL, NULL);
+#else
 	wifictl("enable");                      /* also sets wifi.enabled=1 */
+#endif
 	for (i = 0; i < 20; i++) {
 		if (powered()) return true;
 		sleep(1);
@@ -935,6 +1020,9 @@ bool wifi_up(void)
 
 void wifi_down(void)
 {
+#ifdef PLATFORM_RGDS
+	cfg_set("wifi.enabled", "0");
+#endif
 	wifictl("disable");                     /* also sets wifi.enabled=0 */
 }
 
@@ -966,7 +1054,12 @@ bool wifi_scan_start(void)
 	pid = fork();
 	if (pid < 0) return false;
 	if (pid == 0) {
+#ifdef PLATFORM_RGDS
+		char *argv[] = { (char *)NMCLI, (char *)"-w", (char *)"12", (char *)"dev",
+		                 (char *)"wifi", (char *)"rescan", NULL };
+#else
 		char *argv[] = { (char *)CONNMANCTL, (char *)"scan", (char *)"wifi", NULL };
+#endif
 		int null = open("/dev/null", O_RDWR);
 		if (null >= 0) { dup2(null, 1); dup2(null, 2); }
 		execv(argv[0], argv);
@@ -995,12 +1088,28 @@ int wifi_scan_take(wifi_net *out, int max)
 	char *line, *save;
 	int n = 0, i;
 
+#ifdef PLATFORM_RGDS
+	if (nm(buf, sizeof buf, "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list") != 0) return 0;
+#else
 	if (cm(buf, sizeof buf, "services", NULL, NULL) != 0) return 0;
+#endif
 	cfg_get("wifi.ssid", saved, sizeof saved);
 	for (line = strtok_r(buf, "\n", &save); line;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char state, *name, *id, str[16];
 		wifi_net e;
+#ifdef PLATFORM_RGDS
+		/* SSID:SIGNAL:SECURITY - SIGNAL 0-100 on ConnMan's scale, SECURITY
+		 * empty for an open network. A hidden network has no SSID. */
+		char *sec = nm_cut_last(line), *sig = sec ? nm_cut_last(line) : NULL;
+
+		if (!sig || !line[0]) continue;
+		nm_unescape(line);
+		memset(&e, 0, sizeof e);
+		snprintf(e.ssid, sizeof e.ssid, "%s", line);
+		e.signal = atoi(sig) / 2 - 100;
+		e.secured = sec[0] != '\0' && strcmp(sec, "--");
+#else
+		char state, *name, *id, str[16];
 
 		if (!cm_line(line, &state, &name, &id)) continue;
 		memset(&e, 0, sizeof e);
@@ -1009,6 +1118,7 @@ int wifi_scan_take(wifi_net *out, int max)
 		e.signal = cm_field(id, "Strength = ", str, sizeof str)
 		           ? atoi(str) / 2 - 100 : -100;
 		e.secured = !strstr(id, "_none");
+#endif
 		e.known = saved[0] && !strcmp(saved, e.ssid);
 
 		/* One row per SSID, strongest wins: see the TrimUI parse_results. */
@@ -1047,6 +1157,26 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 	if (ssid && ssid_cap) ssid[0] = '\0';
 	if (ip && ip_cap) ip[0] = '\0';
 	if (!powered()) return WIFI_OFF;
+#ifdef PLATFORM_RGDS
+	{
+		char dev[32], state[48], conn[WIFI_SSID_MAX];
+
+		(void)buf; (void)line; (void)save;
+		if (!nm_wifi_dev(dev, sizeof dev, state, sizeof state, conn, sizeof conn)) return WIFI_IDLE;
+		if (!strncmp(state, "connecting", 10)) return WIFI_CONNECTING;
+		if (strcmp(state, "connected")) return st;
+		/* wifictl names the connection after the SSID. */
+		if (ssid && ssid_cap) snprintf(ssid, (size_t)ssid_cap, "%s", conn);
+		if (ip && ip_cap) {
+			char v4[128];
+			if (nm(v4, sizeof v4, "-g", "IP4.ADDRESS", "dev", "show", dev, NULL) == 0) {
+				v4[strcspn(v4, "/ |\n")] = '\0';
+				snprintf(ip, (size_t)ip_cap, "%s", v4);
+			}
+		}
+		return WIFI_CONNECTED;
+	}
+#else
 	if (cm(buf, sizeof buf, "services", NULL, NULL) != 0) return WIFI_IDLE;
 	for (line = strtok_r(buf, "\n", &save); line;
 	     line = strtok_r(NULL, "\n", &save)) {
@@ -1069,6 +1199,7 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 		if (state == 'a' || state == 'c') st = WIFI_CONNECTING;
 	}
 	return st;
+#endif
 }
 
 /* Joining is wifictl's: it writes ConnMan's profile from the keys and
@@ -1087,7 +1218,14 @@ bool wifi_connect(const char *ssid, const char *psk)
 	key = (psk && *psk) ? psk : !strcmp(old_ssid, ssid) ? old_key : "";
 	if (!cfg_set("wifi.ssid", ssid) || !cfg_set("wifi.key", key)) goto fail;
 
+#ifdef PLATFORM_RGDS
+	/* Joining is `wifictl connect` here: it reads the two keys just written
+	 * and returns when nmcli has joined or given up. */
+	wifi_up();
+	wifictl("connect");
+#else
 	wifictl("enable");
+#endif
 	for (i = 0; i < 20; i++) {
 		if (wifi_status(cur, sizeof cur, NULL, 0) == WIFI_CONNECTED &&
 		    !strcmp(cur, ssid)) return true;
@@ -1096,8 +1234,14 @@ bool wifi_connect(const char *ssid, const char *psk)
 fail:
 	cfg_set("wifi.ssid", old_ssid);
 	cfg_set("wifi.key", old_key);
+#ifdef PLATFORM_RGDS
+	/* The failed network's connection goes; the old one is joined again. */
+	if (strcmp(old_ssid, ssid)) nm(NULL, 0, "connection", "delete", "id", ssid, NULL, NULL);
+	if (old_ssid[0]) wifictl("connect");
+#else
 	if (old_ssid[0]) wifictl("enable");
 	else unlink(CM_PROFILE);                 /* nothing to go back to: see wifi_forget */
+#endif
 	return false;
 }
 
@@ -1112,7 +1256,11 @@ bool wifi_forget(const char *ssid)
 	if (!cfg_get("wifi.ssid", saved, sizeof saved) || strcmp(saved, ssid))
 		return false;
 	if (!cfg_set("wifi.ssid", "") || !cfg_set("wifi.key", "")) return false;
+#ifdef PLATFORM_RGDS
+	nm(NULL, 0, "connection", "delete", "id", ssid, NULL, NULL);   /* NetworkManager's copy */
+#else
 	unlink(CM_PROFILE);
+#endif
 	return true;
 }
 
