@@ -17,10 +17,12 @@
 #   - InputPlumber's RG DS map sends Home/Back as a keyboard F1 (ROCKNIX
 #     20261101 sends an invalid gamepad button, so the key did nothing).
 #   - plorpOS's three service drop-ins (sd/rgds/system.d) are built in.
-#   - plorpos-bootlogo.service paints the plorpOS logo over ROCKNIX's, and
-#     /etc/issue (the text the initramfs prints under its logo) says plorpOS
-#     and which ROCKNIX it is built on.
-# and on p1: extlinux.conf names the RG DS's device tree.
+#   - plorpos-bootlogo.service repaints the plorpOS logo once systemd is up,
+#     the "==> Configuring ..." lines ROCKNIX's start-up prints under it are
+#     silenced, and /etc/issue says plorpOS and which ROCKNIX it is built on.
+# and on p1: extlinux.conf names the RG DS's device tree, and post-flash.sh
+# (sd/rgds/image) with plorpos-bootlogo.raw draws the plorpOS logo in the
+# initramfs where ROCKNIX's would be.
 #
 # ROCKNIX's parts stay under ROCKNIX's terms (see its README); plorpOS is a
 # separate work on its own partition.
@@ -78,15 +80,16 @@ cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
 cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$W/in/"
 # The wordmark, centred on black at half the panel's width, as the panel's
 # own framebuffer: 640x480, 4 bytes a pixel, blue first.
-python3 - "$ROOT/res/boot/plorpos-wordmark.png" "$W/in/bootlogo.raw.gz" << 'PY'
-import gzip, sys
+cp "$ROOT/sd/rgds/image/post-flash.sh" "$W/p1/"
+python3 - "$ROOT/res/boot/plorpos-wordmark.png" "$W/p1/plorpos-bootlogo.raw" << 'PY'
+import sys
 from PIL import Image
 mark = Image.open(sys.argv[1]).convert("RGBA")
 w = 360
 mark = mark.resize((w, round(mark.height * w / mark.width)), Image.LANCZOS)
 fb = Image.new("RGBA", (640, 480), (0, 0, 0, 255))
 fb.alpha_composite(mark, ((640 - mark.width) // 2, (480 - mark.height) // 2))
-with gzip.GzipFile(sys.argv[2], "wb", mtime=0) as f:
+with open(sys.argv[2], "wb") as f:
     f.write(fb.convert("RGB").tobytes("raw", "BGRX"))
 PY
 mkdir -p "$W/in/system.d"
@@ -113,7 +116,10 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 		mkdir -p usr/lib/systemd/system/$(basename $d)
 		install -m 644 $d/plorpos.conf usr/lib/systemd/system/$(basename $d)/
 	done
-	install -D -m 644 /w/in/bootlogo.raw.gz usr/share/plorpos/bootlogo.raw.gz
+	# tocon: the status line the ROCKNIX start-up scripts print on the console.
+	F=etc/profile.d/001-functions
+	sed -i "/^function tocon() {/,/^}/{/echo -ne/s/^ *echo .*/  :/}" $F
+	sed -n "/^function tocon() {/,/^}/p" $F | grep -q "^  :$" || echo "tocon: not as expected in this ROCKNIX; its status lines stay" >&2
 	install -m 644 /w/in/plorpos-bootlogo.service usr/lib/systemd/system/
 	mkdir -p usr/lib/systemd/system/sysinit.target.wants
 	ln -sf ../plorpos-bootlogo.service usr/lib/systemd/system/sysinit.target.wants/
