@@ -52,12 +52,17 @@ if [ -e /storage/.please_resize_me ]; then
 		i=0
 		while [ ! -b "$P3" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 		run mkfs.exfat -L PLORPOS "$P3"
-		mkdir -p /tmp/games
-		if run mount -t exfat "$P3" /tmp/games; then
+		# /run, not /tmp: this runs before /tmp is writable, and a mount point
+		# that was never made cost the first image its payload (2026-11-15).
+		MNT=/run/plorpos-games
+		run mkdir -p $MNT
+		if run mount -t exfat "$P3" $MNT; then
 			say "Copying plorpOS..."
-			run tar -xf "$PAYLOAD" -C /tmp/games
+			run tar -xf "$PAYLOAD" -C $MNT
 			sync
-			run umount /tmp/games
+			run umount $MNT
+		else
+			say "Could not mount $P3: plorpOS was not copied."
 		fi
 		sync
 		say "Done. Restarting."

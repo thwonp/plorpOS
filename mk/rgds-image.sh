@@ -76,11 +76,16 @@ for u in essway input rocknix-automount; do
 	cp -R "$ROOT/sd/rgds/system.d/$u.service.d" "$W/in/system.d/"
 done
 docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
-	unsquashfs -q -d /w/root /w/in/SYSTEM
+	unsquashfs -q -n -d /w/root /w/in/SYSTEM
 	cd /w/root
 	for p in $STRIP; do
 		[ -e "$p" ] || [ -L "$p" ] || { echo "strip: no $p in this ROCKNIX" >&2; continue; }
 		rm -rf "$p"
+	done
+	# The overlay mounts over what was just removed (RetroArch assets, cores,
+	# shaders, overlays): each failed at boot, in red, on the screen.
+	for u in assets cores shaders overlays; do
+		find usr/lib/systemd usr/lib32/systemd \( -name "tmp-$u.mount" \) -exec rm -f {} +
 	done
 	install -m 755 /w/in/fs-resize usr/lib/rocknix/fs-resize
 	M=usr/share/inputplumber/capability_maps/anbernic_rgds.yaml
