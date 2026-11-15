@@ -17,6 +17,9 @@
 #   - InputPlumber's RG DS map sends Home/Back as a keyboard F1 (ROCKNIX
 #     20261101 sends an invalid gamepad button, so the key did nothing).
 #   - plorpOS's three service drop-ins (sd/rgds/system.d) are built in.
+#   - plorpos-bootlogo.service paints the plorpOS logo over ROCKNIX's, and
+#     /etc/issue (the text the initramfs prints under its logo) says plorpOS
+#     and which ROCKNIX it is built on.
 # and on p1: extlinux.conf names the RG DS's device tree.
 #
 # ROCKNIX's parts stay under ROCKNIX's terms (see its README); plorpOS is a
@@ -58,6 +61,7 @@ usr/config/emulationstation usr/config/amiberry usr/config/vita3k usr/config/dol
 docker image inspect "$IMAGE" > /dev/null 2>&1 ||
 	docker build -q -f "$ROOT/mk/rgds-image.Dockerfile" -t "$IMAGE" "$ROOT/mk" > /dev/null
 for t in mcopy mformat sfdisk; do command -v $t > /dev/null || { echo "need $t" >&2; exit 1; }; done
+python3 -c 'import PIL' 2> /dev/null || { echo "need python3 with Pillow (the boot logo)" >&2; exit 1; }
 
 rm -rf "$W"; mkdir -p "$W/p1" "$W/in"
 P1="$SRC@@$((P1_START * 512))"
@@ -71,6 +75,20 @@ grep -q "/device_trees/$FDT" "$W/p1/extlinux/extlinux.conf"
 
 echo "trimming SYSTEM (a few minutes)"
 cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
+cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$W/in/"
+# The wordmark, centred on black at half the panel's width, as the panel's
+# own framebuffer: 640x480, 4 bytes a pixel, blue first.
+python3 - "$ROOT/res/boot/plorpos-wordmark.png" "$W/in/bootlogo.raw.gz" << 'PY'
+import gzip, sys
+from PIL import Image
+mark = Image.open(sys.argv[1]).convert("RGBA")
+w = 360
+mark = mark.resize((w, round(mark.height * w / mark.width)), Image.LANCZOS)
+fb = Image.new("RGBA", (640, 480), (0, 0, 0, 255))
+fb.alpha_composite(mark, ((640 - mark.width) // 2, (480 - mark.height) // 2))
+with gzip.GzipFile(sys.argv[2], "wb", mtime=0) as f:
+    f.write(fb.convert("RGB").tobytes("raw", "BGRX"))
+PY
 mkdir -p "$W/in/system.d"
 for u in essway input rocknix-automount; do
 	cp -R "$ROOT/sd/rgds/system.d/$u.service.d" "$W/in/system.d/"
@@ -95,6 +113,12 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 		mkdir -p usr/lib/systemd/system/$(basename $d)
 		install -m 644 $d/plorpos.conf usr/lib/systemd/system/$(basename $d)/
 	done
+	install -D -m 644 /w/in/bootlogo.raw.gz usr/share/plorpos/bootlogo.raw.gz
+	install -m 644 /w/in/plorpos-bootlogo.service usr/lib/systemd/system/
+	mkdir -p usr/lib/systemd/system/sysinit.target.wants
+	ln -sf ../plorpos-bootlogo.service usr/lib/systemd/system/sysinit.target.wants/
+	V=$(sed -n "s/^OS_VERSION=\"\(.*\)\"/\1/p" etc/os-release)
+	printf "plorpOS for the Anbernic RG DS\n... built on ROCKNIX %s\n" "$V" > etc/issue
 	mksquashfs /w/root /w/p1/SYSTEM -comp zstd -Xcompression-level 19 -b 1M -noappend -no-progress > /dev/null
 	rm -rf /w/root
 '

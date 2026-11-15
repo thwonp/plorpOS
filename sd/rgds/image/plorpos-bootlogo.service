@@ -1,0 +1,18 @@
+# plorpOS's boot logo on the RG DS image (plorpos-rgds.10). ROCKNIX's own logo
+# is compiled into /usr/bin/rocknix-splash inside the kernel's initramfs and
+# is drawn at the end of it, just before this system starts; this paints the
+# plorpOS one over it as early as a unit can. bootlogo.raw.gz is the panel's
+# framebuffer, 640x480 XRGB, made by mk/rgds-image.sh from
+# res/boot/plorpos-wordmark.png.
+[Unit]
+Description=plorpOS boot logo
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/dev/fb0
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'zcat /usr/share/plorpos/bootlogo.raw.gz > /dev/fb0'
+
+[Install]
+WantedBy=sysinit.target
