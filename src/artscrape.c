@@ -94,6 +94,7 @@ static const struct { const char *folder, *remote[3]; } MAP[] = {
 	{ "Game Boy", { "Nintendo - Game Boy" } },
 	{ "Game Boy Color", { "Nintendo - Game Boy Color" } },
 	{ "Game Boy Advance", { "Nintendo - Game Boy Advance" } },
+	{ "Nintendo DS", { "Nintendo - Nintendo DS" } },
 	{ "Genesis", { "Sega - Mega Drive - Genesis", "Sega - Mega-CD - Sega CD", "Sega - 32X" } },
 	{ "Sega CD", { "Sega - Mega-CD - Sega CD" } },
 	{ "32X", { "Sega - 32X" } },
@@ -355,7 +356,7 @@ static int     g_nnames;      /* what the index held; for the message only */
 static char   *g_dat;
 static bool    g_crc_tried;
 
-typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; bool fbneo; char map[LIB_PATH]; } sysrow;
+typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; bool fbneo, local; char map[LIB_PATH]; } sysrow;
 static sysrow  g_sys[CFG_MAX_SYSTEMS];
 static int     g_nsys;
 static char    g_romdir[LIB_PATH];
@@ -488,6 +489,9 @@ static art_progress g_st;
 static long g_run_t0, g_sys_t0;
 static int  g_sys_found0, g_sys_missing0;
 static bool g_sys_on;                  /* a system's work has begun */
+static art_local_fn g_local;           /* art_set_local */
+
+void art_set_local(art_local_fn fn) { g_local = fn; }
 static char g_asked[NAME_MAX_];        /* the name the image in flight was asked by */
 
 static long now_ms(void)
@@ -903,6 +907,7 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_d
 
 		snprintf(g_sys[g_nsys].folder, CFG_STR, "%s", sys->systems[i].folder);
 		snprintf(g_sys[g_nsys].exts,   CFG_STR, "%s", sys->systems[i].exts);
+		g_sys[g_nsys].local = !strcmp(sys->systems[i].core, "portmaster");
 		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo") || !strncmp(sys->systems[i].core, "fbalpha2012", 11) || !strcmp(sys->systems[i].core, "mame2000");
 		/* mame2000 and fbalpha2012 are named by their own romset's map where
 		 * the card has one (res/maps, beside the FBNeo table), else by FBNeo's. */
@@ -1018,6 +1023,21 @@ int art_step(void)
 	case P_SYSTEM:
 		if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode))
 			return next_system("no such folder");
+		/* Art the card already holds: the caller copies it in, in one
+		 * step - a few files, no network (plorpos-3jv). */
+		if (g_sys[g_si].local && g_local) {
+			int f = 0, m = 0, h = 0;
+
+			g_sys_t0 = now_ms();
+			g_sys_found0 = g_st.found;
+			g_sys_missing0 = g_st.missing;
+			g_sys_on = true;
+			g_local(g_sys[g_si].folder, g_only[0] ? g_only : NULL, &f, &m, &h);
+			g_st.found += f;
+			g_st.missing += m;
+			g_st.skipped += h;
+			return next_system(NULL);
+		}
 		remote = remote_for(g_sys[g_si].folder);
 		/* Loudly. systems.cfg gains entries over time, and a system silently
 		 * passed over looks exactly like one whose art is already complete. */

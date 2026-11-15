@@ -15678,6 +15678,105 @@ static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t
 	return false;
 }
 
+/* The scrape of the Ports shelf (plorpos-3jv). No catalog online has these -
+ * libretro and ScreenScraper both reported "not in the table" - and none is
+ * needed: every port ships a gameinfo.xml with its name, prose and picture.
+ * The picture is saved as the card's box art, as a fetch would be (PNG, then
+ * shrunk), so Replace and the info screen treat a port like any game; the rest
+ * goes into the games table the way Import gamelist.xml's Fill In Missing does.
+ * A script with no picture in any gameinfo.xml is the one that is missing. */
+typedef struct {
+	const char *folder, *dir, *only;
+	char (*sh)[LIB_NAME];          /* the shelf's scripts ... */
+	bool *done;                    /* ... and which a gameinfo.xml answered */
+	int nsh, found, had;
+} port_scrape_ctx;
+
+static void port_scrape_one(void *ctx, const char *file, const game_meta *m)
+{
+	port_scrape_ctx *c = ctx;
+	char src[LIB_PATH * 2], dest[LIB_PATH * 3], tmp[LIB_PATH * 3 + 8], media[LIB_PATH + 8];
+	char stem[LIB_NAME], *dot;
+	SDL_Surface *img;
+	struct stat st;
+	int i;
+
+	for (i = 0; i < c->nsh && (c->done[i] || strcmp(c->sh[i], file)); i++)
+		;
+	if (i == c->nsh || !m->image[0]) return;
+	snprintf(stem, sizeof stem, "%s", file);
+	if ((dot = strrchr(stem, '.'))) *dot = '\0';
+	db_game_import(db_lib(), c->folder, file, m, false);
+	box_art_path(c->folder, stem, dest, sizeof dest);
+	if (!c->only && stat(dest, &st) == 0 && st.st_size > 0) {
+		c->done[i] = true;
+		c->had++;
+		return;
+	}
+	snprintf(src, sizeof src, "%s/%s", c->dir, m->image + (strncmp(m->image, "./", 2) ? 0 : 2));
+	if (!(img = IMG_Load(src))) {
+		fprintf(stderr, "art: %s: %s: %s\n", c->folder, src, IMG_GetError());
+		return;
+	}
+	snprintf(tmp, sizeof tmp, "%s.tmp", dest);
+	snprintf(media, sizeof media, "%s/.media", c->dir);
+	mkdir(media, 0777);
+	if (IMG_SavePNG(img, tmp) == 0 && rename(tmp, dest) == 0) {
+		art_shrink(dest);
+		c->done[i] = true;
+		c->found++;
+	} else {
+		unlink(tmp);
+	}
+	SDL_FreeSurface(img);
+}
+
+static void ports_scrape(const char *folder, const char *only,
+                         int *found, int *missing, int *had)
+{
+	char dir[LIB_PATH], path[LIB_PATH * 2];
+	port_scrape_ctx c = { folder, dir, only, NULL, NULL, 0, 0, 0 };
+	struct dirent *e;
+	DIR *d;
+
+	snprintf(dir, sizeof dir, "%s/%s", P_ROMS, folder);
+	if (!(d = opendir(dir))) return;
+	while ((e = readdir(d))) {
+		size_t n = strlen(e->d_name);
+		char (*sh)[LIB_NAME];
+
+		if (e->d_name[0] == '.' || n < 4 || n >= LIB_NAME || strcmp(e->d_name + n - 3, ".sh")) continue;
+		if (only && (strncmp(e->d_name, only, n - 3) || only[n - 3])) continue;
+		if (!(sh = realloc(c.sh, (size_t)(c.nsh + 1) * sizeof *sh))) break;
+		c.sh = sh;
+		snprintf(c.sh[c.nsh++], LIB_NAME, "%s", e->d_name);
+	}
+	rewinddir(d);
+	c.done = calloc((size_t)c.nsh + 1, sizeof *c.done);
+	while (c.done && c.nsh && (e = readdir(d))) {
+		FILE *f;
+		char *xml;
+		long len;
+
+		if (e->d_name[0] == '.') continue;
+		snprintf(path, sizeof path, "%s/%s/gameinfo.xml", dir, e->d_name);
+		if (!(f = fopen(path, "rb"))) continue;
+		if (fseek(f, 0, SEEK_END) == 0 && (len = ftell(f)) > 0 && len < 65536 &&
+		    fseek(f, 0, SEEK_SET) == 0 && (xml = malloc((size_t)len))) {
+			if (fread(xml, 1, (size_t)len, f) == (size_t)len)
+				gl_parse(xml, (size_t)len, port_scrape_one, &c);
+			free(xml);
+		}
+		fclose(f);
+	}
+	closedir(d);
+	*found = c.found;
+	*had = c.had;
+	*missing = c.nsh - c.found - c.had;
+	free(c.sh);
+	free(c.done);
+}
+
 /* First on the shelf, whenever PortMaster is on the card to run - or in the
  * payload, which pm-run.sh unpacks the first time it is opened
  * (plorpos-3yv.86.4). */
@@ -18024,6 +18123,7 @@ int main(int argc, char *argv[])
 	char startup[CFG_STR];
 	bool loader;                  /* texload's threads are running */
 
+	art_set_local(ports_scrape);  /* the Ports shelf's own art (plorpos-3jv) */
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_path = argv[++i];
