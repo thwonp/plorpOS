@@ -263,6 +263,10 @@ static int fd_pad = -1, fd_keys = -1;
  * keys are their own node. */
 #define PAD_NAME  "Sony Interactive Entertainment DualSense Wireless Controller"
 #define KEYS_NAME "gpio-keys-volume"
+/* Home/Back is not on the pad: InputPlumber's map sends it as F1 on its
+ * virtual keyboard. The Anbernic key is the pad's BTN_MODE, Menu as on the GKD. */
+#define HOME_NAME "InputPlumber Keyboard"
+static int fd_home = -1;
 #else
 #define PAD_NAME  "gkd_atom_joypad"
 #define KEYS_NAME "gpio-keys"
@@ -310,6 +314,9 @@ bool plat_input_init(void)
 {
 	if (fd_pad < 0)  fd_pad  = evdev_open(PAD_NAME);
 	if (fd_keys < 0) fd_keys = evdev_open(KEYS_NAME);
+#ifdef PLATFORM_RGDS
+	if (fd_home < 0) fd_home = evdev_open(HOME_NAME);
+#endif
 	/* Read though logind is reading it too: launch.sh's inhibitor only stops
 	 * logind acting on it. */
 	if (fd_power < 0) fd_power = evdev_open("rk805 pwrkey");
@@ -330,6 +337,10 @@ void plat_input_flush(void)
 	drain(fd_pad);
 	drain(fd_keys);
 	drain(fd_power);
+#ifdef PLATFORM_RGDS
+	drain(fd_home);
+	home_down = false;
+#endif
 	/* Their releases were in what was just thrown away. */
 	memset(pad_dir, 0, sizeof pad_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
@@ -501,6 +512,9 @@ static void pad_read(in_state *st)
 			if (ev.code == ABS_Y) stick_axis(&stick_dir[2], (ev.value - 128) * 7);
 			/* The d-pad, a hat here. A press counts when it comes, as the
 			 * GKD's d-pad keys below. */
+			/* L2 and R2 come as the DualSense's analog triggers, 0..255. */
+			if (ev.code == ABS_Z)  set_btn(st, IN_L2, ev.value >= 128);
+			if (ev.code == ABS_RZ) set_btn(st, IN_R2, ev.value >= 128);
 			if (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y) {
 				int i = ev.code == ABS_HAT0X ? 0 : 2;
 				pad_dir[i]     = ev.value < 0;
@@ -528,6 +542,13 @@ static void pad_read(in_state *st)
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
 	}
+#ifdef PLATFORM_RGDS
+	while (fd_home >= 0 && read(fd_home, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_F1 && ev.value != 2) {
+			home_down = ev.value == 1;
+			set_btn(st, IN_HOME, home_down);
+		}
+#endif
 	for (int i = 0; i < 4; i++) {
 		set_btn(st, (in_button)(IN_LEFT + i), pad_dir[i] || stick_dir[i]);
 		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
