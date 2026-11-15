@@ -32,7 +32,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),rgds)
-all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so
+all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so build/rgds/adbroot.so
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -222,6 +222,12 @@ build/rgds/portfullscreen.so: tools/portfullscreen.c
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
 		-I/work/sysroot-rgds/usr/include/SDL2 -o $@ $< -ldl
+
+# Keeps adbd root (tools/adbroot.c, plorpos-rgds.11).
+build/rgds/adbroot.so: tools/adbroot.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -o $@ $<
 
 build/rgds/tortos.elf build/rgds/muse build/rgds/musectl &: \
                       $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rgds/ss_creds.h \

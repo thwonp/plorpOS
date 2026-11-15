@@ -383,6 +383,12 @@ bool plat_sleep(void);
  * time the screen has already been dark (main.c's music_dark, after the
  * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
+#if defined(PLATFORM_RGDS)
+/* adb over USB (USB Debugging, plorpos-rgds.11): whether it is turned on, and
+ * turning it on or off - now, and from every boot (sd/rgds/adb/adb.sh). */
+bool plat_adb_on(void);
+void plat_adb_set(bool on);
+#endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
 void plat_set_sleep_timeout(int seconds);

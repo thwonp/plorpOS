@@ -98,6 +98,11 @@ elif [ "$PLATFORM" = rgds ]; then
 	mkdir -p "$P/rgds/portmaster"
 	cp "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
 	   "$ROOT/vendor/portmaster/PortMaster.zip" "$B/portfullscreen.so" "$P/rgds/portmaster/"
+	# adb (plorpos-rgds.11): ROCKNIX has no adbd, so Debian's rides along.
+	[ -f "$ROOT/vendor/adbd-rgds/adbd" ] ||
+		{ echo "no vendor/adbd-rgds; run mk/fetch-rgds-adbd.sh" >&2; exit 1; }
+	mkdir -p "$P/rgds/adb"
+	cp -R "$ROOT/vendor/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$B/adbroot.so" "$P/rgds/adb/"
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
 elif [ "$PLATFORM" = h700 ]; then

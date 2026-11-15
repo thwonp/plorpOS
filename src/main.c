@@ -6513,6 +6513,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
+#if defined(PLATFORM_RGDS)
+		u.adb = plat_adb_on();
+#endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -9643,6 +9646,13 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 
 		db_set_int(db_dev(), "lidclose", on);
 		plat_set_lid_sleep(on);
+		return MENU_STAY;
+	}
+#endif
+#if defined(PLATFORM_RGDS)
+	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now. */
+	if (sel == ST_ADB && (d || key == IN_ACCEPT)) {
+		plat_adb_set(!plat_adb_on());
 		return MENU_STAY;
 	}
 #endif

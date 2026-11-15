@@ -65,6 +65,9 @@ done
 # it here. Off is the panel and its backlight both.
 swaymsg output DSI-1 power off >> "$LOG" 2>&1
 
+# adb, when System Settings > USB Debugging left its marker (plorpos-rgds.11).
+[ -f "$CARD/.userdata/rgds/adb" ] && /bin/sh "$DIR/rgds/adb/adb.sh" start >> "$LOG" 2>&1
+
 rm -f /tmp/tortos_poweroff
 cd "$DIR"
 FAILS=0

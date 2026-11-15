@@ -398,6 +398,42 @@ static bool helper(char *const argv[])
 	return ok;
 }
 
+#ifdef PLATFORM_RGDS
+/* adb over USB (plorpos-rgds.11). The marker is what sd/rgds/launch.sh reads
+ * at boot; adb.sh, beside adbd on the card, starts and stops it now. */
+static void adb_path(char *out, size_t n, bool marker)
+{
+	if (marker) snprintf(out, n, "%s/adb", P_USERDATA);
+	else        snprintf(out, n, "%s/rgds/adb/adb.sh", P_ROOT);
+}
+
+bool plat_adb_on(void)
+{
+	char p[512];
+
+	adb_path(p, sizeof p, true);
+	return access(p, F_OK) == 0;
+}
+
+void plat_adb_set(bool on)
+{
+	char p[512], sh[512];
+	char *cmd[] = { "/bin/sh", sh, on ? "start" : "stop", NULL };
+
+	adb_path(p, sizeof p, true);
+	adb_path(sh, sizeof sh, false);
+	if (on) {
+		/* Not on unless it started: the row then still reads off. */
+		if (!helper(cmd)) { fprintf(stderr, "adb: did not start\n"); return; }
+		FILE *f = fopen(p, "a");
+		if (f) fclose(f);
+	} else {
+		unlink(p);
+		helper(cmd);
+	}
+}
+#endif
+
 /* Only one fullscreen window may be mapped (screen_yield), so the frozen
  * child moves to a workspace of its own, where it is not drawn. Not the
  * scratchpad: that makes it a floating window of another size, and sway

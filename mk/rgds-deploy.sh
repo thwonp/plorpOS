@@ -33,7 +33,9 @@ case $WHAT in elf)
 	$S "mkdir -p $P/rgds/portmaster"
 	put "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
 	    "${VENDOR:-$ROOT/vendor}/portmaster/PortMaster.zip" "$ROOT/build/rgds/portfullscreen.so" "$RGDS:$P/rgds/portmaster/"
-	echo "  + launcher, muse, musectl, PortMaster runner"
+	$S "mkdir -p $P/rgds/adb"
+	put "${VENDOR:-$ROOT/vendor}/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$ROOT/build/rgds/adbroot.so" "$RGDS:$P/rgds/adb/"
+	echo "  + launcher, muse, musectl, PortMaster runner, adb"
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$RGDS:$P/cards/"

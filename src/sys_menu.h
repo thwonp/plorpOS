@@ -71,6 +71,9 @@ typedef enum {
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
+#if defined(PLATFORM_RGDS)
+	ST_ADB,                     /* adb over USB (plorpos-rgds.11) */
+#endif
 	ST_ROWS
 } st_row;
 
@@ -205,6 +208,7 @@ typedef struct {
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
+	bool        adb;         /* RG DS: adb over USB is on (plorpos-rgds.11) */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
