@@ -16,6 +16,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$ROOT/sysroot-gkd}
 GKD=${GKD:-root@192.168.0.55}
+SSH_OPTS=${SSH_OPTS:-}
 IMAGE=tortos-toolchain
 DL=$OUT/.cache
 
@@ -35,10 +36,13 @@ TTF_SHA=9dc71ed93487521b107a2c4a9ca6bf43fb62f6bddd5c26b055e6b91418a22053
 # 9.3.100, avutil 58.2.100, swresample 4.10.100, checked 2026-09-29. They are
 # struct layouts, so a mismatch would be a wrong offset at runtime, not a link
 # error (see mk/fetch-sysroot.sh). Hash of ffmpeg.org's tarball, 2026-09-29.
-FF_VER=6.0.1
-FF_SHA=375fd8abab657d18578554927d23abfc9cb3b6794bd9839330230cf5f9fcea26
+FF_VER=${FF_VER:-6.0.1}
+FF_SHA=${FF_SHA:-375fd8abab657d18578554927d23abfc9cb3b6794bd9839330230cf5f9fcea26}
+# FFmpeg's sonames on the device; mk/fetch-rgds-sysroot.sh passes a newer set.
+FF_SOS=${FF_SOS:-libavformat.so.60 libavcodec.so.60 libavutil.so.58 libswresample.so.4 libavfilter.so.9}
 
-dev() { ssh -o ConnectTimeout=5 "$GKD" "$@"; }
+# SSH_OPTS: e.g. -i <key> for a device that is not in the agent.
+dev() { ssh $SSH_OPTS -o ConnectTimeout=5 "$GKD" "$@"; }
 dev true 2> /dev/null || { echo "no GKD over ssh at $GKD" >&2; exit 1; }
 docker image inspect "$IMAGE" > /dev/null 2>&1 ||
 	{ echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
@@ -48,7 +52,7 @@ LIB=$OUT/usr/lib
 INC=$OUT/usr/include/SDL2
 mkdir -p "$LIB" "$INC" "$DL"
 
-pull() { scp -q "$GKD:/usr/lib/$1" "$LIB/" || { echo "could not pull /usr/lib/$1" >&2; exit 1; }; }
+pull() { scp $SSH_OPTS -q "$GKD:/usr/lib/$1" "$LIB/" || { echo "could not pull /usr/lib/$1" >&2; exit 1; }; }
 
 echo "pulling SDL from the GKD"
 for base in SDL2-2.0 SDL2_image-2.0 SDL2_ttf-2.0; do
@@ -56,8 +60,7 @@ for base in SDL2-2.0 SDL2_image-2.0 SDL2_ttf-2.0; do
 	ln -sf "lib$base.so.0" "$LIB/lib${base%-2.0}.so"   # what -lSDL2 etc. find
 done
 echo "pulling FFmpeg from the GKD"
-for so in libavformat.so.60 libavcodec.so.60 libavutil.so.58 \
-          libswresample.so.4 libavfilter.so.9; do
+for so in $FF_SOS; do
 	pull "$so"
 	ln -sf "$so" "$LIB/${so%%.so.*}.so"
 done

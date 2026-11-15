@@ -6,7 +6,9 @@ BUILD := build
 # both - they define the same functions. The Makefile passes PLATFORM and, for
 # the GKD, BUILD=build/gkd (and the H700, build/h700).
 PLATFORM ?= brick
-SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM).c
+# The RG DS runs ROCKNIX as the GKD does and shares its device file (rgds below).
+PLATFORM_SRC := $(if $(filter rgds,$(PLATFORM)),gkd,$(PLATFORM))
+SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM_SRC).c
 CC ?= aarch64-linux-gnu-gcc
 
 VERSION ?= 0.0
@@ -21,6 +23,12 @@ ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
 # host stubs on the GKD until it has radio code of its own (gkd.9, gkd.10).
 CFLAGS += -DPLATFORM_GKD
+endif
+ifeq ($(PLATFORM),rgds)
+# Anbernic RG DS on ROCKNIX (plorpos-rgds): the GKD's branches all fit - same
+# sway, PipeWire and libmali - and PLATFORM_RGDS where the hardware differs
+# (two panels, InputPlumber's pad, backlight names; src/platform_gkd.c).
+CFLAGS += -DPLATFORM_GKD -DPLATFORM_RGDS
 endif
 ifeq ($(PLATFORM),h700)
 # Anbernic H700 on BaseOS (plorpos-7ny), NOT "on ROCKNIX": bt.c, btvol.c and
@@ -60,7 +68,7 @@ endif
 LDFLAGS := -L$(SYSROOT)/usr/lib -Wl,-rpath-link,$(SYSROOT)/usr/lib \
            -Wl,--allow-shlib-undefined
 LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl -lpthread
-ifneq ($(filter gkd rotate,$(PLATFORM)),)
+ifneq ($(filter gkd rgds rotate,$(PLATFORM)),)
 # The volume worker (platform_gkd.c, platform_rotate.c). glibc 2.31 here still has it apart from
 # libc; the device's 2.40 keeps libpthread.so.0 as a stub, so it resolves.
 LDLIBS += -lpthread

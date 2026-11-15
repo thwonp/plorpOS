@@ -31,6 +31,19 @@
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
  * SD card, as ROCKNIX mounts it; userdata per device, as on the Brick. */
+#ifdef PLATFORM_RGDS
+/* The Anbernic RG DS (plorpos-rgds) shares this file: ROCKNIX, sway, PipeWire
+ * and libmali as on the GKD. PLATFORM_RGDS marks where its hardware differs -
+ * the install folder (plorpOS from the start, plorpos-nzi), the pad
+ * (InputPlumber's virtual one), and the top panel's backlight. */
+const char *P_ROOT = "/storage/games-external/plorpOS";
+const char *P_CARD = "/storage/games-external";
+const char *P_ROMS = "/storage/games-external/Roms";
+const char *P_USERDATA = "/storage/games-external/.userdata/rgds";
+const char *P_SHARED = "/storage/games-external/.userdata/shared";
+const char *P_WEB = "/storage/games-external/plorpOS/res/web";
+const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
+#else
 const char *P_ROOT = "/storage/games-external/TortOS";
 const char *P_CARD = "/storage/games-external";
 const char *P_ROMS = "/storage/games-external/Roms";
@@ -38,10 +51,15 @@ const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
 const char *P_SHARED = "/storage/games-external/.userdata/shared";
 const char *P_WEB = "/storage/games-external/TortOS/res/web";
 const char *P_FONT = "/storage/games-external/TortOS/menu.ttf";
+#endif
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
+#ifdef PLATFORM_RGDS
+	"PLATFORM=rgds", "DEVICE=rgds",
+#else
 	"PLATFORM=gkd350h", "DEVICE=gkd350h",
+#endif
 	"SDCARD_PATH=/storage/games-external",
 	"BIOS_PATH=/storage/games-external/Bios",
 	"CHEATS_PATH=/storage/games-external/Cheats",
@@ -237,6 +255,18 @@ void plat_window_show(bool on)
  * stick click, Home and the stick's own directions are reported too, but only
  * the Hotkeys screen's press-to-bind listens (plorpos-gkd.43.3). */
 static int fd_pad = -1, fd_keys = -1;
+#ifdef PLATFORM_RGDS
+/* The RG DS's buttons, sticks and vibrator are held by ROCKNIX's InputPlumber,
+ * which shows them as one virtual DualSense (/usr/share/inputplumber/devices/
+ * 01-rg-ds.yaml). Its buttons carry the codes padmap already has; the d-pad
+ * comes as a hat and the stick as 0..255 around 128 (pad_read). The volume
+ * keys are their own node. */
+#define PAD_NAME  "Sony Interactive Entertainment DualSense Wireless Controller"
+#define KEYS_NAME "gpio-keys-volume"
+#else
+#define PAD_NAME  "gkd_atom_joypad"
+#define KEYS_NAME "gpio-keys"
+#endif
 static bool home_down;
 /* The d-pad and the stick each keep their own state, so letting go of one
  * does not release a direction the other still holds. Left, right, up, down -
@@ -278,8 +308,8 @@ static int evdev_open(const char *want)
 
 bool plat_input_init(void)
 {
-	if (fd_pad < 0)  fd_pad  = evdev_open("gkd_atom_joypad");
-	if (fd_keys < 0) fd_keys = evdev_open("gpio-keys");
+	if (fd_pad < 0)  fd_pad  = evdev_open(PAD_NAME);
+	if (fd_keys < 0) fd_keys = evdev_open(KEYS_NAME);
 	/* Read though logind is reading it too: launch.sh's inhibitor only stops
 	 * logind acting on it. */
 	if (fd_power < 0) fd_power = evdev_open("rk805 pwrkey");
@@ -465,8 +495,22 @@ static void pad_read(in_state *st)
 
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS) {
+#ifdef PLATFORM_RGDS
+			/* 0..255 around 128, onto the GKD's -900..899. */
+			if (ev.code == ABS_X) stick_axis(&stick_dir[0], (ev.value - 128) * 7);
+			if (ev.code == ABS_Y) stick_axis(&stick_dir[2], (ev.value - 128) * 7);
+			/* The d-pad, a hat here. A press counts when it comes, as the
+			 * GKD's d-pad keys below. */
+			if (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y) {
+				int i = ev.code == ABS_HAT0X ? 0 : 2;
+				pad_dir[i]     = ev.value < 0;
+				pad_dir[i + 1] = ev.value > 0;
+				if (ev.value) set_btn(st, (in_button)(IN_LEFT + i + (ev.value > 0)), true);
+			}
+#else
 			if (ev.code == ABS_X) stick_axis(&stick_dir[0], ev.value);
 			if (ev.code == ABS_Y) stick_axis(&stick_dir[2], ev.value);
+#endif
 			continue;
 		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
@@ -538,13 +582,27 @@ void plat_leds_off(void) { }
  * sides of a handover: this backlight is non-linear already, raw 40 is the
  * first step that reads as distinct, and above it every 8 units are visible -
  * so twelve rungs evenly spaced from 40 to 255. */
-static const unsigned char bright_ladder[] = {
+#ifdef PLATFORM_RGDS
+/* The RG DS's backlights run 0..1666: the same twelve rungs, scaled. */
+#define BL_RAW_MAX 1666
+static const unsigned short bright_ladder[] = {
+	261, 392, 516, 647, 771, 902, 1026, 1156, 1281, 1411, 1535, 1666
+};
+#else
+#define BL_RAW_MAX 255
+static const unsigned short bright_ladder[] = {
 	40, 60, 79, 99, 118, 138, 157, 177, 196, 216, 235, 255
 };
+#endif
 #define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "ladder and platform.h disagree");
 #define VOL_MAX PLAT_VOL_MAX
+#ifdef PLATFORM_RGDS
+/* The top panel (DSI-2); backlight0 is the bottom one, which launch.sh turns off. */
+#define BACKLIGHT "/sys/class/backlight/backlight1/brightness"
+#else
 #define BACKLIGHT "/sys/class/backlight/backlight/brightness"
+#endif
 
 /* disp_fd is the backlight's brightness file, kept open. There is no mixer
  * device - volume is PipeWire's - so mixer_fd is 0 once the worker below is
@@ -1155,7 +1213,7 @@ static void hook_brightness_sync(void)
 {
 	static int synced = -1;
 	extern char **environ;
-	int pct = (bright_ladder[cur_bright] * 100 + 127) / 255;
+	int pct = (bright_ladder[cur_bright] * 100 + BL_RAW_MAX / 2) / BL_RAW_MAX;
 	char cmd[128];
 	char *argv[] = { "timeout", "2", "sh", "-c", cmd, NULL };
 	pid_t pid;

@@ -4,7 +4,8 @@
 # `mk/fetch-sysroot.sh` (needs the device on adb).
 IMAGE := tortos-toolchain
 # Which device: brick (the Brick and Brick Pro, the default) or gkd (the GKD
-# 350H Ultra, into build/gkd/ against sysroot-gkd/ - see mk/fetch-gkd-sysroot.sh).
+# 350H Ultra, into build/gkd/ against sysroot-gkd/ - see mk/fetch-gkd-sysroot.sh),
+# or rgds (the Anbernic RG DS, build/rgds/, mk/fetch-rgds-sysroot.sh).
 # Each build compiles one device file, src/platform_$(PLATFORM).c.
 PLATFORM ?= brick
 # The GKD, over ssh with its key. ROCKNIX, so no password to leak.
@@ -30,6 +31,8 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
+else ifeq ($(PLATFORM),rgds)
+all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -77,7 +80,7 @@ VERSION ?= 1.9
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd h700 rotate miyoo,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd rgds h700 rotate miyoo,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -206,6 +209,30 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 	done
 	@[ tools/musectl.c -nt build/gkd/musectl ] && { \
 		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
+
+# The RG DS (plorpos-rgds): the GKD's sources (SRC_GKD - it shares
+# platform_gkd.c, with -DPLATFORM_RGDS from mk/cross.mk) against the RG DS's own
+# sysroot, whose ROCKNIX is newer (FFmpeg 9.0).
+build/rgds/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/rgds creds
+
+build/rgds/tortos.elf build/rgds/muse build/rgds/musectl &: \
+                      $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/rgds/ss_creds.h \
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-rgds/usr/include/SDL2 ] || { \
+		echo "no RG DS sysroot; run: mk/fetch-rgds-sysroot.sh (needs the RG DS over ssh)" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=rgds BUILD=build/rgds SYSROOT=/work/sysroot-rgds \
+		VERSION=$(VERSION) creds build/rgds/tortos.elf build/rgds/muse build/rgds/musectl
+	@for src in $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/rgds/ss_creds.h; do \
+		if [ "$$src" -nt build/rgds/tortos.elf ]; then \
+			echo "STALE: build/rgds/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/rgds/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
 
 # The H700 on BaseOS (plorpos-7ny): the launcher alone, against the SDL2 that
 # mk/fetch-h700-sysroot.sh builds - no device needed. Muse links the FFmpeg
