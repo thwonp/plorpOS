@@ -62,18 +62,24 @@ done
 
 # Two panels: DSI-2 is the top one, where plorpOS draws. ROCKNIX's sway config
 # turns the bottom one (DSI-1) off only for EmulationStation's window, so say
-# it here. Off is the panel and its backlight both.
-swaymsg output DSI-1 power off >> "$LOG" 2>&1
+# it here. Off is the panel and its backlight both. Neither this nor adb below
+# is anything the launcher waits for: both run beside it. Waited for, they were
+# 2.3 s of the boot (plorpos-rgds.12).
+swaymsg output DSI-1 power off >> "$LOG" 2>&1 &
 
 # adb, when System Settings > USB Debugging left its marker (plorpos-rgds.11).
-[ -f "$CARD/.userdata/rgds/adb" ] && /bin/sh "$DIR/rgds/adb/adb.sh" start >> "$LOG" 2>&1
+[ -f "$CARD/.userdata/rgds/adb" ] && /bin/sh "$DIR/rgds/adb/adb.sh" start >> "$LOG" 2>&1 &
 
 rm -f /tmp/tortos_poweroff
 cd "$DIR"
 FAILS=0
 while : ; do
 	start_resident
-	START=$(cut -d. -f1 /proc/uptime)
+	read -r UP _ < /proc/uptime
+	START=${UP%.*}
+	# Seconds since the kernel started, so a boot's time to the shelf is this
+	# plus the launcher's "boot: first frame".
+	echo "launch: tortos.elf at uptime $UP" >> "$LOG"
 	./tortos.elf >> "$LOG" 2>&1
 	if [ -f /tmp/tortos_poweroff ]; then
 		sync
