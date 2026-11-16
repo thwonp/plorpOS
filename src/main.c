@@ -1183,6 +1183,9 @@ static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
+#if defined(PLATFORM_RGDS)
+static app *g_rgds_app;   /* main's, for the secondary's ticks */
+#endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
 static SDL_atomic_t g_walk_done;
@@ -1484,7 +1487,7 @@ static const struct { const char *key; int glyph; } MUSE_MODES[MUQ_MODES] = {
  * is not a decode: the album it is for and its texture. `done` means this is
  * what the album will show - its art, or the card made for one with none - and
  * nothing more needs asking. */
-static struct {
+static struct np_cover {
 	int          album;
 	bool         done;
 	SDL_Texture *tex;
@@ -4035,12 +4038,18 @@ static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now();
  * smooth at any render scale: a stack of scan lines drawn in layout units is
  * resampled with the rest of the frame and comes out ragged. */
 #define DISC_TEX 128
-static SDL_Texture *disc_tex;
+/* One per renderer: a texture belongs to the renderer that made it, and the
+ * RG DS draws the battery on its second panel too (plorpos-rgds.18.3.1). */
+static struct { SDL_Renderer *r; SDL_Texture *t; } g_disctex[2];
 
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
 	Uint8 cr, cg, cb, ca;
+	SDL_Texture *disc_tex;
+	int k = g_disctex[0].r && g_disctex[0].r != r;
 
+	if (g_disctex[k].r != r) g_disctex[k].t = NULL, g_disctex[k].r = r;
+	disc_tex = g_disctex[k].t;
 	if (!disc_tex) {
 		SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, DISC_TEX, DISC_TEX, 32,
 		                                                SDL_PIXELFORMAT_ARGB8888);
@@ -4063,6 +4072,7 @@ static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 				SDL_SetTextureBlendMode(disc_tex, SDL_BLENDMODE_BLEND);
 				SDL_SetTextureScaleMode(disc_tex, SDL_ScaleModeLinear);
 			}
+			g_disctex[k].t = disc_tex;
 		}
 	}
 	if (!disc_tex) return;
@@ -18284,49 +18294,85 @@ static void details_gather(app *a, int owner, const game_entry *g, details_info 
 	if (access(p, R_OK) == 0) snprintf(d->art, sizeof d->art, "%s", p);
 }
 
-/* The Muse page on the secondary panel (plorpos-rgds.18.1.2): redrawn when
- * what it shows changes - the track, the state, the second - and its three
- * buttons work by touch where the panel has it. */
-static void muse_panel_tick(bool fresh, bool busy)
+/* The secondary panel's Muse is Muse's own Now Playing (plorpos-rgds.18.3.1):
+ * np_draw onto the secondary's renderer, with a cover texture of its own -
+ * a texture belongs to the renderer that made it. Redrawn when what it shows
+ * changes, and when the clock or a sliding line moves - those not while the
+ * shelf is being driven (busy), so a frame is never lost under the thumb.
+ * slide: a line too long for its column slides, a full-screen draw every
+ * frame (7-16 ms each, 24% of a core measured); only on the shelf. Beside a
+ * game the GPU is the game's, and the picture moves once a second. */
+static void np_on(SDL_Renderer *r, struct np_cover *mine, int al)
 {
-	static char shown[1600];
-	static int shown_sec;
-	const mu_now *n = musec_now();
-	details_muse m = { 0 };
-	char key[1600], path[LIB_PATH * 2 + 8];
+	struct np_cover kept = g_np;
+	SDL_Renderer *was = g_rgds_app->r;
+
+	g_np = *mine;
+	g_rgds_app->r = r;
+	np_cover(g_rgds_app, al);
+	*mine = g_np;
+	g_np = kept;
+	g_rgds_app->r = was;
+}
+
+/* Everything Now Playing shows but the clock and a sliding line. */
+static void np_key(char *key, size_t n, const mu_now *mn, SDL_Texture *tex, const char *next)
+{
+	snprintf(key, n, "%d|%d|%d|%s|%s|%s|%p|%d|%d|%d|%d|%s",
+	         (int)mn->state, mn->index, mn->count, mn->title, mn->artist, mn->album,
+	         (void *)tex, musec_is_book() ? -1 : (int)musec_mode(), muse_hold(),
+	         musec_chapter_now(), (int)(musec_speed() * 100 + 0.5), next);
+}
+
+static void muse_panel_tick(bool fresh, bool busy, bool slide)
+{
+	static struct np_cover np_b = { .album = -1 };
+	static char shown[1200];
+	static unsigned due, gen;
+	const mu_now *mn = musec_now();
+	char key[1200], next[128];
+	unsigned now = SDL_GetTicks(), t0, wait;
 	int w, h, x, y, al;
 	SDL_Renderer *r;
-	unsigned t0;
 
-	m.touch = true;                           /* both panels have a touchscreen */
-	m.state = !n || n->count <= 0 ? 0 : n->state == MU_PLAYING ? 2 : n->state == MU_PAUSED ? 3 : 1;
-	if (m.touch && plat_bottom_tap(&x, &y) && m.state) {
-		int b = details_muse_hit(640, 480, x, y);
-
-		if (b == 1) musec_prev();
-		else if (b == 2) musec_toggle();
-		else if (b == 3) musec_next();
-		if (b) shown[0] = '\0';
+	if (!g_rgds_app || !mn) return;
+	while (plat_bottom_tap(&x, &y)) { }          /* taps open Muse: .18.3.3 */
+	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
+		if (np_b.tex) SDL_DestroyTexture(np_b.tex);
+		np_b = (struct np_cover){ .album = -1 };
+		gen = g_muse_gen;
 	}
-	if (m.state) {
-		snprintf(m.title, sizeof m.title, "%s", n->title);
-		snprintf(m.artist, sizeof m.artist, "%s", n->artist);
-		snprintf(m.album, sizeof m.album, "%s", n->album);
-		m.at = n->at;
-		m.len = n->len;
-		al = ml_album_of(&g_muse, musec_track(n->index));
-		if (al >= 0 && cover_file(al, path, sizeof path)) snprintf(m.art, sizeof m.art, "%.1023s", path);
-	}
-	snprintf(key, sizeof key, "%d|%d|%s|%s|%d", m.state, m.touch, m.title, m.art, (int)m.len);
-	/* The clock alone moving: a 7-9 ms draw a second, not while the shelf is
-	 * being driven (a frame lost under the thumb). */
-	if (!fresh && !strcmp(key, shown) && ((int)m.at == shown_sec || busy)) return;
-	shown_sec = (int)m.at;
+	al = ml_album_of(&g_muse, musec_track(mn->index));
+	if ((r = plat_bottom_renderer())) np_on(r, &np_b, al);
+	np_next_line(next, sizeof next);
+	np_key(key, sizeof key, mn, np_b.tex, next);
+	if (!fresh && !strcmp(key, shown) && (busy || (int)(now - due) < 0)) return;
 	t0 = SDL_GetTicks();
 	if (!(r = plat_bottom_begin(&w, &h))) return;
-	details_draw_muse(r, w, h, &m);
+	np_on(r, &np_b, al);                          /* the window may be new */
+	{
+		SDL_Renderer *was = g_rgds_app->r;
+		struct np_cover kept = g_np;
+
+		g_rgds_app->r = r;
+		g_np = np_b;
+		/* In the launcher's units, as on the primary; Details draws this
+		 * renderer in panel pixels. */
+		int ph = shot_phase;
+
+		SDL_RenderSetScale(r, plat_scale(), plat_scale());
+		if (!slide) shot_phase = 0;           /* long lines at rest, at their start */
+		wait = np_draw(g_rgds_app, mn, next, muse_hold());
+		shot_phase = ph;
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		g_np = kept;
+		g_rgds_app->r = was;
+	}
 	plat_bottom_end();
+	/* The tex in the key as drawn: a cover that came in this time round. */
+	np_key(key, sizeof key, mn, np_b.tex, next);
 	snprintf(shown, sizeof shown, "%s", key);
+	due = now + (slide && wait < 1000 ? wait : 1000);
 	if (g_ft) fprintf(stderr, "details: muse page in %u ms\n", SDL_GetTicks() - t0);
 }
 
@@ -18340,7 +18386,7 @@ static void muse_panel_game_tick(void)
 {
 	if (!g_dual_on || !g_dual_muse) return;
 	plat_bottom_pump();
-	muse_panel_tick(false, false);
+	muse_panel_tick(false, false, false);
 }
 
 static void details_tick(app *a)
@@ -18382,7 +18428,7 @@ static void details_tick(app *a)
 
 		for (int b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
-		muse_panel_tick(fresh, now - last_in < 1000);
+		muse_panel_tick(fresh, now - last_in < 1000, true);
 		on = true;
 		return;
 	}
@@ -18424,6 +18470,9 @@ static void details_tick(app *a)
 int main(int argc, char *argv[])
 {
 	app a = { 0 };
+#if defined(PLATFORM_RGDS)
+	g_rgds_app = &a;
+#endif
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
 	bool loader;                  /* texload's threads are running */

@@ -380,6 +380,8 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 	return bren;
 }
 
+SDL_Renderer *plat_bottom_renderer(void) { return bren; }
+
 void plat_bottom_end(void)
 {
 	if (bren && b_shown) SDL_RenderPresent(bren);

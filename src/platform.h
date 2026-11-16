@@ -398,6 +398,8 @@ void plat_adb_set(bool on);
  * or 0, since the last call. */
 SDL_Renderer *plat_bottom_begin(int *w, int *h);
 void plat_bottom_end(void);
+/* The secondary's renderer, NULL until its window exists; nothing shown. */
+SDL_Renderer *plat_bottom_renderer(void);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);
