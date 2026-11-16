@@ -102,7 +102,14 @@ while : ; do
 	# start on the sixth: hand the device to ES until the next boot.
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
-		[ $FAILS -ge 5 ] && break
+		# The plorpOS card image strips EmulationStation (mk/rgds-image.sh):
+		# with nothing to hand over to, keep trying, slower (plorpos-rgds.6).
+		if [ $FAILS -ge 5 ] && [ ! -x /usr/bin/emulationstation ]; then
+			echo "launcher failed $FAILS times; no EmulationStation here, trying again in 10 s" >> "$LOG"
+			sleep 9
+		elif [ $FAILS -ge 5 ]; then
+			break
+		fi
 	else
 		FAILS=0
 	fi
