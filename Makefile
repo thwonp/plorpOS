@@ -63,7 +63,7 @@ check:
 
 # One version number for every port (the Miyoo Mini Flip too, since 1.9):
 # the zip name and the About page both read it from here.
-VERSION ?= 1.9
+VERSION ?= 1.9.1
 
 # It reaches the code on the compile line, where make cannot see it change, so
 # v1.0.1 first built as a 1.0 elf. A different VERSION from the last build's
