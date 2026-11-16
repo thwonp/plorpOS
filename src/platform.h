@@ -408,6 +408,11 @@ bool plat_bottom_tap(int *x, int *y);
 void plat_set_primary_bottom(bool on);
 /* During a game, from its tick: the game's window onto the primary once mapped. */
 void plat_rgds_game_tick(void);
+void plat_rgds_child_tick(void);   /* a port's window onto the primary */
+/* The secondary kept up beside a one-screen game (Muse), and its touches read
+ * during one. */
+void plat_bottom_keep(bool on);
+void plat_bottom_pump(void);
 #endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */

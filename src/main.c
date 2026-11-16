@@ -3421,10 +3421,15 @@ static void aout_retry_in_game(void)
 }
 
 
+#if defined(PLATFORM_RGDS)
+static void muse_panel_game_tick(void);
+#endif
+
 static void on_game_tick(void)
 {
 #if defined(PLATFORM_RGDS)
 	plat_rgds_game_tick();
+	muse_panel_game_tick();
 #endif
 	char msg[96];
 
@@ -15410,6 +15415,10 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+#if defined(PLATFORM_RGDS)
+	plat_rgds_child_tick();
+	muse_panel_game_tick();
+#endif
 	music_keys();
 	recent_flush();                  /* as on_game_tick */
 #if !defined(PLAT_PIPEWIRE)
@@ -16086,9 +16095,16 @@ static void launch(app *a)
 	int sys, item;
 
 #if defined(PLATFORM_RGDS)
-	/* Details off before the game starts: a DS game lights the bottom panel
-	 * for its own second screen, and an off sent after that would win. */
-	plat_bottom_off();
+	/* The secondary off before the game starts: a DS game lights the bottom
+	 * panel for its own second screen, and an off sent after that would win.
+	 * Muse stays beside any other game (plorpos-rgds.18.1.4). */
+	{
+		const sysview *v = &a->view[a->sys_cursor];
+		bool ds = v->list.count > 0 &&
+		          is_nds_tag(a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
+
+		if (!g_dual_muse || ds) plat_bottom_off();
+	}
 #endif
 	launch_one(a);
 	for (;;) {
@@ -18277,7 +18293,7 @@ static void muse_panel_tick(bool fresh, bool busy)
 	SDL_Renderer *r;
 	unsigned t0;
 
-	m.touch = !g_dual_bottom;                 /* the bottom panel is the touch one */
+	m.touch = true;                           /* both panels have a touchscreen */
 	m.state = !n || n->count <= 0 ? 0 : n->state == MU_PLAYING ? 2 : n->state == MU_PAUSED ? 3 : 1;
 	if (m.touch && plat_bottom_tap(&x, &y) && m.state) {
 		int b = details_muse_hit(640, 480, x, y);
@@ -18313,6 +18329,15 @@ static void muse_panel_tick(bool fresh, bool busy)
  * is on the screen and Secondary Screen is on - lit already when a shelf
  * opens, so its page only has to be drawn. Details for the game under the
  * cursor, the system's page on the carousel, or Muse. */
+/* During a game (both kinds' ticks, 10 Hz): Muse beside it keeps playing its
+ * part - the clock, the buttons. Nothing when it is not up. */
+static void muse_panel_game_tick(void)
+{
+	if (!g_dual_on || !g_dual_muse) return;
+	plat_bottom_pump();
+	muse_panel_tick(false, false);
+}
+
 static void details_tick(app *a)
 {
 	static details_info d;
@@ -18346,6 +18371,7 @@ static void details_tick(app *a)
 		fresh = true;
 	}
 	was_muse = g_dual_muse;
+	plat_bottom_keep(g_dual_muse);
 	if (g_dual_muse) {
 		static unsigned last_in;
 

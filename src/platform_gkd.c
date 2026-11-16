@@ -219,6 +219,8 @@ bool rgds_game_top;
  * that is the top whatever Primary Screen says. */
 static bool ws1_bottom;        /* where workspace 1 was last put */
 static bool rp_pending;        /* a game's window still to be put on workspace 1 */
+static bool cp_pending;        /* a port's, likewise */
+static int cp_tries;
 static int rp_tries;
 
 /* The game's window, once sway has mapped it: at a launch it can open on
@@ -233,6 +235,17 @@ void plat_rgds_game_tick(void)
 	if (!rp_pending || pid <= 0) return;
 	snprintf(c, sizeof c, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
 	if (helper(argv) || ++rp_tries > 50) rp_pending = false;
+}
+
+/* A port or native PICO-8 asks for fullscreen on SDL's display 0, the top
+ * panel, whatever has the focus: with Primary Bottom, its window is taken
+ * onto workspace 1 once it is there. From the native tick; up to 5 s. */
+void plat_rgds_child_tick(void)
+{
+	char *argv[] = { "swaymsg", "[title=\"^(?!plorpOS|diatom)\" workspace=\"^(?!1$|plorpos-launcher$|plorpos-hidden$)\"] move container to workspace 1, focus, fullscreen enable", NULL };
+
+	if (!cp_pending) return;
+	if (helper(argv) || ++cp_tries > 50) cp_pending = false;
 }
 static bool helper(char *const argv[]);
 
@@ -291,6 +304,23 @@ static bool b_shown, b_away;
 static unsigned b_epoch;
 static int b_swipe;
 static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
+static bool b_keep;                       /* stays up during a one-screen game */
+static void bottom_touch(const SDL_Event *e);
+
+void plat_bottom_keep(bool on) { b_keep = on; }
+
+/* During a game: only the fingers, for the secondary's buttons - the rest of
+ * the queue is the launcher's own, read when it is back. */
+void plat_bottom_pump(void)
+{
+	SDL_Event e[8];
+	int n;
+
+	if (!bwin || !b_shown) return;
+	SDL_PumpEvents();
+	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERUP)) > 0)
+		for (int i = 0; i < n; i++) bottom_touch(&e[i]);
+}
 static float b_x0, b_y0;
 static bool b_down;
 
@@ -298,7 +328,7 @@ static bool sway_cmd(const char *cmd);
 
 SDL_Renderer *plat_bottom_begin(int *w, int *h)
 {
-	if (b_away || !win) return NULL;
+	if ((b_away && !b_shown) || !win) return NULL;   /* away: only a kept one */
 	if (!bwin) {
 		bwin = SDL_CreateWindow("plorpOS Bottom", SDL_WINDOWPOS_UNDEFINED_DISPLAY(1),
 		                        SDL_WINDOWPOS_UNDEFINED_DISPLAY(1), 640, 480,
@@ -357,10 +387,14 @@ static bool bottom_over(void)
 	char c[200];
 	char *argv[] = { "swaymsg", c, NULL };
 
-	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to output DSI-2, fullscreen enable", (int)getpid());
+	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to workspace plorpos-secondary", (int)getpid());
 	if (!helper(argv)) return false;
-	/* Lit, and the focus back on workspace 1: the next game opens there. */
-	snprintf(c, sizeof c, "output DSI-2 power on, workspace 1");
+	/* Its own workspace, shown on the top panel: otherwise whatever is left
+	 * there - the launcher's hidden one, after a DS game - is what shows.
+	 * Lit, and the focus back on workspace 1: the next game opens there. */
+	snprintf(c, sizeof c, "workspace plorpos-secondary, move workspace to output DSI-2, output DSI-2 power on, workspace 1");
+	helper(argv);
+	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] fullscreen enable", (int)getpid());
 	helper(argv);
 	return true;
 }
@@ -436,7 +470,9 @@ static bool launcher_place(bool on_screen)
 {
 #ifdef PLATFORM_RGDS
 	if (on_screen) rp_pending = false;
-	if (!on_screen) { b_away = true; plat_bottom_off(); }
+	/* Muse stays up beside a one-screen game (plorpos-rgds.18.1.4); a DS
+	 * game has both panels. */
+	if (!on_screen) { b_away = true; if (!b_keep || rgds_game_top) plat_bottom_off(); }
 	else if (b_away) { b_away = false; b_epoch++; }
 #endif
 	char cmd[256];
@@ -452,9 +488,11 @@ static bool launcher_place(bool on_screen)
 		         (int)getpid());
 	} else
 #endif
+	/* Off the screen, the focus kept on workspace 1: the game or port opens
+	 * wherever it is, and sway would hand it to Muse beside it (.18.1.4). */
 	snprintf(cmd, sizeof cmd, on_screen
 	         ? "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d title=\"^plorpOS$\"] move container to workspace plorpos-launcher", (int)getpid());
+	         : "[pid=%d title=\"^plorpOS$\"] move container to workspace plorpos-launcher; workspace 1", (int)getpid());
 	return helper(argv);
 }
 
@@ -491,6 +529,10 @@ void plat_window_show(bool on)
 	} else {
 		resident_away_pending = false;
 		launcher_place(false);
+#ifdef PLATFORM_RGDS
+		cp_pending = g_prim_bottom;   /* the child's window, once it is up */
+		cp_tries = 0;
+#endif
 	}
 }
 
