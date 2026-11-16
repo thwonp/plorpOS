@@ -7,7 +7,7 @@
 #   1. what the screen and the launcher need: the device's settings, the
 #      card, the GPU driver, brightness, the sound path, sway's config;
 #   2. sway and the launcher;
-#   3. everything else, behind the shelf.
+#   3. everything else, once the shelf is up.
 #
 # ROCKNIX runs all of it before the screen starts, which was 5 s of a 17 s
 # boot. Scripts that only serve what the image removed (EmulationStation,
@@ -58,6 +58,18 @@ touch /run/rocknix/start.games >> $BOOTLOG 2>&1
 systemctl start volume-fixup >> $BOOTLOG 2>&1
 log "Starting $UI_SERVICE..."
 systemctl --no-block start $UI_SERVICE >> $BOOTLOG 2>&1
+
+# The rest waits for the shelf (launch.sh's /run/plorpos-shelf): run beside
+# sway and the launcher it took CPU they needed (007-rootpw alone is 2.5 s of
+# it). At most 20 s; stock ES with the card out does not wait.
+if [ -f /storage/games-external/plorpOS/launch.sh ]; then
+	i=0
+	while [ ! -e /run/plorpos-shelf ] && [ $i -lt 80 ]; do
+		sleep 0.25
+		i=$((i + 1))
+	done
+	log "Shelf up"
+fi
 
 for script in $A/common/* "$A/$HW_DEVICE"/* /storage/.config/autostart/*; do
 	name=${script##*/}
