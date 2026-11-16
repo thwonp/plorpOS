@@ -21,7 +21,8 @@ Miyoo's MainUI.
 
 ## Install
 
-1. Start from an empty FAT32 card (exFAT is untested), or back up the card
+1. Start from an empty FAT32 card (exFAT is untested) with a Master Boot
+   Record partition scheme, or back up the card
    you have. If it has a `.tmp_update/` folder from another firmware, that
    firmware stops booting: the zip replaces its `updater`.
 2. Download `plorpOS-v<version>-flip.zip` from

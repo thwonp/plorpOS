@@ -10,16 +10,22 @@ device, two microSD cards and a computer.
 
 ## 1. BaseOS on the first card (TF1)
 
-Use the latest [BaseOS release](https://github.com/pvaibhav/BaseOS/releases)
-for your H700 device, and write it to a card as BaseOS's own instructions say. Put it in the slot
+Use [BaseOS v1.4.0](https://github.com/pvaibhav/BaseOS/releases/tag/v1.4.0)
+for your H700 device (newer 1.5.x builds are pre-releases and can fail to
+wake from sleep), and write it to a card as BaseOS's own instructions say. Put it in the slot
 marked **TF1** and turn the device on once: it grows its storage, then says
 there is no frontend on the card. Turn it off.
 
 ## 2. plorpOS on the second card (TF2)
 
-Download the H700 zip from
-[Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it. Copy
-everything in it to the root of a FAT32 or exFAT card:
+1. **Format the card as FAT32 or exFAT,** with a Master Boot Record partition
+   scheme, not GPT. BaseOS only reads the card's first partition, and a GPT card
+   from a Mac starts with a hidden EFI partition. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card
+   itself rather than its volume.
+2. Download the H700 zip from
+   [Releases](https://github.com/thwonp/plorpOS/releases/latest) and unzip it.
+3. **Copy everything inside the zip to the root of the card,** not into a
+   folder. `System/` must be at the top level:
 
 ```
 System/       the frontend hook BaseOS looks for (launch_frontend.sh)
@@ -35,6 +41,10 @@ names them) and BIOS files in `Bios/`.
 
 Put the card in the slot marked **TF2** and turn the device on. BaseOS starts
 plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
+
+If it shows **ADD FRONTEND TO SD CARD**, BaseOS did not find `System/` on
+TF2: check that the card uses Master Boot Record (not GPT) and that `System/`
+sits at the root, not inside a folder.
 
 ## Updating from an earlier version
 

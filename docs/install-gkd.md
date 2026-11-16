@@ -63,7 +63,9 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 
 ## 3. Prepare the card
 
-1. **Format it as exFAT.**
+1. **Format it as exFAT,** with a Master Boot Record partition scheme. On a
+   Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card
+   itself rather than its volume.
 2. **Copy everything inside `copy_to_sd/` to the root of the card.**
 3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
    books to `Audiobooks/`. BIOS files go loose in `Bios/`; which ones each
