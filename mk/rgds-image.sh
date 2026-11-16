@@ -161,7 +161,11 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 		echo "boot order: a unit was not as expected in this ROCKNIX; check the boot" >&2
 	V=$(sed -n "s/^OS_VERSION=\"\(.*\)\"/\1/p" etc/os-release)
 	printf "plorpOS for the Anbernic RG DS\n... built on ROCKNIX %s\n" "$V" > etc/issue
-	mksquashfs /w/root /w/p1/SYSTEM -comp zstd -Xcompression-level 19 -b 1M -noappend -no-progress > /dev/null
+	# lz4 in 128 KB blocks, not ROCKNIX zstd-19 in 1 MB blocks: every page
+	# the boot faults in from SYSTEM was a 1 MB zstd decompress, through the
+	# kernel single decompressor (SQUASHFS_DECOMP_SINGLE). 1.7 s of the boot
+	# for about 190 MB more on p1 (plorpos-rgds.12).
+	mksquashfs /w/root /w/p1/SYSTEM -comp lz4 -Xhc -b 128K -noappend -no-progress > /dev/null
 	rm -rf /w/root
 '
 ( cd "$W/p1" && md5sum SYSTEM | sed 's|  SYSTEM|  target/SYSTEM|' > SYSTEM.md5
