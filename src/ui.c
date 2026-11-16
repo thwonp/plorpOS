@@ -1428,7 +1428,7 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 
 /* ---- touch targets (plorpos-3yv.23) -------------------------------------- */
 
-#ifdef PLATFORM_ROTATE
+#ifdef UI_TOUCH
 #define HIT_MAX 64
 
 typedef struct { SDL_Rect r; int button, n; bool id, act; } ui_target;  /* id: n is an id */
