@@ -293,18 +293,29 @@ static const struct { int code; in_button b; } padmap[] = {
 #define STICK_PRESS   450
 #define STICK_RELEASE 300
 
-/* Found by name, not by number: the numbering is probe order. */
+/* Found by name, not by number: the numbering is probe order. The name is
+ * read from sysfs, and only the node that matches is opened: closing an
+ * evdev node costs 7-26 ms on the RG DS, and opening every node to ask its
+ * name closed about twenty of them, 440 ms of the launcher's boot
+ * (plorpos-rgds.12). */
 static int evdev_open(const char *want)
 {
-	char path[32], name[64];
+	char path[48], name[128];
 
 	for (int i = 0; i < 32; i++) {
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device/name", i);
+		FILE *f = fopen(path, "r");
+		if (!f) continue;
+		bool match = false;
+		if (fgets(name, sizeof name, f)) {
+			name[strcspn(name, "\n")] = 0;
+			match = !strcmp(name, want);
+		}
+		fclose(f);
+		if (!match) continue;
 		snprintf(path, sizeof path, "/dev/input/event%d", i);
 		int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-		if (fd < 0) continue;
-		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0 && !strcmp(name, want))
-			return fd;
-		close(fd);
+		if (fd >= 0) return fd;
 	}
 	fprintf(stderr, "input: %s not found\n", want);
 	return -1;
