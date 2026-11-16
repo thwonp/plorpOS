@@ -40,6 +40,18 @@ done
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
 
+# Wi-Fi and avahi wait for the shelf (/usr/lib/rocknix/plorpos-net-gate in
+# the image, plorpos-rgds.12): tell them when it is up. /run, so a previous
+# boot's log cannot.
+[ -e /run/plorpos-shelf ] || (
+	i=0
+	while [ $i -lt 100 ] && ! grep -aq 'boot: first frame' "$LOG"; do
+		sleep 0.2
+		i=$((i + 1))
+	done
+	touch /run/plorpos-shelf
+) &
+
 # The resident emulator, as on the Brick. A child of this script, so it lives
 # through launcher restarts; respawn_resident starts it again if it dies.
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock

@@ -16,14 +16,15 @@
 #   - /usr/lib/rocknix/fs-resize is sd/rgds/image/fs-resize.
 #   - InputPlumber's RG DS map sends Home/Back as a keyboard F1 (ROCKNIX
 #     20261101 sends an invalid gamepad button, so the key did nothing).
-#   - plorpOS's three service drop-ins (sd/rgds/system.d) are built in.
+#   - plorpOS's service drop-ins (sd/rgds/system.d) are built in.
 #   - plorpos-bootlogo.service repaints the plorpOS logo once systemd is up,
 #     the "==> Configuring ..." lines ROCKNIX's start-up prints under it are
 #     silenced, and /etc/issue says plorpOS and which ROCKNIX it is built on.
 #   - A faster boot (plorpos-rgds.12): ROCKNIX's start-up runs launcher
 #     first (sd/rgds/image/autostart), the plorpOS partition is mounted
-#     directly (sd/rgds/image/plorpos-mount), and the screen no longer waits
-#     for the network services.
+#     directly (sd/rgds/image/plorpos-mount), the screen no longer waits
+#     for the network services, which start once the shelf is up
+#     (sd/rgds/image/plorpos-net-gate), and wsdd2 starts only with Samba.
 # in the loaders: u-boot's two-second autoboot wait is gone
 # (mk/rgds-uboot-nodelay.py),
 # and on p1: extlinux.conf names the RG DS's device tree, and post-flash.sh
@@ -84,7 +85,7 @@ grep -q "/device_trees/$FDT" "$W/p1/extlinux/extlinux.conf"
 echo "trimming SYSTEM (a few minutes)"
 cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
 cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$ROOT/sd/rgds/image/autostart" \
-   "$ROOT/sd/rgds/image/plorpos-mount" "$W/in/"
+   "$ROOT/sd/rgds/image/plorpos-mount" "$ROOT/sd/rgds/image/plorpos-net-gate" "$W/in/"
 # The wordmark, centred on black at half the panel's width, as the panel's
 # own framebuffer: 640x480, 4 bytes a pixel, blue first.
 cp "$ROOT/sd/rgds/image/post-flash.sh" "$W/p1/"
@@ -100,7 +101,7 @@ with open(sys.argv[2], "wb") as f:
     f.write(fb.convert("RGB").tobytes("raw", "BGRX"))
 PY
 mkdir -p "$W/in/system.d"
-for u in essway input rocknix-automount; do
+for u in essway input rocknix-automount iwd avahi-daemon; do
 	cp -R "$ROOT/sd/rgds/system.d/$u.service.d" "$W/in/system.d/"
 done
 docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
@@ -135,6 +136,13 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	U=usr/lib/systemd/system
 	install -m 755 /w/in/autostart usr/bin/autostart
 	install -m 755 /w/in/plorpos-mount usr/lib/rocknix/plorpos-mount
+	install -m 755 /w/in/plorpos-net-gate usr/lib/rocknix/plorpos-net-gate
+	# wsdd2 is bound to smbd and stopped with it, but was started at boot
+	# whether Samba is on or not: 1.5 s of CPU at the busiest moment. Now
+	# it comes with smbd.
+	mkdir -p $U/smbd.service.wants
+	[ -L $U/multi-user.target.wants/wsdd2.service ] &&
+		mv $U/multi-user.target.wants/wsdd2.service $U/smbd.service.wants/
 	sed -i "s|^ExecStart=/usr/bin/automount\$|ExecStart=/usr/lib/rocknix/plorpos-mount|" $U/rocknix-automount.service
 	# The screen and the start-up scripts waited for iwd and NetworkManager.
 	sed -i "s|^After=multi-user.target\$|After=basic.target|" $U/seatd.service
@@ -148,7 +156,8 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	grep -q "^After=basic.target\$" $U/seatd.service &&
 	grep -q "^Wants=seatd.service\$" $U/sway.service &&
 	grep -q "^After=basic.target userconfig.service\$" $U/rocknix-autostart.service &&
-	! grep -q "^After=rocknix.target\$" $U/volume-fixup.service ||
+	! grep -q "^After=rocknix.target\$" $U/volume-fixup.service &&
+	[ -L $U/smbd.service.wants/wsdd2.service ] ||
 		echo "boot order: a unit was not as expected in this ROCKNIX; check the boot" >&2
 	V=$(sed -n "s/^OS_VERSION=\"\(.*\)\"/\1/p" etc/os-release)
 	printf "plorpOS for the Anbernic RG DS\n... built on ROCKNIX %s\n" "$V" > etc/issue
