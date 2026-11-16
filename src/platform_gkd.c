@@ -320,6 +320,7 @@ static bool b_keep;                       /* stays up during a one-screen game *
 static bool b_session;                    /* Muse runs there (plat_bottom_session) */
 static bool b_queue;                      /* it shows the queue (plat_bottom_queue) */
 static bool b_game;                       /* the session is beside a running game */
+static void (*b_want_fn)(void);           /* opens Muse there: plat_bottom_on_want */
 static float b_drag, b_ly;                /* the queue's drag: px moved, last y */
 static bool b_primary_tap;                /* the primary touched during a session */
 /* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
@@ -426,6 +427,8 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 }
 
 SDL_Renderer *plat_bottom_renderer(void) { return bren; }
+
+void plat_bottom_on_want(void (*fn)(void)) { b_want_fn = fn; }
 
 void plat_bottom_queue(bool on)
 {
@@ -1155,6 +1158,12 @@ gesture gesture_read(void)
 
 void plat_input_poll(in_state *st)
 {
+#ifdef PLATFORM_RGDS
+	/* A finger on the secondary's resting Muse, from any screen's loop - a
+	 * menu, the in-game menu (plorpos-rgds.18.3.8): Muse opens there now,
+	 * and this poll goes on once it is back. */
+	if (b_want_fn && !b_session && !b_queue && plat_bottom_want()) b_want_fn();
+#endif
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
 	SDL_Event e;

@@ -13297,9 +13297,23 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			muse_set_filter(v, -1, -1);
 			continue;
 		}
-		/* On the secondary, Back at Muse's top has nowhere to go: Muse rests
-		 * there, and the primary is a touch away (owner, .18.3.7). */
-		if ((a->in.pressed[IN_BACK] && !g_muse_sec) || a->in.pressed[IN_SELECT]) break;
+		/* On the secondary, Back at Muse's top goes round to Now Playing
+		 * (owner, .18.3.8): Muse rests there, it is not left by Back. */
+		if (a->in.pressed[IN_BACK] && g_muse_sec) {
+			if (musec_now()->count > 0) {
+				muse_exit how = muse_now_screen(a);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
+					muse_artists_build();
+				}
+				ui_redraw_now();
+			}
+			continue;
+		}
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 		{
 			int hit = ui_hit_take(), t = -1;   /* a footer tab tapped */
 
@@ -18566,6 +18580,9 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	a->r = r;
 	SDL_RenderSetScale(r, plat_scale(), plat_scale());
 	g_muse_sec = true;
+	/* Its taps in a set of their own: the screen under it on the primary
+	 * keeps its map for the finger that comes back (.18.3.8). */
+	ui_hit_set(1);
 	plat_bottom_session(true, tick != NULL);
 	if (tick) {
 		/* Beside a game the GPU is the game's: lines too long rest rather
@@ -18581,16 +18598,26 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	g_sec_tick = NULL;
 	shot_phase = ph;
 	g_muse_sec = false;
+	ui_hit_set(0);
 	muse_textures_forget(a);
 	SDL_RenderSetScale(r, 1.0f, 1.0f);
 	a->r = was;
-	g_panel_fresh = true;
+	/* The resting Now Playing at once, not Muse's last frame - a menu on the
+	 * primary does not tick the secondary. */
+	muse_panel_tick(true, false, false);
 	ui_redraw_now();
 	memset(&a->in, 0, sizeof a->in);
 	/* Last: it hands the primary the finger (or the button) that ended the
 	 * session, so no flush after it. */
 	plat_bottom_session(false, tick != NULL);
 	fprintf(stderr, "muse: back from the secondary\n");
+}
+
+/* Any screen's poll, when a finger lands on the secondary's resting Muse
+ * (plat_bottom_on_want): the in-game menu, a settings menu (.18.3.8). */
+static void muse_want_hook(void)
+{
+	if (g_rgds_app && g_dual_on && g_dual_muse && !g_muse_sec) muse_on_secondary(g_rgds_app, NULL);
 }
 
 static void details_tick(app *a)
@@ -18678,6 +18705,7 @@ int main(int argc, char *argv[])
 	app a = { 0 };
 #if defined(PLATFORM_RGDS)
 	g_rgds_app = &a;
+	plat_bottom_on_want(muse_want_hook);
 #endif
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
