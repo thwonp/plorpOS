@@ -3342,7 +3342,7 @@ static void aout_before_muse(void)
  * still leave the headset where it is; nothing else can be heard on these
  * screens, so handing it back on every pause would only be churn. */
 #if defined(PLATFORM_RGDS)
-static void muse_panel_game_tick(void);
+static void muse_panel_game_tick(bool pump);
 #endif
 
 static void muse_screen_poll(void)
@@ -3350,8 +3350,10 @@ static void muse_screen_poll(void)
 	muse_poll();
 #if defined(PLATFORM_RGDS)
 	/* The secondary's Muse page stays live under Muse's own screens too:
-	 * the track, the clock, its buttons (plorpos-rgds.18.1.5). */
-	muse_panel_game_tick();
+	 * the track, the clock (plorpos-rgds.18.1.5). No pump: this screen's
+	 * own input poll hands the secondary its fingers by window, and a pump
+	 * here took the primary's too - no touch on either panel (.18.5). */
+	muse_panel_game_tick(false);
 #endif
 	year_fill();
 	if (musec_heard()) aout_apply(false);
@@ -3437,7 +3439,7 @@ static void on_game_tick(void)
 {
 #if defined(PLATFORM_RGDS)
 	plat_rgds_game_tick();
-	muse_panel_game_tick();
+	muse_panel_game_tick(true);
 #endif
 	char msg[96];
 
@@ -15432,7 +15434,7 @@ static bool native_tick(void *ctx)
 	muse_poll();
 #if defined(PLATFORM_RGDS)
 	plat_rgds_child_tick();
-	muse_panel_game_tick();
+	muse_panel_game_tick(true);
 #endif
 	music_keys();
 	recent_flush();                  /* as on_game_tick */
@@ -18381,11 +18383,12 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
  * opens, so its page only has to be drawn. Details for the game under the
  * cursor, the system's page on the carousel, or Muse. */
 /* During a game (both kinds' ticks, 10 Hz): Muse beside it keeps playing its
- * part - the clock, the buttons. Nothing when it is not up. */
-static void muse_panel_game_tick(void)
+ * part - the clock, its touch. Nothing when it is not up. pump: read the
+ * secondary's fingers here, only where nothing else reads events (a game). */
+static void muse_panel_game_tick(bool pump)
 {
 	if (!g_dual_on || !g_dual_muse) return;
-	plat_bottom_pump();
+	if (pump) plat_bottom_pump();
 	muse_panel_tick(false, false, false);
 }
 
