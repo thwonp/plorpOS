@@ -18409,11 +18409,10 @@ static void muse_panel_game_tick(bool pump)
 /* The queue on the secondary while Muse is open on the primary
  * (plorpos-rgds.18.3.4): the tracks in the order they will be heard, the one
  * playing marked as a track list marks it. A drag scrolls it a row per row
- * of finger, a tap plays the row. It follows the music, except for 5 s after
- * a drag. Its taps are found in a hit set of its own (ui_hit_set 1): the
+ * of finger, a tap plays the row. It follows the music until it is dragged,
+ * and then stays where it was left - never back by itself (owner) - until a
+ * tap plays a row or Muse opens again. Its taps are found in a hit set of its own (ui_hit_set 1): the
  * primary's screen is live beside it. */
-#define QUEUE_HOLD_MS 5000
-
 static const char *queue_title(void *ctx, int i)
 {
 	static char buf[8][160];
@@ -18440,7 +18439,8 @@ static const char *queue_value(void *ctx, int i)
 static void muse_queue_tick(void)
 {
 	static int cur, acc, row_px;
-	static unsigned dragged, last;
+	static unsigned last;
+	static bool dragged;
 	static char shown[96];
 	const mu_now *mn = musec_now();
 	app *a = g_rgds_app;
@@ -18454,7 +18454,7 @@ static void muse_queue_tick(void)
 	if (!a || !mn || !g_dual_on || !g_dual_muse || g_muse_sec) return;
 	plat_bottom_queue(true);
 	g_panel_fresh = true;                 /* the resting page, after Muse */
-	if (now - last > 500) shown[0] = '\0'; /* Muse just opened: draw it whole */
+	if (now - last > 500) shown[0] = '\0', dragged = false;  /* Muse just opened */
 	last = now;
 	n = mn->count;
 	d = plat_bottom_drag();
@@ -18462,7 +18462,7 @@ static void muse_queue_tick(void)
 		/* Down the panel shows the rows above: the list follows the finger. */
 		for (acc += d; acc >= row_px; acc -= row_px) cur--;
 		for (; acc <= -row_px; acc += row_px) cur++;
-		dragged = now;
+		dragged = true;
 	}
 	if (plat_bottom_tap(&x, &y) && n > 0) {
 		int b = 0, k = 0;
@@ -18473,9 +18473,9 @@ static void muse_queue_tick(void)
 		if (ui_hit_find((int)(x / s), (int)(y / s), &b, &k, &act) == UI_HIT_ITEM)
 			musec_jump(b == IN_UP ? cur - k : cur + k);
 		ui_hit_set(0);
-		dragged = 0;                          /* and back to following it */
+		dragged = false;                      /* and back to following it */
 	}
-	if (!dragged || now - dragged > QUEUE_HOLD_MS) { cur = mn->index; dragged = 0; acc = 0; }
+	if (!dragged) { cur = mn->index; acc = 0; }
 	if (cur > n - 1) cur = n - 1;
 	if (cur < 0) cur = 0;
 
