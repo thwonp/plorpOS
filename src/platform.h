@@ -388,6 +388,19 @@ bool plat_light_sleep(unsigned waited_ms);
  * turning it on or off - now, and from every boot (sd/rgds/adb/adb.sh). */
 bool plat_adb_on(void);
 void plat_adb_set(bool on);
+/* The bottom panel (DSI-1, plorpos-rgds.18), a second window of the launcher's
+ * own. plat_bottom_begin: its renderer to draw a frame into, the panel on and
+ * the window made on first use; NULL while the launcher is off the screen (a
+ * game has both panels) or the window could not be made. plat_bottom_end
+ * presents it. plat_bottom_off: the window hidden and the panel dark.
+ * plat_bottom_epoch counts the launcher's returns to the screen, so a caller
+ * knows to draw again. plat_bottom_swipe: +1 (finger moved left: next), -1,
+ * or 0, since the last call. */
+SDL_Renderer *plat_bottom_begin(int *w, int *h);
+void plat_bottom_end(void);
+void plat_bottom_off(void);
+unsigned plat_bottom_epoch(void);
+int  plat_bottom_swipe(void);
 #endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */

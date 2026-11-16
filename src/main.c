@@ -20,6 +20,7 @@
 #include "db.h"
 #include "gamelist.h"
 #include "stats.h"
+#include "details.h"
 #include "sort.h"
 #include "titles.h"
 #include "setmap.h"
@@ -16031,6 +16032,11 @@ static void launch(app *a)
 {
 	int sys, item;
 
+#if defined(PLATFORM_RGDS)
+	/* Details off before the game starts: a DS game lights the bottom panel
+	 * for its own second screen, and an off sent after that would win. */
+	plat_bottom_off();
+#endif
 	launch_one(a);
 	for (;;) {
 		if (g_switch_fav) { g_switch_fav = false; refresh_favorites_shelf(a); }
@@ -18128,6 +18134,127 @@ static void take_shot(app *a)
 	}
 }
 
+#if defined(PLATFORM_RGDS)
+/* ---- Details on the bottom panel (plorpos-rgds.18) -------------------------
+ *
+ * The game under the shelf's cursor, on the RG DS's bottom panel: Card, Story
+ * and Stats, swiped between (details.c draws them). Gathered and drawn only
+ * once the cursor has rested DETAILS_SETTLE_MS on a game - scrolling through
+ * a shelf costs nothing - or on a swipe, and again each time the launcher
+ * comes back to the screen. Anywhere but a shelf of games the panel is off. */
+#define DETAILS_SETTLE_MS 150
+
+static void details_when(long t, char *out, size_t n)
+{
+	time_t now = time(NULL), then = (time_t)t;
+	struct tm a, b;
+	long days;
+
+	if (t <= 0) { out[0] = '\0'; return; }
+	localtime_r(&now, &a);
+	localtime_r(&then, &b);
+	a.tm_hour = b.tm_hour = 12; a.tm_min = b.tm_min = a.tm_sec = b.tm_sec = 0;
+	days = (long)((mktime(&a) - mktime(&b)) / 86400);
+	if (days <= 0)      snprintf(out, n, "Today");
+	else if (days == 1) snprintf(out, n, "Yesterday");
+	else if (days < 7)  snprintf(out, n, "%ld days ago", days);
+	else                strftime(out, n, "%d %b %Y", &b);
+}
+
+static void details_gather(app *a, int owner, const game_entry *g, details_info *d)
+{
+	const system_cfg *s = &a->sys.systems[owner];
+	game_meta m;
+	char p[LIB_PATH * 3];
+	long secs = 0, last = 0;
+
+	memset(d, 0, sizeof *d);
+	snprintf(d->title, sizeof d->title, "%s", g->title[0] ? g->title : g->name);
+	snprintf(d->sys, sizeof d->sys, "%s", strlen(s->name) <= 8 ? s->name : s->tag);
+	d->accent = s->accent;
+	if (db_game_get(db_lib(), s->folder, g->file, &m)) {
+		if (m.title[0]) snprintf(d->title, sizeof d->title, "%s", m.title);
+		snprintf(d->year, sizeof d->year, "%.4s", m.year);
+		snprintf(d->publisher, sizeof d->publisher, "%s", m.publisher[0] ? m.publisher : m.developer);
+		{
+			const char *gg = m.genres;      /* "A,B" -> "A, B", as gi_gather */
+			size_t k = 0;
+			while (*gg && k + 2 < sizeof d->genre) {
+				d->genre[k++] = *gg;
+				if (*gg++ == ',' && *gg != ' ') d->genre[k++] = ' ';
+			}
+			d->genre[k] = '\0';
+		}
+		if (m.players[0])
+			snprintf(d->players, sizeof d->players, "%s player%s", m.players, strcmp(m.players, "1") ? "s" : "");
+		snprintf(d->synopsis, sizeof d->synopsis, "%s", m.synopsis);
+	}
+	stats_summarize(STATS_ALL, false, (long)time(NULL));
+	if (stats_lookup(s->tag, g->file, &secs, &last) && secs > 0)
+		stats_format(secs, d->played, sizeof d->played);
+	details_when(last, d->last, sizeof d->last);
+	d->launches = stats_launches(s->tag, g->file);
+	/* As gi_gather: no game is running at the shelf, so the loaded set is nobody's. */
+	chv_path(P_ROMS, s->folder, g->name, p, sizeof p);
+	if (chv_load(p) && chv_count() > 0) {
+		d->cheevos = true;
+		d->ch_earned = chv_earned();
+		d->ch_total = chv_count();
+		d->pts_earned = chv_points_earned();
+		d->pts_total = chv_points_total();
+	}
+	/* The card's own picture (box art, a PICO-8 cart, a port's), else the
+	 * frame its state left, as the shelf shows when there is no art. */
+	if (!card_art_path(s, g, p, sizeof p) || access(p, R_OK) != 0)
+		preview_path(a, owner, g, p, sizeof p);
+	if (access(p, R_OK) == 0) snprintf(d->art, sizeof d->art, "%s", p);
+}
+
+static void details_tick(app *a)
+{
+	static details_info d;
+	static char shown[LIB_PATH + 16], pend[LIB_PATH + 16];
+	static unsigned pend_at, epoch;
+	static int page;
+	static bool on, init;
+	const sysview *v = &a->view[a->sys_cursor];
+	int swipe = plat_bottom_swipe(), w, h;
+	char key[LIB_PATH + 16];
+	unsigned now = SDL_GetTicks();
+	bool draw = false;
+	SDL_Renderer *r;
+
+	if (!init) {
+		char dir[512];
+		const char *slash = strrchr(P_FONT, '/');
+		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - P_FONT) : 1, slash ? P_FONT : ".");
+		details_init(dir);
+		init = true;
+	}
+	if (a->screen != SCREEN_GAMES || v->list.count == 0) {
+		if (on) { plat_bottom_off(); on = false; }
+		shown[0] = pend[0] = '\0';
+		return;
+	}
+	if (epoch != plat_bottom_epoch()) { epoch = plat_bottom_epoch(); shown[0] = '\0'; pend_at = now - DETAILS_SETTLE_MS; }
+	snprintf(key, sizeof key, "%d/%s", a->sys_cursor, v->list.items[v->cursor].file);
+	if (strcmp(key, shown)) {
+		if (strcmp(key, pend)) { snprintf(pend, sizeof pend, "%s", key); pend_at = now; }
+		if (now - pend_at >= DETAILS_SETTLE_MS) {
+			details_gather(a, shelf_owner(a, a->sys_cursor, v->cursor), &v->list.items[v->cursor], &d);
+			snprintf(shown, sizeof shown, "%s", key);
+			draw = true;
+		}
+	}
+	if (swipe && shown[0]) { page = (page + swipe + DETAILS_PAGES) % DETAILS_PAGES; draw = true; }
+	if (!draw || !(r = plat_bottom_begin(&w, &h))) return;
+	details_draw(r, w, h, &d, page);
+	plat_bottom_end();
+	on = true;
+	if (g_ft) fprintf(stderr, "details: page %d up %u ms after the cursor rested\n", page, SDL_GetTicks() - pend_at - DETAILS_SETTLE_MS);
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	app a = { 0 };
@@ -18910,6 +19037,9 @@ int main(int argc, char *argv[])
 		 * SETAUDIO while idle, so a cable plugged in at the shelf moves the
 		 * sound before the next launch rather than at it. */
 		aout_apply(false);
+#if defined(PLATFORM_RGDS)
+		details_tick(&a);
+#endif
 
 		/* An account answer that outlived its game, merged when it lands, and
 		 * then whatever was waiting on it sent. */

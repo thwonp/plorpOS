@@ -82,6 +82,10 @@ const char *plat_bright_keys(void) { return "Home+Vol"; }
  * 921 units tall. */
 static SDL_Window *win;
 static SDL_Renderer *ren;
+#ifdef PLATFORM_RGDS
+static SDL_Window *bwin;      /* the bottom panel's (plorpos-rgds.18) */
+static SDL_Renderer *bren;
+#endif
 
 SDL_Renderer *plat_renderer(void) { return ren; }
 
@@ -166,6 +170,11 @@ void plat_present(SDL_Renderer *r)
 
 void plat_video_quit(void)
 {
+#ifdef PLATFORM_RGDS
+	plat_bottom_off();
+	if (bren) { SDL_DestroyRenderer(bren); bren = NULL; }
+	if (bwin) { SDL_DestroyWindow(bwin); bwin = NULL; }
+#endif
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
 	if (win) { SDL_DestroyWindow(win); win = NULL; }
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -186,25 +195,132 @@ void plat_video_quit(void)
  * end there is no resident window to move; the move fails quietly. */
 static void resident_place(bool on_screen)
 {
-	char crit[96];
+	char crit[160];
 	char *cmd[] = { "swaymsg", crit, NULL };
 	pid_t pid = diatom_pid();
 
 	if (pid <= 0) return;
+	/* By title too: on the RG DS a DS game has a second window, on the
+	 * bottom panel, which stays where it is (plorpos-rgds.17). */
 	snprintf(crit, sizeof crit, on_screen
-	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d] move container to workspace plorpos-hidden", (int)pid);
+	         ? "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d title=\"^diatom$\"] move container to workspace plorpos-hidden", (int)pid);
 	helper(cmd);
 }
 
+#ifdef PLATFORM_RGDS
+/* ---- the bottom panel (plorpos-rgds.18) -------------------------------------
+ *
+ * A second window, titled so that ROCKNIX's sway config puts it on DSI-1 and
+ * lights that panel (".*Bottom.*"), with a renderer of its own and no vsync:
+ * it is drawn only when what it shows changes, and a vsync wait there would
+ * be the shelf's frame lost. Only while the launcher itself is on the
+ * screen: a game has both panels (a DS game draws its bottom screen there,
+ * diatom port/gkd.c), so leaving the screen hides it and turns the panel off. */
+static int bw, bh;
+static bool b_shown, b_away;
+static unsigned b_epoch;
+static int b_swipe;
+static float b_x0, b_y0;
+static bool b_down;
+
+static bool sway_cmd(const char *cmd);
+
+SDL_Renderer *plat_bottom_begin(int *w, int *h)
+{
+	if (b_away || !win) return NULL;
+	if (!bwin) {
+		bwin = SDL_CreateWindow("plorpOS Bottom", SDL_WINDOWPOS_UNDEFINED_DISPLAY(1),
+		                        SDL_WINDOWPOS_UNDEFINED_DISPLAY(1), 640, 480,
+		                        SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
+		if (bwin) bren = SDL_CreateRenderer(bwin, -1, SDL_RENDERER_ACCELERATED);
+		if (!bwin || !bren) {
+			fprintf(stderr, "bottom: no window: %s\n", SDL_GetError());
+			if (bwin) SDL_DestroyWindow(bwin);
+			bwin = NULL;
+			b_away = true;       /* not again this time on the screen */
+			return NULL;
+		}
+		SDL_SetRenderDrawBlendMode(bren, SDL_BLENDMODE_BLEND);
+	} else if (!b_shown) {
+		SDL_ShowWindow(bwin);
+	}
+	if (!b_shown) {
+		for (int i = 0; i < 100; i++) {   /* sway's first configure, as above */
+			SDL_PumpEvents();
+			SDL_GetRendererOutputSize(bren, &bw, &bh);
+			if (bw > 1 && bh > 1) break;
+			SDL_Delay(10);
+		}
+		/* In the background: sway takes 350 ms to bring a DSI panel up
+		 * (measured), all of it the shelf's frame otherwise. The window is
+		 * drawn into meanwhile and is there when the panel lights. */
+		if (system("swaymsg output DSI-1 power on > /dev/null 2>&1 &") != 0)
+			fprintf(stderr, "bottom: swaymsg did not start\n");
+		b_shown = true;
+		fprintf(stderr, "bottom: on, %dx%d\n", bw, bh);
+	}
+	*w = bw;
+	*h = bh;
+	return bren;
+}
+
+void plat_bottom_end(void)
+{
+	if (bren && b_shown) SDL_RenderPresent(bren);
+}
+
+void plat_bottom_off(void)
+{
+	if (!b_shown) return;      /* never the panel a DS game is using */
+	SDL_HideWindow(bwin);
+	SDL_PumpEvents();
+	sway_cmd("output DSI-1 power off");
+	b_shown = false;
+	b_down = false;
+	b_epoch++;                 /* whoever draws it next starts over */
+}
+
+unsigned plat_bottom_epoch(void) { return b_epoch; }
+
+int plat_bottom_swipe(void)
+{
+	int s = b_swipe;
+
+	b_swipe = 0;
+	return s;
+}
+
+/* A finger on the bottom panel: a swipe is mostly sideways and a sixth of the
+ * panel's width or more. */
+static void bottom_touch(const SDL_Event *e)
+{
+	float dx, dy;
+
+	if (!bwin || !b_shown || e->tfinger.windowID != SDL_GetWindowID(bwin)) return;
+	if (e->type == SDL_FINGERDOWN) { b_down = true; b_x0 = e->tfinger.x; b_y0 = e->tfinger.y; return; }
+	if (e->type != SDL_FINGERUP || !b_down) return;
+	b_down = false;
+	dx = (e->tfinger.x - b_x0) * bw;
+	dy = (e->tfinger.y - b_y0) * bh;
+	if (dx * dx > dy * dy && (dx > bw / 6.0f || dx < -bw / 6.0f)) b_swipe = dx < 0 ? 1 : -1;
+}
+#endif
+
 static void launcher_place(bool on_screen)
 {
-	char cmd[128];
+#ifdef PLATFORM_RGDS
+	if (!on_screen) { b_away = true; plat_bottom_off(); }
+	else if (b_away) { b_away = false; b_epoch++; }
+#endif
+	char cmd[160];
 	char *argv[] = { "swaymsg", cmd, NULL };
 
+	/* By title too: the RG DS's Details window on the bottom panel is this
+	 * process's as well, and stays there (plorpos-rgds.18). */
 	snprintf(cmd, sizeof cmd, on_screen
-	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d] move container to workspace plorpos-launcher", (int)getpid());
+	         ? "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d title=\"^plorpOS$\"] move container to workspace plorpos-launcher", (int)getpid());
 	helper(argv);
 }
 
@@ -633,8 +749,12 @@ void plat_input_poll(in_state *st)
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
 	SDL_Event e;
-	while (SDL_PollEvent(&e))
+	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) st->quit_requested = true;
+#ifdef PLATFORM_RGDS
+		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP) bottom_touch(&e);
+#endif
+	}
 	pad_read(st);
 	keys_read(st);
 	power_read(st);
