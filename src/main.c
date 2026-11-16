@@ -3338,9 +3338,18 @@ static void aout_before_muse(void)
  * resume and R1 both went to the speaker right after a pairing. Paused, they
  * still leave the headset where it is; nothing else can be heard on these
  * screens, so handing it back on every pause would only be churn. */
+#if defined(PLATFORM_RGDS)
+static void muse_panel_game_tick(void);
+#endif
+
 static void muse_screen_poll(void)
 {
 	muse_poll();
+#if defined(PLATFORM_RGDS)
+	/* The secondary's Muse page stays live under Muse's own screens too:
+	 * the track, the clock, its buttons (plorpos-rgds.18.1.5). */
+	muse_panel_game_tick();
+#endif
 	year_fill();
 	if (musec_heard()) aout_apply(false);
 }
@@ -3420,10 +3429,6 @@ static void aout_retry_in_game(void)
 	        g_aout_sent, g_aout_retries);
 }
 
-
-#if defined(PLATFORM_RGDS)
-static void muse_panel_game_tick(void);
-#endif
 
 static void on_game_tick(void)
 {
