@@ -76,6 +76,12 @@ if [ -f /storage/games-external/plorpOS/launch.sh ]; then
 	done
 	log "Shelf up"
 fi
+# The Wi-Fi and Bluetooth drivers, which /usr/lib/modprobe.d/plorpos-late.conf
+# keeps udev from loading at boot. Here and not in plorpos-net-gate: iwd's and
+# avahi's units have no CAP_SYS_MODULE, and a fresh card has nothing else
+# that loads them.
+modprobe -q rtw88_8821cs
+modprobe -q hci_uart
 
 for script in $A/common/* "$A/$HW_DEVICE"/* /storage/.config/autostart/*; do
 	name=${script##*/}

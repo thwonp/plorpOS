@@ -1,6 +1,5 @@
 #!/bin/sh
-# Holds a network service (iwd, avahi), and loads the Wi-Fi and Bluetooth
-# drivers, once the launcher has drawn the shelf
+# Holds a network service (iwd, avahi) until the launcher has drawn the shelf
 # (plorpos-rgds.12): started with the rest at 6 s they share four saturated
 # cores with sway and the launcher. launch.sh touches the marker at the
 # launcher's first frame. Bounded, so the card out (stock ES, no launch.sh)
@@ -10,8 +9,4 @@ while [ ! -e /run/plorpos-shelf ] && [ $i -lt 80 ]; do
 	sleep 0.25
 	i=$((i + 1))
 done
-# The Wi-Fi and Bluetooth drivers wait for the shelf too
-# (/usr/lib/modprobe.d/plorpos-late.conf keeps udev from loading them).
-modprobe -q rtw88_8821cs
-modprobe -q hci_uart
 exit 0
