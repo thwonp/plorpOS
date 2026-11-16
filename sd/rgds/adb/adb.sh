@@ -23,20 +23,27 @@ WATCH=/run/plorpos-adb-watch.pid
 # 0 reads "control" once it has really started.
 healthy() { grep -q control /sys/kernel/debug/usb/$UDC/ep0out/transfer_type 2> /dev/null; }
 
-# Until it has: every two seconds, with a cable in, let go of the port and
-# take it again. Ends itself the first time the port answers, or at stop.
+# For as long as adb is on: every two seconds, and when the port has not
+# answered twice running with a computer on the cable (a charger is not one),
+# let go of the port and take it again. It also goes deaf after it has
+# worked: a cold boot found it dead at 290 s, with the watcher that had seen
+# it answer long gone (plorpos-rgds.13). Ends at stop.
 watch() {
+	n=0
 	while sleep 2; do
 		[ "$(cat $WATCH 2> /dev/null)" = "$$" ] && [ -d $G ] || exit 0
-		healthy && break
-		/usr/bin/usbgadget is_cable_connected || continue
+		if healthy || ! /usr/bin/usbgadget is_cable_connected; then
+			n=0
+			continue
+		fi
+		n=$((n + 1))
+		[ $n -ge 2 ] || continue
 		echo disconnect > /sys/class/udc/$UDC/soft_connect 2> /dev/null
 		echo "" > $G/UDC 2> /dev/null
 		sleep 0.5
 		echo "$UDC" > $G/UDC 2> /dev/null
-		sleep 2
+		n=0
 	done
-	rm -f $WATCH
 }
 
 stop() {
@@ -82,8 +89,6 @@ start() {
 	i=0
 	while [ ! -e $FFS/ep1 ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 	echo "$UDC" > $G/UDC || { echo "adb: the gadget did not start"; stop; return 1; }
-	sleep 1
-	healthy && return 0
 	/bin/sh "$0" watch > /dev/null 2>&1 &
 	return 0
 }
