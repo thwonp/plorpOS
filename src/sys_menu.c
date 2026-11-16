@@ -98,6 +98,14 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
 		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
 		                             : (menu_row){ "Default Display", u->fill,    true };
+#if defined(PLATFORM_RGDS)
+		/* A DS game always has both panels here, each screen filling its
+		 * own: no layout or fit to pick (plorpos-rgds.18.1). */
+		if (u->nds) {
+			out[SM_DISPLAY] = (menu_row){ "Default Layout",  "both screens", false };
+			out[SM_FILL]    = (menu_row){ "Default Display", "full panel",   false };
+		}
+#endif
 		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
@@ -171,6 +179,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
 	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
+#if defined(PLATFORM_RGDS)
+	out[PM_DUAL]         = (menu_row){ "Dual Screen Settings", NULL, true };
+#endif
 	/* How games start, stop and rewind (plorpos-pyz). */
 	out[PM_GAME]         = (menu_row){ "Game Settings", NULL,   true  };
 	/* What every button does, per screen. Needs nothing of the device, which
@@ -244,6 +255,17 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_PORTS]    = (menu_row){ "Ports Tile",
 	                               u->ports_hidden ? "Hidden" : "Visible", true };
 	return u->has_ports ? US_ROWS : US_PORTS;
+}
+
+int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
+{
+	*heading = "Dual Screen Settings";
+	out[DU_SECONDARY] = (menu_row){ "Secondary Screen", u->dual_on ? "on" : "off", true };
+	/* What the second panel shows on the shelf - nothing to choose while it
+	 * is off. */
+	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse" : "Details", u->dual_on };
+	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
+	return DU_ROWS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

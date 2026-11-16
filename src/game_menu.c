@@ -112,6 +112,11 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	if (u->nds) out[GM_DISPLAY].label = "Layout";
 	out[GM_FILL].value = u->fill;
 	out[GM_FILL].live  = u->fill != NULL;
+#if defined(PLATFORM_RGDS)
+	/* Both panels, always, on the RG DS, each screen filling its panel:
+	 * nothing to lay out or fit (plorpos-rgds.18.1). */
+	if (u->nds) out[GM_DISPLAY].live = out[GM_FILL].live = false;
+#endif
 	/* Under Display, because it is more of the same question - how the game
 	 * looks. Where there is nothing to pick from it says None and is passed
 	 * over, as Cheevos is with no set. */
@@ -149,7 +154,7 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	int i, k = 0;
 
 	for (i = 0; i < n; i++) {
-		if ((i == GM_FILL || i == GM_SHADER || i == GM_PALETTE || i == GM_DISC || i == GM_STYLUS) && !rows[i].live)
+		if ((i == GM_DISPLAY || i == GM_FILL || i == GM_SHADER || i == GM_PALETTE || i == GM_DISC || i == GM_STYLUS) && !rows[i].live)
 			continue;
 		rows[k] = rows[i];
 		ids[k++] = i;

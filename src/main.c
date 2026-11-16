@@ -1162,6 +1162,11 @@ static sys_order g_order;
  * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
  * read before the drop, so the setting row only exists where there is a tile. */
 static bool g_ports_hidden, g_has_ports;
+#if defined(PLATFORM_RGDS)
+/* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
+ * once and kept here, as details_tick asks every frame. */
+static bool g_dual_on = true, g_dual_muse, g_dual_bottom;
+#endif
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
  * the green its card is drawn in - the iPod's own, sampled from the photograph
@@ -6516,6 +6521,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
 #if defined(PLATFORM_RGDS)
 		u.adb = plat_adb_on();
+		u.dual_on = g_dual_on;
+		u.dual_muse = g_dual_muse;
+		u.dual_bottom = g_dual_bottom;
 #endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
@@ -9781,6 +9789,44 @@ static void ui_settings_screen(app *a)
 	         ui_settings_build, ui_settings_key, &c);
 }
 
+#if defined(PLATFORM_RGDS)
+/* Settings > Dual Screen Settings (plorpos-rgds.18.1): three toggles, each
+ * saved at once and taken up by the shelf's next frame. */
+static int dual_settings_build(void *ctx, menu_row *rows, int max,
+                               const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_dual_build(&u, rows, heading);
+}
+
+static menu_result dual_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	bool *v = sel == DU_SECONDARY ? &g_dual_on : sel == DU_FUNCTION ? &g_dual_muse
+	        : sel == DU_PRIMARY ? &g_dual_bottom : NULL;
+	static const char *const id[DU_ROWS] = { "dual_on", "dual_muse", "dual_bottom" };
+
+	(void)a; (void)ctx;
+	if (!v || !(key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) return MENU_STAY;
+	*v = !*v;
+	db_set_int(db_dev(), id[sel], *v);
+	return MENU_STAY;
+}
+
+static void dual_settings_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         dual_settings_build, dual_settings_key, &c);
+}
+#endif
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -9993,6 +10039,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_WIFI:         wifi_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
+#if defined(PLATFORM_RGDS)
+	case PM_DUAL:         dual_settings_screen(a); break;
+#endif
 	case PM_GAME:         game_settings_screen(a); break;
 #if !defined(PLATFORM_MIYOO)
 	case PM_BT:           bt_screen(a); break;
@@ -18231,7 +18280,8 @@ static void details_tick(app *a)
 		details_init(dir);
 		init = true;
 	}
-	if (a->screen != SCREEN_GAMES || v->list.count == 0) {
+	/* Secondary Screen off: the panel dark on the shelf (plorpos-rgds.18.1). */
+	if (!g_dual_on || a->screen != SCREEN_GAMES || v->list.count == 0) {
 		if (on) { plat_bottom_off(); on = false; }
 		shown[0] = pend[0] = '\0';
 		return;
@@ -18703,6 +18753,11 @@ int main(int argc, char *argv[])
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
 		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
+#if defined(PLATFORM_RGDS)
+		g_dual_on     = db_get_int(db_dev(), "dual_on", 1) != 0;
+		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
+		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
+#endif
 		order_systems(&a);
 	}
 
