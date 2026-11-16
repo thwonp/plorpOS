@@ -403,7 +403,7 @@ SDL_Renderer *plat_bottom_renderer(void);
 /* Muse running on the secondary (plorpos-rgds.18.3.2): while on, its fingers
  * are the touch engine's - every gesture, at its own size - and a finger on
  * the primary is SELECT, which closes Muse from any of its screens. */
-void plat_bottom_session(bool on);
+void plat_bottom_session(bool on, bool game);   /* game: beside a running one */
 /* A finger has landed on the secondary while Muse rests there: open it. */
 bool plat_bottom_want(void);
 /* The secondary shows a list of its own (the queue while Muse is on the
@@ -411,6 +411,8 @@ bool plat_bottom_want(void);
  * read as pixels moved since the last call (down the panel is +). */
 void plat_bottom_queue(bool on);
 int  plat_bottom_drag(void);
+/* The running port's quiet (Muse playing), set from outside plat_run. */
+void plat_child_quiet(bool quiet);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);

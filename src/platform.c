@@ -724,6 +724,11 @@ bool plat_abs_pressed(int fd, const struct input_event *ev)
 	(void)fd;
 	return ev->value > 0;
 }
+/* The running port's quiet, from outside plat_run's loop: Muse open on the
+ * RG DS's secondary beside it runs the tick itself (plorpos-rgds.18.3.5). */
+static pid_t g_run_pid = -1;
+void plat_child_quiet(bool quiet) { if (g_run_pid > 0) child_quiet(g_run_pid, quiet); }
+
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
@@ -737,6 +742,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	run_asleep_ms = 0;
 	pid = run_fork(argv, env, workdir);
 	if (pid < 0) { free(env); return -1; }
+	g_run_pid = pid;
 #ifdef __linux__
 	/* Power as in a resident game: a tap sleeps with the child frozen and
 	 * thawed on wake, a hold ends it and powers off (the caller's

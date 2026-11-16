@@ -319,6 +319,7 @@ static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
 static bool b_keep;                       /* stays up during a one-screen game */
 static bool b_session;                    /* Muse runs there (plat_bottom_session) */
 static bool b_queue;                      /* it shows the queue (plat_bottom_queue) */
+static bool b_game;                       /* the session is beside a running game */
 static float b_drag, b_ly;                /* the queue's drag: px moved, last y */
 static bool b_primary_tap;                /* the primary touched during a session */
 /* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
@@ -359,8 +360,16 @@ void plat_bottom_pump(void)
 
 	if (!bwin || !b_shown) return;
 	SDL_PumpEvents();
-	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERUP)) > 0)
-		for (int i = 0; i < n; i++) bottom_touch(&e[i]);
+	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERMOTION)) > 0)
+		for (int i = 0; i < n; i++) {
+			if (e[i].tfinger.windowID != SDL_GetWindowID(bwin)) continue;
+			/* Muse rests there: a finger opens it beside the game and
+			 * carries on (plorpos-rgds.18.3.5), as on the shelf. */
+			if (b_keep && !b_session) {
+				if (e[i].type == SDL_FINGERDOWN && !b_want) { b_want = true; b_nheld = 0; }
+				if (b_want) held_add(&e[i]);
+			} else if (e[i].type != SDL_FINGERMOTION) bottom_touch(&e[i]);
+		}
 }
 static float b_x0, b_y0;
 static bool b_down;
@@ -442,9 +451,10 @@ bool plat_bottom_want(void)
 	return b_want;
 }
 
-void plat_bottom_session(bool on)
+void plat_bottom_session(bool on, bool game)
 {
 	b_session = on;
+	b_game = on && game;
 	b_session_t0 = on ? SDL_GetTicks() : 0;
 	b_down = false;
 	b_tap_x = b_tap_y = -1;
@@ -456,7 +466,12 @@ void plat_bottom_session(bool on)
 	 * kept through the flushes the screens opening there make. */
 	b_carry_until = SDL_GetTicks() + HELD_MS;
 	if (on) held_give(bw, bh);
-	else    held_give(plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+	else if (!game) held_give(plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+	else {
+		/* Beside a game the pad and the panel were the game's all along. */
+		b_nheld = 0;
+		memset(b_pad_again, 0, sizeof b_pad_again);
+	}
 }
 
 void plat_bottom_end(void)
@@ -1190,6 +1205,17 @@ void plat_input_poll(in_state *st)
 	pad_read(st);
 #endif
 	keys_read(st);
+#ifdef PLATFORM_RGDS
+	if (b_session && b_game) {
+		/* Beside a game the power button and the game's panel are the game
+		 * loop's to read (diatom_wait, plat_run): anything waiting on them
+		 * ends Muse here, unread, and they have it a moment later. */
+		struct pollfd pf[2] = { { fd_power, POLLIN, 0 }, { gesture_fd(), POLLIN, 0 } };
+
+		if (poll(pf, 2, 0) > 0 && ((pf[0].revents & POLLIN) || (pf[1].revents & POLLIN)))
+			b_primary_tap = true;
+	} else
+#endif
 	power_read(st);
 #ifdef PLATFORM_RGDS
 	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */

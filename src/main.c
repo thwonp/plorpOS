@@ -3346,14 +3346,25 @@ static void aout_before_muse(void)
  * still leave the headset where it is; nothing else can be heard on these
  * screens, so handing it back on every pause would only be churn. */
 #if defined(PLATFORM_RGDS)
-static void muse_panel_game_tick(bool pump);
+static void muse_panel_game_tick(void (*tick)(void));
 static void muse_queue_tick(void);
+/* Muse open on the secondary beside a game: that game's tick, run from Muse's
+ * own loop meanwhile (plorpos-rgds.18.3.5). NULL on the shelf. */
+static void (*g_sec_tick)(void);
 #endif
 
 static void muse_screen_poll(void)
 {
 	muse_poll();
 #if defined(PLATFORM_RGDS)
+	/* Beside a game: its duties go on - the game quiet while Muse plays,
+	 * play time, the sound's route - ten times a second, as its loop would. */
+	if (g_sec_tick) {
+		static unsigned at;
+		unsigned now = SDL_GetTicks();
+
+		if (now - at >= 100) { at = now; g_sec_tick(); }
+	}
 	/* Under Muse's own screens the secondary shows the queue (.18.3.4). No
 	 * pump: this screen's input poll hands the secondary its fingers by
 	 * window, and a pump here took the primary's too (.18.5). */
@@ -3443,7 +3454,7 @@ static void on_game_tick(void)
 {
 #if defined(PLATFORM_RGDS)
 	plat_rgds_game_tick();
-	muse_panel_game_tick(true);
+	muse_panel_game_tick(on_game_tick);
 #endif
 	char msg[96];
 
@@ -15440,13 +15451,20 @@ static run_choice native_menu(void *ctx)
  * (plorpos-gkd.50.23). And the game is silent while Muse plays, Diatom's
  * ADR-0032, followed live - pausing Muse brings the game back within a
  * tenth of a second (plorpos-gkd.50.17). */
+#if defined(PLATFORM_RGDS)
+static void muse_panel_game_tick(void (*tick)(void));
+static bool native_tick(void *ctx);
+/* A port's tick from Muse's loop: its quiet is plat_run's to send, so sent. */
+static void native_tick_sec(void) { plat_child_quiet(native_tick(NULL)); }
+#endif
+
 static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
 #if defined(PLATFORM_RGDS)
 	plat_rgds_child_tick();
-	muse_panel_game_tick(true);
+	muse_panel_game_tick(native_tick_sec);
 #endif
 	music_keys();
 	recent_flush();                  /* as on_game_tick */
@@ -18396,13 +18414,17 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
  * opens, so its page only has to be drawn. Details for the game under the
  * cursor, the system's page on the carousel, or Muse. */
 /* During a game (both kinds' ticks, 10 Hz): Muse beside it keeps playing its
- * part - the clock, its touch. Nothing when it is not up. pump: read the
- * secondary's fingers here, only where nothing else reads events (a game). */
-static void muse_panel_game_tick(bool pump)
+ * part - the clock, and a finger on it opens Muse there (.18.3.5). The
+ * secondary's fingers are read here: nothing else reads events in a game.
+ * tick: the game's own, for Muse's loop to run meanwhile. */
+static void muse_on_secondary(app *a, void (*tick)(void));
+
+static void muse_panel_game_tick(void (*tick)(void))
 {
-	if (!g_dual_on || !g_dual_muse) return;
+	if (!g_dual_on || !g_dual_muse || g_muse_sec) return;   /* Muse runs it */
 	plat_bottom_queue(false);
-	if (pump) plat_bottom_pump();
+	plat_bottom_pump();
+	if (plat_bottom_want() && g_rgds_app) { muse_on_secondary(g_rgds_app, tick); return; }
 	muse_panel_tick(false, false, false);
 }
 
@@ -18533,20 +18555,31 @@ static void muse_textures_forget(app *a)
 	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
 }
 
-static void muse_on_secondary(app *a)
+static void muse_on_secondary(app *a, void (*tick)(void))
 {
 	SDL_Renderer *was = a->r, *r;
 	unsigned t0 = SDL_GetTicks();
-	int w, h;
+	int w, h, ph = shot_phase;
 
 	if (!(r = plat_bottom_begin(&w, &h))) return;
 	muse_textures_forget(a);
 	a->r = r;
 	SDL_RenderSetScale(r, plat_scale(), plat_scale());
 	g_muse_sec = true;
-	plat_bottom_session(true);
-	fprintf(stderr, "muse: on the secondary (%u ms to switch)\n", SDL_GetTicks() - t0);
+	plat_bottom_session(true, tick != NULL);
+	if (tick) {
+		/* Beside a game the GPU is the game's: lines too long rest rather
+		 * than slide, and Muse draws only when something changes. The
+		 * game's presses queued meanwhile are not Muse's. */
+		g_sec_tick = tick;
+		shot_phase = 0;
+		plat_input_flush();
+	}
+	fprintf(stderr, "muse: on the secondary%s (%u ms to switch)\n", tick ? " beside a game" : "",
+	        SDL_GetTicks() - t0);
 	muse_open(a, NULL, NULL);
+	g_sec_tick = NULL;
+	shot_phase = ph;
 	g_muse_sec = false;
 	muse_textures_forget(a);
 	SDL_RenderSetScale(r, 1.0f, 1.0f);
@@ -18556,7 +18589,7 @@ static void muse_on_secondary(app *a)
 	memset(&a->in, 0, sizeof a->in);
 	/* Last: it hands the primary the finger (or the button) that ended the
 	 * session, so no flush after it. */
-	plat_bottom_session(false);
+	plat_bottom_session(false, tick != NULL);
 	fprintf(stderr, "muse: back from the secondary\n");
 }
 
@@ -18600,7 +18633,7 @@ static void details_tick(app *a)
 
 		for (int b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
-		if (plat_bottom_want()) { muse_on_secondary(a); return; }
+		if (plat_bottom_want()) { muse_on_secondary(a, NULL); return; }
 		muse_panel_tick(fresh, now - last_in < 1000, true);
 		on = true;
 		return;
