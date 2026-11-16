@@ -341,6 +341,101 @@ void details_draw(SDL_Renderer *r, int w, int h, const details_info *d, int page
 	}
 }
 
+void details_draw_system(SDL_Renderer *r, int w, int h, const char *name, unsigned accent, const char *line)
+{
+	char s[160];
+
+	g_k = w / 640.0f;
+	fill(r, 0, 0, w, h, BG);
+	rrect(r, S(24), S(24), w - S(48), h - S(48), S(14), PANEL);
+	fill(r, S(24), h / 2 + S(2), w - S(48), S(4), rgb(accent ? accent : 0x816EBA));
+	fit(true, 40, name, w - S(96), s, sizeof s);
+	text(r, true, 40, s, w / 2, h / 2 - S(58), 1, WHITE);
+	text(r, false, 20, line, w / 2, h / 2 + S(22), 1, LIGHT);
+}
+
+/* The three buttons' boxes, left to right. */
+static SDL_Rect muse_btn(int w, int h, int i)
+{
+	int bw = S(150), bh = S(76), gap = S(24), x0 = (w - 3 * bw - 2 * gap) / 2;
+
+	return (SDL_Rect){ x0 + i * (bw + gap), h - S(24) - bh, bw, bh };
+}
+
+int details_muse_hit(int w, int h, int x, int y)
+{
+	g_k = w / 640.0f;
+	for (int i = 0; i < 3; i++) {
+		SDL_Rect q = muse_btn(w, h, i);
+		if (x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h) return i + 1;
+	}
+	return 0;
+}
+
+/* A solid triangle pointing left (dir -1) or right (+1), `s` tall, its flat
+ * side at x. */
+static void tri(SDL_Renderer *r, int x, int y, int s, int dir, SDL_Color c)
+{
+	SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
+	for (int i = 0; i < s; i++) {
+		int len = (s / 2 - (i < s / 2 ? s / 2 - i : i - s / 2)) * 7 / 4;
+		SDL_RenderDrawLine(r, x, y + i, x + dir * len, y + i);
+	}
+}
+
+static void stamp(char *out, size_t n, double t)
+{
+	int s = t > 0 ? (int)t : 0;
+	snprintf(out, n, "%d:%02d", s / 60, s % 60);
+}
+
+void details_draw_muse(SDL_Renderer *r, int w, int h, const details_muse *m)
+{
+	static const char *say[4] = { "Muse", "Ready", "Now Playing", "Paused" };
+	char lines[2][160], s[160];
+	int x = S(232), y = S(30), n, i, cs = S(184);
+
+	g_k = w / 640.0f;
+	fill(r, 0, 0, w, h, BG);
+	art(r, m->art);
+	cover(r, S(24), S(24), cs, cs);
+	text(r, false, 15, say[m->state & 3], x, y, 0, rgb(0x816EBA));
+	y += S(26);
+	if (m->state == 0) {
+		text(r, true, 26, "Nothing queued", x, y, 0, WHITE);
+		text(r, false, 17, "SELECT opens Muse to pick music.", x, y + S(40), 0, MUTED);
+		return;
+	}
+	n = wrap(true, 26, m->title, w - x - S(24), lines, 2);
+	for (i = 0; i < n; i++, y += S(32)) text(r, true, 26, lines[i], x, y, 0, WHITE);
+	fit(false, 18, m->artist, w - x - S(24), s, sizeof s);
+	text(r, false, 18, s, x, y + S(6), 0, LIGHT);
+	fit(false, 16, m->album, w - x - S(24), s, sizeof s);
+	text(r, false, 16, s, x, y + S(34), 0, MUTED);
+
+	y = S(232);
+	bar(r, S(24), y, w - S(48), S(8), m->len > 0 ? (float)(m->at / m->len) : 0, ACC);
+	stamp(s, sizeof s, m->at);
+	text(r, false, 15, s, S(24), y + S(14), 0, MUTED);
+	stamp(s, sizeof s, m->len);
+	text(r, false, 15, s, w - S(24), y + S(14), 2, MUTED);
+
+	if (!m->touch) {
+		text(r, false, 17, "SELECT opens Muse", w / 2, h - S(60), 1, MUTED);
+		return;
+	}
+	for (i = 0; i < 3; i++) {
+		SDL_Rect q = muse_btn(w, h, i);
+		int cx = q.x + q.w / 2, cy = q.y + q.h / 2, g = S(30);
+
+		rrect(r, q.x, q.y, q.w, q.h, S(16), i == 1 ? ACC : PANEL);
+		if (i == 0) { fill(r, cx - g / 2 - S(4), cy - g / 2, S(5), g, WHITE); tri(r, cx + g / 2, cy - g / 2, g, -1, WHITE); }
+		else if (i == 2) { tri(r, cx - g / 2, cy - g / 2, g, 1, WHITE); fill(r, cx + g / 2, cy - g / 2, S(5), g, WHITE); }
+		else if (m->state == 2) { fill(r, cx - S(11), cy - g / 2, S(8), g, WHITE); fill(r, cx + S(3), cy - g / 2, S(8), g, WHITE); }
+		else tri(r, cx - g / 3, cy - g / 2, g, 1, WHITE);
+	}
+}
+
 void details_quit(void)
 {
 	if (g_art) SDL_DestroyTexture(g_art);

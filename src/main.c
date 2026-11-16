@@ -18259,18 +18259,68 @@ static void details_gather(app *a, int owner, const game_entry *g, details_info 
 	if (access(p, R_OK) == 0) snprintf(d->art, sizeof d->art, "%s", p);
 }
 
+/* The Muse page on the secondary panel (plorpos-rgds.18.1.2): redrawn when
+ * what it shows changes - the track, the state, the second - and its three
+ * buttons work by touch where the panel has it. */
+static void muse_panel_tick(bool fresh, bool busy)
+{
+	static char shown[1600];
+	static int shown_sec;
+	const mu_now *n = musec_now();
+	details_muse m = { 0 };
+	char key[1600], path[LIB_PATH * 2 + 8];
+	int w, h, x, y, al;
+	SDL_Renderer *r;
+	unsigned t0;
+
+	m.touch = !g_dual_bottom;                 /* the bottom panel is the touch one */
+	m.state = !n || n->count <= 0 ? 0 : n->state == MU_PLAYING ? 2 : n->state == MU_PAUSED ? 3 : 1;
+	if (m.touch && plat_bottom_tap(&x, &y) && m.state) {
+		int b = details_muse_hit(640, 480, x, y);
+
+		if (b == 1) musec_prev();
+		else if (b == 2) musec_toggle();
+		else if (b == 3) musec_next();
+		if (b) shown[0] = '\0';
+	}
+	if (m.state) {
+		snprintf(m.title, sizeof m.title, "%s", n->title);
+		snprintf(m.artist, sizeof m.artist, "%s", n->artist);
+		snprintf(m.album, sizeof m.album, "%s", n->album);
+		m.at = n->at;
+		m.len = n->len;
+		al = ml_album_of(&g_muse, musec_track(n->index));
+		if (al >= 0 && cover_file(al, path, sizeof path)) snprintf(m.art, sizeof m.art, "%.1023s", path);
+	}
+	snprintf(key, sizeof key, "%d|%d|%s|%s|%d", m.state, m.touch, m.title, m.art, (int)m.len);
+	/* The clock alone moving: a 7-9 ms draw a second, not while the shelf is
+	 * being driven (a frame lost under the thumb). */
+	if (!fresh && !strcmp(key, shown) && ((int)m.at == shown_sec || busy)) return;
+	shown_sec = (int)m.at;
+	t0 = SDL_GetTicks();
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	details_draw_muse(r, w, h, &m);
+	plat_bottom_end();
+	snprintf(shown, sizeof shown, "%s", key);
+	if (g_ft) fprintf(stderr, "details: muse page in %u ms\n", SDL_GetTicks() - t0);
+}
+
+/* The secondary panel (plorpos-rgds.18, .18.1): on for as long as the launcher
+ * is on the screen and Secondary Screen is on - lit already when a shelf
+ * opens, so its page only has to be drawn. Details for the game under the
+ * cursor, the system's page on the carousel, or Muse. */
 static void details_tick(app *a)
 {
 	static details_info d;
 	static char shown[LIB_PATH + 16], pend[LIB_PATH + 16];
 	static unsigned pend_at, epoch;
 	static int page;
-	static bool on, init;
+	static bool on, init, was_muse;
 	const sysview *v = &a->view[a->sys_cursor];
-	int swipe = plat_bottom_swipe(), w, h;
+	int swipe = plat_bottom_swipe(), w, h, tx, ty;
 	char key[LIB_PATH + 16];
 	unsigned now = SDL_GetTicks();
-	bool draw = false;
+	bool draw = false, game, fresh = false;
 	SDL_Renderer *r;
 
 	if (!init) {
@@ -18280,28 +18330,59 @@ static void details_tick(app *a)
 		details_init(dir);
 		init = true;
 	}
-	/* Secondary Screen off: the panel dark on the shelf (plorpos-rgds.18.1). */
-	if (!g_dual_on || a->screen != SCREEN_GAMES || v->list.count == 0) {
+	if (!g_dual_on) {
 		if (on) { plat_bottom_off(); on = false; }
 		shown[0] = pend[0] = '\0';
 		return;
 	}
-	if (epoch != plat_bottom_epoch()) { epoch = plat_bottom_epoch(); shown[0] = '\0'; pend_at = now - DETAILS_SETTLE_MS; }
-	snprintf(key, sizeof key, "%d/%s", a->sys_cursor, v->list.items[v->cursor].file);
+	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse) {
+		epoch = plat_bottom_epoch();
+		shown[0] = '\0';
+		pend_at = now - DETAILS_SETTLE_MS;
+		fresh = true;
+	}
+	was_muse = g_dual_muse;
+	if (g_dual_muse) {
+		static unsigned last_in;
+
+		for (int b = 0; b < IN_COUNT; b++)
+			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
+		muse_panel_tick(fresh, now - last_in < 1000);
+		on = true;
+		return;
+	}
+	while (plat_bottom_tap(&tx, &ty)) { }          /* Details takes swipes only */
+	game = a->screen == SCREEN_GAMES && v->list.count > 0;
+	if (game) snprintf(key, sizeof key, "%d/%s", a->sys_cursor, v->list.items[v->cursor].file);
+	else      snprintf(key, sizeof key, "sys/%d", a->sys_cursor);
 	if (strcmp(key, shown)) {
-		if (strcmp(key, pend)) { snprintf(pend, sizeof pend, "%s", key); pend_at = now; }
+		/* Into a shelf from the carousel: at once. Along a list: once the
+		 * cursor rests, so scrolling does not draw every step. */
+		if (game && !strncmp(shown, "sys/", 4)) pend_at = now - DETAILS_SETTLE_MS;
+		else if (strcmp(key, pend)) pend_at = now;
+		snprintf(pend, sizeof pend, "%s", key);
 		if (now - pend_at >= DETAILS_SETTLE_MS) {
-			details_gather(a, shelf_owner(a, a->sys_cursor, v->cursor), &v->list.items[v->cursor], &d);
+			if (game) details_gather(a, shelf_owner(a, a->sys_cursor, v->cursor), &v->list.items[v->cursor], &d);
 			snprintf(shown, sizeof shown, "%s", key);
 			draw = true;
 		}
 	}
-	if (swipe && shown[0]) { page = (page + swipe + DETAILS_PAGES) % DETAILS_PAGES; draw = true; }
+	if (game && swipe && shown[0]) { page = (page + swipe + DETAILS_PAGES) % DETAILS_PAGES; draw = true; }
 	if (!draw || !(r = plat_bottom_begin(&w, &h))) return;
-	details_draw(r, w, h, &d, page);
+	if (game) details_draw(r, w, h, &d, page);
+	else {
+		const system_cfg *s = &a->sys.systems[a->sys_cursor];
+		char line[64];
+		int gc = v->list.count;
+
+		if (is_muse(s)) snprintf(line, sizeof line, "Music and audiobooks");
+		else snprintf(line, sizeof line, "%d game%s", gc, gc == 1 ? "" : "s");
+		details_draw_system(r, w, h, s->name, s->accent, line);
+	}
 	plat_bottom_end();
 	on = true;
-	if (g_ft) fprintf(stderr, "details: page %d up %u ms after the cursor rested\n", page, SDL_GetTicks() - pend_at - DETAILS_SETTLE_MS);
+	if (g_ft) fprintf(stderr, "details: %s up %u ms after the cursor rested\n", game ? "game" : "system",
+	                  SDL_GetTicks() - pend_at - DETAILS_SETTLE_MS);
 }
 #endif
 

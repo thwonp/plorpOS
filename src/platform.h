@@ -401,6 +401,8 @@ void plat_bottom_end(void);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);
+/* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
+bool plat_bottom_tap(int *x, int *y);
 #endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */

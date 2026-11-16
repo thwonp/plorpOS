@@ -221,6 +221,7 @@ static int bw, bh;
 static bool b_shown, b_away;
 static unsigned b_epoch;
 static int b_swipe;
+static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
 static float b_x0, b_y0;
 static bool b_down;
 
@@ -283,6 +284,14 @@ void plat_bottom_off(void)
 
 unsigned plat_bottom_epoch(void) { return b_epoch; }
 
+bool plat_bottom_tap(int *x, int *y)
+{
+	if (b_tap_x < 0) return false;
+	*x = b_tap_x; *y = b_tap_y;
+	b_tap_x = b_tap_y = -1;
+	return true;
+}
+
 int plat_bottom_swipe(void)
 {
 	int s = b_swipe;
@@ -304,6 +313,11 @@ static void bottom_touch(const SDL_Event *e)
 	dx = (e->tfinger.x - b_x0) * bw;
 	dy = (e->tfinger.y - b_y0) * bh;
 	if (dx * dx > dy * dy && (dx > bw / 6.0f || dx < -bw / 6.0f)) b_swipe = dx < 0 ? 1 : -1;
+	/* A tap: the finger moved less than a twentieth of the panel. */
+	else if (dx * dx + dy * dy < (bw / 20.0f) * (bw / 20.0f)) {
+		b_tap_x = (int)(e->tfinger.x * bw);
+		b_tap_y = (int)(e->tfinger.y * bh);
+	}
 }
 #endif
 
