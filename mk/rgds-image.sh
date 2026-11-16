@@ -105,7 +105,8 @@ mv "$X.new" "$X"
 echo "trimming SYSTEM (a few minutes)"
 cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
 cp "$ROOT/sd/rgds/image/plorpos-bootlogo.service" "$ROOT/sd/rgds/image/autostart" \
-   "$ROOT/sd/rgds/image/plorpos-mount" "$ROOT/sd/rgds/image/plorpos-net-gate" "$W/in/"
+   "$ROOT/sd/rgds/image/plorpos-mount" "$ROOT/sd/rgds/image/plorpos-net-gate" \
+   "$ROOT/sd/rgds/image/plorpos-late-modules.conf" "$W/in/"
 # The wordmark, centred on black at half the panel's width, as the panel's
 # own framebuffer: 640x480, 4 bytes a pixel, blue first.
 cp "$ROOT/sd/rgds/image/post-flash.sh" "$W/p1/"
@@ -157,6 +158,7 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	install -m 755 /w/in/autostart usr/bin/autostart
 	install -m 755 /w/in/plorpos-mount usr/lib/rocknix/plorpos-mount
 	install -m 755 /w/in/plorpos-net-gate usr/lib/rocknix/plorpos-net-gate
+	install -m 644 /w/in/plorpos-late-modules.conf usr/lib/modprobe.d/plorpos-late.conf
 	# The touchscreen calibration ROCKNIX writes to /run at every boot, then
 	# replays every input device through udev for (udevadm trigger): built in
 	# instead, so the boot coldplug applies it. 0.2 s of a CPU-bound boot.
