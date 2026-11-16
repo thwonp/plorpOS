@@ -7,6 +7,7 @@
 
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
+#include "config.h"   /* CFG_MAX_SYSTEMS: one hotkey row per shelf */
 
 #include <ctype.h>
 #include <dirent.h>
@@ -132,7 +133,9 @@ const char *plat_coreopt(const char *tag, int i)
  * Unlike turbo, there is no shipped default: this is new and opt-in, and
  * seeding a binding the player never asked for is not what "opt-in" means.
  * A tag with no hotkey.<tag> row plays exactly as it always has. */
-#define HOTKEY_MAX 16
+/* One row per shelf there can be. It was 16, and the RG DS has 19 shelves: the
+ * 17th and later rows were dropped without a word (plorpos-rgds.15). */
+#define HOTKEY_MAX CFG_MAX_SYSTEMS
 static struct { char tag[8]; char map[320]; } hotkeys[HOTKEY_MAX];
 static int nhotkeys = -1;                     /* -1 = not read yet */
 
@@ -141,7 +144,10 @@ static bool hotkey_row(const char *key, const char *value, void *ctx)
 	const char *tag = key + strlen("hotkey.");
 
 	(void)ctx;
-	if (nhotkeys >= HOTKEY_MAX) return false;
+	if (nhotkeys >= HOTKEY_MAX) {
+		fprintf(stderr, "hotkey: more than %d rows; %s and later ignored\n", HOTKEY_MAX, key);
+		return false;
+	}
 	if (strlen(tag) >= sizeof hotkeys[0].tag ||
 	    strlen(value) >= sizeof hotkeys[0].map) {
 		fprintf(stderr, "hotkey: entry too long, ignoring: %.32s\n", tag);
