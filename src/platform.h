@@ -479,7 +479,9 @@ bool plat_resident_sleep_asked(void);
  * narrows to GESTURE_TIGHT_PX and a swipe must be GESTURE_IN_PX in within
  * GESTURE_TIGHT_MS, the window Diatom holds such a touch back from the core
  * for - the two sides decide the same way from the same numbers. */
-typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER } gesture;
+/* GESTURE_MENU: a finger held still over the game - the in-game menu (RG DS,
+ * plorpos-rgds.24.4; the Rotate's diatom does its own). */
+typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30

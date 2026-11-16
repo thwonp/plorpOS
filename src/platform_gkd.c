@@ -943,8 +943,16 @@ static struct {
 	int  slot, rx, ry;
 	bool down_pending, up_pending, on, fired;
 	int  edge;                     /* +1 top, -1 bottom, 0 none */
-	float y0;
+	float x0, y0;
+	unsigned t0;
+	bool more;                     /* another finger came down: not a hold */
 } gs;
+
+/* Held still this long, the in-game menu - the Rotate's diatom hold
+ * (TOUCH_HOLD_MS, 600) read here: diatom's own window hears no touch on the
+ * RG DS's game panel. */
+#define GS_HOLD_MS  600
+#define GS_STILL_PX 30
 
 static int gtouch_open(const char *phys, int k)
 {
@@ -994,8 +1002,10 @@ gesture gesture_read(void)
 	while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS) {
 			if (ev.code == ABS_MT_SLOT) gs.slot = ev.value;
-			else if (gs.slot != 0) continue;
-			else if (ev.code == ABS_MT_TRACKING_ID) {
+			else if (gs.slot != 0) {
+				if (ev.code == ABS_MT_TRACKING_ID && ev.value >= 0) gs.more = true;
+				continue;
+			} else if (ev.code == ABS_MT_TRACKING_ID) {
 				if (ev.value < 0) gs.up_pending = true;
 				else gs.down_pending = true;
 			} else if (ev.code == ABS_MT_POSITION_X) gs.rx = ev.value;
@@ -1009,7 +1019,10 @@ gesture gesture_read(void)
 			gs.down_pending = false;
 			gs.on = true;
 			gs.fired = false;
+			gs.more = false;
+			gs.x0 = gs.rx;
 			gs.y0 = gs.ry;
+			gs.t0 = plat_now_ms();
 			/* The sides win the corners, as on the shelf. */
 			gs.edge = gs.rx < band || gs.rx > mx - band ? 0
 			        : gs.ry < band ? 1 : gs.ry > my - band ? -1 : 0;
@@ -1018,6 +1031,15 @@ gesture gesture_read(void)
 			out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
 		}
 		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
+	}
+	/* Still where it came down, alone, long enough: checked on every call,
+	 * as a finger that stays put sends nothing. */
+	if (out == GESTURE_NONE && gs.on && !gs.fired && !gs.more &&
+	    plat_now_ms() - gs.t0 >= GS_HOLD_MS) {
+		float dx = gs.rx - gs.x0, dy = gs.ry - gs.y0;
+
+		gs.fired = true;
+		if (dx * dx + dy * dy <= GS_STILL_PX * GS_STILL_PX) out = GESTURE_MENU;
 	}
 	return out;
 }
