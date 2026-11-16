@@ -3423,6 +3423,9 @@ static void aout_retry_in_game(void)
 
 static void on_game_tick(void)
 {
+#if defined(PLATFORM_RGDS)
+	plat_rgds_game_tick();
+#endif
 	char msg[96];
 
 	int rc;
@@ -9814,6 +9817,7 @@ static menu_result dual_settings_key(app *a, void *ctx, in_button key, int sel)
 	if (!v || !(key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) return MENU_STAY;
 	*v = !*v;
 	db_set_int(db_dev(), id[sel], *v);
+	if (sel == DU_PRIMARY) plat_set_primary_bottom(g_dual_bottom);
 	return MENU_STAY;
 }
 
@@ -18995,6 +18999,9 @@ int main(int argc, char *argv[])
 	t_mark("diatom connect");
 
 	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
+#if defined(PLATFORM_RGDS)
+	plat_set_primary_bottom(g_dual_bottom);   /* Primary Screen (plorpos-rgds.18.1.3) */
+#endif
 	t_mark("video");
 	a.r = plat_renderer();
 	t_mark("renderer");

@@ -403,6 +403,11 @@ unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);
 /* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
 bool plat_bottom_tap(int *x, int *y);
+/* Primary Screen = Bottom: the launcher and single-screen games on the bottom
+ * panel, the secondary on the top (plorpos-rgds.18.1.3). */
+void plat_set_primary_bottom(bool on);
+/* During a game, from its tick: the game's window onto the primary once mapped. */
+void plat_rgds_game_tick(void);
 #endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */

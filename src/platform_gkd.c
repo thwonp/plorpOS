@@ -151,13 +151,26 @@ bool plat_video_init(void)
 bool plat_video_init_over_child(void) { return plat_video_init(); }
 
 static bool resident_away_pending;
+static bool place_pending;      /* RG DS: the launcher onto the primary after the next present */
+static int place_tries;
+#ifdef PLATFORM_RGDS
+static bool b_move;             /* Primary Bottom: the secondary over to DSI-2 once mapped */
+static int move_tries;
+static bool bottom_over(void);
+#endif
 static void resident_place(bool on_screen);
 static bool helper(char *const argv[]);
-static void launcher_place(bool on_screen);
+static bool launcher_place(bool on_screen);
 
 void plat_present(SDL_Renderer *r)
 {
 	SDL_RenderPresent(r);
+	/* Retried until sway has mapped the window and the move lands: the
+	 * criteria match nothing before that (swaymsg fails). A few frames. */
+	if (place_pending && (launcher_place(true) || ++place_tries > 30)) place_pending = false, place_tries = 0;
+#ifdef PLATFORM_RGDS
+	if (b_move && (bottom_over() || ++move_tries > 30)) b_move = false, move_tries = 0;
+#endif
 	/* The menu's first frame is up: only now does the paused game go
 	 * (screen_yield). */
 	if (resident_away_pending) {
@@ -193,15 +206,71 @@ void plat_video_quit(void)
  * Diatom hiding its own window first left sway's black background up until
  * the launcher's first buffer. At a game's start and
  * end there is no resident window to move; the move fails quietly. */
+#ifdef PLATFORM_RGDS
+/* Primary Screen (plorpos-rgds.18.1.3): which panel the launcher and a
+ * single-screen game use; the secondary window gets the other. A DS game
+ * always has the top for its top screen (rgds_game_top, set at its launch). */
+static bool g_prim_bottom;
+bool rgds_game_top;
+#define SEC_OUT  (g_prim_bottom ? "DSI-2" : "DSI-1")
+
+/* Workspace 1 - the launcher, a game, a port: everything placed "on the
+ * screen" goes there - onto the primary panel, lit. While a DS game runs
+ * that is the top whatever Primary Screen says. */
+static bool ws1_bottom;        /* where workspace 1 was last put */
+static bool rp_pending;        /* a game's window still to be put on workspace 1 */
+static int rp_tries;
+
+/* The game's window, once sway has mapped it: at a launch it can open on
+ * another workspace than 1 while the panels are being rearranged. From the
+ * launcher's 10 Hz tick during a game; up to 5 s. */
+void plat_rgds_game_tick(void)
+{
+	char c[160];
+	char *argv[] = { "swaymsg", c, NULL };
+	pid_t pid = diatom_pid();
+
+	if (!rp_pending || pid <= 0) return;
+	snprintf(c, sizeof c, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
+	if (helper(argv) || ++rp_tries > 50) rp_pending = false;
+}
+static bool helper(char *const argv[]);
+
+static void ws1_place(void)
+{
+	bool down = g_prim_bottom && !rgds_game_top;
+	char *argv[] = { "swaymsg", (char *)(down
+	        ? "workspace 1, move workspace to output DSI-1, output DSI-1 power on"
+	        : "workspace 1, move workspace to output DSI-2, output DSI-2 power on"), NULL };
+
+	/* Top, and already there: nothing to do - one swaymsg fewer per menu. */
+	if (!g_prim_bottom && !ws1_bottom) return;
+	if (helper(argv)) ws1_bottom = down;
+}
+#endif
+
 static void resident_place(bool on_screen)
 {
-	char crit[160];
+	char crit[256];
 	char *cmd[] = { "swaymsg", crit, NULL };
 	pid_t pid = diatom_pid();
 
 	if (pid <= 0) return;
 	/* By title too: on the RG DS a DS game has a second window, on the
 	 * bottom panel, which stays where it is (plorpos-rgds.17). */
+#ifdef PLATFORM_RGDS
+	if (on_screen) {
+		/* Workspace 1 placed and focused first, on its own: a game's window
+		 * opens wherever the focus is, and at its start there is none yet
+		 * for the move below to find. */
+		ws1_place();
+		snprintf(crit, sizeof crit, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
+		rp_pending = !helper(cmd);   /* not mapped yet: plat_rgds_game_tick tries again */
+		rp_tries = 0;
+		return;
+	}
+	rp_pending = false;
+#endif
 	snprintf(crit, sizeof crit, on_screen
 	         ? "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable"
 	         : "[pid=%d title=\"^diatom$\"] move container to workspace plorpos-hidden", (int)pid);
@@ -256,8 +325,18 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 		/* In the background: sway takes 350 ms to bring a DSI panel up
 		 * (measured), all of it the shelf's frame otherwise. The window is
 		 * drawn into meanwhile and is there when the panel lights. */
-		if (system("swaymsg output DSI-1 power on > /dev/null 2>&1 &") != 0)
-			fprintf(stderr, "bottom: swaymsg did not start\n");
+		{
+			char c[200];
+
+			/* sway's rule puts a "Bottom" window on DSI-1 as it maps, which
+			 * is at its first present: with the primary there, it goes over
+			 * to the top panel after that one (plat_bottom_end). */
+			if (g_prim_bottom) b_move = true;
+			else {
+				snprintf(c, sizeof c, "swaymsg output DSI-1 power on > /dev/null 2>&1 &");
+				if (system(c) != 0) fprintf(stderr, "bottom: swaymsg did not start\n");
+			}
+		}
 		b_shown = true;
 		fprintf(stderr, "bottom: on, %dx%d\n", bw, bh);
 	}
@@ -271,18 +350,50 @@ void plat_bottom_end(void)
 	if (bren && b_shown) SDL_RenderPresent(bren);
 }
 
+/* The secondary window onto the top panel (Primary Bottom), lit; false while
+ * sway has not mapped it yet. */
+static bool bottom_over(void)
+{
+	char c[200];
+	char *argv[] = { "swaymsg", c, NULL };
+
+	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to output DSI-2, fullscreen enable", (int)getpid());
+	if (!helper(argv)) return false;
+	/* Lit, and the focus back on workspace 1: the next game opens there. */
+	snprintf(c, sizeof c, "output DSI-2 power on, workspace 1");
+	helper(argv);
+	return true;
+}
+
 void plat_bottom_off(void)
 {
 	if (!b_shown) return;      /* never the panel a DS game is using */
 	SDL_HideWindow(bwin);
 	SDL_PumpEvents();
-	sway_cmd("output DSI-1 power off");
+	/* Not the top panel a DS game is about to use (Primary Bottom). */
+	if (!(b_away && g_prim_bottom && rgds_game_top))
+		sway_cmd(g_prim_bottom ? "output DSI-2 power off" : "output DSI-1 power off");
 	b_shown = false;
 	b_down = false;
 	b_epoch++;                 /* whoever draws it next starts over */
 }
 
 unsigned plat_bottom_epoch(void) { return b_epoch; }
+
+/* Primary Screen changed or read at start: the secondary off its old panel
+ * (now the primary), the launcher onto the new primary; the next draw brings
+ * the secondary up on the other one. */
+void plat_set_primary_bottom(bool on)
+{
+	if (on == g_prim_bottom) return;
+	plat_bottom_off();
+	g_prim_bottom = on;
+	/* After the next present: at start the window is not mapped before its
+	 * first frame, and sway's criteria would find nothing to move. */
+	if (win && !b_away) place_pending = true;
+	sway_cmd(on ? "output DSI-2 power off" : "output DSI-1 power off");   /* lit again when drawn */
+	b_epoch++;
+}
 
 bool plat_bottom_tap(int *x, int *y)
 {
@@ -321,21 +432,30 @@ static void bottom_touch(const SDL_Event *e)
 }
 #endif
 
-static void launcher_place(bool on_screen)
+static bool launcher_place(bool on_screen)
 {
 #ifdef PLATFORM_RGDS
+	if (on_screen) rp_pending = false;
 	if (!on_screen) { b_away = true; plat_bottom_off(); }
 	else if (b_away) { b_away = false; b_epoch++; }
 #endif
-	char cmd[160];
+	char cmd[256];
 	char *argv[] = { "swaymsg", cmd, NULL };
 
 	/* By title too: the RG DS's Details window on the bottom panel is this
 	 * process's as well, and stays there (plorpos-rgds.18). */
+#ifdef PLATFORM_RGDS
+	/* On the primary panel, lit: a DS game's end may have turned DSI-1 off. */
+	if (on_screen) {
+		ws1_place();
+		snprintf(cmd, sizeof cmd, "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable",
+		         (int)getpid());
+	} else
+#endif
 	snprintf(cmd, sizeof cmd, on_screen
 	         ? "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable"
 	         : "[pid=%d title=\"^plorpOS$\"] move container to workspace plorpos-launcher", (int)getpid());
-	helper(argv);
+	return helper(argv);
 }
 
 void screen_yield(bool to_game)

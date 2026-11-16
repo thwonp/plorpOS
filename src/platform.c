@@ -1405,6 +1405,11 @@ void plat_resident_flush(unsigned timeout_ms)
 bool plat_resident_send(const plat_game *g)
 {
 	const char *tag = g->tag;
+#if defined(PLATFORM_RGDS)
+	extern bool rgds_game_top;
+
+	rgds_game_top = tag && !strcmp(tag, "NDS");   /* a DS game keeps the top panel */
+#endif
 
 	run_power_pressed = false;
 	/* A new game has not reported RUNNING yet. Cleared HERE rather than in
@@ -2287,6 +2292,13 @@ int plat_resident_wait(void)
 	gesture_read();                  /* touches from before the game */
 	r = diatom_wait();
 	d_wake_fd = -1;
+#if defined(PLATFORM_RGDS)
+	{
+		extern bool rgds_game_top;
+
+		if (r != RES_PAUSED) rgds_game_top = false;   /* over: the launcher's panels again */
+	}
+#endif
 	screen_yield(false);
 #if !defined(PLAT_PIPEWIRE)
 	/* A pause hands the input back too, and with it the level: take the
