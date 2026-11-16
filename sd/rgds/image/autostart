@@ -19,7 +19,10 @@
 
 BOOTLOG=/var/log/boot.log
 A=/usr/lib/autostart
-FIRST="001-setup 003-gpudriver 006-display 050-audio 111-sway-init"
+# In this order; sway starts after 111-sway-init and comes up while
+# 006-display and 050-audio run (they only need to be done before the
+# launcher, not before sway).
+FIRST="001-setup 003-gpudriver 111-sway-init 006-display 050-audio"
 # 081-usbgadget would also take the USB port back from adb (sd/rgds/adb).
 SKIP="001-controller 001-emulationstation 001-sync-modules 003-logging
       010-moonlight 010-pico8 010-uimode 020-configs 020-set_audio_latency
@@ -47,7 +50,10 @@ for script in "$A/quirks/platforms/$HW_DEVICE"/* "$A/quirks/devices/$QUIRK_DEVIC
 	( . "$script" ) >> $BOOTLOG 2>&1
 done
 systemctl start rocknix-automount
-for name in $FIRST; do run "$A/common/$name"; done
+for name in $FIRST; do
+	run "$A/common/$name"
+	[ "$name" = 111-sway-init ] && systemctl --no-block start sway.service >> $BOOTLOG 2>&1
+done
 
 # The quirks above wrote the profile UI_SERVICE comes from.
 . /etc/profile
