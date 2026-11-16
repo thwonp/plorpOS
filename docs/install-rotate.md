@@ -76,14 +76,16 @@ Saves/           saves, per console
 Open: the buttons as on the other devices. Menu held with Vol+/Vol- sets the
 brightness.
 
-Closed (the screen swivelled over the buttons): the picture turns with it,
-and the screen's touch does what the buttons did:
+Closed (the screen swivelled over the buttons), the picture turns with it.
+Open or closed, the screen's touch does what the buttons do:
 
 | Touch | Does |
 |---|---|
 | tap | selects what is under it; A on the selected item |
 | swipe | the d-pad (a longer swipe moves further, a flick coasts) |
 | swipe in from the left or right edge | B (back) |
+| swipe down from the top edge | Muse, also in a game |
+| swipe up from the bottom edge | Recent games, also in a game |
 | long press | Y on what is under it (favorite a game) |
 | two-finger tap | X on what is under it (a game's info) |
 | three-finger tap | Menu |

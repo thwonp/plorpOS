@@ -55,14 +55,38 @@ or Over the Hare.
 
 ## Screens
 
-plorpOS draws on the top screen. On a shelf of games the bottom screen shows
-**Details** for the game under the cursor: its cover, what the scrape knows
-about it, play time and achievements, on three pages - swipe left or right.
-Away from a game list the bottom screen is off.
+plorpOS uses one screen and puts something useful on the other. Choose which
+in Menu > **Dual Screen Settings**:
 
-Nintendo DS games use both screens: the top one on top, the bottom one below,
-and the bottom screen takes your finger or stylus. PokeDaisy DS keeps its own
-picture on the top screen.
+- **Primary Screen**: Top or Bottom - where plorpOS and your games go.
+- **Secondary Screen**: on or off.
+- **Secondary Function**: **Details** shows the game under the cursor (cover,
+  what the scrape knows, play time, achievements; swipe for its three pages).
+  **Muse** shows what is playing, with play/pause and skip buttons, and stays
+  up beside your game.
+
+Nintendo DS games always use both screens: the top one on top, the bottom one
+below, and the bottom screen takes your finger or stylus. PokeDaisy DS keeps
+its own picture on the top screen.
+
+## Touch
+
+Both screens are touchscreens. The one plorpOS is on does what the buttons do:
+
+| Touch | Does |
+|---|---|
+| tap | selects what is under it; A on the selected item |
+| swipe | the d-pad (a longer swipe moves further, a flick coasts) |
+| swipe in from the left or right edge | B (back) |
+| swipe down from the top edge | Muse |
+| swipe up from the bottom edge | Recent games |
+| long press | Y on what is under it (favorite a game) |
+| two-finger tap | X on what is under it (a game's info) |
+| three-finger tap | Menu |
+
+In a game, the game's screen takes the edge swipes (Muse, Recent games) and a
+long press opens the in-game menu. In a DS game that is the top screen: the
+bottom one is only ever the game's.
 
 ## Ports
 
