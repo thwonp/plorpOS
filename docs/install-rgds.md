@@ -62,8 +62,10 @@ in Menu > **Dual Screen Settings**:
 - **Secondary Screen**: on or off.
 - **Secondary Function**: **Details** shows the game under the cursor (cover,
   what the scrape knows, play time, achievements; swipe for its three pages).
-  **Muse** shows what is playing, with play/pause and skip buttons, and stays
-  up beside your game.
+  **Muse** puts Muse's Now Playing there, also beside your game. Touch it and
+  the whole of Muse runs on that screen (see Touch). While Muse is open on
+  the main screen, the other one shows the queue: drag to scroll, tap a track
+  to play it.
 
 Nintendo DS games always use both screens: the top one on top, the bottom one
 below, and the bottom screen takes your finger or stylus. PokeDaisy DS keeps
@@ -87,6 +89,13 @@ Both screens are touchscreens. The one plorpOS is on does what the buttons do:
 In a game, the game's screen takes the edge swipes (Muse, Recent games) and a
 long press opens the in-game menu. In a DS game that is the top screen: the
 bottom one is only ever the game's.
+
+With Secondary Function set to Muse, touch works on both screens without
+tapping in first. Whichever screen your finger lands on takes over, and the
+same swipe carries on there. Muse on the second screen is touch only: the
+buttons, a touch on the main screen, or playing your game hand control back
+and return it to Now Playing. Swiping back at Muse's top level does nothing
+there.
 
 ## Ports
 
