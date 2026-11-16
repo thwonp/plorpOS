@@ -152,6 +152,18 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	install -m 755 /w/in/autostart usr/bin/autostart
 	install -m 755 /w/in/plorpos-mount usr/lib/rocknix/plorpos-mount
 	install -m 755 /w/in/plorpos-net-gate usr/lib/rocknix/plorpos-net-gate
+	# The touchscreen calibration ROCKNIX writes to /run at every boot, then
+	# replays every input device through udev for (udevadm trigger): built in
+	# instead, so the boot coldplug applies it. 0.2 s of a CPU-bound boot.
+	T="usr/lib/autostart/quirks/devices/Anbernic RG DS/touchcontrol"
+	R=usr/lib/udev/rules.d/99-touchscreen-calibration.rules
+	sed -n "/^cat <<EOF/,/^EOF\$/p" "$T" | sed "1d;\$d" > $R
+	if grep -q "LIBINPUT_CALIBRATION_MATRIX" $R && grep -q "^udevadm trigger -s input\$" "$T"; then
+		printf "#!/bin/sh\n# Built into /%s by plorpOS.\n" "$R" > "$T"
+	else
+		rm -f $R
+		echo "touchcontrol: not as expected in this ROCKNIX; left as it is" >&2
+	fi
 	# wsdd2 is bound to smbd and stopped with it, but was started at boot
 	# whether Samba is on or not: 1.5 s of CPU at the busiest moment. Now
 	# it comes with smbd.
