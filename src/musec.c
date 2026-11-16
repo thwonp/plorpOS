@@ -194,6 +194,15 @@ static int connected(void)
 	return 0;
 }
 
+static void play_current(void);
+
+void musec_jump(int i)
+{
+	if (i < 0 || i >= g_qn || !g_order.order) return;
+	g_order.pos = i;
+	play_current();
+}
+
 static void play_current(void)
 {
 	int t = muq_current(&g_order);

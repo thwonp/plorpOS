@@ -406,6 +406,11 @@ SDL_Renderer *plat_bottom_renderer(void);
 void plat_bottom_session(bool on);
 /* A finger has landed on the secondary while Muse rests there: open it. */
 bool plat_bottom_want(void);
+/* The secondary shows a list of its own (the queue while Muse is on the
+ * primary): its fingers are taps (plat_bottom_tap) and a vertical drag,
+ * read as pixels moved since the last call (down the panel is +). */
+void plat_bottom_queue(bool on);
+int  plat_bottom_drag(void);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);

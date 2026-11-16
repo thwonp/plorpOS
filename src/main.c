@@ -3347,17 +3347,17 @@ static void aout_before_muse(void)
  * screens, so handing it back on every pause would only be churn. */
 #if defined(PLATFORM_RGDS)
 static void muse_panel_game_tick(bool pump);
+static void muse_queue_tick(void);
 #endif
 
 static void muse_screen_poll(void)
 {
 	muse_poll();
 #if defined(PLATFORM_RGDS)
-	/* The secondary's Muse page stays live under Muse's own screens too:
-	 * the track, the clock (plorpos-rgds.18.1.5). No pump: this screen's
-	 * own input poll hands the secondary its fingers by window, and a pump
-	 * here took the primary's too - no touch on either panel (.18.5). */
-	muse_panel_game_tick(false);
+	/* Under Muse's own screens the secondary shows the queue (.18.3.4). No
+	 * pump: this screen's input poll hands the secondary its fingers by
+	 * window, and a pump here took the primary's too (.18.5). */
+	muse_queue_tick();
 #endif
 	year_fill();
 	if (musec_heard()) aout_apply(false);
@@ -4577,7 +4577,7 @@ typedef struct {
 
 /* Fit-cache keys for lists that are not a shelf. */
 enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
-       GL_KEY_PICK = -4, GL_KEY_TABS = -5 };
+       GL_KEY_PICK = -4, GL_KEY_TABS = -5, GL_KEY_QUEUE = -6 };
 
 typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
 
@@ -18401,8 +18401,114 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 static void muse_panel_game_tick(bool pump)
 {
 	if (!g_dual_on || !g_dual_muse) return;
+	plat_bottom_queue(false);
 	if (pump) plat_bottom_pump();
 	muse_panel_tick(false, false, false);
+}
+
+/* The queue on the secondary while Muse is open on the primary
+ * (plorpos-rgds.18.3.4): the tracks in the order they will be heard, the one
+ * playing marked as a track list marks it. A drag scrolls it a row per row
+ * of finger, a tap plays the row. It follows the music, except for 5 s after
+ * a drag. Its taps are found in a hit set of its own (ui_hit_set 1): the
+ * primary's screen is live beside it. */
+#define QUEUE_HOLD_MS 5000
+
+static const char *queue_title(void *ctx, int i)
+{
+	static char buf[8][160];
+	static unsigned k;
+	const char *p = musec_track(i), *slash;
+	char *out = buf[k++ & 7];
+
+	(void)ctx;
+	if (!p) return "";
+	slash = strrchr(p, '/');
+	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
+	return out;
+}
+
+static const char *queue_value(void *ctx, int i)
+{
+	const mu_now *mn = musec_now();
+
+	(void)ctx;
+	if (i != mn->index) return NULL;
+	return mn->state == MU_PLAYING ? "playing" : mn->state == MU_PAUSED ? "paused" : NULL;
+}
+
+static void muse_queue_tick(void)
+{
+	static int cur, acc, row_px;
+	static unsigned dragged, last;
+	static char shown[96];
+	const mu_now *mn = musec_now();
+	app *a = g_rgds_app;
+	unsigned now = SDL_GetTicks();
+	int n, d, x, y, w, h;
+	char key[96];
+	gl_list L;
+	gl_geom g;
+	SDL_Renderer *r;
+
+	if (!a || !mn || !g_dual_on || !g_dual_muse || g_muse_sec) return;
+	plat_bottom_queue(true);
+	g_panel_fresh = true;                 /* the resting page, after Muse */
+	if (now - last > 500) shown[0] = '\0'; /* Muse just opened: draw it whole */
+	last = now;
+	n = mn->count;
+	d = plat_bottom_drag();
+	if (d && row_px > 0) {
+		/* Down the panel shows the rows above: the list follows the finger. */
+		for (acc += d; acc >= row_px; acc -= row_px) cur--;
+		for (; acc <= -row_px; acc += row_px) cur++;
+		dragged = now;
+	}
+	if (plat_bottom_tap(&x, &y) && n > 0) {
+		int b = 0, k = 0;
+		bool act = false;
+		float s = plat_scale() > 0 ? plat_scale() : 1;
+
+		ui_hit_set(1);
+		if (ui_hit_find((int)(x / s), (int)(y / s), &b, &k, &act) == UI_HIT_ITEM)
+			musec_jump(b == IN_UP ? cur - k : cur + k);
+		ui_hit_set(0);
+		dragged = 0;                          /* and back to following it */
+	}
+	if (!dragged || now - dragged > QUEUE_HOLD_MS) { cur = mn->index; dragged = 0; acc = 0; }
+	if (cur > n - 1) cur = n - 1;
+	if (cur < 0) cur = 0;
+
+	snprintf(key, sizeof key, "%d|%d|%d|%d|%.40s", n, mn->index, (int)mn->state, cur, mn->title);
+	if (!strcmp(key, shown)) return;
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	memset(&L, 0, sizeof L);
+	L.key = GL_KEY_QUEUE;
+	L.header = "Queue";
+	L.n = n;
+	L.cur = cur;
+	L.accent = MUSE_ACCENT;
+	L.ctx = a;
+	L.title = queue_title;
+	L.value = queue_value;
+	L.empty = "Nothing queued";
+	{
+		SDL_Renderer *was = a->r;
+
+		a->r = r;
+		SDL_RenderSetScale(r, plat_scale(), plat_scale());
+		ui_hit_set(1);
+		draw_background(a);
+		gl_geometry(&g, &L);
+		row_px = (int)(g.row_h * plat_scale() + 0.5f);
+		gl_draw(a, &L);
+		ui_hit_frame();
+		ui_hit_set(0);
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		a->r = was;
+	}
+	plat_bottom_end();
+	snprintf(shown, sizeof shown, "%s", key);
 }
 
 /* Muse on the secondary (plorpos-rgds.18.3.2): Muse's own screens, run as
@@ -18488,6 +18594,7 @@ static void details_tick(app *a)
 	}
 	was_muse = g_dual_muse;
 	plat_bottom_keep(g_dual_muse);
+	plat_bottom_queue(false);
 	if (g_dual_muse) {
 		static unsigned last_in;
 

@@ -341,6 +341,9 @@ void ui_hit_id(const SDL_Rect *r, int id);
 void ui_hit_modal(const SDL_Rect *panel);
 void ui_hit_clear(void);
 void ui_hit_frame(void);
+/* The hit set drawing records into and ui_hit_find reads: 0 the primary's,
+ * 1 the RG DS secondary's own list (plorpos-rgds.18.3.4). */
+void ui_hit_set(int k);
 ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act);
 void ui_hit_give(int id);
 int  ui_hit_take(void);

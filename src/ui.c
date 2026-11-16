@@ -1483,7 +1483,15 @@ typedef struct {
 	SDL_Rect  panel;
 } ui_targets;
 /* The frame being drawn, and the one on the screen. */
-static ui_targets hit_draw, hit_shown;
+/* Two sets: the primary's screen, and the RG DS's secondary when it shows a
+ * list of its own beside the primary's (the queue, plorpos-rgds.18.3.4).
+ * ui_hit_set picks the one that drawing records into and taps are found in. */
+static ui_targets hits_draw[2], hits_shown[2];
+static int hit_set;
+#define hit_draw  hits_draw[hit_set]
+#define hit_shown hits_shown[hit_set]
+
+void ui_hit_set(int k) { hit_set = k ? 1 : 0; }
 
 void ui_hit(const SDL_Rect *r, int button, int n)
 {

@@ -318,6 +318,8 @@ static int b_swipe;
 static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
 static bool b_keep;                       /* stays up during a one-screen game */
 static bool b_session;                    /* Muse runs there (plat_bottom_session) */
+static bool b_queue;                      /* it shows the queue (plat_bottom_queue) */
+static float b_drag, b_ly;                /* the queue's drag: px moved, last y */
 static bool b_primary_tap;                /* the primary touched during a session */
 /* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
  * panel that is not live asks for the switch, and its events so far are kept
@@ -415,6 +417,23 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 }
 
 SDL_Renderer *plat_bottom_renderer(void) { return bren; }
+
+void plat_bottom_queue(bool on)
+{
+	if (on == b_queue) return;
+	b_queue = on;
+	b_down = false;
+	b_drag = 0;
+	b_tap_x = b_tap_y = -1;
+}
+
+int plat_bottom_drag(void)
+{
+	int d = (int)b_drag;
+
+	b_drag -= d;
+	return d;
+}
 
 bool plat_bottom_want(void)
 {
@@ -517,7 +536,11 @@ static void bottom_touch(const SDL_Event *e)
 	float dx, dy;
 
 	if (!bwin || !b_shown || e->tfinger.windowID != SDL_GetWindowID(bwin)) return;
-	if (e->type == SDL_FINGERDOWN) { b_down = true; b_x0 = e->tfinger.x; b_y0 = e->tfinger.y; return; }
+	if (e->type == SDL_FINGERDOWN) { b_down = true; b_x0 = e->tfinger.x; b_y0 = b_ly = e->tfinger.y; return; }
+	if (e->type == SDL_FINGERMOTION) {
+		if (b_down && b_queue) { b_drag += (e->tfinger.y - b_ly) * bh; b_ly = e->tfinger.y; }
+		return;
+	}
 	if (e->type != SDL_FINGERUP || !b_down) return;
 	b_down = false;
 	dx = (e->tfinger.x - b_x0) * bw;
@@ -1135,6 +1158,8 @@ void plat_input_poll(in_state *st)
 					if (e.type == SDL_FINGERDOWN) b_primary_tap = true;
 					if (b_primary_tap) held_add(&e);
 				}
+			} else if (sec && b_queue) {
+				bottom_touch(&e);            /* the queue: taps and drags */
 			} else if (sec && b_keep && b_shown) {
 				/* Muse rests there: the finger opens it and carries on. */
 				if (e.type == SDL_FINGERDOWN && !b_want) { b_want = true; b_nheld = 0; }
