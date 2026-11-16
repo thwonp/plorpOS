@@ -858,15 +858,55 @@ static void backlight_write(int raw)
 		fprintf(stderr, "settings: backlight write %d failed\n", raw);
 }
 
+#ifdef PLATFORM_RGDS
+/* The bottom panel's backlight goes dark with the top one: sleep left the
+ * Details panel lit until something else blanked it seconds later
+ * (plorpos-rgds.18.2). Its own level is kept and put back; sway's output
+ * power, not this, decides whether the panel is on at all. */
+#define BACKLIGHT_BOTTOM "/sys/class/backlight/backlight0/brightness"
+static int bottom_saved = -1;
+
+static void bottom_backlight(bool off)
+{
+	char s[16];
+	int fd, n;
+
+	if (off == (bottom_saved >= 0)) return;   /* already dark / nothing kept */
+	fd = open(BACKLIGHT_BOTTOM, O_RDWR | O_CLOEXEC);
+	if (fd < 0) return;
+	if (off) {
+		n = (int)pread(fd, s, sizeof s - 1, 0);
+		if (n > 0) { s[n] = '\0'; bottom_saved = atoi(s); }
+		if (bottom_saved > 0 && pwrite(fd, "0\n", 2, 0) != 2)
+			fprintf(stderr, "settings: bottom backlight off failed\n");
+	} else {
+		n = snprintf(s, sizeof s, "%d\n", bottom_saved);
+		if (bottom_saved > 0 && pwrite(fd, s, n, 0) != n)
+			fprintf(stderr, "settings: bottom backlight %d failed\n", bottom_saved);
+		bottom_saved = -1;
+	}
+	close(fd);
+}
+#endif
+
 void apply_brightness(int b)
 {
 	cur_bright = b;
 	backlight_write(bright_ladder[b]);
+#ifdef PLATFORM_RGDS
+	bottom_backlight(false);
+#endif
 }
 
 /* Dark, not rung 0 (raw 40 is a dim screen); cur_bright is kept so
  * apply_brightness(cur_bright) brings the player's level back. */
-void backlight_off(void) { backlight_write(0); }
+void backlight_off(void)
+{
+	backlight_write(0);
+#ifdef PLATFORM_RGDS
+	bottom_backlight(true);
+#endif
+}
 
 void jack_forget(void) { }
 void mute_forget(void) { }
