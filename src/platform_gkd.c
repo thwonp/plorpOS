@@ -10,6 +10,8 @@
 #include "db.h"
 #include "platform.h"
 #include "platform_dev.h"
+#include "ui.h"
+#include "touch.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -164,6 +166,9 @@ static bool launcher_place(bool on_screen);
 
 void plat_present(SDL_Renderer *r)
 {
+#ifdef PLATFORM_RGDS
+	ui_hit_frame();   /* a tap now means what this frame shows */
+#endif
 	SDL_RenderPresent(r);
 	/* Retried until sway has mapped the window and the move lands: the
 	 * criteria match nothing before that (swaymsg fails). A few frames. */
@@ -643,6 +648,7 @@ void plat_input_flush(void)
 #ifdef PLATFORM_RGDS
 	drain(fd_home);
 	home_down = false;
+	touch_reset();
 #endif
 	/* Their releases were in what was just thrown away. */
 	memset(pad_dir, 0, sizeof pad_dir);
@@ -928,12 +934,22 @@ void plat_input_poll(in_state *st)
 	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) st->quit_requested = true;
 #ifdef PLATFORM_RGDS
-		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP) bottom_touch(&e);
+		/* The secondary's fingers are its own (Details, Muse); the
+		 * launcher's are the touch engine's, every gesture the Rotate has
+		 * (plorpos-rgds.24.2). */
+		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP || e.type == SDL_FINGERMOTION) {
+			if (bwin && e.tfinger.windowID == SDL_GetWindowID(bwin)) {
+				if (e.type != SDL_FINGERMOTION) bottom_touch(&e);
+			} else touch_event(&e, plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+		}
 #endif
 	}
 	pad_read(st);
 	keys_read(st);
 	power_read(st);
+#ifdef PLATFORM_RGDS
+	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */
+#endif
 	menu_filter(st);
 	plat_sink_follow(false);
 }
