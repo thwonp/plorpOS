@@ -8,6 +8,7 @@
 #include <SDL_ttf.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static char g_dir[512];
 static float g_k = 1.0f;                     /* panel width / 640 */
@@ -15,6 +16,7 @@ static struct { bool head; int px; TTF_Font *f; } g_fonts[12];
 static SDL_Texture *g_art;
 static char g_art_path[1024];
 static int g_art_w, g_art_h;
+static time_t g_art_mtime;     /* a state's preview keeps its path when rewritten */
 
 static const SDL_Color BG = { 22, 24, 32, 255 }, PANEL = { 12, 13, 18, 255 }, TRACK = { 40, 42, 54, 255 },
                        MUTED = { 138, 143, 163, 255 }, WHITE = { 240, 240, 245, 255 }, LIGHT = { 210, 210, 220, 255 },
@@ -156,7 +158,11 @@ static void pill(SDL_Renderer *r, const details_info *d, int x, int y)
 
 static bool art(SDL_Renderer *r, const char *path)
 {
-	if (strcmp(path, g_art_path)) {
+	struct stat st;
+	time_t mt = *path && stat(path, &st) == 0 ? st.st_mtime : 0;
+
+	if (strcmp(path, g_art_path) || mt != g_art_mtime) {
+		g_art_mtime = mt;
 		if (g_art) SDL_DestroyTexture(g_art);
 		g_art = NULL;
 		snprintf(g_art_path, sizeof g_art_path, "%s", path);
