@@ -27,7 +27,8 @@
 #     (sd/rgds/image/plorpos-net-gate), and wsdd2 starts only with Samba.
 # in the loaders: u-boot's two-second autoboot wait is gone
 # (mk/rgds-uboot-nodelay.py),
-# and on p1: extlinux.conf names the RG DS's device tree, and post-flash.sh
+# and on p1: extlinux.conf names the RG DS's device tree and boots a gzipped
+# copy of the KERNEL first (ROCKNIX's entry second), and post-flash.sh
 # (sd/rgds/image) with plorpos-bootlogo.raw draws the plorpOS logo in the
 # initramfs where ROCKNIX's would be.
 #
@@ -81,6 +82,20 @@ mcopy -n -i "$P1" ::/SYSTEM "$W/in/SYSTEM"
 [ -f "$W/p1/device_trees/$FDT" ] || { echo "$FDT is not in this image" >&2; exit 1; }
 sed -i "s|^\( *FDT \).*|\1/device_trees/$FDT|" "$W/p1/extlinux/extlinux.conf"
 grep -q "/device_trees/$FDT" "$W/p1/extlinux/extlinux.conf"
+# u-boot reads the card at about 11 MB/s (the KERNEL was 2.7 s of the 5.9 s
+# before the kernel starts) and its built-in environment already has the
+# kernel_comp_* addresses booti needs to unpack a compressed one: the default
+# label boots the KERNEL gzipped, half the size, 0.65 s sooner (lz4 was
+# slower to unpack). ROCKNIX's own label stays second, and u-boot falls back
+# to it if the first fails (plorpos-rgds.12).
+gzip -9 -n -c "$W/p1/KERNEL" > "$W/p1/KERNEL.gz"
+X="$W/p1/extlinux/extlinux.conf"
+{ printf "DEFAULT plorpos\nLABEL plorpos\n"
+  sed -n "s|^\( *LINUX /KERNEL\)\$|\1.gz|p; /^ *FDT /p; /^ *APPEND /p" "$X"
+  cat "$X"; } > "$X.new"
+mv "$X.new" "$X"
+[ "$(grep -c "^ *LINUX /KERNEL.gz\$" "$X")" = 1 ] && [ "$(grep -c "^ *APPEND " "$X")" = 2 ] ||
+	{ echo "extlinux.conf: not as expected; check $X" >&2; exit 1; }
 
 echo "trimming SYSTEM (a few minutes)"
 cp "$ROOT/sd/rgds/image/fs-resize" "$W/in/fs-resize"
