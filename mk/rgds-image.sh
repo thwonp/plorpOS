@@ -9,10 +9,12 @@
 #                        unpacks the payload onto it: Roms, Bios, Saves, plorpOS
 #
 # What changes in ROCKNIX's SYSTEM:
-#   - EmulationStation, its themes, RetroArch, every libretro core and
+#   - EmulationStation, its themes, RetroArch's assets, every libretro core and
 #     standalone emulator, Wine, and the cloud-sync extras are removed
-#     (STRIP below). Networking, Bluetooth, Samba, ssh, box64/box86 and the
-#     32-bit libraries stay.
+#     (STRIP below). Networking, Bluetooth, Samba, ssh, box64/box86, the
+#     32-bit libraries and the 64-bit retroarch binary stay: PortMaster's
+#     libretro ports run /usr/bin/retroarch -L <their core> (2048,
+#     plorpos-rgds.9).
 #   - /usr/lib/rocknix/fs-resize is sd/rgds/image/fs-resize.
 #   - InputPlumber's RG DS map sends Home/Back as a keyboard F1 (ROCKNIX
 #     20261101 sends an invalid gamepad button, so the key did nothing).
@@ -52,7 +54,7 @@ P2_SECTORS=65536
 
 STRIP='
 usr/lib/libretro usr/lib32/libretro usr/lib/wine usr/share/wine usr/lib/touchHLE
-usr/bin/emulationstation usr/bin/retroarch usr/bin/retroarch32
+usr/bin/emulationstation usr/bin/retroarch32
 usr/bin/scummvm usr/bin/duckstation-sa usr/bin/flycast usr/bin/azahar usr/bin/vita3k-sa
 usr/bin/ppsspp usr/bin/hatarisa usr/bin/amiberry usr/bin/touchHLE usr/bin/gzdoom
 usr/bin/dolphin-emu usr/bin/dolphin-emu-nogui usr/bin/mednafen usr/bin/dsperate
@@ -64,6 +66,9 @@ usr/share/retroarch-overlays usr/share/retroarch usr/share/vice usr/share/daphne
 usr/share/glmark2
 usr/config/scummvm usr/config/ppsspp usr/config/drastic usr/config/gzdoom
 usr/config/emulationstation usr/config/amiberry usr/config/vita3k usr/config/dolphin-emu
+usr/config/ARMSX2 usr/config/azahar usr/config/dsperate usr/config/duckstation usr/config/flycast
+usr/config/hatari usr/config/mednafen usr/config/melonDS usr/config/touchHLE usr/config/vice
+usr/config/yabasanshiro usr/config/gmu
 '
 
 [ -f "$SRC" ] || { echo "no image at $SRC" >&2; exit 1; }
@@ -159,6 +164,11 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	install -m 755 /w/in/plorpos-mount usr/lib/rocknix/plorpos-mount
 	install -m 755 /w/in/plorpos-net-gate usr/lib/rocknix/plorpos-net-gate
 	install -m 644 /w/in/plorpos-late-modules.conf usr/lib/modprobe.d/plorpos-late.conf
+	# iwd keeps the interface the driver made instead of replacing it. The
+	# driver loads after the shelf, and a replacement asked for while it was
+	# still starting failed (NEW_INTERFACE: ENFILE): no Wi-Fi until iwd was
+	# restarted (plorpos-rgds.20).
+	grep -q "^\[DriverQuirks\]" etc/iwd/main.conf || printf "\n[DriverQuirks]\nDefaultInterface=*\n" >> etc/iwd/main.conf
 	# The touchscreen calibration ROCKNIX writes to /run at every boot, then
 	# replays every input device through udev for (udevadm trigger): built in
 	# instead, so the boot coldplug applies it. 0.2 s of a CPU-bound boot.
