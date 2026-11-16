@@ -87,6 +87,7 @@ static SDL_Renderer *ren;
 #ifdef PLATFORM_RGDS
 static SDL_Window *bwin;      /* the bottom panel's (plorpos-rgds.18) */
 static SDL_Renderer *bren;
+static Uint32 b_session_t0;   /* Muse on it, until its first frame (plat_bottom_session) */
 #endif
 
 SDL_Renderer *plat_renderer(void) { return ren; }
@@ -170,6 +171,12 @@ void plat_present(SDL_Renderer *r)
 	ui_hit_frame();   /* a tap now means what this frame shows */
 #endif
 	SDL_RenderPresent(r);
+#ifdef PLATFORM_RGDS
+	if (b_session_t0 && r == bren) {
+		fprintf(stderr, "bottom: Muse up in %u ms\n", SDL_GetTicks() - b_session_t0);
+		b_session_t0 = 0;
+	}
+#endif
 	/* Retried until sway has mapped the window and the move lands: the
 	 * criteria match nothing before that (swaymsg fails). A few frames. */
 	if (place_pending && (launcher_place(true) || ++place_tries > 30)) place_pending = false, place_tries = 0;
@@ -310,6 +317,8 @@ static unsigned b_epoch;
 static int b_swipe;
 static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
 static bool b_keep;                       /* stays up during a one-screen game */
+static bool b_session;                    /* Muse runs there (plat_bottom_session) */
+static bool b_primary_tap;                /* the primary touched during a session */
 static void bottom_touch(const SDL_Event *e);
 
 void plat_bottom_keep(bool on) { b_keep = on; }
@@ -381,6 +390,16 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 }
 
 SDL_Renderer *plat_bottom_renderer(void) { return bren; }
+
+void plat_bottom_session(bool on)
+{
+	b_session = on;
+	b_session_t0 = on ? SDL_GetTicks() : 0;
+	b_down = false;
+	b_tap_x = b_tap_y = -1;
+	b_swipe = 0;
+	touch_reset();                         /* no gesture carried across */
+}
 
 void plat_bottom_end(void)
 {
@@ -1059,7 +1078,12 @@ void plat_input_poll(in_state *st)
 		 * launcher's are the touch engine's, every gesture the Rotate has
 		 * (plorpos-rgds.24.2). */
 		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP || e.type == SDL_FINGERMOTION) {
-			if (bwin && e.tfinger.windowID == SDL_GetWindowID(bwin)) {
+			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
+
+			if (b_session) {
+				if (sec) touch_event(&e, bw, bh);
+				else if (e.type == SDL_FINGERDOWN) b_primary_tap = true;
+			} else if (sec) {
 				if (e.type != SDL_FINGERMOTION) bottom_touch(&e);
 			} else touch_event(&e, plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
 		}
@@ -1070,6 +1094,15 @@ void plat_input_poll(in_state *st)
 	power_read(st);
 #ifdef PLATFORM_RGDS
 	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */
+#ifdef PLATFORM_RGDS
+	if (b_session) {
+		/* No switcher from Muse on the secondary: a game it opened would
+		 * start with the launcher on the wrong panel. */
+		st->pressed[IN_SWITCHER] = false;
+		if (b_primary_tap) st->pressed[IN_SELECT] = true;
+	}
+	b_primary_tap = false;
+#endif
 #endif
 	menu_filter(st);
 	plat_sink_follow(false);

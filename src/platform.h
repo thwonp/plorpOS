@@ -400,6 +400,10 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h);
 void plat_bottom_end(void);
 /* The secondary's renderer, NULL until its window exists; nothing shown. */
 SDL_Renderer *plat_bottom_renderer(void);
+/* Muse running on the secondary (plorpos-rgds.18.3.2): while on, its fingers
+ * are the touch engine's - every gesture, at its own size - and a finger on
+ * the primary is SELECT, which closes Muse from any of its screens. */
+void plat_bottom_session(bool on);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);

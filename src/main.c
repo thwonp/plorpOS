@@ -1185,6 +1185,8 @@ static char   g_muse_root[CFG_STR * 2];
 static unsigned g_muse_gen;
 #if defined(PLATFORM_RGDS)
 static app *g_rgds_app;   /* main's, for the secondary's ticks */
+static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
+static bool g_panel_fresh;/* the resting page redraws in full next time */
 #endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
@@ -12622,6 +12624,12 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
 	 * one left, whatever is playing (owner, plorpos-era.9). */
+#if defined(PLATFORM_RGDS)
+	/* From the secondary: Now Playing whenever something is queued, the
+	 * albums when nothing is (owner, plorpos-rgds.18.3). */
+	if (g_muse_sec) muse_shelf_screen(a, mn->count > 0);
+	else
+#endif
 	muse_shelf_screen(a, !g_muse_card && (mn->state == MU_PLAYING || mn->state == MU_PAUSED));
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
@@ -18337,8 +18345,9 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 	int w, h, x, y, al;
 	SDL_Renderer *r;
 
-	if (!g_rgds_app || !mn) return;
-	while (plat_bottom_tap(&x, &y)) { }          /* taps open Muse: .18.3.3 */
+	if (!g_rgds_app || !mn || g_muse_sec) return;  /* Muse itself draws there */
+	if (g_panel_fresh) fresh = true, g_panel_fresh = false;
+	while (plat_bottom_tap(&x, &y)) { }          /* a tap opens Muse: details_tick */
 	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
 		if (np_b.tex) SDL_DestroyTexture(np_b.tex);
 		np_b = (struct np_cover){ .album = -1 };
@@ -18392,6 +18401,38 @@ static void muse_panel_game_tick(bool pump)
 	muse_panel_tick(false, false, false);
 }
 
+/* Muse on the secondary (plorpos-rgds.18.3.2): Muse's own screens, run as
+ * they run on the primary, drawn on the secondary's renderer and driven by
+ * its touch (and the pad). The primary keeps its last frame; a finger on it
+ * is SELECT, which closes Muse. Textures belong to a renderer, so every
+ * cached one is let go on the way over and again on the way back; the
+ * covers load again as they are drawn. */
+static void muse_on_secondary(app *a)
+{
+	SDL_Renderer *was = a->r, *r;
+	unsigned t0 = SDL_GetTicks();
+	int w, h;
+
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	free_all_textures(a);
+	a->r = r;
+	SDL_RenderSetScale(r, plat_scale(), plat_scale());
+	g_muse_sec = true;
+	plat_bottom_session(true);
+	fprintf(stderr, "muse: on the secondary (%u ms to switch)\n", SDL_GetTicks() - t0);
+	muse_open(a, NULL, NULL);
+	plat_bottom_session(false);
+	g_muse_sec = false;
+	free_all_textures(a);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	a->r = was;
+	g_panel_fresh = true;
+	ui_redraw_now();
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	fprintf(stderr, "muse: back from the secondary\n");
+}
+
 static void details_tick(app *a)
 {
 	static details_info d;
@@ -18431,6 +18472,7 @@ static void details_tick(app *a)
 
 		for (int b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
+		if (plat_bottom_tap(&tx, &ty)) { muse_on_secondary(a); return; }
 		muse_panel_tick(fresh, now - last_in < 1000, true);
 		on = true;
 		return;
