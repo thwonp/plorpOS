@@ -404,6 +404,8 @@ SDL_Renderer *plat_bottom_renderer(void);
  * are the touch engine's - every gesture, at its own size - and a finger on
  * the primary is SELECT, which closes Muse from any of its screens. */
 void plat_bottom_session(bool on);
+/* A finger has landed on the secondary while Muse rests there: open it. */
+bool plat_bottom_want(void);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);

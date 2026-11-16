@@ -1187,6 +1187,8 @@ static unsigned g_muse_gen;
 static app *g_rgds_app;   /* main's, for the secondary's ticks */
 static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
 static bool g_panel_fresh;/* the resting page redraws in full next time */
+#else
+#define g_muse_sec false
 #endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
@@ -13284,7 +13286,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			muse_set_filter(v, -1, -1);
 			continue;
 		}
-		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+		/* On the secondary, Back at Muse's top has nowhere to go: Muse rests
+		 * there, and the primary is a touch away (owner, .18.3.7). */
+		if ((a->in.pressed[IN_BACK] && !g_muse_sec) || a->in.pressed[IN_SELECT]) break;
 		{
 			int hit = ui_hit_take(), t = -1;   /* a footer tab tapped */
 
@@ -18407,6 +18411,22 @@ static void muse_panel_game_tick(bool pump)
  * is SELECT, which closes Muse. Textures belong to a renderer, so every
  * cached one is let go on the way over and again on the way back; the
  * covers load again as they are drawn. */
+/* What Muse draws from that belongs to one renderer: its shelf's covers,
+ * the Now Playing cover and the menus' backdrop - let go at each switch, and
+ * loaded again where they are drawn. Nothing else: the primary's cards and
+ * covers stay, so it comes back as it was, without a frame of blanks. */
+static void muse_textures_forget(app *a)
+{
+	texload_bump();
+	for (int i = 0; i < a->sys.count; i++) {
+		if (!is_muse(&a->sys.systems[i])) continue;
+		for (int k = 0; k < a->view[i].list.count; k++)
+			if (a->view[i].tex[k]) { SDL_DestroyTexture(a->view[i].tex[k]); a->view[i].tex[k] = NULL; }
+	}
+	np_forget();
+	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
+}
+
 static void muse_on_secondary(app *a)
 {
 	SDL_Renderer *was = a->r, *r;
@@ -18414,22 +18434,23 @@ static void muse_on_secondary(app *a)
 	int w, h;
 
 	if (!(r = plat_bottom_begin(&w, &h))) return;
-	free_all_textures(a);
+	muse_textures_forget(a);
 	a->r = r;
 	SDL_RenderSetScale(r, plat_scale(), plat_scale());
 	g_muse_sec = true;
 	plat_bottom_session(true);
 	fprintf(stderr, "muse: on the secondary (%u ms to switch)\n", SDL_GetTicks() - t0);
 	muse_open(a, NULL, NULL);
-	plat_bottom_session(false);
 	g_muse_sec = false;
-	free_all_textures(a);
+	muse_textures_forget(a);
 	SDL_RenderSetScale(r, 1.0f, 1.0f);
 	a->r = was;
 	g_panel_fresh = true;
 	ui_redraw_now();
-	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+	/* Last: it hands the primary the finger (or the button) that ended the
+	 * session, so no flush after it. */
+	plat_bottom_session(false);
 	fprintf(stderr, "muse: back from the secondary\n");
 }
 
@@ -18472,7 +18493,7 @@ static void details_tick(app *a)
 
 		for (int b = 0; b < IN_COUNT; b++)
 			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
-		if (plat_bottom_tap(&tx, &ty)) { muse_on_secondary(a); return; }
+		if (plat_bottom_want()) { muse_on_secondary(a); return; }
 		muse_panel_tick(fresh, now - last_in < 1000, true);
 		on = true;
 		return;

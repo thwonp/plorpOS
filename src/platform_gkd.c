@@ -319,6 +319,31 @@ static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
 static bool b_keep;                       /* stays up during a one-screen game */
 static bool b_session;                    /* Muse runs there (plat_bottom_session) */
 static bool b_primary_tap;                /* the primary touched during a session */
+/* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
+ * panel that is not live asks for the switch, and its events so far are kept
+ * here and handed to the touch engine on the other side once it is live -
+ * the same swipe carries on. Too old to belong to the finger: dropped. */
+#define HELD_MAX 32
+#define HELD_MS  300
+static SDL_Event b_held[HELD_MAX];
+static int b_nheld;
+static Uint32 b_held_at;
+static bool b_want;                       /* a finger on the resting secondary */
+static Uint32 b_carry_until;              /* a switch's finger outlives the flushes till then */
+static bool b_pad_again[IN_COUNT];        /* pressed during a session: the primary's */
+
+static void held_add(const SDL_Event *e)
+{
+	if (b_nheld == 0) b_held_at = SDL_GetTicks();
+	if (b_nheld < HELD_MAX) b_held[b_nheld++] = *e;
+}
+
+static void held_give(float w, float h)
+{
+	if (SDL_GetTicks() - b_held_at <= HELD_MS)
+		for (int i = 0; i < b_nheld; i++) touch_event(&b_held[i], w, h);
+	b_nheld = 0;
+}
 static void bottom_touch(const SDL_Event *e);
 
 void plat_bottom_keep(bool on) { b_keep = on; }
@@ -391,6 +416,13 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 
 SDL_Renderer *plat_bottom_renderer(void) { return bren; }
 
+bool plat_bottom_want(void)
+{
+	/* Not taken in time (a menu over the shelf, say): that finger is gone. */
+	if (b_want && SDL_GetTicks() - b_held_at > HELD_MS) { b_want = false; b_nheld = 0; }
+	return b_want;
+}
+
 void plat_bottom_session(bool on)
 {
 	b_session = on;
@@ -398,7 +430,14 @@ void plat_bottom_session(bool on)
 	b_down = false;
 	b_tap_x = b_tap_y = -1;
 	b_swipe = 0;
-	touch_reset();                         /* no gesture carried across */
+	b_want = false;
+	b_primary_tap = false;
+	touch_reset();                         /* the other panel's gesture ends here */
+	/* The finger that asked for the switch, carried on where it is - and
+	 * kept through the flushes the screens opening there make. */
+	b_carry_until = SDL_GetTicks() + HELD_MS;
+	if (on) held_give(bw, bh);
+	else    held_give(plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
 }
 
 void plat_bottom_end(void)
@@ -661,15 +700,25 @@ static void drain(int fd)
 void plat_input_flush(void)
 {
 	SDL_Event e;
+#ifdef PLATFORM_RGDS
+	bool carry = (Sint32)(b_carry_until - SDL_GetTicks()) > 0;
+#else
+	bool carry = false;
+#endif
 	SDL_PumpEvents();
-	while (SDL_PollEvent(&e)) { }
+	if (carry) {                     /* all but the fingers (plat_bottom_session) */
+		SDL_FlushEvents(SDL_FIRSTEVENT, SDL_FINGERDOWN - 1);
+		SDL_FlushEvents(SDL_FINGERMOTION + 1, SDL_LASTEVENT);
+	} else {
+		while (SDL_PollEvent(&e)) { }
+	}
 	drain(fd_pad);
 	drain(fd_keys);
 	drain(fd_power);
 #ifdef PLATFORM_RGDS
 	drain(fd_home);
 	home_down = false;
-	touch_reset();
+	if (!carry) touch_reset();
 #endif
 	/* Their releases were in what was just thrown away. */
 	memset(pad_dir, 0, sizeof pad_dir);
@@ -1082,14 +1131,39 @@ void plat_input_poll(in_state *st)
 
 			if (b_session) {
 				if (sec) touch_event(&e, bw, bh);
-				else if (e.type == SDL_FINGERDOWN) b_primary_tap = true;
+				else {                       /* the primary's: back over there */
+					if (e.type == SDL_FINGERDOWN) b_primary_tap = true;
+					if (b_primary_tap) held_add(&e);
+				}
+			} else if (sec && b_keep && b_shown) {
+				/* Muse rests there: the finger opens it and carries on. */
+				if (e.type == SDL_FINGERDOWN && !b_want) { b_want = true; b_nheld = 0; }
+				if (b_want) held_add(&e);
 			} else if (sec) {
 				if (e.type != SDL_FINGERMOTION) bottom_touch(&e);
 			} else touch_event(&e, plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
 		}
 #endif
 	}
+#ifdef PLATFORM_RGDS
+	if (b_session) {
+		/* The pad is the primary's (owner, .18.3.7): a press ends Muse on
+		 * the secondary and is the primary's once it is back. */
+		in_state ps = *st;
+
+		pad_read(&ps);
+		for (int b = 0; b < IN_COUNT; b++) {
+			/* Home is half of brightness (Home + volume): not a press. */
+			if (ps.pressed[b] && !st->pressed[b] && b != IN_HOME) { b_pad_again[b] = true; b_primary_tap = true; }
+		}
+	} else {
+		pad_read(st);
+		for (int b = 0; b < IN_COUNT; b++)
+			if (b_pad_again[b]) { st->pressed[b] = true; b_pad_again[b] = false; }  /* once: a held one fired already */
+	}
+#else
 	pad_read(st);
+#endif
 	keys_read(st);
 	power_read(st);
 #ifdef PLATFORM_RGDS
