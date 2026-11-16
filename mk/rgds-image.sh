@@ -89,12 +89,17 @@ grep -q "/device_trees/$FDT" "$W/p1/extlinux/extlinux.conf"
 # slower to unpack). ROCKNIX's own label stays second, and u-boot falls back
 # to it if the first fails (plorpos-rgds.12).
 gzip -9 -n -c "$W/p1/KERNEL" > "$W/p1/KERNEL.gz"
+# From BananaLinux's command line: the two touchscreens probe beside the rest
+# of the kernel's start (0.2 s sooner to /init), and RCU grace periods are
+# expedited (systemd and udev wait on them).
+ARGS="driver_async_probe=Goodix-TS rcupdate.rcu_expedited=1"
 X="$W/p1/extlinux/extlinux.conf"
 { printf "DEFAULT plorpos\nLABEL plorpos\n"
-  sed -n "s|^\( *LINUX /KERNEL\)\$|\1.gz|p; /^ *FDT /p; /^ *APPEND /p" "$X"
+  sed -n "s|^\( *LINUX /KERNEL\)\$|\1.gz|p; /^ *FDT /p; s|^\( *APPEND .*\)\$|\1 $ARGS|p" "$X"
   cat "$X"; } > "$X.new"
 mv "$X.new" "$X"
-[ "$(grep -c "^ *LINUX /KERNEL.gz\$" "$X")" = 1 ] && [ "$(grep -c "^ *APPEND " "$X")" = 2 ] ||
+[ "$(grep -c "^ *LINUX /KERNEL.gz\$" "$X")" = 1 ] && [ "$(grep -c "^ *APPEND " "$X")" = 2 ] &&
+	[ "$(grep -c "rcu_expedited" "$X")" = 1 ] ||
 	{ echo "extlinux.conf: not as expected; check $X" >&2; exit 1; }
 
 echo "trimming SYSTEM (a few minutes)"
