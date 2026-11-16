@@ -926,6 +926,103 @@ static void power_read(in_state *st)
 			set_btn(st, IN_POWER, ev.value == 1);
 }
 
+#ifdef PLATFORM_RGDS
+/* ---- touch over a game: edge swipes from evdev (plorpos-rgds.24.3) -------
+ *
+ * As the RG Rotate's (platform_rotate.c): during a game the launcher's window
+ * hears nothing, so the game's panel is read here, alongside sway (nothing
+ * grabbed), first finger only. A swipe in from the top edge is Muse, from the
+ * bottom the switcher. Two panels, two "Goodix Capacitive TouchScreen"s, told
+ * apart by their controller (fe5c0000 top, fe5e0000 bottom): the game's is
+ * the primary's, or the top for a DS game - its bottom panel is the stylus,
+ * so no swipe is ever taken from it and the Rotate's tight band is not
+ * needed here. */
+static int fd_gtouch[2] = { -2, -2 };   /* top, bottom; -2: not looked for */
+static int g_tmax_x[2], g_tmax_y[2];
+static struct {
+	int  slot, rx, ry;
+	bool down_pending, up_pending, on, fired;
+	int  edge;                     /* +1 top, -1 bottom, 0 none */
+	float y0;
+} gs;
+
+static int gtouch_open(const char *phys, int k)
+{
+	char path[64], name[64], real[256];
+
+	for (int i = 0; i < 32; i++) {
+		FILE *f;
+		bool goodix = false;
+		struct input_absinfo ax, ay;
+		int fd;
+
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device/name", i);
+		if (!(f = fopen(path, "r"))) continue;
+		goodix = fgets(name, sizeof name, f) && strstr(name, "Goodix");
+		fclose(f);
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device", i);
+		if (!goodix || !realpath(path, real) || !strstr(real, phys)) continue;
+		snprintf(path, sizeof path, "/dev/input/event%d", i);
+		if ((fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0) return -1;
+		g_tmax_x[k] = ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &ax) == 0 ? ax.maximum : 639;
+		g_tmax_y[k] = ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &ay) == 0 ? ay.maximum : 479;
+		return fd;
+	}
+	return -1;
+}
+
+static int gtouch_panel(void) { return g_prim_bottom && !rgds_game_top ? 1 : 0; }
+
+int gesture_fd(void)
+{
+	int k = gtouch_panel();
+
+	if (fd_gtouch[k] == -2) fd_gtouch[k] = gtouch_open(k ? "fe5e0000" : "fe5c0000", k);
+	return fd_gtouch[k];
+}
+
+void gesture_tight(bool on) { (void)on; }
+
+gesture gesture_read(void)
+{
+	struct input_event ev;
+	gesture out = GESTURE_NONE;
+	int fd = gesture_fd(), k = gtouch_panel();
+	int mx = g_tmax_x[k], my = g_tmax_y[k];
+
+	if (fd < 0) return GESTURE_NONE;
+	while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_ABS) {
+			if (ev.code == ABS_MT_SLOT) gs.slot = ev.value;
+			else if (gs.slot != 0) continue;
+			else if (ev.code == ABS_MT_TRACKING_ID) {
+				if (ev.value < 0) gs.up_pending = true;
+				else gs.down_pending = true;
+			} else if (ev.code == ABS_MT_POSITION_X) gs.rx = ev.value;
+			else if (ev.code == ABS_MT_POSITION_Y) gs.ry = ev.value;
+			continue;
+		}
+		if (ev.type != EV_SYN || ev.code != SYN_REPORT) continue;
+		if (gs.down_pending) {
+			int band = GESTURE_BAND_PX;
+
+			gs.down_pending = false;
+			gs.on = true;
+			gs.fired = false;
+			gs.y0 = gs.ry;
+			/* The sides win the corners, as on the shelf. */
+			gs.edge = gs.rx < band || gs.rx > mx - band ? 0
+			        : gs.ry < band ? 1 : gs.ry > my - band ? -1 : 0;
+		} else if (gs.on && gs.edge && !gs.fired && (gs.ry - gs.y0) * gs.edge >= GESTURE_IN_PX) {
+			gs.fired = true;
+			out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
+		}
+		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
+	}
+	return out;
+}
+#endif
+
 void plat_input_poll(in_state *st)
 {
 	memset(st->pressed, 0, sizeof st->pressed);

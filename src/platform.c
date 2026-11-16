@@ -2079,7 +2079,7 @@ void plat_touch_free(bool on) { (void)on; }
 bool plat_touch_drag_get(touch_drag_state *d) { memset(d, 0, sizeof *d); return false; }
 void plat_touch_catch(void) { }
 #endif
-#if !defined(PLATFORM_ROTATE)
+#if !defined(PLATFORM_ROTATE) && !defined(PLATFORM_RGDS)
 /* No touch panel: nothing to read, nothing ever swiped. */
 int     gesture_fd(void) { return -1; }
 void    gesture_tight(bool on) { (void)on; }
