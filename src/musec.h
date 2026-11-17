@@ -79,8 +79,11 @@ typedef struct {
 	 * track first: the PLAY is asked for again on every poll until it is. */
 	bool wait;
 } musec_remote;
+/* `failed`: the daemon could not open a remote track; true to have it tried
+ * once more (the resolver will look for its server again) - else skipped. */
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
-                      bool (*owns)(const char *daemon_path, const char *rel));
+                      bool (*owns)(const char *daemon_path, const char *rel),
+                      bool (*failed)(const char *rel));
 /* The queue's track resolved again for what it shows: a queue restored at
  * start comes before the library its resolver reads, and shows no title. */
 void musec_retitle(void);

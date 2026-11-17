@@ -115,6 +115,9 @@ bool plex_cover_take(char *base, size_t n);
 
 bool plex_resolve(const char *rel, musec_remote *out);
 bool plex_owns(const char *daemon_path, const char *rel);
+/* musec's word that the daemon could not open a track (ERROR): true when it
+ * is Plex's, and the connection is found again before it is tried again. */
+bool plex_stream_failed(const char *rel);
 /* The track after the one playing: fetched ahead, on a device that has to
  * fetch a track before it can play it. Cheap to call every frame. */
 void plex_prefetch(const char *rel);

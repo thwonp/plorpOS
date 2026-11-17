@@ -460,6 +460,10 @@ second screen work as they do for the card's music.
 - **Plex Settings** has the server, the library, both qualities, downloads
   in progress (A stops them) and Sign Out.
 
+Away from home, Muse reaches the server the way Plexamp does: its remote
+address, or Plex's relay. It finds the way again by itself when the network
+changes; a song cut off by that ends, and the next one plays.
+
 Plex sees what Muse plays and counts a play at 90%, as Plexamp does. The
 sign-in is kept on the card in `.userdata/shared/plex/`.
 

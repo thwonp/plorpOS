@@ -45,7 +45,7 @@
     defined(PLEX_FETCH_FIRST)
 #define STREAM_HTTP 0
 #define STREAM_TLS  0
-#elif defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+#elif defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
 #define STREAM_HTTP 1
 #define STREAM_TLS  1
 #else
@@ -249,12 +249,13 @@ static void tmpfile_for(const char *tag, char *out, size_t n)
 
 /* GET/POST with Plex's headers, the reply into memory (NUL-terminated).
  * Returns the HTTP status, 0 for no answer, -1 when it could not run. */
-static int plex_req(const char *method, const char *url, bool with_token,
-                    char **body, size_t *len, int timeout_s)
+static int plex_req_c(const char *method, const char *url, bool with_token,
+                      char **body, size_t *len, int connect_s, int timeout_s)
 {
 	char hdr[8][200], tmp[128];
 	const char *h[8];
 	int nh = 0, code;
+	unsigned t0;
 
 	snprintf(hdr[nh], sizeof hdr[nh], "Accept: application/json"); nh++;
 	snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Product: " PRODUCT); nh++;
@@ -265,7 +266,12 @@ static int plex_req(const char *method, const char *url, bool with_token,
 	if (with_token) { snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Token: %s", C.token); nh++; }
 	for (int i = 0; i < nh; i++) h[i] = hdr[i];
 	tmpfile_for("req", tmp, sizeof tmp);
-	code = net_fetch(url, method, h, nh, tmp, 5, timeout_s, NULL);
+	/* Plex's relay drops about one TLS handshake in three at once (curl 35,
+	 * measured 2026-11-17): an answer that failed that fast is asked again. */
+	t0 = now_ms();
+	code = net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
+	if (code == 0 && now_ms() - t0 < 1500)
+		code = net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
 	if (body) {
 		*body = code >= 200 && code < 300 ? slurp(tmp, len) : NULL;
 		if (code >= 200 && code < 300 && !*body) code = -1;
@@ -274,30 +280,51 @@ static int plex_req(const char *method, const char *url, bool with_token,
 	return code;
 }
 
+static int plex_req(const char *method, const char *url, bool with_token,
+                    char **body, size_t *len, int timeout_s)
+{
+	return plex_req_c(method, url, with_token, body, len, 5, timeout_s);
+}
+
 /* ---- connections ---------------------------------------------------------------- */
 
 /* The server's address: the first of its connections to answer, local ones
- * first - plain http on the LAN before its https name, then remote, then
- * Plex's relay. Kept until a request through it gets no answer. */
-static bool pick_base(char *out, size_t n)
+ * first - plain http on the LAN, its https names, then remote, then Plex's
+ * relay. Kept until a request through it gets no answer (base_failed).
+ *
+ * Away from home (plorpos-1lw.19): the LAN addresses are probed briefly, as
+ * a server there answers in milliseconds, and the https names - the same
+ * addresses - are not tried when none of them answered at all. When no
+ * connection answers, the list is asked of plex.tv again (a relay's address
+ * changes; the one saved at sign-in had, a day later) and tried once more.
+ * One thread probes at a time; the others wait for its answer. */
+static void cfg_save(void);
+static pthread_mutex_t g_pick_mu = PTHREAD_MUTEX_INITIALIZER;
+
+static bool try_conns(char *out, size_t n)
 {
-	char url[400], base[256];
-	int pass, i;
+	char url[400];
+	conn cs[MAX_CONNS];
+	int pass, i, nc, code;
+	bool lan = false;
 
 	LOCK();
-	snprintf(base, sizeof base, "%s", g_base);
+	memcpy(cs, C.conns, sizeof cs);
+	nc = C.nconns;
 	UNLOCK();
-	if (base[0]) { snprintf(out, n, "%s", base); return true; }
-	for (pass = 0; pass < 3; pass++)
-		for (i = 0; i < C.nconns; i++) {
-			conn *c = &C.conns[i];
-			int code;
+	for (pass = 0; pass < 4; pass++)
+		for (i = 0; i < nc; i++) {
+			conn *c = &cs[i];
+			bool http = !strncmp(c->uri, "http:", 5), local = c->local && !c->relay;
 
-			if ((pass == 0) != (c->local && !c->relay)) continue;
-			if (pass == 1 && c->relay) continue;
-			if (pass == 2 && !c->relay) continue;
+			if (pass == 0 && !(local && http)) continue;
+			if (pass == 1 && !(local && !http && lan)) continue;
+			if (pass == 2 && (c->local || c->relay)) continue;
+			if (pass == 3 && !c->relay) continue;
 			snprintf(url, sizeof url, "%s/identity", c->uri);
-			code = plex_req("GET", url, true, NULL, NULL, 4);
+			code = local ? plex_req_c("GET", url, true, NULL, NULL, 2, 3)
+			             : plex_req_c("GET", url, true, NULL, NULL, 5, 6);
+			if (code != 0) lan |= local;
 			if (code == 200) {
 				LOCK();
 				snprintf(g_base, sizeof g_base, "%s", c->uri);
@@ -308,13 +335,51 @@ static bool pick_base(char *out, size_t n)
 				return true;
 			}
 		}
-	fprintf(stderr, "plex: no connection to %s answered\n", C.server);
 	return false;
+}
+
+static bool refresh_conns(void);
+
+static bool pick_base(char *out, size_t n)
+{
+	bool ok;
+
+	pthread_mutex_lock(&g_pick_mu);
+	LOCK();
+	snprintf(out, n, "%s", g_base);
+	UNLOCK();
+	ok = out[0] || try_conns(out, n) || (refresh_conns() && try_conns(out, n));
+	if (!ok) fprintf(stderr, "plex: no connection to %s answered\n", C.server);
+	pthread_mutex_unlock(&g_pick_mu);
+	return ok;
 }
 
 static void base_failed(void)
 {
 	LOCK(); g_base[0] = '\0'; UNLOCK();
+}
+
+/* plex_resolve's connection, found on the worker. */
+static volatile bool g_picking;
+static unsigned g_pick_failed;              /* when the last one found none; 0 never */
+
+static void do_pick(void)
+{
+	char b[256];
+	bool ok = pick_base(b, sizeof b);
+
+	LOCK();
+	g_picking = false;
+	g_pick_failed = ok ? 0 : (now_ms() | 1);
+	UNLOCK();
+}
+
+bool plex_stream_failed(const char *rel)
+{
+	if (!plex_is_path(rel)) return false;
+	fprintf(stderr, "plex: a stream failed; finding the server again\n");
+	base_failed();
+	return true;
 }
 
 /* A server request by path, the reply into memory. */
@@ -332,8 +397,9 @@ static int server_get(const char *path, char **body, size_t *len, int timeout_s)
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_PIN, J_SERVERS, J_LIBS, J_COVER, J_TIMELINE, J_FAVS };
+enum { J_PIN, J_SERVERS, J_LIBS, J_COVER, J_TIMELINE, J_FAVS, J_PICK };
 static void do_favs(void);
+static void do_pick(void);
 typedef struct job {
 	int kind;
 	char a[320], b[600];
@@ -477,6 +543,30 @@ static void do_servers(void)
 	g_nservers = n > 0 ? n : -1;
 }
 
+/* The server's connections as plex.tv lists them now. True when they were
+ * read; at most once a minute. */
+static bool refresh_conns(void)
+{
+	static unsigned last;
+	unsigned now = now_ms();
+	int i;
+
+	if (last && now - last < 60000) return false;
+	last = now;
+	do_servers();
+	for (i = 0; i < g_nservers; i++) {
+		if (strcmp(g_servers[i].id, C.server_id)) continue;
+		LOCK();
+		memcpy(C.conns, g_servers[i].conns, sizeof C.conns);
+		C.nconns = g_servers[i].nconns;
+		UNLOCK();
+		cfg_save();
+		fprintf(stderr, "plex: %d connections from plex.tv\n", C.nconns);
+		return true;
+	}
+	return false;
+}
+
 static void do_libs(void)
 {
 	char *b = NULL;
@@ -560,6 +650,7 @@ static void *api_main(void *arg)
 		case J_COVER:    do_cover(j); break;
 		case J_TIMELINE: do_report(j); break;
 		case J_FAVS:     do_favs(); break;
+		case J_PICK:     do_pick(); break;
 		}
 		free(j);
 	}
@@ -1101,6 +1192,7 @@ static bool download_one(int key, char reason)
 		return true;
 	}
 	fprintf(stderr, "plex: download of track %d failed (http %d)\n", key, code);
+	if (code == 0) base_failed();
 	return false;
 }
 
@@ -1179,6 +1271,7 @@ static void *cache_main(void *arg)
 			t0 = now_ms();
 			code = fetch_track(base, &t, C.stream_kbps, dest, NULL);
 			fprintf(stderr, "plex: track %d fetched first in %u ms (http %d)\n", key, now_ms() - t0, code);
+			if (code == 0) base_failed();
 			if (code == 200) cache_trim();
 		}
 		LOCK();
@@ -1587,7 +1680,21 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	snprintf(out->artist, sizeof out->artist, "%s", t.artist);
 	out->len = t.dur_ms / 1000.0;
 	if (local_copy(&t, out->url, sizeof out->url)) { UNLOCK(); return true; }
-	snprintf(base, sizeof base, "%s", g_base[0] ? g_base : C.nconns ? C.conns[0].uri : "");
+	if (!g_base[0]) {
+		/* No connection known (a fresh start, or the last one stopped
+		 * answering): one is found off this thread, the queue's, and the
+		 * player asks again on each poll (plorpos-1lw.19). A track fetched
+		 * first plays meanwhile. */
+		bool ask = !g_picking && (!g_pick_failed || now_ms() - g_pick_failed > 10000);
+
+		if (cache_file(&t, out->url, sizeof out->url)) { UNLOCK(); return true; }
+		if (ask) g_picking = true;
+		UNLOCK();
+		if (ask) { job *j = job_new(J_PICK); if (j) push(j, true); else g_picking = false; }
+		out->wait = true;
+		return true;
+	}
+	snprintf(base, sizeof base, "%s", g_base);
 	if (need_fetch(base)) {
 		if (!cache_file(&t, out->url, sizeof out->url)) {
 			cache_want(t.key, true);
@@ -1683,8 +1790,8 @@ void plex_prefetch(const char *rel)
 	if (!key || key == last) return;
 	last = key;
 	LOCK();
-	snprintf(base, sizeof base, "%s", g_base[0] ? g_base : C.nconns ? C.conns[0].uri : "");
-	if (need_fetch(base) && (i = tab_find(&g_tab, key)) >= 0 &&
+	snprintf(base, sizeof base, "%s", g_base);
+	if (base[0] && need_fetch(base) && (i = tab_find(&g_tab, key)) >= 0 &&
 	    !local_copy(&g_tab.tr[i], f, sizeof f) && !cache_file(&g_tab.tr[i], f, sizeof f))
 		cache_want(key, false);
 	UNLOCK();

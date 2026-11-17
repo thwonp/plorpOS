@@ -109,7 +109,16 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 	d->at = at > 0 ? at : 0;
 
 	{
-		int e = avformat_open_input(&d->fmt, path, NULL, NULL);
+		/* A stream gives up after 10 s of silence from the server, rather
+		 * than waiting forever on a connection Wi-Fi took away mid-song: the
+		 * read fails, the track ends, and the launcher finds the server
+		 * again for the next (plorpos-1lw.19). Files are not affected. */
+		AVDictionary *o = NULL;
+		int e;
+
+		if (strstr(path, "://")) av_dict_set(&o, "rw_timeout", "10000000", 0);
+		e = avformat_open_input(&d->fmt, path, NULL, &o);
+		av_dict_free(&o);
 
 		if (e < 0) {
 			char why[64];

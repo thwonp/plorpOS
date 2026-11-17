@@ -80,6 +80,8 @@ static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that que
 /* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
  * stream's META (a transcode says 0) must not take away. */
 static bool  (*g_resolve)(const char *rel, musec_remote *out);
+static bool  (*g_failed)(const char *rel);
+static int     g_retried = -1;      /* the queue entry tried again after an ERROR */
 static bool  (*g_owns)(const char *daemon_path, const char *rel);
 static double  g_len_fixed;
 static bool    g_wait_remote;      /* a resolve said wait: PLAY again on each poll */
@@ -413,6 +415,7 @@ static void event(const char *line)
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
 		if (g_now.state == MU_PLAYING) {
 			g_skips = 0;
+			g_retried = -1;
 			/* A pause asked for while Muse was between states - see
 			 * musec_pause - lands on the first "playing" after it. */
 			if (g_pause_until && (int)(g_pause_until - plat_now_ms()) > 0) sendf("PAUSE");
@@ -534,6 +537,8 @@ static void event(const char *line)
 		field(line, "name", g_art[k].name, sizeof g_art[k].name);
 		g_art_n++;
 	} else if (!strncmp(line, "ERROR", 5)) {
+		int k;
+
 		field(line, "why", v, sizeof v);
 		fprintf(stderr, "muse: %s\n", v);
 		title_fallback();
@@ -545,6 +550,11 @@ static void event(const char *line)
 		 * track a second that way (plorpos-ggv.24). Stopped where it is,
 		 * pause/play starts it again. */
 		if (strstr(v, "busy")) { g_asked = false; g_now.state = MU_STOPPED; }
+		/* A remote track whose server stopped answering - Wi-Fi changed
+		 * under it: tried once more, once the resolver has found the server
+		 * again, rather than skipped (plorpos-1lw.19). */
+		else if (g_failed && (k = muq_current(&g_order)) >= 0 && k < g_qn && k != g_retried &&
+		         g_failed(g_q[k])) { g_retried = k; play_current(); }
 		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
 }
@@ -735,10 +745,12 @@ void musec_retitle(void)
 }
 
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
-                      bool (*owns)(const char *daemon_path, const char *rel))
+                      bool (*owns)(const char *daemon_path, const char *rel),
+                      bool (*failed)(const char *rel))
 {
 	g_resolve = resolve;
 	g_owns = owns;
+	g_failed = failed;
 }
 
 void musec_adopt(const char *const *paths, int n, int start, bool book, double speed,

@@ -19793,7 +19793,7 @@ int main(int argc, char *argv[])
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
-			musec_set_remote(plex_resolve, plex_owns);
+			musec_set_remote(plex_resolve, plex_owns, plex_stream_failed);
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);
