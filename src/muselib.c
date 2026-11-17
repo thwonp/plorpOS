@@ -270,6 +270,64 @@ bool ml_scan(const char *root, ml_lib *out)
 	return scan_into(out, &c, root, "", false);
 }
 
+/* Artists by name - music, then books - with one artist for a name found in
+ * two places: Music/<artist> and Music/Plex/<artist>, whose scan put the
+ * Plex ones at "P" (plorpos-1lw.14). Albums move with their artist; a
+ * merged artist's albums go by name. A card without Music/Plex comes out as
+ * it went in: its folders were already in this order. */
+static const ml_lib *g_sort_lib;
+
+static int cmp_artist(const void *a, const void *b)
+{
+	const ml_artist *x = &g_sort_lib->artists[*(const int *)a];
+	const ml_artist *y = &g_sort_lib->artists[*(const int *)b];
+	int c = (int)x->book - (int)y->book;
+
+	if (!c) c = strcasecmp(x->name, y->name);
+	return c ? c : *(const int *)a - *(const int *)b;
+}
+
+static int cmp_album(const void *a, const void *b)
+{
+	int c = strcasecmp(g_sort_lib->albums[*(const int *)a].name,
+	                   g_sort_lib->albums[*(const int *)b].name);
+
+	return c ? c : *(const int *)a - *(const int *)b;
+}
+
+static void artists_sort(ml_lib *l)
+{
+	int *ord = malloc(sizeof *ord * (size_t)(l->nartists + 1));
+	int *alo = malloc(sizeof *alo * (size_t)(l->nalbums + 1));
+	ml_artist *ar = malloc(sizeof *ar * (size_t)(l->nartists + 1));
+	ml_album *al = malloc(sizeof *al * (size_t)(l->nalbums + 1));
+	int i, j, k, nar = 0, nal = 0;
+
+	if (!ord || !alo || !ar || !al) goto done;
+	for (i = 0; i < l->nartists; i++) ord[i] = i;
+	g_sort_lib = l;
+	qsort(ord, (size_t)l->nartists, sizeof *ord, cmp_artist);
+	for (i = 0; i < l->nartists; i = j) {
+		const ml_artist *a = &l->artists[ord[i]];
+		int first = nal;
+
+		for (j = i; j < l->nartists && l->artists[ord[j]].book == a->book &&
+		            !strcasecmp(l->artists[ord[j]].name, a->name); j++)
+			for (k = 0; k < l->artists[ord[j]].n; k++)
+				alo[nal++] = l->artists[ord[j]].first + k;
+		if (j - i > 1) qsort(alo + first, (size_t)(nal - first), sizeof *alo, cmp_album);
+		ar[nar] = *a;               /* the spelling scanned first */
+		ar[nar].first = first;
+		ar[nar++].n = nal - first;
+	}
+	for (i = 0; i < nal; i++) al[i] = l->albums[alo[i]];
+	memcpy(l->albums, al, sizeof *al * (size_t)nal);
+	memcpy(l->artists, ar, sizeof *ar * (size_t)nar);
+	l->nartists = nar;
+done:
+	free(ord); free(alo); free(ar); free(al);
+}
+
 bool ml_scan_card(const char *card, ml_lib *out)
 {
 	char dir[LIB_PATH * 2];
@@ -281,6 +339,7 @@ bool ml_scan_card(const char *card, ml_lib *out)
 	music = scan_into(out, &c, dir, "Music", false);
 	snprintf(dir, sizeof dir, "%s/Audiobooks", card);
 	books = scan_into(out, &c, dir, "Audiobooks", true);
+	artists_sort(out);
 	return music || books;
 }
 
