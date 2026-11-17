@@ -11980,9 +11980,25 @@ static void mmss(char *out, size_t n, double sec)
  * what is behind a panel is a picture of games. */
 #define NP_SIDE 432                              /* the cover, on screen */
 #define NP_X    80
-#define NP_Y    ((TORTOS_SCREEN_H - NP_SIDE) / 2 - 28)
+#define NP_Y    np_y()
 #define NP_TX   (NP_X + NP_SIDE + 56)            /* the words beside it */
 #define NP_TW   (TORTOS_SCREEN_W - NP_TX - 64)
+#define NP_HELP_Y (TORTOS_SCREEN_H - 72)         /* the buttons' line */
+
+#define NP_SRC_GAP 18                            /* cover foot to the Source line */
+
+/* The cover's top: the whole of it - the cover, and the Source line under
+ * it down to its ink's foot - centered between the screen's top and the
+ * buttons' line, on every screen size (plorpos-1lw.11). It was the cover
+ * centered and lifted 28. */
+static int np_y(void)
+{
+	TTF_Font *f = ui_font(UI_F_META);
+	int asc = f ? ui_font_ascent(f) : ui_font_height(UI_F_META);
+	int lead = f ? asc - ui_font_cap(f) : 0;  /* the buttons' box top to ink */
+
+	return (NP_HELP_Y + lead - NP_SIDE - NP_SRC_GAP - asc) / 2;
+}
 
 /* A chapter as Now Playing names it: its own title when it has one worth
  * reading, "Chapter 3" when the title is only its number - Dungeon Crawler
@@ -12055,15 +12071,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * clock that starts over with each track. */
 	phase = mq_phase(MQ_NP, mn->index, (int)strlen(mn->title));
 	y = NP_Y + 36;
-	/* Where the track comes from, a line above where in the queue it is
-	 * (plorpos-1lw.10): the playing track's own source, not the one being
+	/* Where the track comes from, under the cover at its left edge (owner,
+	 * plorpos-1lw.10): the playing track's own source, not the one being
 	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
-	{
-		int up = ui_font_line(UI_F_META) + 8;
-
-		ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex" : "Source: Local",
-		        NP_TX, y - up, -1, UI_TEXT_DIM);
-	}
+	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex" : "Source: Local",
+	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
 		 * count is the order being HEARD, so shuffled it still runs 1 to n.
@@ -12165,7 +12177,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	                    : "A: pause    L1/R1: file    Left/Right: seek    Y: speed"))
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
-	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 72, 0, UI_TEXT_DIM);
+	        TORTOS_SCREEN_W / 2, NP_HELP_Y, 0, UI_TEXT_DIM);
 	draw_battery(r);
 	return wait;
 }
