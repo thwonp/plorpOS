@@ -131,7 +131,11 @@ void plex_delete_album(int al);
  * removes the copies the download made (a favourite's stays). */
 bool plex_album_downloading(int al);
 void plex_download_cancel_album(int al);
-/* Download every Favorite Track; delete the ones that left the list. */
+/* In the background: download the tracks loved on Plex (rated 10), delete
+ * the copies of ones loved no more, and write PLEX_FAVS_M3U in
+ * <card>/Music/Playlists with the copies, so it plays on the Local source
+ * (plorpos-1lw.16). Again later mirrors Plex again. */
+#define PLEX_FAVS_M3U "Plex Favorites"
 void plex_sync_favorites(void);
 void plex_download_cancel(void);
 /* "3 of 12 - Title" while downloads run; false when none do. */

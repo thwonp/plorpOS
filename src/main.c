@@ -9726,7 +9726,9 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		muse_toast("Downloads stopped");
 		return MENU_STAY;
 	case PX_FAVS:
+		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }
 		plex_sync_favorites();
+		muse_toast("Downloading Plex favorites");
 		return MENU_STAY;
 	case PX_SIGNOUT: {
 		static const char *const YN[] = { "Sign Out", "Cancel" };

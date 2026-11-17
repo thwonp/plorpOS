@@ -332,7 +332,8 @@ static int server_get(const char *path, char **body, size_t *len, int timeout_s)
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_PIN, J_SERVERS, J_LIBS, J_COVER, J_TIMELINE };
+enum { J_PIN, J_SERVERS, J_LIBS, J_COVER, J_TIMELINE, J_FAVS };
+static void do_favs(void);
 typedef struct job {
 	int kind;
 	char a[320], b[600];
@@ -558,6 +559,7 @@ static void *api_main(void *arg)
 		case J_LIBS:     do_libs(); break;
 		case J_COVER:    do_cover(j); break;
 		case J_TIMELINE: do_report(j); break;
+		case J_FAVS:     do_favs(); break;
 		}
 		free(j);
 	}
@@ -867,6 +869,11 @@ static volatile int g_dl_cancel;
 /* Cancel Download on an album (1lw.18): skip only the track in flight, not the
  * queue behind it, and once it has stopped, clear away album g_dl_purge. */
 static bool g_dl_skip;
+/* Plex's favorites (plorpos-1lw.16): the loved tracks' keys, in the library's
+ * order, and whether the playlist wants writing once the downloads drain. */
+static int *g_fav, g_nfav;
+static bool g_fav_m3u;
+static void favs_m3u_write(void);
 static int g_dl_purge = -1;
 static void purge_album(int al);
 static char g_dl_now[160];
@@ -925,6 +932,10 @@ static void manifest_path(char *out, size_t n) { snprintf(out, n, "%s/downloads.
 
 /* The manifest: why each copy is there ('a' an album, 'f' a favorite), so a
  * favorites sync deletes only what it put there. */
+/* Its own lock: the shelf, the download worker and the favorites job all
+ * rewrite it. Never held with LOCK taken inside it. */
+static pthread_mutex_t g_man_mu = PTHREAD_MUTEX_INITIALIZER;
+
 static void manifest_set(int key, char reason, bool on)
 {
 	char p[700], tmp[720], line[200];
@@ -933,7 +944,8 @@ static void manifest_set(int key, char reason, bool on)
 
 	manifest_path(p, sizeof p);
 	snprintf(tmp, sizeof tmp, "%s.new", p);
-	if (!(out = fopen(tmp, "w"))) return;
+	pthread_mutex_lock(&g_man_mu);
+	if (!(out = fopen(tmp, "w"))) { pthread_mutex_unlock(&g_man_mu); return; }
 	if ((in = fopen(p, "r"))) {
 		while (fgets(line, sizeof line, in)) {
 			int k = atoi(line);
@@ -948,6 +960,7 @@ static void manifest_set(int key, char reason, bool on)
 	if (on && !had) fprintf(out, "%d\t%c\n", key, reason);
 	fclose(out);
 	rename(tmp, p);
+	pthread_mutex_unlock(&g_man_mu);
 }
 
 static bool manifest_has(int key, char reason)
@@ -957,12 +970,15 @@ static bool manifest_has(int key, char reason)
 	bool has = false;
 
 	manifest_path(p, sizeof p);
-	if (!(in = fopen(p, "r"))) return false;
-	while (!has && fgets(line, sizeof line, in)) {
-		char *tab = strchr(line, '\t');
-		has = atoi(line) == key && tab && tab[1] == reason;
+	pthread_mutex_lock(&g_man_mu);
+	if ((in = fopen(p, "r"))) {
+		while (!has && fgets(line, sizeof line, in)) {
+			char *tab = strchr(line, '\t');
+			has = atoi(line) == key && tab && tab[1] == reason;
+		}
+		fclose(in);
 	}
-	fclose(in);
+	pthread_mutex_unlock(&g_man_mu);
 	return has;
 }
 
@@ -1208,6 +1224,13 @@ static void *dl_main(void *arg)
 		while (g_dl_pos >= g_dlq_n) {
 			g_dlq_n = g_dl_pos = g_dl_total = 0;
 			g_dl_now[0] = '\0';
+			if (g_fav_m3u) {        /* a favorites sync's downloads are in */
+				g_fav_m3u = false;
+				UNLOCK();
+				favs_m3u_write();
+				LOCK();
+				continue;
+			}
 			pthread_cond_wait(&g_dl_cv, &g_mu);
 		}
 		it = g_dlq[g_dl_pos];
@@ -1801,25 +1824,92 @@ void plex_download_cancel_album(int al)
 	if (!later) purge_album(al);
 }
 
-void plex_sync_favorites(void)
+/* <card>/Music/Playlists/Plex Favorites.m3u: the loved tracks there are
+ * copies of, so it plays on the Local source. Rewritten whole, through a
+ * temporary file. */
+static void favs_m3u_write(void)
 {
-	char dir[700], mp[700], line[200], p[1024];
-	char **v = NULL;
-	int n, i, *keep = NULL, nk = 0;
+	char dir[700], p[800], tmp[820], f[1100], pre[700];
+	size_t pl;
+	FILE *o;
+	int i, t;
+
+	snprintf(dir, sizeof dir, "%s/" PL_DIR_REL, g_card);
+	mkdirs(dir);
+	snprintf(p, sizeof p, "%s/" PLEX_FAVS_M3U ".m3u", dir);
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	snprintf(pre, sizeof pre, "%s/Music/", g_card);
+	pl = strlen(pre);
+	if (!(o = fopen(tmp, "w"))) return;
+	fputs("#EXTM3U\n", o);
+	LOCK();
+	for (i = 0; i < g_nfav; i++)
+		if ((t = tab_find(&g_tab, g_fav[i])) >= 0 && local_copy(&g_tab.tr[t], f, sizeof f) &&
+		    !strncmp(f, pre, pl))
+			fprintf(o, "../%s\n", f + pl);
+	UNLOCK();
+	if (fclose(o) == 0) rename(tmp, p);
+	else unlink(tmp);
+	g_dl_changed = 1;
+}
+
+static int cmp_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
+
+/* The job: the server's loved tracks (rated 10, Plexamp's love), downloaded;
+ * the copies of ones loved no more gone; the playlist written now and again
+ * when the downloads are in. */
+static void do_favs(void)
+{
+	char path[200], line[200], mp[700], p[1024];
+	char *b = NULL;
+	size_t len;
+	jsv root, mc, md, it = { 0 }, d;
+	int *keys = NULL, n = 0, cap = 0, i, t;
 	FILE *in;
 
-	plex_pl_dir(dir, sizeof dir);
-	n = pl_read(dir, PLEX_FAVS, g_card, &v);
-	if (n > 0 && (keep = malloc(sizeof *keep * (size_t)n)))
-		for (i = 0; i < n; i++) if (plex_is_path(v[i])) keep[nk++] = key_of(v[i]);
-	if (n > 0) pl_free(v, n);
+	snprintf(path, sizeof path, "/library/sections/%d/all?type=10&userRating=10"
+	         "&X-Plex-Container-Start=0&X-Plex-Container-Size=20000", C.section);
+	if (server_get(path, &b, &len, 30) != 200 || !b) {
+		free(b);
+		fprintf(stderr, "plex: favorites: the server did not answer\n");
+		return;
+	}
+	root = js_root(b, len);
+	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Metadata", &md))
+		while (js_next(md, &it, &d)) {
+			if (n == cap) {
+				int *k = realloc(keys, sizeof *k * (size_t)(cap = cap ? cap * 2 : 64));
+				if (!k) break;
+				keys = k;
+			}
+			keys[n++] = (int)jnum(d, "ratingKey");
+		}
+	free(b);
+	/* In the library's order: artist, album, track - as the shelf lists them.
+	 * A key the index does not have yet (added since the last sync) waits
+	 * for the next one. */
 	LOCK();
-	for (i = 0; i < nk; i++) dl_queue(keep[i], 'f');
+	{
+		int *ord = malloc(sizeof *ord * (size_t)(n ? n : 1)), m = 0;
+
+		if (ord) {
+			for (i = 0; i < n; i++) if ((t = tab_find(&g_tab, keys[i])) >= 0) ord[m++] = t;
+			qsort(ord, (size_t)m, sizeof *ord, cmp_int);
+			for (i = 0; i < m; i++) ord[i] = g_tab.tr[ord[i]].key;
+			free(g_fav);
+			g_fav = ord; g_nfav = m;
+			for (i = 0; i < m; i++) dl_queue(g_fav[i], 'f');
+		}
+	}
 	UNLOCK();
+	fprintf(stderr, "plex: favorites: %d loved\n", n);
 	/* Copies that came as favorites and are favorites no more, unless an
 	 * album download wants them too. */
 	manifest_path(mp, sizeof mp);
-	if ((in = fopen(mp, "r"))) {
+	pthread_mutex_lock(&g_man_mu);
+	in = fopen(mp, "r");
+	pthread_mutex_unlock(&g_man_mu);
+	if (in) {
 		int gone[512], ng = 0;
 
 		while (fgets(line, sizeof line, in) && ng < 512) {
@@ -1827,12 +1917,11 @@ void plex_sync_favorites(void)
 			char *tab = strchr(line, '\t');
 
 			if (!tab || tab[1] != 'f') continue;
-			for (j = 0; j < nk && keep[j] != k; j++) {}
-			if (j == nk) gone[ng++] = k;
+			for (j = 0; j < n && keys[j] != k; j++) {}
+			if (j == n) gone[ng++] = k;
 		}
 		fclose(in);
 		for (i = 0; i < ng; i++) {
-			int t;
 			manifest_set(gone[i], 'f', false);
 			if (manifest_has(gone[i], 'a')) continue;
 			LOCK();
@@ -1841,8 +1930,19 @@ void plex_sync_favorites(void)
 			UNLOCK();
 		}
 	}
-	free(keep);
+	free(keys);
+	favs_m3u_write();
+	LOCK();
+	g_fav_m3u = true;
+	UNLOCK();
 	dl_start();
+}
+
+void plex_sync_favorites(void)
+{
+	job *j = job_new(J_FAVS);
+
+	if (j) push(j, false);
 }
 
 void plex_download_cancel(void)

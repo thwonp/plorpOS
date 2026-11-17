@@ -452,8 +452,10 @@ second screen work as they do for the card's music.
   on Plex.
 - **Y on a track** lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
-  **Download Favorite Tracks** in Plex Settings downloads all of them and
-  deletes the copies of tracks you took out.
+- **Download Favorite Tracks** in Plex Settings downloads the tracks you
+  loved on Plex (in Plexamp, for example) and lists them in a playlist,
+  **Plex Favorites**, on the Local source. Run it again to catch up with
+  Plex: new loves are added, and the copies of tracks you unloved are deleted.
 - **Sync Library** (in Plex Settings) reads the library again. Muse also checks for changes on the server every hour.
 - **Plex Settings** has the server, the library, both qualities, downloads
   in progress (A stops them) and Sign Out.
