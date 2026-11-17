@@ -1677,7 +1677,11 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	}
 	t = g_tab.tr[i];
 	snprintf(out->title, sizeof out->title, "%s", t.title);
-	snprintf(out->artist, sizeof out->artist, "%s", t.artist);
+	/* The track's own artist is there only when it is not the album's
+	 * (Plex's originalTitle): the album's otherwise, or a playlist showed
+	 * its first track's artist on every track (plorpos-1lw.20). */
+	snprintf(out->artist, sizeof out->artist, "%s",
+	         t.artist && t.artist[0] ? t.artist : g_tab.ar[g_tab.al[t.album].artist].name);
 	out->len = t.dur_ms / 1000.0;
 	if (local_copy(&t, out->url, sizeof out->url)) { UNLOCK(); return true; }
 	if (!g_base[0]) {
