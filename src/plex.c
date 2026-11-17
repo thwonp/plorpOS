@@ -1607,14 +1607,21 @@ void plex_tick(const char *rel, int state, double at, double len)
 	job *j;
 
 	if (state < 0 || state > 2) state = 0;
+	/* A "stopped" timeline ends the client's transcode on the server - the
+	 * one just started for the next track too, which then opens as nothing,
+	 * fails, and the queue ran through the album at a track a frame
+	 * (plorpos-1lw.13; measured on carol). So, as the pak: none when the
+	 * next track is Plex's too (reporting it is enough), and none for a
+	 * track that has not played yet (stopped while its stream opens). */
 	if (k != key) {
-		if (key && last_state != 0 && (j = job_new(J_TIMELINE))) {
+		if (key && !k && last_state > 0 && (j = job_new(J_TIMELINE))) {
 			j->n1 = key; snprintf(j->a, sizeof j->a, "stopped");
 			push(j, false);
 		}
 		key = k; counted = false; last_state = -1;
 	}
 	if (!key || !C.token[0]) return;
+	if (state == 0 && last_state <= 0) goto mark;
 	if (state == last_state && (state != 1 || now - last_ms < TIMELINE_MS)) goto mark;
 	last_state = state;
 	last_ms = now;

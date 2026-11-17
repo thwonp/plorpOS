@@ -108,9 +108,16 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 	d->speed = speed > 0.1 ? speed : 1.0;
 	d->at = at > 0 ? at : 0;
 
-	if (avformat_open_input(&d->fmt, path, NULL, NULL) < 0) {
-		snprintf(err, errn, "cannot open the file");
-		goto fail;
+	{
+		int e = avformat_open_input(&d->fmt, path, NULL, NULL);
+
+		if (e < 0) {
+			char why[64];
+
+			av_strerror(e, why, sizeof why);
+			snprintf(err, errn, "cannot open the file (%s)", why);
+			goto fail;
+		}
 	}
 	if (avformat_find_stream_info(d->fmt, NULL) < 0) {
 		snprintf(err, errn, "cannot read the file's streams");
