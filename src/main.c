@@ -10297,11 +10297,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SOURCE) return muse_source_flip(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id != SMM_RESCAN) return MENU_STAY;
-				if (g_muse_plex) {
-					/* Sync Library: the index again, then the library from it. */
-					if (!plex_sync_screen(a, true)) return MENU_STAY;
-					plex_sync_take();
-				}
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
 				return MENU_DONE;

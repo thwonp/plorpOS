@@ -593,9 +593,9 @@ static void system_menu(void)
 			   ids[2] == SMM_TABS && ids[3] == SMM_RESCAN && ids[4] == SMM_SETTINGS &&
 			   ids[5] == SMM_SOURCE,
 			   "books alone: the count, Sort By, Tab Settings, Rescan Folder, Playback Settings and Source");
-			ck(sys_menu_muse_rows(false, false, true, ids) == 7 && ids[2] == SMM_TABS &&
-			   ids[3] == SMM_RESCAN && ids[5] == SMM_SOURCE && ids[6] == SMM_PLEX,
-			   "Plex: no Album Art, Plex Settings after Source");
+			ck(sys_menu_muse_rows(false, false, true, ids) == 6 && ids[2] == SMM_TABS &&
+			   ids[3] == SMM_SETTINGS && ids[4] == SMM_SOURCE && ids[5] == SMM_PLEX,
+			   "Plex: no Album Art or Rescan Folder, Plex Settings after Source");
 		}
 	}
 }

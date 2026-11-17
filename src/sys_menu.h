@@ -141,8 +141,8 @@ typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
                SMM_SETTINGS, SMM_SOURCE, SMM_PLEX } sm_muse_row;
 #define SM_MUSE_ROWS 9
 /* Source (plorpos-1lw): Local, the card's Music folder, or Plex. On Plex,
- * Album Art goes (Plex has the art), Rescan Folder is Sync Library, and
- * Plex Settings follows Source. */
+ * Album Art and Rescan Folder go (Plex has the art; Sync Library is in Plex
+ * Settings), and Plex Settings follows Source. */
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has

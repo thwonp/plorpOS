@@ -29,7 +29,7 @@ int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out)
 	out[n++] = SMM_SORT;
 	if (!books && !plex) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
-	out[n++] = SMM_RESCAN;
+	if (!plex) out[n++] = SMM_RESCAN;   /* Plex's Sync Library is in Plex Settings (1lw.17) */
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
@@ -80,8 +80,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };
 					break;
 				case SMM_RESCAN:
-					out[k] = (menu_row){ u->muse_plex ? "Sync Library" : "Rescan Folder",
-					                     NULL, true };
+					out[k] = (menu_row){ "Rescan Folder", NULL, true };
 					break;
 				case SMM_SOURCE:
 					out[k] = (menu_row){ "Source", u->muse_plex ? "Plex" : "Local", true };

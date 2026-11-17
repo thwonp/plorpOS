@@ -452,8 +452,7 @@ second screen work as they do for the card's music.
   removes it if it's in already. It's a playlist on the Playlists tab.
   **Download Favorite Tracks** in Plex Settings downloads all of them and
   deletes the copies of tracks you took out.
-- **Sync Library** (in MENU, where Rescan Folder was) reads the library
-  again. Muse also checks for changes on the server every hour.
+- **Sync Library** (in Plex Settings) reads the library again. Muse also checks for changes on the server every hour.
 - **Plex Settings** has the server, the library, both qualities, downloads
   in progress (A stops them) and Sign Out.
 
