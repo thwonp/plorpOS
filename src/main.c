@@ -1512,7 +1512,8 @@ static const struct { const char *key; int glyph; } MUSE_MODES[MUQ_MODES] = {
  * what the album will show - its art, or the card made for one with none - and
  * nothing more needs asking. */
 static struct np_cover {
-	int          album;
+	int          album;                     /* -2: g_loose's, of generation `loose` */
+	unsigned     loose;
 	bool         done;
 	SDL_Texture *tex;
 } g_np = { .album = -1 };
@@ -11681,6 +11682,47 @@ static bool cover_file(int al, char *out, size_t n)
 	return false;
 }
 
+/* A track playing from outside the library on the shelf - a Local one while
+ * the Source is Plex (plorpos-1lw.15) - has no album number to keep a
+ * cover_state under. Its cover is looked for the same way, through a library
+ * of the one album its folder makes, under this one state. */
+static struct { char base[LIB_PATH * 2]; cover_state c; unsigned gen; } g_loose;
+
+static void loose_lib(const char *track, ml_lib *l, ml_album *al, ml_track *t)
+{
+	*t = (ml_track){ .name = "" };
+	snprintf(t->path, sizeof t->path, "%s", track);
+	*al = (ml_album){ .first = 0, .n = 1 };
+	*l = (ml_lib){ .albums = al, .nalbums = 1, .tracks = t, .ntracks = 1 };
+}
+
+static bool loose_cover_file(const char *track, char *out, size_t n)
+{
+	char base[LIB_PATH * 2];
+	unsigned now = plat_now_ms();
+	ml_lib l; ml_album al; ml_track t;
+	cover_state *c = &g_loose.c;
+
+	loose_lib(track, &l, &al, &t);
+	ml_cover_base(g_muse_root, &l, 0, base, sizeof base);
+	if (!base[0]) return false;
+	if (strcmp(base, g_loose.base)) {
+		snprintf(g_loose.base, sizeof g_loose.base, "%s", base);
+		*c = (cover_state){ COV_UNKNOWN, 0 };
+		g_loose.gen++;
+	}
+	if (c->st == COV_NONE) return false;
+	snprintf(out, n, "%s.jpg", base);
+	if (file_nonempty(out)) return true;
+	snprintf(out, n, "%s.png", base);
+	if (file_nonempty(out)) return true;
+	if (ml_folder_image(g_muse_root, &l, 0, out, n)) return true;
+	if (c->st == COV_ASKED && now - c->asked_ms < 5000) return false;
+	if (musec_cover_ask(track, base)) { c->st = COV_ASKED; c->asked_ms = now; }
+	else c->st = COV_NONE;
+	return false;
+}
+
 /* What the daemon said about the covers it was asked for. Matched by path, not
  * by album number, so an answer that lands after a rescan finds the album it
  * was about or none at all. True when anything landed, so a shelf that only
@@ -11702,6 +11744,7 @@ static bool cover_answers(void)
 	while (musec_cover_take(base, sizeof base, file, sizeof file)) {
 		landed = true;
 		fl = strlen(file);
+		if (!fl && !strcmp(base, g_loose.base)) g_loose.c.st = COV_NONE;
 		for (i = 0; g_cov && i < g_muse.nalbums; i++) {
 			char pic[LIB_PATH * 2 + 8];
 
@@ -11843,13 +11886,40 @@ static SDL_Texture *load_cover(SDL_Renderer *r, const char *path)
 
 /* Bring the Now Playing cover up to date with album `al`, which may be -1 for
  * nothing. Called every frame; it costs a comparison once the cover is in. */
+/* np_cover for a Local track the library on the shelf does not hold. */
+static void np_cover_loose(app *a)
+{
+	const mu_now *mn = musec_now();
+	const char *track = mn ? musec_track(mn->index) : NULL;
+	char path[LIB_PATH * 2 + 8];
+	bool got;
+	int w, h;
+
+	if (!track || !track[0] || plex_is_path(track)) {
+		if (g_np.album != -1) np_forget();
+		return;
+	}
+	got = loose_cover_file(track, path, sizeof path);
+	if (g_np.album != -2 || g_np.loose != g_loose.gen) {
+		np_forget();
+		g_np.album = -2;
+		g_np.loose = g_loose.gen;
+	}
+	if (g_np.done) return;
+	if (got && !(g_np.tex = load_cover(a->r, path))) g_loose.c.st = COV_NONE;
+	if (!g_np.tex && g_loose.c.st == COV_NONE)
+		g_np.tex = ui_make_cover(a->r, mn->album[0] ? mn->album : "Music", MUSE_ACCENT, &w, &h);
+	g_np.done = g_np.tex != NULL;
+}
+
 static void np_cover(app *a, int al)
 {
 	char path[LIB_PATH * 2 + 8];
 	int w, h;
 
+	if (al < 0) { np_cover_loose(a); return; }
 	if (al != g_np.album) { np_forget(); g_np.album = al; }
-	if (g_np.done || al < 0) return;
+	if (g_np.done) return;
 	if (cover_file(al, path, sizeof path)) {
 		unsigned t0 = plat_now_ms();
 
