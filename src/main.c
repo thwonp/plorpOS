@@ -18113,6 +18113,9 @@ static void muse_install(app *a)
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
 	if (g_muse_plex) {
+		/* The queue kept from before was restored ahead of this library:
+		 * its track's title and length are known only now. */
+		musec_retitle();
 		/* Plex says every album's year: nothing for the daemon to read. */
 		free(g_year);
 		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))

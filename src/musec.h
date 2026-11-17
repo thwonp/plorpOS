@@ -77,6 +77,9 @@ typedef struct {
 } musec_remote;
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
                       bool (*owns)(const char *daemon_path, const char *rel));
+/* The queue's track resolved again for what it shows: a queue restored at
+ * start comes before the library its resolver reads, and shows no title. */
+void musec_retitle(void);
 /* The queue for what Muse is already playing, paths[start], without a PLAY:
  * Muse plays on and the queue follows it (plorpos-3yv.71). n 0: only forgets
  * the orphan. */

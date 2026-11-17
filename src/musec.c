@@ -700,6 +700,21 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
 
 const char *musec_orphan(void) { return g_orphan; }
 
+void musec_retitle(void)
+{
+	static musec_remote r;
+	int t = muq_current(&g_order);
+	bool live = g_now.state == MU_PLAYING || g_now.state == MU_PAUSED;
+
+	if (t < 0 || t >= g_qn || !g_resolve || (live && g_now.title[0])) return;
+	if (!g_resolve(g_q[t], &r) || !r.title[0]) return;
+	snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+	if (r.artist[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist);
+	g_len_fixed = r.len;
+	if (g_now.len <= 0) g_now.len = r.len;
+	memset(r.url, 0, sizeof r.url);
+}
+
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
                       bool (*owns)(const char *daemon_path, const char *rel))
 {
