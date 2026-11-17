@@ -1824,14 +1824,17 @@ void plex_download_cancel_album(int al)
 	if (!later) purge_album(al);
 }
 
-/* <card>/Music/Playlists/Plex Favorites.m3u: the loved tracks there are
- * copies of, so it plays on the Local source. Rewritten whole, through a
- * temporary file. */
+static volatile int g_pl_gen;
+
+/* PLEX_FAVS_M3U twice, each rewritten whole through a temporary file: in
+ * <card>/Music/Playlists the copies there are, for the Local source; in the
+ * Plex source's own playlists every loved track by its Plex path, which plays
+ * the copy when there is one (plex_resolve) and streams it when not. */
 static void favs_m3u_write(void)
 {
 	char dir[700], p[800], tmp[820], f[1100], pre[700];
 	size_t pl;
-	FILE *o;
+	FILE *o, *x;
 	int i, t;
 
 	snprintf(dir, sizeof dir, "%s/" PL_DIR_REL, g_card);
@@ -1840,18 +1843,36 @@ static void favs_m3u_write(void)
 	snprintf(tmp, sizeof tmp, "%s.new", p);
 	snprintf(pre, sizeof pre, "%s/Music/", g_card);
 	pl = strlen(pre);
+	plex_pl_dir(dir, sizeof dir);
+	mkdirs(dir);
+	snprintf(f, sizeof f, "%s/" PLEX_FAVS_M3U ".m3u.new", dir);
 	if (!(o = fopen(tmp, "w"))) return;
+	if (!(x = fopen(f, "w"))) { fclose(o); unlink(tmp); return; }
 	fputs("#EXTM3U\n", o);
+	fputs("#EXTM3U\n", x);
 	LOCK();
-	for (i = 0; i < g_nfav; i++)
-		if ((t = tab_find(&g_tab, g_fav[i])) >= 0 && local_copy(&g_tab.tr[t], f, sizeof f) &&
-		    !strncmp(f, pre, pl))
-			fprintf(o, "../%s\n", f + pl);
+	for (i = 0; i < g_nfav; i++) {
+		const px_track *tr;
+
+		if ((t = tab_find(&g_tab, g_fav[i])) < 0) continue;
+		tr = &g_tab.tr[t];
+		/* Card-relative as pl_add writes a path outside Music: "../../". */
+		fprintf(x, "../../%s/%d/%d/%d.%s\n", g_rel_root, g_tab.ar[g_tab.al[tr->album].artist].key,
+		        g_tab.al[tr->album].key, tr->key, ext_of(tr->part));
+		if (local_copy(tr, f, sizeof f) && !strncmp(f, pre, pl)) fprintf(o, "../%s\n", f + pl);
+	}
 	UNLOCK();
 	if (fclose(o) == 0) rename(tmp, p);
 	else unlink(tmp);
+	snprintf(p, sizeof p, "%s/" PLEX_FAVS_M3U ".m3u", dir);
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	if (fclose(x) == 0) rename(tmp, p);
+	else unlink(tmp);
 	g_dl_changed = 1;
+	g_pl_gen++;
 }
+
+int plex_pl_gen(void) { return g_pl_gen; }
 
 static int cmp_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
 

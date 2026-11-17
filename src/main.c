@@ -12489,7 +12489,9 @@ static void muse_pl_dir(char *out, size_t n)
 static void muse_playlists_load(void)
 {
 	char d[CFG_STR * 2 + 32];
+	static int gen;
 
+	if (gen != plex_pl_gen()) { gen = plex_pl_gen(); g_npls = -1; }   /* Plex Favorites rewritten */
 	if (g_npls >= 0) return;
 	muse_pl_dir(d, sizeof d);
 	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
@@ -12616,6 +12618,7 @@ static void muse_add_to_playlist(app *a, int t)
 	}
 	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) {
 		if (g_muse_plex && !strcmp(g_pls[i].name, PLEX_FAVS)) continue;
+		if (!strcmp(g_pls[i].name, PLEX_FAVS_M3U)) continue;   /* the next sync rewrites it */
 		labels[n] = g_pls[i].name; map[n++] = i;
 	}
 	k = muse_pick_run(a, "Add to Playlist", labels, n);

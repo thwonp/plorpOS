@@ -136,6 +136,9 @@ void plex_download_cancel_album(int al);
  * <card>/Music/Playlists with the copies, so it plays on the Local source
  * (plorpos-1lw.16). Again later mirrors Plex again. */
 #define PLEX_FAVS_M3U "Plex Favorites"
+/* Goes up each time that sync rewrites its playlists: a cached list of them
+ * is stale. */
+int  plex_pl_gen(void);
 void plex_sync_favorites(void);
 void plex_download_cancel(void);
 /* "3 of 12 - Title" while downloads run; false when none do. */
