@@ -127,6 +127,10 @@ void plex_tick(const char *rel, int state, double at, double len);
 int  plex_album_downloaded(int al);
 void plex_download_album(int al);
 void plex_delete_album(int al);
+/* Album al has tracks waiting or in flight; Cancel Download stops them and
+ * removes the copies the download made (a favourite's stays). */
+bool plex_album_downloading(int al);
+void plex_download_cancel_album(int al);
 /* Download every Favorite Track; delete the ones that left the list. */
 void plex_sync_favorites(void);
 void plex_download_cancel(void);

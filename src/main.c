@@ -12815,6 +12815,14 @@ static void muse_plex_album_menu(app *a, int al)
 	char head[96];
 
 	snprintf(head, sizeof head, "%d of %d downloaded", have, of);
+	if (plex_album_downloading(al)) {
+		labels[0] = "Cancel Download";
+		if (muse_pick_run(a, head, labels, 1) == 0) {
+			plex_download_cancel_album(al);
+			muse_toast("Download cancelled");
+		}
+		return;
+	}
 	if (have < of) { dl = n; labels[n++] = have ? "Download the Rest" : "Download Album"; }
 	if (have > 0)  { del = n; labels[n++] = "Delete Download"; }
 	k = muse_pick_run(a, head, labels, n);

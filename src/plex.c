@@ -864,6 +864,11 @@ static bool g_dl_up;
 static pthread_cond_t g_dl_cv = PTHREAD_COND_INITIALIZER;
 static dl_item *g_dlq; static int g_dlq_n, g_dlq_cap, g_dl_pos, g_dl_total;
 static volatile int g_dl_cancel;
+/* Cancel Download on an album (1lw.18): skip only the track in flight, not the
+ * queue behind it, and once it has stopped, clear away album g_dl_purge. */
+static bool g_dl_skip;
+static int g_dl_purge = -1;
+static void purge_album(int al);
 static char g_dl_now[160];
 static volatile int g_dl_changed;
 
@@ -1210,9 +1215,10 @@ static void *dl_main(void *arg)
 		UNLOCK();
 		download_one(it.key, it.reason);
 		LOCK();
-		if (g_dl_cancel) { g_dlq_n = g_dl_pos = 0; g_dl_cancel = 0; }
+		if (g_dl_cancel && !g_dl_skip) { g_dlq_n = g_dl_pos = 0; g_dl_cancel = 0; }
 		else g_dl_pos++;
-		UNLOCK();
+		g_dl_skip = false;
+		{ int al = g_dl_purge; g_dl_purge = -1; UNLOCK(); if (al >= 0) purge_album(al); }
 	}
 	return NULL;
 }
@@ -1729,6 +1735,72 @@ void plex_delete_album(int al)
 	free(keys);
 }
 
+/* Album al's copies that only its download wanted: a track that is also a
+ * favourite keeps its copy. */
+static void purge_album(int al)
+{
+	char p[1024];
+	int i, *keys = NULL, n = 0;
+
+	LOCK();
+	if (al >= 0 && al < g_tab.nal && (keys = malloc(sizeof *keys * (size_t)(g_tab.al[al].n + 1))))
+		for (i = g_tab.al[al].first; i < g_tab.al[al].first + g_tab.al[al].n; i++)
+			keys[n++] = g_tab.tr[i].key;
+	UNLOCK();
+	for (i = 0; i < n; i++) {
+		int t;
+
+		manifest_set(keys[i], 'a', false);
+		if (manifest_has(keys[i], 'f')) continue;
+		LOCK();
+		if ((t = tab_find(&g_tab, keys[i])) >= 0 && local_copy(&g_tab.tr[t], p, sizeof p))
+			remove_copy(p);
+		UNLOCK();
+	}
+	free(keys);
+}
+
+static bool in_album(int al, int key)
+{
+	int t = tab_find(&g_tab, key);
+
+	return t >= g_tab.al[al].first && t < g_tab.al[al].first + g_tab.al[al].n;
+}
+
+bool plex_album_downloading(int al)
+{
+	int i;
+	bool yes = false;
+
+	LOCK();
+	if (al >= 0 && al < g_tab.nal)
+		for (i = g_dl_pos; i < g_dlq_n && !yes; i++) yes = in_album(al, g_dlq[i].key);
+	UNLOCK();
+	return yes;
+}
+
+void plex_download_cancel_album(int al)
+{
+	int i, k;
+	bool later = false;
+
+	LOCK();
+	if (al < 0 || al >= g_tab.nal) { UNLOCK(); return; }
+	/* The queued ones out; the one in flight, if it is this album's, stops
+	 * itself and the worker clears up after it. */
+	for (i = k = g_dl_pos + 1; i < g_dlq_n; i++)
+		if (in_album(al, g_dlq[i].key)) g_dl_total--;
+		else g_dlq[k++] = g_dlq[i];
+	if (g_dl_pos < g_dlq_n) {
+		g_dlq_n = k;
+		if (in_album(al, g_dlq[g_dl_pos].key)) {
+			g_dl_skip = true; g_dl_cancel = 1; g_dl_purge = al; later = true;
+		}
+	}
+	UNLOCK();
+	if (!later) purge_album(al);
+}
+
 void plex_sync_favorites(void)
 {
 	char dir[700], mp[700], line[200], p[1024];
@@ -1777,6 +1849,7 @@ void plex_download_cancel(void)
 {
 	LOCK();
 	if (g_dl_pos < g_dlq_n) g_dl_cancel = 1;
+	g_dl_skip = false;                    /* all of it, not one album's */
 	g_dlq_n = g_dl_pos + (g_dl_pos < g_dlq_n ? 1 : 0);   /* the one in flight stops itself */
 	UNLOCK();
 }
