@@ -13603,9 +13603,22 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (L->n > 0) {
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
 	}
-	/* The header is wide, so a passing word goes under the cover. */
+	/* The header is wide, so a passing word goes under the cover - or a
+	 * Plex download under way, looked at again twice a second while it runs. */
 	if (L->toast && *L->toast && L->nunder < 3)
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
+	else if (g_muse_plex && L->nunder < 3) {
+		char line[200];
+
+		memcpy(line, "Downloading ", 12);
+		if (plex_download_status(line + 12, sizeof line - 12)) {
+			gl_geom g;
+
+			gl_geometry(&g, L);
+			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+			ui_redraw_at(SDL_GetTicks() + 500);
+		}
+	}
 }
 
 static void muse_list_draw(app *a, sysview *v, int asel, int psel)
@@ -13810,6 +13823,14 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 		/* Y marks the album under the cursor, or unmarks it. */
 		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);
+		/* Plex: X on an album downloads it or deletes the copy, on every
+		 * album view - not only inside its track list (plorpos-1lw.12). */
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_plex && v->album &&
+		    !g_muse.albums[v->album[v->cursor]].book) {
+			muse_plex_album_menu(a, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
 
 		if (a->in.pressed[IN_ACCEPT] && n > 0) {
 			if (artists) {

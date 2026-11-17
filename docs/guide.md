@@ -441,7 +441,8 @@ second screen work as they do for the card's music.
   Pass). The H700 devices and the Miyoo Flip can't stream, so they download
   each track first, and the next one while it plays; a track takes a couple
   of seconds to start.
-- **X on an album** downloads it, or deletes the copy. Downloads go in
+- **X on an album** (in any album list, Coverflow, or its track list)
+  downloads it, or deletes the copy. Progress shows under the cover. Downloads go in
   `Music/Plex/<artist>/<album>/` with the cover, so they are ordinary music
   when Source is the card too. A downloaded track plays from the card, even
   on Plex.
