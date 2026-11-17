@@ -94,8 +94,8 @@ With Secondary Function set to Muse, touch works on both screens without
 tapping in first. Whichever screen your finger lands on takes over, and the
 same swipe carries on there. Muse on the second screen is touch only: the
 buttons, a touch on the main screen, or playing your game hand control back
-and return it to Now Playing. Swiping back at Muse's top level does nothing
-there.
+and return it to Now Playing. Swiping back at Muse's top level goes to Now
+Playing there.
 
 ## Ports
 
