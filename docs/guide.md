@@ -269,8 +269,8 @@ the shelf opens Muse on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
 Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
-Rescan Folder for music copied on while the device was running, and Playback
-Settings.
+Rescan Folder for music copied on while the device was running, Playback
+Settings, and Source: the card's music, or [Plex](#plex).
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -425,6 +425,37 @@ the Cover Art Archive at 500px. An album it has supplied is remembered and not
 asked about again; one it could not find is asked about on every run, since a
 cover may be added later. MusicBrainz takes a request a second, so a large
 library takes a while: seven albums took a minute on the Brick.
+
+### Plex
+
+Muse can play a Plex music library instead of the card's. Set **Source** to
+Plex in Muse's MENU. The first time it asks you to sign in: open
+plex.tv/link on a phone or computer and enter the code on the screen. Then
+pick the server and the music library. Muse reads the whole library once
+(about 40 seconds for 47,000 tracks) and keeps it on the card, so it opens at
+once after that. Plex needs Wi-Fi. The tabs, Now Playing, the queue and the
+second screen work as they do for the card's music.
+
+- **Streaming** plays at the quality in **Plex Settings**: Original, or an
+  Opus transcode at 96 to 320 kbps (128 by default; transcoding needs Plex
+  Pass). The H700 devices and the Miyoo Flip can't stream, so they download
+  each track first, and the next one while it plays; a track takes a couple
+  of seconds to start.
+- **X on an album** downloads it, or deletes the copy. Downloads go in
+  `Music/Plex/<artist>/<album>/` with the cover, so they are ordinary music
+  when Source is the card too. A downloaded track plays from the card, even
+  on Plex.
+- **Y on a track** lists **Favorite Tracks** first: A adds the track, or
+  removes it if it's in already. It's a playlist on the Playlists tab.
+  **Download Favorite Tracks** in Plex Settings downloads all of them and
+  deletes the copies of tracks you took out.
+- **Sync Library** (in MENU, where Rescan Folder was) reads the library
+  again. Muse also checks for changes on the server every hour.
+- **Plex Settings** has the server, the library, both qualities, downloads
+  in progress (A stops them) and Sign Out.
+
+Plex sees what Muse plays and counts a play at 90%, as Plexamp does. The
+sign-in is kept on the card in `.userdata/shared/plex/`.
 
 ## The shelf
 
