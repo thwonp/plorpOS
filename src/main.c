@@ -12055,6 +12055,15 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * clock that starts over with each track. */
 	phase = mq_phase(MQ_NP, mn->index, (int)strlen(mn->title));
 	y = NP_Y + 36;
+	/* Where the track comes from, a line above where in the queue it is
+	 * (plorpos-1lw.10): the playing track's own source, not the one being
+	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
+	{
+		int up = ui_font_line(UI_F_META) + 8;
+
+		ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex" : "Source: Local",
+		        NP_TX, y - up, -1, UI_TEXT_DIM);
+	}
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
 		 * count is the order being HEARD, so shuffled it still runs 1 to n.

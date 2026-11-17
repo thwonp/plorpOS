@@ -354,7 +354,8 @@ folder: one named cover or folder, or the only one there.
 
 With something playing or paused, SELECT goes straight to **Now Playing**: the
 cover (with what's playing in its corner, such as FLAC 16/44.1 or OPUS 128),
-the track, where in it you are, and what comes next.
+where the track comes from (Source: Local or Plex), the track, where in it
+you are, and what comes next.
 
 | | |
 |---|---|
