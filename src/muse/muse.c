@@ -25,7 +25,8 @@
  *        ARTIST  dir=                        who a folder of tracks is by
  *   out  READY   proto=2
  *        STATE   state=playing|paused|stopped  path=
- *        META    title= artist= album= len= chapters=
+ *        META    title= artist= album= len= chapters= codec=
+ *                                              codec: "FLAC 16/44.1", "MP3 320"
  *        CHAPTER i= at= title=                 one per chapter, after META
  *        POS     at= len=                      about once a second while playing
  *        END     path=                         the file ran out by itself
@@ -80,7 +81,7 @@ static struct {
 	/* What the file says about itself, copied out when it opens so the
 	 * socket thread never reaches into the decoder the player thread is
 	 * using. 256 chapters is more than any book this card will carry. */
-	char   title[256], artist[256], album[256];
+	char   title[256], artist[256], album[256], codec[32];
 	int    nch;
 	double ch_at[256];
 	char   ch_title[256][96];
@@ -184,6 +185,7 @@ static void snapshot(void)
 	if (!S.artist[0])
 		snprintf(S.artist, sizeof S.artist, "%s", dec_tag(g_dec, "album_artist"));
 	snprintf(S.album, sizeof S.album, "%s", dec_tag(g_dec, "album"));
+	dec_codec(g_dec, S.codec, sizeof S.codec);
 	S.nch = dec_chapters(g_dec);
 	if (S.nch > 256) S.nch = 256;
 	for (i = 0; i < S.nch; i++) {
@@ -508,9 +510,9 @@ static void announce(int fd, int all)
 	if (S.ev_meta || (all && S.state != ST_STOPPED)) {
 		int i;
 
-		send_line(fd, "META\ttitle=%s\tartist=%s\talbum=%s\tlen=%.1f\tchapters=%d",
+		send_line(fd, "META\ttitle=%s\tartist=%s\talbum=%s\tlen=%.1f\tchapters=%d\tcodec=%s",
 		          clean(S.title, a, sizeof a), clean(S.artist, b, sizeof b),
-		          clean(S.album, c, sizeof c), S.len, S.nch);
+		          clean(S.album, c, sizeof c), S.len, S.nch, S.codec);
 		for (i = 0; i < S.nch; i++)
 			send_line(fd, "CHAPTER\ti=%d\tat=%.1f\ttitle=%s", i, S.ch_at[i],
 			          clean(S.ch_title[i], a, sizeof a));

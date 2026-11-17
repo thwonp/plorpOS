@@ -1571,6 +1571,7 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	t.part = partk; t.title = t.artist = NULL;
 	UNLOCK();
 	stream_url(base, &t, C.stream_kbps, false, out->url, sizeof out->url, "start");
+	if (C.stream_kbps) snprintf(out->codec, sizeof out->codec, "OPUS %d", C.stream_kbps);
 	return true;
 }
 

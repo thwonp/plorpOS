@@ -203,6 +203,16 @@ static int connected(void)
 
 static void play_current(void);
 
+/* The resolver's word on what a remote track is, for when the daemon's
+ * META has no rate in it. */
+static char g_codec_remote[32];
+
+static bool has_digit(const char *s)
+{
+	for (; *s; s++) if (*s >= '0' && *s <= '9') return true;
+	return false;
+}
+
 void musec_jump(int i)
 {
 	if (i < 0 || i >= g_qn || !g_order.order) return;
@@ -226,6 +236,9 @@ static void play_current(void)
 	{
 		static musec_remote r;   /* 2 KB: off the stack of a 10 Hz game tick */
 		bool remote = g_resolve && g_resolve(q, &r);
+
+		snprintf(g_codec_remote, sizeof g_codec_remote, "%s", remote ? r.codec : "");
+		g_now.codec[0] = '\0';
 
 		if (remote && r.wait) {
 			/* Not playable yet (fetched first): shown as the track asked
@@ -359,6 +372,9 @@ static void adopt(const char *line, const char *state)
 			if (r.artist[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist);
 			g_len_fixed = r.len;
 			if (g_now.len <= 0) g_now.len = r.len;
+			snprintf(g_codec_remote, sizeof g_codec_remote, "%s", r.codec);
+			if (!has_digit(g_now.codec) && r.codec[0])
+				snprintf(g_now.codec, sizeof g_now.codec, "%s", r.codec);
 			memset(r.url, 0, sizeof r.url);
 		} else if (!g_now.title[0]) {
 			ml_track_name(strrchr(g_q[i], '/') ? strrchr(g_q[i], '/') + 1 : g_q[i],
@@ -428,6 +444,9 @@ static void event(const char *line)
 		if (v[0]) snprintf(g_now.album, sizeof g_now.album, "%s", v);
 		field(line, "len", v, sizeof v);
 		g_now.len = atof(v) > 0 ? atof(v) : g_len_fixed;
+		field(line, "codec", v, sizeof v);
+		snprintf(g_now.codec, sizeof g_now.codec, "%s",
+		         !has_digit(v) && g_codec_remote[0] ? g_codec_remote : v);
 	} else if (!strncmp(line, "POS", 3)) {
 		double at;
 

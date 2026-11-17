@@ -26,6 +26,7 @@ typedef enum { MU_OFF, MU_STOPPED, MU_PLAYING, MU_PAUSED } mu_state;
 typedef struct {
 	mu_state state;
 	char     title[128], artist[128], album[128];
+	char     codec[32];             /* "FLAC 16/44.1", "OPUS 128"; "" unknown */
 	double   at, len;
 	double   speed;                 /* 1.0 but on a book set otherwise */
 	/* Where in the queue, and how long it is. The PLAY order's place, so
@@ -70,6 +71,9 @@ const char *musec_orphan(void);
 typedef struct {
 	char url[2048];
 	char title[128], artist[128];
+	/* What the stream is, when the daemon cannot tell (a transcode has no
+	 * bitrate it can read): "OPUS 128". "" to leave it to the daemon. */
+	char codec[32];
 	double len;
 	/* Not playable yet - a device whose FFmpeg cannot stream, fetching the
 	 * track first: the PLAY is asked for again on every poll until it is. */

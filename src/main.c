@@ -12040,6 +12040,16 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	        rgb, 34, 1.7f);
 	ui_glow(r, &cov, rgb, 90, 1.7f);
 	if (g_np.tex) SDL_RenderCopy(r, g_np.tex, NULL, &cov);
+	/* What is playing, as the file or stream is - "FLAC 16/44.1", "OPUS 128" -
+	 * on a dark pill in the cover's bottom-left corner, readable on any art
+	 * (plorpos-1lw.9). The words come once per track, with META. */
+	if (mn->codec[0] && fs) {
+		int th = ui_font_height(UI_F_META), pw = ui_text_width(fs, mn->codec) + 28;
+		SDL_Rect pill = { cov.x + 14, cov.y + cov.h - 14 - (th + 6), pw, th + 6 };
+
+		ui_round_rect(r, &pill, pill.h / 2, (SDL_Color){ 0, 0, 0, 170 });
+		ui_text(r, fs, mn->codec, pill.x + 14, pill.y + 3, -1, UI_TEXT);
+	}
 
 	/* Title, artist and album slide together when they are too long, on one
 	 * clock that starts over with each track. */
