@@ -71,6 +71,9 @@ typedef struct {
 	char url[2048];
 	char title[128], artist[128];
 	double len;
+	/* Not playable yet - a device whose FFmpeg cannot stream, fetching the
+	 * track first: the PLAY is asked for again on every poll until it is. */
+	bool wait;
 } musec_remote;
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
                       bool (*owns)(const char *daemon_path, const char *rel));

@@ -82,6 +82,8 @@ static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that que
 static bool  (*g_resolve)(const char *rel, musec_remote *out);
 static bool  (*g_owns)(const char *daemon_path, const char *rel);
 static double  g_len_fixed;
+static bool    g_wait_remote;      /* a resolve said wait: PLAY again on each poll */
+static unsigned g_wait_ms;
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
@@ -221,17 +223,38 @@ static void play_current(void)
 	 * and the first track of a fresh daemon starts on the speaker. */
 	if (!connected() || !g_sink_said[0]) { g_pending = 1; return; }
 	g_pending = 0;
-	/* Routed BEFORE the PLAY goes, so the track starts where it is heard
-	 * rather than on the speaker for however long the route takes. The
-	 * daemon runs its commands in order, so a SINK sent now lands first. */
-	g_asked = true;
-	if (g_before_heard) g_before_heard();
-	/* Only the queue's first PLAY starts part way: every track after it is
-	 * one the queue moved on to, from its beginning. */
 	{
 		static musec_remote r;   /* 2 KB: off the stack of a 10 Hz game tick */
 		bool remote = g_resolve && g_resolve(q, &r);
 
+		if (remote && r.wait) {
+			/* Not playable yet (fetched first): shown as the track asked
+			 * for, stopped, and asked for again on each poll. What played
+			 * before stops now, not when this one is ready. */
+			if (!g_wait_remote) {
+				sendf("STOP");
+				snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+				snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist[0] ? r.artist : g_artist);
+				snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+				g_now.len = g_len_fixed = r.len;
+				g_now.at = 0;
+				g_now.state = MU_STOPPED;
+				g_now.index = g_order.pos;
+				g_now.count = g_qn;
+			}
+			g_wait_remote = true;
+			g_wait_ms = plat_now_ms();
+			memset(r.url, 0, sizeof r.url);
+			return;
+		}
+		g_wait_remote = false;
+		/* Routed BEFORE the PLAY goes, so the track starts where it is heard
+		 * rather than on the speaker for however long the route takes. The
+		 * daemon runs its commands in order, so a SINK sent now lands first. */
+		g_asked = true;
+		if (g_before_heard) g_before_heard();
+		/* Only the queue's first PLAY starts part way: every track after it
+		 * is one the queue moved on to, from its beginning. */
 		if (remote)
 			sendf("PLAY\tpath=%s\tat=%.1f\tspeed=%.2f", r.url, g_start_at, g_speed);
 		else
@@ -551,6 +574,7 @@ void musec_poll(void)
 	ssize_t got;
 
 	headset_keys();
+	if (g_wait_remote && plat_now_ms() - g_wait_ms >= 250) play_current();
 	if (g_retry_at && (int)(plat_now_ms() - g_retry_at) >= 0) {
 		g_retry_at = 0;
 		if (g_fd >= 0 && !g_sink_waiting && !strcmp(g_sink_sent, g_want) &&
@@ -637,6 +661,7 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
 	g_start_at = at > 0 ? at : 0;
 	g_ran_out = false;
 	g_restored = false;
+	g_wait_remote = false;
 	g_orphan[0] = '\0';
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
@@ -921,6 +946,7 @@ void musec_seek_by(double delta)
 
 void musec_stop(void)
 {
+	g_wait_remote = false;
 	sendf("STOP");
 }
 

@@ -1398,6 +1398,7 @@ static void muse_poll(void)
 	mn = musec_now();
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
+	if (mn->state == MU_PLAYING) plex_prefetch(musec_upcoming());
 	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);

@@ -36,6 +36,24 @@
 #define TIMELINE_MS    5000
 #define PLAYED_AT      0.90   /* where Plex counts a play */
 
+/* What the device's FFmpeg - the daemon's - can open (measured in the
+ * sysroots, plorpos-1lw.8): http and https on the RG DS, GKD and Rotate; http
+ * alone on the Brick; neither on the H700 (BaseOS) or the Miyoo Flip. A URL
+ * the daemon cannot open is fetched to the card first (the cache below) and
+ * played from there. The Rotate defines PLATFORM_H700 too. */
+#if (defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE)) || defined(PLATFORM_MIYOO) || \
+    defined(PLEX_FETCH_FIRST)
+#define STREAM_HTTP 0
+#define STREAM_TLS  0
+#elif defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
+#define STREAM_HTTP 1
+#define STREAM_TLS  1
+#else
+#define STREAM_HTTP 1
+#define STREAM_TLS  0
+#endif
+#define CACHE_KEEP  4          /* tracks fetched first that stay on the card */
+
 /* Plexamp's Opus profile, from the pak (a tshark capture of Plexamp). */
 #define OPUS_PROFILE \
 	"add-transcode-target(replace%3Dtrue%26type%3DmusicProfile%26context%3Dstreaming" \
@@ -965,31 +983,76 @@ static void stream_url(const char *base, const px_track *t, int kbps, bool downl
 	         download ? "&X-Plex-Chunked=1" : "", C.client, OPUS_PROFILE, C.token);
 }
 
+/* Track `t` (its strings the caller's own) at `kbps` into `dest`, through
+ * `<dest>.part`: the original file, or Plex's Opus transcode the way the pak
+ * downloads one (decision, start, stop). Returns the HTTP status of the
+ * start, 0 for no answer; the file is there only on 200. */
+static int fetch_track(const char *base, const px_track *t, int kbps, const char *dest,
+                       const volatile int *cancel)
+{
+	char url[2048], part[1100], tmp[128];
+	int code;
+
+	snprintf(part, sizeof part, "%s.part", dest);
+	if (kbps) {
+		stream_url(base, t, kbps, true, url, sizeof url, "decision");
+		tmpfile_for("dec", tmp, sizeof tmp);
+		net_fetch(url, "GET", NULL, 0, tmp, 5, 30, cancel);
+		unlink(tmp);
+	}
+	stream_url(base, t, kbps, true, url, sizeof url, "start");
+	code = net_fetch(url, "GET", NULL, 0, part, 5, 0, cancel);
+	if (code != 200 || !exists(part) || rename(part, dest) != 0) {
+		unlink(part);
+		if (code == 200) code = -1;
+	}
+	if (kbps) {
+		stream_url(base, t, kbps, true, url, sizeof url, "stop");
+		tmpfile_for("stop", tmp, sizeof tmp);
+		net_fetch(url, "GET", NULL, 0, tmp, 5, 10, NULL);
+		unlink(tmp);
+	}
+	if (code == 0) base_failed();
+	return code;
+}
+
+/* A copy of track `key` safe to use with the lock released: the table can
+ * be replaced under us (a sync landing). False when it is not in it. */
+static bool track_copy(int key, px_track *t, char *partk, size_t pn, char *thumb, size_t tn)
+{
+	int i;
+
+	LOCK();
+	if ((i = tab_find(&g_tab, key)) < 0) { UNLOCK(); return false; }
+	*t = g_tab.tr[i];
+	snprintf(partk, pn, "%s", t->part);
+	if (thumb) snprintf(thumb, tn, "%s", g_tab.al[t->album].thumb);
+	t->part = partk;
+	t->title = t->artist = NULL;
+	UNLOCK();
+	return true;
+}
+
 static bool download_one(int key, char reason)
 {
 	char base[256], url[2048], dest[1024], part[1100], dir[1024], partk[320], thumb[320], *s;
 	px_track t;
 	int kbps = C.download_kbps, code;
-	bool ok;
 
 	LOCK();
 	{
 		int i = tab_find(&g_tab, key);
 		if (i < 0) { UNLOCK(); return false; }
-		t = g_tab.tr[i];
-		if (local_copy(&t, dest, sizeof dest)) {
+		if (local_copy(&g_tab.tr[i], dest, sizeof dest)) {
 			UNLOCK();
 			manifest_set(key, reason, true);
 			return true;
 		}
-		local_path(&t, kbps ? "opus" : ext_of(t.part), dest, sizeof dest, false);
-		snprintf(g_dl_now, sizeof g_dl_now, "%s", t.title);
-		/* The table can be replaced under us (a sync landing): keep a copy. */
-		snprintf(partk, sizeof partk, "%s", t.part);
-		snprintf(thumb, sizeof thumb, "%s", g_tab.al[t.album].thumb);
-		t.part = partk; t.title = t.artist = NULL;
+		local_path(&g_tab.tr[i], kbps ? "opus" : ext_of(g_tab.tr[i].part), dest, sizeof dest, false);
+		snprintf(g_dl_now, sizeof g_dl_now, "%s", g_tab.tr[i].title);
 	}
 	UNLOCK();
+	if (!track_copy(key, &t, partk, sizeof partk, thumb, sizeof thumb)) return false;
 	if (!pick_base(base, sizeof base)) return false;
 	snprintf(dir, sizeof dir, "%s", dest);
 	if ((s = strrchr(dir, '/'))) { *s = '\0'; mkdirs(dir); }
@@ -1010,35 +1073,124 @@ static bool download_one(int key, char reason)
 				unlink(part);
 		}
 	}
-	snprintf(part, sizeof part, "%s.part", dest);
-	if (kbps) {
-		char tmp[128];
-
-		stream_url(base, &t, kbps, true, url, sizeof url, "decision");
-		tmpfile_for("dec", tmp, sizeof tmp);
-		net_fetch(url, "GET", NULL, 0, tmp, 5, 30, &g_dl_cancel);
-		unlink(tmp);
-	}
-	stream_url(base, &t, kbps, true, url, sizeof url, "start");
-	code = net_fetch(url, "GET", NULL, 0, part, 5, 0, &g_dl_cancel);
-	ok = code == 200 && exists(part) && rename(part, dest) == 0;
-	if (!ok) unlink(part);
-	if (kbps) {
-		char tmp[128];
-
-		stream_url(base, &t, kbps, true, url, sizeof url, "stop");
-		tmpfile_for("stop", tmp, sizeof tmp);
-		net_fetch(url, "GET", NULL, 0, tmp, 5, 10, NULL);
-		unlink(tmp);
-	}
-	if (code == 0) base_failed();
-	if (ok) {
+	code = fetch_track(base, &t, kbps, dest, &g_dl_cancel);
+	if (code == 200) {
 		manifest_set(key, reason, true);
 		g_dl_changed = 1;
-	} else {
-		fprintf(stderr, "plex: download of track %d failed (http %d)\n", key, code);
+		return true;
 	}
-	return ok;
+	fprintf(stderr, "plex: download of track %d failed (http %d)\n", key, code);
+	return false;
+}
+
+/* ---- fetched first: a device whose FFmpeg cannot open the stream ---------------- */
+
+static pthread_t g_cache_th;
+static bool g_cache_up;
+static pthread_cond_t g_cache_cv = PTHREAD_COND_INITIALIZER;
+static int g_cache_q[4], g_cache_n;       /* keys, the one wanted now first */
+
+static bool need_fetch(const char *base)
+{
+	if (!STREAM_HTTP) return true;
+	return !STREAM_TLS && !strncmp(base, "https:", 6);
+}
+
+/* Where track t is cached (either quality), or where it would go. */
+static bool cache_file(const px_track *t, char *out, size_t n)
+{
+	snprintf(out, n, "%s/cache/%d.opus", g_dir, t->key);
+	if (exists(out)) return true;
+	snprintf(out, n, "%s/cache/%d.%s", g_dir, t->key, ext_of(t->part));
+	if (exists(out)) return true;
+	if (C.stream_kbps) snprintf(out, n, "%s/cache/%d.opus", g_dir, t->key);
+	return false;
+}
+
+/* The newest CACHE_KEEP stay; a fetch half done is never one of them. */
+static void cache_trim(void)
+{
+	char d[700], p[1100];
+	DIR *dd;
+	struct dirent *e;
+	struct { char name[64]; time_t m; } f[64];
+	int n = 0, i, j;
+
+	snprintf(d, sizeof d, "%s/cache", g_dir);
+	if (!(dd = opendir(d))) return;
+	while ((e = readdir(dd)) && n < 64) {
+		struct stat st;
+
+		if (e->d_name[0] == '.' || strstr(e->d_name, ".part")) continue;
+		snprintf(p, sizeof p, "%s/%s", d, e->d_name);
+		if (stat(p, &st) != 0) continue;
+		snprintf(f[n].name, sizeof f[n].name, "%s", e->d_name);
+		f[n++].m = st.st_mtime;
+	}
+	closedir(dd);
+	for (i = 0; i < n; i++) {
+		int newer = 0;
+
+		for (j = 0; j < n; j++) if (f[j].m > f[i].m) newer++;
+		if (newer >= CACHE_KEEP) { snprintf(p, sizeof p, "%s/%s", d, f[i].name); unlink(p); }
+	}
+}
+
+static void *cache_main(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		char base[256], dest[1100], partk[320];
+		px_track t;
+		int key, code;
+		unsigned t0;
+
+		LOCK();
+		while (!g_cache_n) pthread_cond_wait(&g_cache_cv, &g_mu);
+		key = g_cache_q[0];
+		UNLOCK();
+		if (track_copy(key, &t, partk, sizeof partk, NULL, 0) && !cache_file(&t, dest, sizeof dest) &&
+		    pick_base(base, sizeof base)) {
+			char d[700];
+
+			snprintf(d, sizeof d, "%s/cache", g_dir);
+			mkdirs(d);
+			t0 = now_ms();
+			code = fetch_track(base, &t, C.stream_kbps, dest, NULL);
+			fprintf(stderr, "plex: track %d fetched first in %u ms (http %d)\n", key, now_ms() - t0, code);
+			if (code == 200) cache_trim();
+		}
+		LOCK();
+		if (g_cache_n && g_cache_q[0] == key) {
+			memmove(g_cache_q, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)--g_cache_n);
+		}
+		UNLOCK();
+	}
+	return NULL;
+}
+
+/* Fetch `key` - `now`: ahead of anything queued. Under g_mu. */
+static void cache_want(int key, bool now)
+{
+	int i;
+
+	for (i = 0; i < g_cache_n; i++) if (g_cache_q[i] == key) break;
+	if (i < g_cache_n) {
+		if (now && i > 1) { memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(i - 1)); g_cache_q[1] = key; }
+		return;
+	}
+	if (g_cache_n == 4) g_cache_n = 3;           /* the oldest wish goes */
+	if (now && g_cache_n) {                      /* behind the one in flight */
+		memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(g_cache_n - 1));
+		g_cache_q[1] = key;
+	} else if (now) {
+		g_cache_q[0] = key;
+	} else {
+		g_cache_q[g_cache_n] = key;
+	}
+	g_cache_n++;
+	if (!g_cache_up) g_cache_up = pthread_create(&g_cache_th, NULL, cache_main, NULL) == 0;
+	pthread_cond_signal(&g_cache_cv);
 }
 
 static void *dl_main(void *arg)
@@ -1407,6 +1559,14 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	out->len = t.dur_ms / 1000.0;
 	if (local_copy(&t, out->url, sizeof out->url)) { UNLOCK(); return true; }
 	snprintf(base, sizeof base, "%s", g_base[0] ? g_base : C.nconns ? C.conns[0].uri : "");
+	if (need_fetch(base)) {
+		if (!cache_file(&t, out->url, sizeof out->url)) {
+			cache_want(t.key, true);
+			out->wait = true;
+		}
+		UNLOCK();
+		return true;
+	}
 	snprintf(partk, sizeof partk, "%s", t.part);
 	t.part = partk; t.title = t.artist = NULL;
 	UNLOCK();
@@ -1430,6 +1590,7 @@ bool plex_owns(const char *daemon_path, const char *rel)
 
 		yes = at && (at[strlen(pk)] == '?' || !at[strlen(pk)]);
 		if (!yes && local_copy(&g_tab.tr[i], copy, sizeof copy)) yes = !strcmp(copy, daemon_path);
+		if (!yes && cache_file(&g_tab.tr[i], copy, sizeof copy)) yes = !strcmp(copy, daemon_path);
 	}
 	UNLOCK();
 	return yes;
@@ -1474,6 +1635,22 @@ mark:
 		snprintf(j->a, sizeof j->a, "%s", NAMES[state]);
 		push(j, false);
 	}
+}
+
+void plex_prefetch(const char *rel)
+{
+	static int last;
+	char base[256], f[1100];
+	int i, key = plex_is_path(rel) ? key_of(rel) : 0;
+
+	if (!key || key == last) return;
+	last = key;
+	LOCK();
+	snprintf(base, sizeof base, "%s", g_base[0] ? g_base : C.nconns ? C.conns[0].uri : "");
+	if (need_fetch(base) && (i = tab_find(&g_tab, key)) >= 0 &&
+	    !local_copy(&g_tab.tr[i], f, sizeof f) && !cache_file(&g_tab.tr[i], f, sizeof f))
+		cache_want(key, false);
+	UNLOCK();
 }
 
 int plex_album_downloaded(int al)

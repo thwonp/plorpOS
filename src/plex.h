@@ -115,6 +115,9 @@ bool plex_cover_take(char *base, size_t n);
 
 bool plex_resolve(const char *rel, musec_remote *out);
 bool plex_owns(const char *daemon_path, const char *rel);
+/* The track after the one playing: fetched ahead, on a device that has to
+ * fetch a track before it can play it. Cheap to call every frame. */
+void plex_prefetch(const char *rel);
 /* Every frame Muse is polled: what plays, for Plex's timeline. */
 void plex_tick(const char *rel, int state, double at, double len);
 
