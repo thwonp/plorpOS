@@ -20,19 +20,21 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
  * cannot be used teaches nobody why. */
 #define NEEDS_WIFI(on) ((on) ? NULL : "needs Wi-Fi")
 
-int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
+int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out)
 {
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
 	if (both) out[n++] = SMM_SHOW;
 	out[n++] = SMM_SORT;
-	if (!books) out[n++] = SMM_ART;
+	if (!books && !plex) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
 	out[n++] = SMM_RESCAN;
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
+	out[n++] = SMM_SOURCE;
+	if (plex) out[n++] = SMM_PLEX;
 	return n;
 }
 
@@ -54,7 +56,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		}
 		if (u->muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, ids);
+			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, u->muse_plex, ids);
 
 			for (k = 0; k < n; k++)
 				switch (ids[k]) {
@@ -78,7 +80,14 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };
 					break;
 				case SMM_RESCAN:
-					out[k] = (menu_row){ "Rescan Folder", NULL, true };
+					out[k] = (menu_row){ u->muse_plex ? "Sync Library" : "Rescan Folder",
+					                     NULL, true };
+					break;
+				case SMM_SOURCE:
+					out[k] = (menu_row){ "Source", u->muse_plex ? "Plex" : "Local", true };
+					break;
+				case SMM_PLEX:
+					out[k] = (menu_row){ "Plex Settings", NULL, true };
 					break;
 				case SMM_TABS:
 					out[k] = (menu_row){ "Tab Settings", NULL, true };

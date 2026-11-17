@@ -220,9 +220,17 @@ static bool scan_into(ml_lib *out, caps *c, const char *root, const char *prefix
 		char top_rel[LIB_PATH];
 
 		snprintf(dir, sizeof dir, "%s/%s", root, top.v[i]);
-		list_dir(dir, &sub, &files);
 		if (prefix[0]) snprintf(top_rel, sizeof top_rel, "%s/%s", prefix, top.v[i]);
 		else           snprintf(top_rel, sizeof top_rel, "%s", top.v[i]);
+		/* Music/Plex/<artist>/<album>/: what Muse downloaded from Plex
+		 * (plorpos-1lw), a level deeper so it never mixes into a folder of
+		 * the card's own. Its artists are artists like any other's. */
+		if (!book && !strcmp(top.v[i], ML_PLEX) && strcmp(prefix, "") &&
+		    !strchr(prefix, '/')) {
+			scan_into(out, c, dir, top_rel, book);
+			continue;
+		}
+		list_dir(dir, &sub, &files);
 
 		/* Music/<name>/<tracks>: its own artist, one album of the same name. */
 		add_album(out, &c->a, &c->t, book, top_rel, top.v[i], &files);

@@ -138,14 +138,17 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * both kinds, since with one there is nothing to choose between. So the rows
  * move, and which one is where is sys_menu_muse_rows's to say. */
 typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
-               SMM_SETTINGS } sm_muse_row;
-#define SM_MUSE_ROWS 7
+               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX } sm_muse_row;
+#define SM_MUSE_ROWS 9
+/* Source (plorpos-1lw): Local, the card's Music folder, or Plex. On Plex,
+ * Album Art goes (Plex has the art), Rescan Folder is Sync Library, and
+ * Plex Settings follows Source. */
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has
  * both. Returns how many. The build and the key handler both ask this, so the
  * two cannot disagree about what row 2 is. */
-int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out);
+int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out);
 
 #define MENU_MAX_ROWS 17
 
@@ -184,6 +187,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	bool muse_both;          /* and the card has both kinds */
+	bool muse_plex;          /* and its source is Plex (plorpos-1lw) */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */

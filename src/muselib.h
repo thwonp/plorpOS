@@ -36,6 +36,8 @@ typedef struct { char name[128]; char path[LIB_PATH]; } ml_track;
  * Music/.media/Singles.png. */
 typedef struct { char name[128]; int first, n; bool book, singles; } ml_album;  /* tracks[first..] */
 #define ML_SINGLES "Singles"
+/* Music/Plex: albums downloaded from Plex, <artist>/<album> under it (plorpos-1lw). */
+#define ML_PLEX "Plex"
 typedef struct { char name[128]; int first, n; bool book; } ml_artist; /* albums[first..] */
 
 typedef struct {

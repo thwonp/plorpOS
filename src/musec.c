@@ -77,6 +77,11 @@ static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
 static bool     g_restored;         /* the queue came from the card and has not played */
 static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
+/* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
+ * stream's META (a transcode says 0) must not take away. */
+static bool  (*g_resolve)(const char *rel, musec_remote *out);
+static bool  (*g_owns)(const char *daemon_path, const char *rel);
+static double  g_len_fixed;
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
@@ -127,7 +132,7 @@ static void drop(const char *why, int err)
 static void sendf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void sendf(const char *fmt, ...)
 {
-	char line[1400];
+	char line[2600];   /* a Plex transcode URL is ~1 KB (plorpos-1lw) */
 	va_list ap;
 	int n;
 
@@ -223,19 +228,31 @@ static void play_current(void)
 	if (g_before_heard) g_before_heard();
 	/* Only the queue's first PLAY starts part way: every track after it is
 	 * one the queue moved on to, from its beginning. */
-	sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
-	g_nch = 0;                     /* the new file says its own */
-	/* No title until META: the tag, or the name the file has if it has none. */
-	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
-	              g_title_wait, sizeof g_title_wait);
-	g_now.title[0] = '\0';
-	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
-	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+	{
+		static musec_remote r;   /* 2 KB: off the stack of a 10 Hz game tick */
+		bool remote = g_resolve && g_resolve(q, &r);
+
+		if (remote)
+			sendf("PLAY\tpath=%s\tat=%.1f\tspeed=%.2f", r.url, g_start_at, g_speed);
+		else
+			sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
+		g_nch = 0;                     /* the new file says its own */
+		/* No title until META: the tag, or the name the file has if it has none. */
+		if (remote) snprintf(g_title_wait, sizeof g_title_wait, "%s", r.title);
+		else ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
+		                   g_title_wait, sizeof g_title_wait);
+		g_now.title[0] = '\0';
+		snprintf(g_now.artist, sizeof g_now.artist, "%s",
+		         remote && r.artist[0] ? r.artist : g_artist);
+		snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+		g_len_fixed = remote ? r.len : 0;
+		memset(r.url, 0, sizeof r.url);
+	}
 	g_now.at = g_start_at;
 	g_now.speed = g_speed;
 	g_start_at = 0;
 	g_seeking = false;
-	g_now.len = 0;
+	g_now.len = g_len_fixed;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }
@@ -292,7 +309,8 @@ static void adopt(const char *line, const char *state)
 	if (!strcmp(state, "stopped")) return;
 	field(line, "path", path, sizeof path);
 	for (i = 0; i < g_qn; i++)
-		if (!strncmp(path, g_root, rl) && path[rl] == '/' && !strcmp(path + rl + 1, g_q[i]))
+		if ((!strncmp(path, g_root, rl) && path[rl] == '/' && !strcmp(path + rl + 1, g_q[i])) ||
+		    (g_owns && g_owns(path, g_q[i])))
 			break;
 	if (i == g_qn) {
 		queue_set(NULL, 0, 0, 0, false, 1.0, "", "");
@@ -307,6 +325,23 @@ static void adopt(const char *line, const char *state)
 	}
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
+	/* Taken up without a PLAY, so nothing stands in for a title the file's
+	 * tags lack - a Plex stream, or a copy downloaded from one, has none
+	 * (plorpos-1lw). The META before this STATE has been and gone. */
+	{
+		static musec_remote r;
+
+		if (g_resolve && g_resolve(g_q[i], &r)) {
+			if (!g_now.title[0]) snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+			if (r.artist[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist);
+			g_len_fixed = r.len;
+			if (g_now.len <= 0) g_now.len = r.len;
+			memset(r.url, 0, sizeof r.url);
+		} else if (!g_now.title[0]) {
+			ml_track_name(strrchr(g_q[i], '/') ? strrchr(g_q[i], '/') + 1 : g_q[i],
+			              g_now.title, sizeof g_now.title);
+		}
+	}
 }
 
 /* The name stands in for a title that did not come. */
@@ -369,7 +404,7 @@ static void event(const char *line)
 		field(line, "album", v, sizeof v);
 		if (v[0]) snprintf(g_now.album, sizeof g_now.album, "%s", v);
 		field(line, "len", v, sizeof v);
-		g_now.len = atof(v);
+		g_now.len = atof(v) > 0 ? atof(v) : g_len_fixed;
 	} else if (!strncmp(line, "POS", 3)) {
 		double at;
 
@@ -617,18 +652,35 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
 	t = muq_current(&g_order);
 	g_now.state = MU_STOPPED;
 	g_now.title[0] = '\0';
-	if (t >= 0 && t < g_qn)
-		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
-		              g_now.title, sizeof g_now.title);
+	g_len_fixed = 0;
+	if (t >= 0 && t < g_qn) {
+		static musec_remote r;
+
+		if (g_resolve && g_resolve(g_q[t], &r)) {
+			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+			g_len_fixed = r.len;
+			memset(r.url, 0, sizeof r.url);
+		} else {
+			ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+			              g_now.title, sizeof g_now.title);
+		}
+	}
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
-	g_now.len = 0;
+	g_now.len = g_len_fixed;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }
 
 const char *musec_orphan(void) { return g_orphan; }
+
+void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
+                      bool (*owns)(const char *daemon_path, const char *rel))
+{
+	g_resolve = resolve;
+	g_owns = owns;
+}
 
 void musec_adopt(const char *const *paths, int n, int start, bool book, double speed,
                  const char *artist, const char *album)

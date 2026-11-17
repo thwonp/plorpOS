@@ -58,6 +58,22 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
  * restarted inside the 5 s before a save), relative to the root; "" if
  * nothing. Cleared by any new queue. */
 const char *musec_orphan(void);
+
+/* A queue entry the daemon cannot open by its path (plorpos-1lw): a Plex
+ * track, kept in the queue - and in the queue file - as a path in the Plex
+ * cache with no file behind it. `resolve` turns one into what the daemon is
+ * sent (a stream URL, or a downloaded copy) plus what the file's tags may not
+ * say; false for a path that is not one of its own. `owns` says whether the
+ * daemon's path is the one a queue entry resolved to, for taking up a Muse
+ * that outlived the launcher. The URL carries an account token: it goes to
+ * the daemon and nowhere else - never into a log. */
+typedef struct {
+	char url[2048];
+	char title[128], artist[128];
+	double len;
+} musec_remote;
+void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
+                      bool (*owns)(const char *daemon_path, const char *rel));
 /* The queue for what Muse is already playing, paths[start], without a PLAY:
  * Muse plays on and the queue follows it (plorpos-3yv.71). n 0: only forgets
  * the orphan. */

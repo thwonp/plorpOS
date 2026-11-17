@@ -53,6 +53,18 @@ long net_post_buf(const net_field *f, int n, char *out, size_t outn, int timeout
 long net_get_buf(const char *url, const net_field *f, int n, char *out,
                  size_t outn, int timeout_s);
 
+/* A blocking request of any method, with headers, its body written to
+ * `out_path` - for Plex (plorpos-1lw), whose replies run to megabytes and
+ * whose downloads are whole albums, and only ever from a worker thread.
+ * Returns the HTTP status (a 4xx or 5xx leaves no body), 0 when no server
+ * answered, -1 when curl could not run or `cancel` became non-zero, which
+ * kills the transfer within 50 ms. Timeouts of 0 are curl's defaults; a
+ * stalled transfer (under 1 KB/s for 30 s) fails either way. Headers and the
+ * URL go in the 0600 config file, never argv: both carry tokens. */
+int net_fetch(const char *url, const char *method, const char *const *headers, int nh,
+              const char *out_path, int connect_s, int timeout_s,
+              const volatile int *cancel);
+
 /* The same request, started and left to run. Nothing waits for it.
  *
  * This exists because a launch was 15ms warm and a request to RetroAchievements
