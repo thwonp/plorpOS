@@ -1,5 +1,7 @@
 # Installing on the Anbernic RG DS
 
+*There is no RG DS release yet. This guide is for the next release.*
+
 On the RG DS, plorpOS is a whole microSD card image: flash it, put the card in,
 turn the RG DS on. Underneath is a trimmed ROCKNIX (its emulators and
 EmulationStation removed). The RG DS's own system on its internal storage is

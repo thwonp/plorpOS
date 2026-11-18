@@ -282,8 +282,8 @@ is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
 Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
 Rescan Folder for music copied on while the device was running, Playback
-Settings (not on the Miyoo Mini Flip), and Source: the card's music, or
-[Plex](#plex).
+Settings (not on the Miyoo Mini Flip), and, from the next release, Source: the
+card's music, or [Plex](#plex).
 
 **Show** switches the shelf between music and audiobooks, and is there only
 when the card has both. Muse opens on whichever you left it on, except that
@@ -366,9 +366,9 @@ no Album Art. A book's cover is the one its files carry, or the picture in its
 folder: one named cover or folder, or the only one there.
 
 With something playing or paused, SELECT goes straight to **Now Playing**: the
-cover (with what's playing in its corner, such as FLAC 16/44.1 or OPUS 128),
-where the track comes from (Source: Local or Plex), the track, where in it
-you are, and what comes next.
+cover, the track, where in it you are, and what comes next. From the next
+release it also shows the format in the cover's corner (such as FLAC 16/44.1
+or OPUS 128) and where the track comes from (Source: Local or Plex).
 
 | | |
 |---|---|
@@ -442,6 +442,8 @@ cover may be added later. MusicBrainz takes a request a second, so a large
 library takes a while: seven albums took a minute on the Brick.
 
 ### Plex
+
+*Coming in the next release; not in v1.9.x.*
 
 Muse can play a Plex music library instead of the card's. Set **Source** to
 Plex in Muse's MENU. The first time it asks you to sign in: open
