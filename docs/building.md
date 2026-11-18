@@ -47,6 +47,7 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 | Anbernic H700 (BaseOS) | `mk/fetch-h700-sysroot.sh` (~10 min) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-h700.sh`, `mk/build-sdl2-armhf.sh` | `make PLATFORM=h700 && make PLATFORM=h700 payload` -> `out/h700/`, zip |
 | RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`); image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `ROTATE_STAGE=out/rotate mk/rotate-deploy.sh stage` (update folder) and `mk/rotate-image.sh` (card image) |
 | Miyoo Mini Flip | `mk/fetch-miyoo-sysroot.sh` | `docker build -t miyoo-toolchain -f mk/miyoo-toolchain.Dockerfile mk`; cores: `sh mk/flip-cores/build-all.sh` | `make PLATFORM=miyoo`, then `mk/miyoo-deploy.sh package` and `verify` |
+| MagicX Zero 40 (oakMOSS) | the Brick's, `mk/fetch-sysroot.sh`; and the H700's (`mk/fetch-h700-sysroot.sh`) for Muse's FFmpeg | `mk/build-dsperate-brick.sh`, `mk/build-dropbear-zero40.sh`; diatom `make PORT=zero40` | `make PLATFORM=zero40 && make PLATFORM=zero40 payload` -> `out/zero40/`, zip |
 | RG Nano | `mk/fetch-nano-sdk.sh` | none | `make nano-zip` (update zip), `make nano-kernel && make nano-image` (card image) |
 
 Notes:
@@ -118,6 +119,7 @@ Each shot prints the screen and focused item on stderr.
 | H700 | `mk/h700-deploy.sh elf\|diatom\|muse\|all\|ds` | adb; cable attached at power-on |
 | Rotate | `mk/rotate-deploy.sh elf\|diatom\|all\|boot\|stage` | ssh, `ROTATE_HOST`, `ROTATE_KEY` |
 | Flip | `mk/miyoo-deploy.sh all\|elf\|diatom\|cores\|hook` | ssh over Wi-Fi only (USB is charge-only), `MIYOO=root@<ip>` |
+| Zero 40 | `adb push` to `/mnt/SDCARD/plorpOS/` (`.new`, then `mv`), then kill `tortos.elf` (launch.sh restarts it) | adb over USB (oakMOSS's gadget, root); ssh once Wi-Fi is on |
 
 ## Layout
 

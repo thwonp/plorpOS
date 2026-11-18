@@ -124,7 +124,7 @@ one of which ships in the device's own firmware. The eight compression and
 codec libraries TortOS once carried were a previous emulator's dependencies and
 left with it.
 
-### Anbernic H700 on BaseOS (`plorpOS/lib/` on the H700 card only)
+### Anbernic H700 on BaseOS (`plorpOS/lib/` on the H700 card; FFmpeg on the Zero 40's too)
 
 BaseOS has no aarch64 SDL2 and no FFmpeg, so the H700 card carries both,
 built from upstream source by `mk/fetch-h700-sysroot.sh` (tarball URLs and
@@ -146,6 +146,10 @@ tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
 `938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`), and the
 script above rebuilds the shipped libraries from it. The LGPL's text ships on
 the card beside them as `plorpOS/lib/COPYING.LGPLv2.1`.
+
+The MagicX Zero 40's card carries the same five FFmpeg libraries, copied from
+this build, in its own `plorpOS/lib/` with the LGPL's text: oakMOSS has no
+FFmpeg for Muse either. Its SDL2 is oakMOSS's own.
 
 ### Ports on the Brick (`plorpOS/brick/portmaster/`)
 
@@ -282,7 +286,7 @@ GPL core is that tarball plus the patches named there), by
 | `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
 | `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
 
-## Network tools (Miyoo Mini Flip only)
+## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40 too)
 
 - `plorpOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
@@ -292,6 +296,8 @@ GPL core is that tarball plus the patches named there), by
   and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
   from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
   Off until switched on in Network Services; login plorpos / plorpos or a key.
+- `plorpOS/dropbearmulti` (MagicX Zero 40 only) - the same **Dropbear SSH** source and licence, built for
+  aarch64 by `mk/build-dropbear-zero40.sh`. Off until switched on in Network Services; key login only.
 
 ## Wi-Fi driver (Miyoo Mini Flip only)
 
