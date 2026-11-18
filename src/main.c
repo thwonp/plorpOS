@@ -4221,6 +4221,19 @@ static cf_layout sys_layout(const cf_layout *base)
 	cf_layout lay = *base;
 
 	lay.reflect_gap = CARD_SETS[g_cards].reflect_gap;
+	/* Plain Jane in the portrait column: a square card, 72% of the screen
+	 * across (owner, 2026-11-17). Its 640x820 drawings widen by stretching
+	 * x 55 and 584, columns that are flat all the way down on every card
+	 * (the border beside the icon), so the icon and the name keep their
+	 * pixels. Fancy Pants has no frame to widen and keeps its own. */
+	if (CARD_SETS[g_cards].labeled && UI_PORTRAIT) {
+		lay.p_width = 0.72f;
+		lay.p_aspect = 1.0f;
+		lay.p_step = 0.86f;
+		lay.side_scale = 0.40f;
+		lay.p_slice_l = 55.0f / 640;
+		lay.p_slice_r = 584.0f / 640;
+	}
 	return lay;
 }
 
@@ -4280,6 +4293,14 @@ static void draw_systems(app *a)
 	 * the button goes down - seven cards move at once and the eye is on them. */
 	const system_cfg *label = s;
 	float label_a = 1.0f;
+
+	/* In the column the cards pass through where the words sit: they fade
+	 * out while it moves and back as it lands. */
+	if (col && a->cf_sys.active) {
+		float off = fabsf(a->cf_sys.pos - roundf(a->cf_sys.pos));
+
+		label_a = off > 0.25f ? 0.0f : 1.0f - off * 4.0f;
+	}
 
 	/* Art that does not name itself gets named here, in the gap between the
 	 * card and the count, which is where the classic cards carry it. */

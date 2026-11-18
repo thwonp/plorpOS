@@ -88,6 +88,12 @@ typedef struct {
 	 * next card as a fraction of the focused card's height. 0 p_width keeps
 	 * the row (cf_vertical). */
 	float p_width, p_center_y, p_step;
+	/* A frame of its own shape in the column (width / height; 0: aspect),
+	 * and the art widened to it by stretching only two columns of texture
+	 * (p_slice_l, p_slice_r, as fractions of its width) that are the same
+	 * all the way across their strip - a drawn card's flat border beside
+	 * its icon - so the icon and the name keep their pixels. 0: contained. */
+	float p_aspect, p_slice_l, p_slice_r;
 } cf_layout;
 
 /* Whether this layout draws as a column on this screen. */

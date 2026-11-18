@@ -133,7 +133,7 @@ void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *o
 	int top = (screen_h - CF_STAGE_H) / 2;
 
 	if (cf_vertical(lay, screen_w, screen_h)) {
-		float vw = screen_w * lay->p_width, vh = vw / lay->aspect;
+		float vw = screen_w * lay->p_width, vh = vw / (lay->p_aspect > 0 ? lay->p_aspect : lay->aspect);
 
 		out->w = (int)vw;
 		out->h = (int)vh;
@@ -455,8 +455,28 @@ static void render_quad(SDL_Renderer *r, SDL_Texture *tex,
  * row's yaw turned a quarter, strips across rather than down, no reflection.
  * ahw/ahh are the fitted art's half sizes (draw_card's fit). */
 static void draw_card_v(SDL_Renderer *r, SDL_Texture *tex, float ox, float oy,
-                        float ahw, float ahh, float ang, Uint8 alpha, int strips)
+                        float ahw, float ahh, float ang, Uint8 alpha, int strips,
+                        int tw, int th, float sl, float sr)
 {
+	/* Columns across: the whole texture, or five pieces whose middle three
+	 * keep the texture's own scale and whose two slice columns take up the
+	 * rest of the frame's width (cf_layout.p_slice_l/_r). */
+	float cu[6] = { 0, 1 }, cx[6] = { -ahw, ahw };
+	int nc = 1;
+
+	if (sl > 0 && sr > sl && tw > 0 && th > 0) {
+		float k = 2.0f * ahh / th;                  /* screen units per texel */
+		float w0 = sl * tw * k, w2 = (sr - sl) * tw * k, w4 = (1 - sr) * tw * k;
+		float gap = 2.0f * ahw - w0 - w2 - w4;     /* the two slices share it */
+
+		if (gap > 0) {
+			float sw = gap / 2;
+			cu[0] = 0; cu[1] = sl; cu[2] = sl + 1.0f / tw; cu[3] = sr; cu[4] = sr + 1.0f / tw; cu[5] = 1;
+			cx[0] = -ahw; cx[1] = cx[0] + w0; cx[2] = cx[1] + sw; cx[3] = cx[2] + w2;
+			cx[4] = cx[3] + sw; cx[5] = ahw;
+			nc = 5;
+		}
+	}
 	cf_proj p = {
 		.ox = oy, .oy = ox,       /* transposed: the row's x is the column's y */
 		.cosa = cosf(ang), .sina = sinf(ang),
@@ -474,15 +494,17 @@ static void draw_card_v(SDL_Renderer *r, SDL_Texture *tex, float ox, float oy,
 		float ly0 = -ahh + v0 * 2.0f * ahh, ly1 = -ahh + v1 * 2.0f * ahh;
 		float a0, b0, a1, b1, a2, b2, a3, b3;
 
-		/* proj_point works in (along, across): along is y here. */
-		proj_point(&p, ly0, -ahw, &a0, &b0);
-		proj_point(&p, ly0, +ahw, &a1, &b1);
-		proj_point(&p, ly1, +ahw, &a2, &b2);
-		proj_point(&p, ly1, -ahw, &a3, &b3);
-		{
-			float xy[8] = { b0, a0, b1, a1, b2, a2, b3, a3 };
-			float uv[8] = { 0, v0, 1, v0, 1, v1, 0, v1 };
-			render_quad(r, tex, xy, uv, body);
+		for (int c = 0; c < nc; c++) {
+			/* proj_point works in (along, across): along is y here. */
+			proj_point(&p, ly0, cx[c], &a0, &b0);
+			proj_point(&p, ly0, cx[c + 1], &a1, &b1);
+			proj_point(&p, ly1, cx[c + 1], &a2, &b2);
+			proj_point(&p, ly1, cx[c], &a3, &b3);
+			{
+				float xy[8] = { b0, a0, b1, a1, b2, a2, b3, a3 };
+				float uv[8] = { cu[c], v0, cu[c + 1], v0, cu[c + 1], v1, cu[c], v1 };
+				render_quad(r, tex, xy, uv, body);
+			}
 		}
 	}
 }
@@ -541,7 +563,9 @@ static void draw_card(SDL_Renderer *r, SDL_Texture *tex, int tw, int th,
 	}
 
 	if (g_cf_vert) {
-		draw_card_v(r, tex, ox, oy, ahw, ahh, ang, alpha, lay->strips);
+		if (lay->p_slice_l > 0) { ahw = hw; ahh = hh; }   /* the frame's own shape */
+		draw_card_v(r, tex, ox, oy, ahw, ahh, ang, alpha, lay->strips,
+		            tw, th, lay->p_slice_l, lay->p_slice_r);
 		return;
 	}
 
@@ -681,7 +705,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 
 	if (vert) {
 		cw = screen_w * lay->p_width;
-		ch = cw / lay->aspect;
+		ch = cw / (lay->p_aspect > 0 ? lay->p_aspect : lay->aspect);
 		step = ch * lay->p_step;
 		cy = screen_h * lay->p_center_y;
 	}
