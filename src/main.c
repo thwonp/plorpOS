@@ -226,6 +226,11 @@ static void font_apply(bool head, int k)
  * layout_step rings match. */
 #if defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE)
 static const int DS_RING[] = { 11, 4, 6, 7 };
+#elif defined(PLATFORM_ZERO40)
+/* Even Split first: on the Zero 40's 480x800 the DS frame as it comes, top
+ * screen over bottom, is the panel's own shape - 480x720, both screens the
+ * full width (plorpos-auv.4). Diatom's DS_PAIRS row for it matches. */
+static const int DS_RING[] = { 6, 11, 7, 9 };
 #else
 static const int DS_RING[] = { 11, 7, 9 };
 #endif
@@ -520,6 +525,11 @@ static void display_load(app *a)
 	if (plat_screen_w * 3 <= plat_screen_h * 4)
 		for (i = 0; i < a->sys.count; i++) a->view[i].dmode = DMODE_ASPECT;
 #endif
+	/* A portrait panel (the Zero 40) has nothing for Stretch to fill but a
+	 * landscape game pulled twice as tall: Aspect, the game's own shape,
+	 * across the width (plorpos-auv.4). */
+	if (UI_PORTRAIT)
+		for (i = 0; i < a->sys.count; i++) a->view[i].dmode = DMODE_ASPECT;
 	for (i = 0; i < a->sys.count; i++) {
 		snprintf(key, sizeof key, "display.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
@@ -19982,6 +19992,10 @@ int main(int argc, char *argv[])
 	t_mark("diatom connect");
 
 	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
+	/* The screen's shape is known only now: the portrait default (Aspect,
+	 * display_load) needs it. Portrait only - every landscape device keeps
+	 * what the first read gave it (plorpos-auv.4). */
+	if (UI_PORTRAIT) display_load(&a);
 #if defined(PLATFORM_RGDS)
 	plat_set_primary_bottom(g_dual_bottom);   /* Primary Screen (plorpos-rgds.18.1.3) */
 #endif
