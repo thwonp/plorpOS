@@ -9,7 +9,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WHAT=${1:-all}
-P=/mnt/SDCARD/TortOS
+P=/mnt/SDCARD/plorpOS
 case $WHAT in elf|all)
 	[ -f "$ROOT/build/pmtools.squashfs" ] || { echo "run mk/build-pmtools-brick.sh first"; exit 1; }
 	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }

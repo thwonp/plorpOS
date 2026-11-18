@@ -18,7 +18,7 @@ echo "installing to $CARD"
 # every file on a FAT volume. They are junk, and they show up in a ROM folder
 # as games.
 export COPYFILE_DISABLE=1
-for item in TortOS .tmp_update trimui .system Roms Bios Saves; do
+for item in plorpOS .tmp_update trimui .system Roms Bios Saves; do
 	[ -e "$OUT/$item" ] || continue
 	# copy the tree in without clearing anything else at the destination
 	( cd "$OUT" && tar -cf - "$item" ) | ( cd "$CARD" && tar -xf - )
@@ -40,7 +40,7 @@ if [ -d "$CARD/DO_NOT_TOUCH" ]; then
 		exit 1
 	fi
 fi
-echo "done. $(du -sh "$CARD/TortOS" | cut -f1) in $CARD/TortOS"
+echo "done. $(du -sh "$CARD/plorpOS" | cut -f1) in $CARD/plorpOS"
 
 # EJECT, do not just sync.
 #

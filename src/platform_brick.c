@@ -49,7 +49,7 @@
 #define CODE_PRO_FN_RIGHT KEY_F2
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). */
-const char *P_ROOT = "/mnt/SDCARD/TortOS";
+const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/tg3040";
@@ -57,8 +57,8 @@ const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
 /* Over The Hare's page. On the card rather than in the binary so it can be
  * restyled with a text editor and a reload, which is the whole argument for
  * a file-transfer feature existing at all. */
-const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
-const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
+const char *P_WEB = "/mnt/SDCARD/plorpOS/res/web";
+const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
@@ -71,9 +71,9 @@ const char *const plat_child_env[] = {
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
-const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
+const char *const plat_pico8_preload = "/mnt/SDCARD/plorpOS/pico8sdl.so";
 /* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */
-const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
+const char *const plat_pico8_path = "/mnt/SDCARD/plorpOS/pico8";
 
 /* The brightness keys, as the Controls page names them. */
 const char *plat_bright_keys(void) { return "Menu+Vol"; }   /* plorpos-reo.22 */

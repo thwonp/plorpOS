@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 C=$1 N=$2; shift 2
 DEV=${MIYOO:-root@192.168.0.73}
 SO=../../build/flip-cores/out/${C}_libretro.so
-T=/mnt/SDCARD/TortOS/cores-pgo
+T=/mnt/SDCARD/plorpOS/cores-pgo
 ssh -n "$DEV" "mkdir -p $T; rm -rf /tmp/pgo/$C; echo 0 > /sys/class/gpio/gpio44/value"   # speaker amp off: runs are muted
 ssh "$DEV" "cat > $T/${C}_libretro.so" < "$SO"
 for rom in "$@"; do

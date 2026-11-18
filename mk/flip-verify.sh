@@ -24,25 +24,26 @@ done > "$W.hits"
 [ -s "$W.hits" ] && fail "Allium/RetroArch strings in: $(tr '\n' ' ' < "$W.hits")"
 rm -f "$W.hits"
 
-for so in TortOS/cores/*_libretro.so; do
+for so in plorpOS/cores/*_libretro.so; do
 	c=$(basename "$so" _libretro.so); m=$(md5sum < "$so" | cut -c1-32)
 	want=$(awk -F'\t' -v c="$c" '$1==c{print $7}' "$LOCK")
 	[ "$m" = "$want" ] || fail "core $c md5 $m, cores.lock says ${want:-nothing}"
 	[ -f "$OLD" ] && grep -q "^$m " "$OLD" && fail "core $c is an old prebuilt ($m)"
 done
-[ -n "$(ls TortOS/cores 2>/dev/null)" ] || fail "no cores"
+[ -n "$(ls plorpOS/cores 2>/dev/null)" ] || fail "no cores"
 
-[ "$(md5sum < TortOS/8188fu.ko | cut -c1-32)" = "$DRV" ] || fail "8188fu.ko is not the pinned driver"
+[ "$(md5sum < plorpOS/8188fu.ko | cut -c1-32)" = "$DRV" ] || fail "8188fu.ko is not the pinned driver"
 grep -qE '^[^#]*exec ' .tmp_update/updater && fail "the hook execs something"
-grep -E '^[^#]*(/mnt/SDCARD|\$ROOT)/[^ "]*' -o .tmp_update/updater | sort -u |
-	grep -vE 'TortOS/(launch\.sh|\.boot-idle|\.fallback-test)$|\.tmp_update(\.off)?$' > "$W.ref"
+# $L is plorpOS/, or TortOS/ on a card the rename has not reached (plorpos-nzi).
+grep -E '^[^#]*(/mnt/SDCARD|\$ROOT|\$L)/[^ "]*' -o .tmp_update/updater | sed 's/^[^#]*\(\/mnt\/SDCARD\|\$ROOT\|\$L\)\//\1\//' | sort -u |
+	grep -vE '(plorpOS|\$L)/(launch\.sh|\.boot-idle|\.fallback-test)$|\.tmp_update(\.off)?$|^\$ROOT/(plorpOS|TortOS)$' > "$W.ref"
 [ -s "$W.ref" ] && fail "the hook refers outside the zip: $(tr '\n' ' ' < "$W.ref")"
 rm -f "$W.ref"
-for b in TortOS/bin/dropbearmulti TortOS/ssh.sh TortOS/launch.sh; do
+for b in plorpOS/bin/dropbearmulti plorpOS/ssh.sh plorpOS/launch.sh; do
 	[ -f "$b" ] || fail "missing $b"
 done
 grep -qiE '(^|[^g])allium' INSTALL-FLIP.md && fail "install page mentions Allium"
 
-echo "zip $(basename "$Z"): $(du -h "$Z" | cut -f1), $(find . -type f | wc -l) files, $(ls TortOS/cores | wc -l) cores"
+echo "zip $(basename "$Z"): $(du -h "$Z" | cut -f1), $(find . -type f | wc -l) files, $(ls plorpOS/cores | wc -l) cores"
 [ $F = 0 ] && echo "verify: PASS" || echo "verify: FAIL"
 exit $F

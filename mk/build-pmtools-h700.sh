@@ -38,7 +38,7 @@ ln -s ../bash "$DL/tree/bin/bash"
 # BaseOS and our SDL2 build have only libSDL2-2.0.so.0. An absolute link to the
 # card's copy: dlopen finds the same file, so the same SDL.
 mkdir -p "$DL/tree/lib"
-ln -s /mnt/SDCARD/TortOS/lib/libSDL2-2.0.so.0 "$DL/tree/lib/libSDL2.so"
+ln -s /mnt/SDCARD/plorpOS/lib/libSDL2-2.0.so.0 "$DL/tree/lib/libSDL2.so"
 # PortMaster's own GUI (pugwash, pysdl2) needs SDL2_mixer, which BaseOS lacks:
 # mk/build-sdl2mixer-h700.sh. pysdl2 asks for the name "SDL2_mixer".
 [ -f "$OUT/libSDL2_mixer-2.0.so.0" ] || { echo "no $OUT/libSDL2_mixer-2.0.so.0; run: mk/build-sdl2mixer-h700.sh" >&2; exit 1; }

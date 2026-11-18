@@ -15,7 +15,7 @@ Download the Brick zip from
 It goes on the card as it is, this guide (`INSTALL.md`) included:
 
 ```
-TortOS/      tortos.elf  diatom  muse  launch.sh  systems.cfg
+plorpOS/     tortos.elf  diatom  muse  launch.sh  systems.cfg
              cards/  cores/  res/  LICENSES/  ...
 .tmp_update/ and trimui/   hand the Brick's boot to plorpOS
 Roms/        NES/  SNES/  Game Boy/ ...   one per console
@@ -137,13 +137,23 @@ On the plain Brick, a plugged-in 3.5 mm cable takes priority even when Audio
 Output is set to Speaker. A speaker override with the jack inserted has not
 worked with the firmware's exposed audio controls.
 
+## Updating from an earlier version
+
+Copy everything in the new zip onto the card, replacing what's there. Your
+settings, saves, play time and achievements live in `.userdata/` and `Saves/`
+and stay as they are.
+
+Before v1.10 the launcher's folder was `TortOS/`. The first start after
+updating moves whatever is still in it that the new `plorpOS/` does not have
+(your own PICO-8 files, for one) and deletes the rest.
+
 ## Removing plorpOS
 
 Take the card out. The Brick boots its own system again.
 
 Before you reformat the card or give the Brick away:
 
-- **Copy `TortOS/bootlogo.stock.bmp` and `TortOS/splash.stock.png` somewhere
+- **Copy `plorpOS/bootlogo.stock.bmp` and `plorpOS/splash.stock.png` somewhere
   safe.** They're the Brick's original boot pictures, and the card holds the
   only copy.
 - **Forget your Wi-Fi networks** with X in Network Services. Their passwords

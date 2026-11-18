@@ -494,7 +494,7 @@ Three things about that are yours to choose, and they are independent.
 **UI Theme** picks the art. `Plain Jane` is a drawn card per system, with the
 name on it. `Fancy Pants` is a photograph of the console itself, background
 removed, and because a photograph does not name itself the shelf writes the
-name underneath. The art is in `TortOS/cards/` on the card.
+name underneath. The art is in `plorpOS/cards/` on the card.
 
 **System Order** picks the order of the systems. `Year` is release order, with
 PICO-8 and Arcade first. `A-Z` is by name. `Maker` groups them - Arcade,

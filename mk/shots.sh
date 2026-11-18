@@ -7,7 +7,7 @@
 # coming back empty. The shots are deterministic - same source, same card,
 # same image, same bytes - which is what mk/shots.Dockerfile is for.
 #
-# The card is a copy of a real one (TortOS/, .userdata/, Saves/, the Roms
+# The card is a copy of a real one (plorpOS/, .userdata/, Saves/, the Roms
 # tree's .media art, the ROMs themselves as empty files). It is mounted as an
 # overlay, so whatever a shot writes - the library db, a log - is thrown away
 # and every run starts from the same card.
@@ -67,10 +67,10 @@ docker run --rm -e TORTOS_WINDOW="${SHOT_WINDOW:-}" -e SHOT_BATT="${SHOT_BATT:-8
 set -e
 make -f mk/native.mk VERSION=shots TP_OUT=build-native/tp-shots > /out/.build.log 2>&1 ||
 	{ tail -20 /out/.build.log; exit 1; }
-export TORTOS_ROOT=/card/TortOS TORTOS_CARD=/card TORTOS_ROMS=/card/Roms \
+export TORTOS_ROOT=/card/plorpOS TORTOS_CARD=/card TORTOS_ROMS=/card/Roms \
        TORTOS_USERDATA=/card/.userdata/tg3040 \
        TORTOS_SHARED=/card/.userdata/shared \
-       TORTOS_FONT=/card/TortOS/menu.ttf TORTOS_FAKE_BATT=$SHOT_BATT
+       TORTOS_FONT=/card/plorpOS/menu.ttf TORTOS_FAKE_BATT=$SHOT_BATT
 # No font is not an error to the launcher - it draws the shelf without text -
 # and every panel would be a collapsed line in every shot.
 [ -s "$TORTOS_FONT" ] || { echo "no font at $TORTOS_FONT"; exit 1; }

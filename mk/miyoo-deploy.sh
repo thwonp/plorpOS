@@ -54,7 +54,7 @@ fi
 
 # One tar over one ssh: the card is FAT, so no permissions or links to keep.
 push() { # staging dir
-	tar -C "$1" -cf - . | $SSH 'mkdir -p /mnt/SDCARD/TortOS && tar -C /mnt/SDCARD/TortOS -xf - && sync'
+	tar -C "$1" -cf - . | $SSH 'mkdir -p /mnt/SDCARD/plorpOS && tar -C /mnt/SDCARD/plorpOS -xf - && sync'
 }
 S=$B/stage
 rm -rf "$S"; mkdir -p "$S"
@@ -103,7 +103,7 @@ stage_all() {
 	# The firmware has no curl (plorpos-f1p.36): ours, built by mk/flip-cores/build-curl.sh.
 	[ -f "$FLIP_CURL" ] || { echo "no curl at $FLIP_CURL (run mk/flip-cores/build-curl.sh, or set FLIP_CURL)" >&2; exit 1; }
 	cp "$FLIP_CURL" "$S/curl"; chmod +x "$S/curl"
-	cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$S/"
+	cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$ROOT/sd/tortos/folder-move.sh" "$S/"
 	mkdir -p "$S/pico8"; cp "$ROOT/sd/tortos/pico8/wget" "$S/pico8/"   # Splore's downloads over HTTPS (the shim says why)
 	flip_cfg "$S/systems.cfg"
 	# ssh, off until switched on in Network Services (plorpos-f1p.62.2).
@@ -136,9 +136,9 @@ stage_all() {
 stage_package() {
 	command -v zip >/dev/null || { echo "need zip" >&2; exit 1; }
 	R=$B/card; rm -rf "$R"; mkdir -p "$R/.tmp_update"
-	cp -R "$S/." "$R/TortOS/"
+	cp -R "$S/." "$R/plorpOS/"
 	cp "$ROOT/sd/miyoo/updater" "$R/.tmp_update/updater"; chmod +x "$R/.tmp_update/updater"
-	stage_cores "$S/systems.cfg" "$R/TortOS/cores"
+	stage_cores "$S/systems.cfg" "$R/plorpOS/cores"
 	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$S/systems.cfg" |
 		while read -r d; do mkdir -p "$R/Roms/$d"; done
 	mkdir -p "$R/Bios" "$R/Saves"
@@ -151,7 +151,7 @@ stage_package() {
 case $MODE in
 elf)    cp "$B/tortos.elf" "$B/flip-pico8.so" "$S/"; mkdir -p "$S/pico8"; cp "$ROOT/sd/tortos/pico8/wget" "$S/pico8/" ;;   # the launcher and native PICO-8's files
 diatom) cp "$DIATOM" "$S/diatom" ;;
-launch) cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$S/" ;;
+launch) cp "$ROOT/sd/miyoo/launch.sh" "$ROOT/sd/miyoo/ssh.sh" "$ROOT/sd/tortos/folder-move.sh" "$S/" ;;
 cfg)    flip_cfg "$S/systems.cfg" ;;
 cores)  flip_cfg "$B/systems.cfg.cores"; stage_cores "$B/systems.cfg.cores" "$S/cores" ;;
 libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
@@ -164,4 +164,4 @@ cards)  mkdir -p "$S/cards"; cp -R "$ROOT/res/cards/." "$S/cards/"; rm -rf "$S/c
 esac
 [ "$MODE" = package ] && exit 0
 push "$S"
-echo "deployed $MODE to $MIYOO:/mnt/SDCARD/TortOS ($(md5sum "$B/tortos.elf" | cut -c1-8) tortos.elf)"
+echo "deployed $MODE to $MIYOO:/mnt/SDCARD/plorpOS ($(md5sum "$B/tortos.elf" | cut -c1-8) tortos.elf)"

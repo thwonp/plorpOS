@@ -336,7 +336,7 @@ static int dmode_step(const char *tag, int cur, int d)
 
 typedef struct {
 	systems_cfg sys;
-	/* TortOS/shaders/shaders.cfg; None alone where there is no such file,
+	/* plorpOS/shaders/shaders.cfg; None alone where there is no such file,
 	 * which is every Brick - and then nothing about shaders is ever sent. */
 	sl_list shaders;
 

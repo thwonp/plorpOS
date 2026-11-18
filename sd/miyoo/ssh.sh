@@ -6,11 +6,11 @@
 # Log in as plorpos / plorpos (owner, 2026-11-10): a root-equivalent account
 # (uid 0, home /mnt/SDCARD) added to a copy of the firmware's /etc/passwd in
 # /tmp, bind-mounted over the read-only original. Keys work too: put yours in
-# TortOS/ssh/authorized_keys (for root or plorpos). The card is FAT, where
+# plorpOS/ssh/authorized_keys (for root or plorpos). The card is FAT, where
 # every file reads as world-writable and dropbear refuses such a key file, so
 # it is copied to a private folder in /tmp. The host key is made on the first
-# start and kept in TortOS/ssh.
-D=/mnt/SDCARD/TortOS
+# start and kept in plorpOS/ssh.
+D=/mnt/SDCARD/plorpOS
 K=$D/ssh
 PID=/tmp/dropbear.pid
 RUN=/tmp/ssh

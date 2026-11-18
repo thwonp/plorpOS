@@ -39,13 +39,13 @@
 #include "platform_dev.h"
 
 /* The card is the Flip's only storage, at Miyoo's spelling. */
-const char *P_ROOT = "/mnt/SDCARD/TortOS";
+const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/miyooflip";
 const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
-const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
-const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
+const char *P_WEB = "/mnt/SDCARD/plorpOS/res/web";
+const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
@@ -58,14 +58,14 @@ const char *const plat_child_env[] = {
 };
 /* Our SDL2 and FFmpeg live on the card (the firmware has SDL 1.2 only), and
  * a standalone diatom needs the firmware's libmi_* for MI_AO and MI_GFX. */
-const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib:/config/lib:/customer/lib";
+const char plat_child_libpath[] = ":/mnt/SDCARD/plorpOS/lib:/config/lib:/customer/lib";
 /* Native PICO-8 (plorpos-f1p.78): the owner's Raspberry Pi build, Bios/pico8_dyn,
  * on our SDL2, whose dummy video driver the preload draws from onto fb0 - with
  * the buttons and the sound (tools/flip-pico8.c). The pad slot, an env(1)
  * argument on every H700-branch build, names that driver here: SDL2 would not
  * pick a demand-only driver on its own. */
-const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/flip-pico8.so";
-const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
+const char *const plat_pico8_preload = "/mnt/SDCARD/plorpOS/flip-pico8.so";
+const char *const plat_pico8_path = "/mnt/SDCARD/plorpOS/pico8";
 const char plat_pico8_pad[] = "SDL_VIDEODRIVER=dummy";
 
 bool plat_is_brick_pro(void) { return false; }

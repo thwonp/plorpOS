@@ -876,9 +876,9 @@ adb-restart-all:
 # Run the launcher by hand with its output on your terminal: the fastest way
 # to tell "the scan is wrong" from "the display is wrong".
 adb-run:
-	$(ADBSEL) shell 'killall -q tortos.elf; cd /mnt/SDCARD/TortOS && \
+	$(ADBSEL) shell 'killall -q tortos.elf; cd /mnt/SDCARD/plorpOS && \
 	  ROMS_PATH=/mnt/SDCARD/Roms \
-	  LD_LIBRARY_PATH=/mnt/SDCARD/TortOS/lib:/usr/trimui/lib \
+	  LD_LIBRARY_PATH=/mnt/SDCARD/plorpOS/lib:/usr/trimui/lib \
 	  ./tortos.elf 2>&1' | head -60
 
 adb-log:
@@ -925,8 +925,8 @@ deploy: all
 	@# into a header rather than onto a compile line.
 	@tar -cf - -C build tortos.elf setbright muse musectl btplayer -C ../config systems.cfg \
 	    -C ../sd/tortos launch.sh bt-alsa.sh radio.sh -C ../../res/fonts menu.ttf head.ttf josefin.ttf lato.ttf | \
-	    $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
-	@tar -cf - -C res cards | $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
+	    $(SSH) 'tar -xf - -C /mnt/SDCARD/plorpOS'
+	@tar -cf - -C res cards | $(SSH) 'tar -xf - -C /mnt/SDCARD/plorpOS'
 
 restart:
 	@$(SSH) 'killall -q tortos.elf; exit 0'

@@ -6,39 +6,39 @@ the configs, scripts and generated art written for this project - is licensed
 keep NextUI's **PolyForm Noncommercial 1.0.0** (`LICENSES/`). It is a fork of
 Eric Reinsmidt's TortOS, also MIT.
 
-A built TortOS card (`out/sd/`) also redistributes third-party software that
+A built plorpOS card (`out/sd/`, `out/gkd/`, `out/h700/`) also redistributes third-party software that
 keeps its own license. This file lists those components and their terms, and is
-copied onto the card as `TortOS/THIRD-PARTY-LICENSES.md` by `mk/payload.sh`.
+copied onto the card as `plorpOS/THIRD-PARTY-LICENSES.md` by `mk/payload.sh`.
 
 ---
 
 ## diatom (the in-game libretro host)
 
 - **Origin:** an independent frontend, built in its own repository and shipped
-  as `TortOS/diatom`. This fork's copy: https://github.com/thwonp/diatom
+  as `plorpOS/diatom`. This fork's copy: https://github.com/thwonp/diatom
   (upstream: https://github.com/ericreinsmidt/diatom)
 - **License:** **MIT**, like plorpOS, except its NextUI-derived parts
   (fast-forward, rewind and the hotkeys), which are PolyForm Noncommercial
   1.0.0 - its `NOTICE` lists them. Its vendored `libretro.h` and `rcheevos`
   stay MIT, `lz4` BSD-2-Clause and `stb_image_write` (the screenshot PNG
   encoder) public domain or MIT, under their own notices.
-- TortOS's launcher runs it as a resident process and talks to it over a Unix
+- plorpOS's launcher runs it as a resident process and talks to it over a Unix
   socket; it does not link against it. Diatom ships no cores of its own.
 
 ## No third-party firmware components
 
-TortOS ships no launcher, emulator or settings library from another project.
-Volume and brightness are TortOS's own code against the device's ALSA control
+plorpOS ships no launcher, emulator or settings library from another project.
+Volume and brightness are plorpOS's own code against the device's ALSA control
 and display-engine interfaces, and the toolchain is a stock Debian
 cross-compiler pinned by digest (`mk/toolchain.Dockerfile`).
 
-On the TrimUI devices the SDL2 libraries TortOS links against are the device's
+On the TrimUI devices the SDL2 libraries plorpOS links against are the device's
 own, in `/usr/trimui/lib`, and are not redistributed on the card. The H700 card
 carries its own; see Runtime libraries.
 
 ---
 
-## libretro cores (`vendor/cores/`, shipped as `TortOS/cores/`)
+## libretro cores (`vendor/cores/`, shipped as `plorpOS/cores/`)
 
 | Core | System | License |
 |------|--------|---------|
@@ -53,8 +53,8 @@ carries its own; see Runtime libraries.
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 | `dsperate_libretro.so` | Nintendo DS | GPL-3.0 (DSperate, https://github.com/beebono/DSperate, in our libretro wrapper https://github.com/thwonp/dsperate-lr, pinned in `mk/build-dsperate.sh` and `mk/build-dsperate-brick.sh`; the Brick and H700 build is made without PGO: DSperate's committed profile needs GCC 13, and its GCC 10.5 profile applies to our compiler but measured no gain on the Brick; the frame skip (`dsperate_frameskip`) is nelynes's slotPlus design, https://github.com/nelynes/slotPlus, `cores/dsperate/wrapper-0001-frameskip.patch`, folded into the wrapper) |
 
-The GKD card ships all nine. The Brick card ships the first six only - no
-pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
+Every card ships all of them, with `LICENSE-fake08.md` and `LICENSE-FBNeo.txt`
+beside them.
 
 **snes9x2010, picodrive and fbneo carry a non-commercial restriction.** They are not open source
 under either the OSI or FSF definition and they restrict commercial
@@ -124,7 +124,7 @@ one of which ships in the device's own firmware. The eight compression and
 codec libraries TortOS once carried were a previous emulator's dependencies and
 left with it.
 
-### Anbernic H700 on BaseOS (`TortOS/lib/` on the H700 card only)
+### Anbernic H700 on BaseOS (`plorpOS/lib/` on the H700 card only)
 
 BaseOS has no aarch64 SDL2 and no FFmpeg, so the H700 card carries both,
 built from upstream source by `mk/fetch-h700-sysroot.sh` (tarball URLs and
@@ -145,9 +145,9 @@ of the same sonames. The corresponding source is the unmodified release
 tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
 `938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`), and the
 script above rebuilds the shipped libraries from it. The LGPL's text ships on
-the card beside them as `TortOS/lib/COPYING.LGPLv2.1`.
+the card beside them as `plorpOS/lib/COPYING.LGPLv2.1`.
 
-### Ports on the Brick (`TortOS/brick/portmaster/`)
+### Ports on the Brick (`plorpOS/brick/portmaster/`)
 
 PortMaster (MIT), CPython 3.12.16 (PSF License, python-build-standalone), and
 Bash 5.2.015 (GPL 3 or later, robxu9/bash-static) are redistributed unmodified.
@@ -157,14 +157,14 @@ the [bash-static build scripts](https://github.com/robxu9/bash-static/tree/5.2.0
 SDL2 and its image, font and mixer libraries come from the user's Brick
 firmware and are not included in this tools image.
 
-### Ports on the H700 (`TortOS/lib32/`, `TortOS/h700/portmaster/`)
+### Ports on the H700 (`plorpOS/lib32/`, `plorpOS/h700/portmaster/`)
 
 PortMaster (MIT; the release zip, unpacked on first use) runs the ports on the
 H700 with these, none of them modified:
 
 | What | Version | License |
 |---|---|---|
-| SDL2 for 32-bit ARM (`TortOS/lib32/libSDL2-2.0.so.0`), `mk/build-sdl2-armhf.sh` | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib |
+| SDL2 for 32-bit ARM (`plorpOS/lib32/libSDL2-2.0.so.0`), `mk/build-sdl2-armhf.sh` | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib |
 | `pmtools.squashfs`: CPython (python-build-standalone) | 3.12.16 | PSF License |
 | `pmtools.squashfs`: bash (robxu9/bash-static) | 5.2.015 | GPL 3 or later |
 | `pmtools.squashfs`: SDL2_mixer for PortMaster's own GUI, `mk/build-sdl2mixer-h700.sh` (built-in decoders only: stb_vorbis, dr_flac, dr_mp3) | 2.8.0 | zlib (stb_vorbis, dr_libs: public domain or MIT-0; the licence is in `lib/licenses/SDL2_mixer`) |
@@ -224,7 +224,7 @@ pinned versions: `third_party/README.md`.
 - **miniz** (inflate, bundled with libchdr) - Rich Geldreich and contributors -
   **Unlicense** (public domain).
 
-## Shaders (`res/shaders/`, shipped as `TortOS/shaders/`)
+## Shaders (`res/shaders/`, shipped as `plorpOS/shaders/`)
 
 Copied unmodified from NextUI (`skeleton/BASE/Shaders/glsl`), which collected
 them from libretro's shader repositories; NextUI's license does not cover them.
@@ -258,7 +258,7 @@ by this project's MIT license. If the author objects, it will be removed.
 GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
 the list itself, is this project's (MIT).
 
-## libretro cores on the Miyoo Mini Flip (`TortOS/cores/`)
+## libretro cores on the Miyoo Mini Flip (`plorpOS/cores/`)
 
 Built by this project from the upstream commits pinned in
 `mk/flip-cores/cores.lock` (each core's HEAD as of 2026-11-10) (with each source tarball's sha256; the source of a
@@ -284,18 +284,18 @@ GPL core is that tarball plus the patches named there), by
 
 ## Network tools (Miyoo Mini Flip only)
 
-- `TortOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
+- `plorpOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
   `mk/flip-cores/build-curl.sh`, which pins both source tarballs by sha256; HTTP/HTTPS only.
   The Flip's firmware has no curl; other devices use their system one.
-- `TortOS/bin/dropbear`, `TortOS/bin/dropbearkey` - **Dropbear SSH** (MIT-style licence, Matt Johnston
+- `plorpOS/bin/dropbear`, `plorpOS/bin/dropbearkey` - **Dropbear SSH** (MIT-style licence, Matt Johnston
   and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
   from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
   Off until switched on in Network Services; login plorpos / plorpos or a key.
 
 ## Wi-Fi driver (Miyoo Mini Flip only)
 
-- `TortOS/8188fu.ko` - **Realtek RTL8188FU wireless driver**, `version=v5.7.4.2_36687.20200421`,
+- `plorpOS/8188fu.ko` - **Realtek RTL8188FU wireless driver**, `version=v5.7.4.2_36687.20200421`,
   `author=Realtek Semiconductor Corp.`, `license=GPL` (the module's own `modinfo`), built by Miyoo for the
   Flip's kernel (`vermagic=4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8`). md5
   `085ee00a031c401ea7d5a6a6b2ed2b0c`. Shipped unmodified, because the Flip's stock firmware loads the radio
@@ -324,7 +324,7 @@ GPL core is that tarball plus the patches named there), by
 All five are under the SIL Open Font License 1.1; each family's copyright notice
 and the licence text are in the `res/fonts/` file named below.
 
-- `res/fonts/menu.ttf` - **Quicksand** (`OFL.txt`). TortOS's UI face, the
+- `res/fonts/menu.ttf` - **Quicksand** (`OFL.txt`). plorpOS's UI face, the
   in-game menu's face, and the face the boot animation and the system cards
   are lettered in.
 - `res/fonts/head.ttf` - **Fredoka** (`OFL-Fredoka.txt`). The heading face for

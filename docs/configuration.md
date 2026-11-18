@@ -38,7 +38,7 @@ shorter rather than longer.
 
 ## `systems.cfg`, which is still a file
 
-`TortOS/systems.cfg` is the one that did not move, because it is **build input
+`plorpOS/systems.cfg` is the one that did not move, because it is **build input
 rather than a setting**. The payload scripts read it twice on the host
 (`mk/plorpos-files.sh`): once to
 refuse a card whose `systems.cfg` names cores that `vendor/` does not have -

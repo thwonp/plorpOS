@@ -226,7 +226,7 @@ bool wifi_up(void)
 		 * off and on later, or Wi-Fi off at boot, leaves no wlan0. */
 		if (access("/sys/class/net/" WLAN, F_OK) != 0) {
 			char *drv[] = { (char *)"/bin/sh", (char *)"-c", (char *)
-				"grep -q 8188fu /proc/modules || insmod /mnt/SDCARD/TortOS/8188fu.ko;"
+				"grep -q 8188fu /proc/modules || insmod /mnt/SDCARD/plorpOS/8188fu.ko;"
 				" /customer/app/axp_test wifion; sleep 2", NULL };
 			run(drv, NULL, 0);
 		}
@@ -763,8 +763,8 @@ bool wifi_svc_set(wifi_svc s, bool on)
 #include "db.h"
 /* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
  * fresh card. The switch is the "ssh" setting, which boot.env carries to
- * launch.sh so it is still on after a reboot; TortOS/ssh.sh starts and stops
- * it for both. Key login only, from TortOS/ssh/authorized_keys. */
+ * launch.sh so it is still on after a reboot; plorpOS/ssh.sh starts and stops
+ * it for both. Key login only, from plorpOS/ssh/authorized_keys. */
 bool wifi_svc_on(wifi_svc s)
 {
 	return s == WIFI_SSH && db_get_int(db_dev(), "ssh", 0);
@@ -772,7 +772,7 @@ bool wifi_svc_on(wifi_svc s)
 
 bool wifi_svc_set(wifi_svc s, bool on)
 {
-	char *argv[] = { (char *)"/bin/sh", (char *)"/mnt/SDCARD/TortOS/ssh.sh",
+	char *argv[] = { (char *)"/bin/sh", (char *)"/mnt/SDCARD/plorpOS/ssh.sh",
 	                 on ? (char *)"start" : (char *)"stop", NULL };
 	if (s != WIFI_SSH || !db_set_int(db_dev(), "ssh", on ? 1 : 0)) return false;
 	db_write_boot_env();

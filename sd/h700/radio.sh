@@ -5,7 +5,7 @@
 #
 # Sourced by launch_frontend.sh at boot and by plat_sleep() around a suspend
 # (src/platform_h700.c), as `/bin/sh -c '. "$0" && fn' radio.sh`. Shipped as
-# TortOS/radio.sh, the name the launcher calls on every platform.
+# plorpOS/radio.sh, the name the launcher calls on every platform.
 #
 # What differs from the Brick, and why:
 #   - The bring-up is BaseOS's own: /mnt/vendor/ctrl/setBluetooth.sh attaches

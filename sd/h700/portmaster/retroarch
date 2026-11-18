@@ -12,7 +12,7 @@
 # (it freezes the port and draws its own menu), so Diatom must not quit on it.
 #
 # SPDX-License-Identifier: MIT
-P=/mnt/SDCARD/TortOS
+P=/mnt/SDCARD/plorpOS
 core= content=
 while [ $# -gt 0 ]; do
 	case "$1" in

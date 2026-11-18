@@ -29,12 +29,12 @@ there is no frontend on the card. Turn it off.
 
 ```
 System/       the frontend hook BaseOS looks for (launch_frontend.sh)
-TortOS/       plorpOS itself
+plorpOS/      plorpOS itself
 Roms/ Bios/ Saves/ Music/ Audiobooks/   for your games and files; Saves/ has a folder per console
 INSTALL.md    this guide
 ```
 
-Put your games in `Roms/` (one folder per system, as `TortOS/systems.cfg`
+Put your games in `Roms/` (one folder per system, as `plorpOS/systems.cfg`
 names them) and BIOS files in `Bios/`.
 
 ## 3. Turn it on
@@ -61,6 +61,10 @@ and `Saves/` and stay as they are.
    `Audiobooks`. They're on the shelf when you leave the screen.
 
 The PIN is new every time you open Over The Hare.
+
+Before v1.10 the launcher's folder was `TortOS/`. The first start after
+updating moves whatever is still in it that the new `plorpOS/` does not have
+(your own PICO-8 files, for one) and deletes the rest.
 
 ## Nintendo DS
 
@@ -109,14 +113,14 @@ What to expect:
   Bluetooth like a game. **Menu** opens the plorpOS menu over a port (Continue,
   Reset, Quit); Quit ends the port and returns to the shelf.
 - PortMaster needs python and bash, which BaseOS lacks, so they ship as one
-  read-only image, `TortOS/h700/portmaster/pmtools.squashfs`, mounted only
+  read-only image, `plorpOS/h700/portmaster/pmtools.squashfs`, mounted only
   while a port runs.
 - Ports that need a game's own files (Downwell, for one, wants your GOG
   installer or Steam `data.win`) have to be given them: put them where the
   port's page says. A port may also download a runtime the first time (Java
   for Mindustry, about 47 MB; LOVE ships with PortMaster), so do that on Wi-Fi.
 - 32-bit ports (Shovel Knight) run through box86 and use plorpOS's own 32-bit
-  SDL2, in `TortOS/lib32/`.
+  SDL2, in `plorpOS/lib32/`.
 - First launches can be slow: Balatro patches the game for about 30 seconds,
   Mindustry takes about 20.
 - Some ports are built for a 720 px wide panel and crop the edges on a 640 px
@@ -163,5 +167,5 @@ Native PICO-8 has no save states or rewind.
 
 ## Removing plorpOS
 
-Delete `System/` and `TortOS/` from the TF2 card. BaseOS then says there is no
+Delete `System/` and `plorpOS/` from the TF2 card. BaseOS then says there is no
 frontend, as it did before.

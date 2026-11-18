@@ -52,7 +52,7 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 Notes:
 
 - **H700:** BaseOS has no SDL2 or FFmpeg, so the sysroot builds both and the
-  payload ships them in `TortOS/lib/`. Its FFmpeg is `--disable-everything`
+  payload ships them in `plorpOS/lib/`. Its FFmpeg is `--disable-everything`
   plus a short filter list: a filter Muse starts using must be added there, or
   every track fails to open on the H700 alone.
 - **Rotate:** `mk/rotate-image.sh` builds from the saved base in `work/`;

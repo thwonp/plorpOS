@@ -26,8 +26,8 @@ umount "$PORTS" 2>/dev/null || true
 mount --bind "$CARD/Roms/Ports" "$PORTS" || exit 1
 trap 'umount "$PORTS" 2>/dev/null || umount -l "$PORTS"; umount "$TOOLS" 2>/dev/null || umount -l "$TOOLS"' EXIT
 export PATH=$TOOLS/bin:$TOOLS/python/bin:$PATH
-export LD_LIBRARY_PATH=$TOOLS/lib:/usr/trimui/lib:$CARD/TortOS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-export SSL_CERT_FILE=$CARD/TortOS/cacert.pem
+export LD_LIBRARY_PATH=$TOOLS/lib:/usr/trimui/lib:$CARD/plorpOS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export SSL_CERT_FILE=$CARD/plorpOS/cacert.pem
 export SDL_AUDIODRIVER=alsa
 if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
     rm -rf "$PMDATA/.install"

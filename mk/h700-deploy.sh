@@ -15,7 +15,7 @@
 # More than one device on adb: ANDROID_SERIAL=<serial>.
 #
 # The first `all` on a card that ran plorpOS under ROCKNIX moves that build's
-# tortos.elf, diatom, muse and musectl to TortOS/.rocknix/ - they cannot run on BaseOS, and
+# tortos.elf, diatom, muse and musectl to plorpOS/.rocknix/ - they cannot run on BaseOS, and
 # moving rather than deleting keeps the way back.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -40,64 +40,64 @@ esac
 if [ "$MODE" = ds ]; then
 	CORE=$ROOT/vendor/cores-brick/dsperate_libretro.so
 	[ -f "$CORE" ] || { echo "no $CORE; run mk/build-dsperate-brick.sh" >&2; exit 1; }
-	adb push "$CORE" "$CARD/TortOS/cores/dsperate_libretro.so.new" > /dev/null
-	adb shell "mv -f $CARD/TortOS/cores/dsperate_libretro.so.new $CARD/TortOS/cores/dsperate_libretro.so; mkdir -p '$CARD/Roms/Nintendo DS' '$CARD/Saves/Nintendo DS'"
+	adb push "$CORE" "$CARD/plorpOS/cores/dsperate_libretro.so.new" > /dev/null
+	adb shell "mv -f $CARD/plorpOS/cores/dsperate_libretro.so.new $CARD/plorpOS/cores/dsperate_libretro.so; mkdir -p '$CARD/Roms/Nintendo DS' '$CARD/Saves/Nintendo DS'"
 	# Through a file: a pipe into `adb shell cat` can wait for an EOF that never comes.
 	ROWS=$(mktemp)
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" > "$ROWS"
 	adb push "$ROWS" /tmp/rows.cfg > /dev/null
-	adb shell "grep -q '^sys|Nintendo DS|' $CARD/TortOS/systems.cfg || cat /tmp/rows.cfg >> $CARD/TortOS/systems.cfg; rm -f /tmp/rows.cfg"
+	adb shell "grep -q '^sys|Nintendo DS|' $CARD/plorpOS/systems.cfg || cat /tmp/rows.cfg >> $CARD/plorpOS/systems.cfg; rm -f /tmp/rows.cfg"
 	rm -f "$ROWS"
 	echo "deployed DSperate $(md5sum "$CORE" | cut -c1-8) and the DS row; the launcher reads it at its next start"
 	exit 0
 fi
 
 if [ "$MODE" = all ]; then
-	adb shell "cd $CARD/TortOS && [ -d .rocknix ] || { mkdir .rocknix &&
+	adb shell "cd $CARD/plorpOS && [ -d .rocknix ] || { mkdir .rocknix &&
 		for f in tortos.elf diatom muse musectl; do [ -f \$f ] && mv \$f .rocknix/; done; true; }"
-	adb shell "mkdir -p $CARD/TortOS/lib $CARD/System"
+	adb shell "mkdir -p $CARD/plorpOS/lib $CARD/System"
 	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0; do
-		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
+		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l" > /dev/null
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
-	adb push "$ROOT/sd/h700/radio.sh" "$CARD/TortOS/radio.sh" > /dev/null
-	adb push "$ROOT/sd/tortos/bt-alsa.sh" "$CARD/TortOS/bt-alsa.sh" > /dev/null
-	adb shell "mkdir -p $CARD/TortOS/pico8"
-	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
-	adb shell "chmod +x $CARD/TortOS/pico8/wget"
+	adb push "$ROOT/sd/h700/radio.sh" "$CARD/plorpOS/radio.sh" > /dev/null
+	adb push "$ROOT/sd/tortos/bt-alsa.sh" "$CARD/plorpOS/bt-alsa.sh" > /dev/null
+	adb shell "mkdir -p $CARD/plorpOS/pico8"
+	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/plorpOS/pico8/wget" > /dev/null
+	adb shell "chmod +x $CARD/plorpOS/pico8/wget"
 	# PortMaster's runner and what it runs on (plorpos-2wl.10)
-	adb shell "mkdir -p $CARD/TortOS/h700/portmaster"
+	adb shell "mkdir -p $CARD/plorpOS/h700/portmaster"
 	for f in "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so"; do
-		[ -f "$f" ] && adb push "$f" "$CARD/TortOS/h700/portmaster/" > /dev/null
+		[ -f "$f" ] && adb push "$f" "$CARD/plorpOS/h700/portmaster/" > /dev/null
 	done
 	if [ -f "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" ]; then
-		adb shell "mkdir -p $CARD/TortOS/lib32"
-		adb push "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" "$CARD/TortOS/lib32/" > /dev/null
+		adb shell "mkdir -p $CARD/plorpOS/lib32"
+		adb push "$ROOT/build/h700/lib32/libSDL2-2.0.so.0" "$CARD/plorpOS/lib32/" > /dev/null
 	fi
-	adb shell "chmod +x $CARD/TortOS/h700/portmaster/pm-run.sh $CARD/TortOS/h700/portmaster/retroarch"
+	adb shell "chmod +x $CARD/plorpOS/h700/portmaster/pm-run.sh $CARD/plorpOS/h700/portmaster/retroarch"
 fi
 case $MODE in muse|all)
-	adb shell "mkdir -p $CARD/TortOS/lib"
+	adb shell "mkdir -p $CARD/plorpOS/lib"
 	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
-		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
+		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l" > /dev/null
 	done
-	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/TortOS/lib/" > /dev/null
+	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/plorpOS/lib/" > /dev/null
 	for f in muse musectl btplayer pico8sdl.so; do
-		adb push "$ROOT/build/h700/$f" "$CARD/TortOS/$f.new" > /dev/null
-		adb shell "chmod +x $CARD/TortOS/$f.new && mv -f $CARD/TortOS/$f.new $CARD/TortOS/$f"
+		adb push "$ROOT/build/h700/$f" "$CARD/plorpOS/$f.new" > /dev/null
+		adb shell "chmod +x $CARD/plorpOS/$f.new && mv -f $CARD/plorpOS/$f.new $CARD/plorpOS/$f"
 	done
 	echo "deployed muse $(md5sum "$ROOT/build/h700/muse" | cut -c1-8)" ;;
 esac
 [ "$MODE" = muse ] && { adb shell 'killall muse 2>/dev/null; true'; echo "muse restarted on the launcher's next ask"; exit 0; }
 case $MODE in diatom|all)
-	adb push "$DIATOM" "$CARD/TortOS/diatom.new" > /dev/null
-	adb shell "chmod +x $CARD/TortOS/diatom.new && mv -f $CARD/TortOS/diatom.new $CARD/TortOS/diatom"
+	adb push "$DIATOM" "$CARD/plorpOS/diatom.new" > /dev/null
+	adb shell "chmod +x $CARD/plorpOS/diatom.new && mv -f $CARD/plorpOS/diatom.new $CARD/plorpOS/diatom"
 	echo "deployed diatom $(md5sum "$DIATOM" | cut -c1-8)" ;;
 esac
 [ "$MODE" = diatom ] && { adb shell 'killall diatom tortos.elf 2>/dev/null; true'; echo "launcher and diatom restarted"; exit 0; }
 # Pushed aside and renamed, so a running launcher is never overwritten in place.
-adb push "$ELF" "$CARD/TortOS/tortos.elf.new" > /dev/null
-adb shell "chmod +x $CARD/TortOS/tortos.elf.new && mv -f $CARD/TortOS/tortos.elf.new $CARD/TortOS/tortos.elf && sync"
+adb push "$ELF" "$CARD/plorpOS/tortos.elf.new" > /dev/null
+adb shell "chmod +x $CARD/plorpOS/tortos.elf.new && mv -f $CARD/plorpOS/tortos.elf.new $CARD/plorpOS/tortos.elf && sync"
 echo "deployed $(md5sum "$ELF" | cut -c1-8) ($MODE)"
 
 if [ "$MODE" = all ]; then

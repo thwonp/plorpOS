@@ -16,8 +16,8 @@ its gamelist.xml - so the simplest source is the card itself:
     adb pull "/mnt/SDCARD/Roms/Game Boy Color/gamelist.xml" "roms/Game Boy Color/"
     tools/gamelist-import.py --roms roms --out out.meta
     adb push out.meta /tmp/x.meta
-    adb shell 'cd /mnt/SDCARD/TortOS && \
-      LD_LIBRARY_PATH=/mnt/SDCARD/TortOS/lib:/usr/trimui/lib \
+    adb shell 'cd /mnt/SDCARD/plorpOS && \
+      LD_LIBRARY_PATH=/mnt/SDCARD/plorpOS/lib:/usr/trimui/lib \
       ./tortos.elf --meta /tmp/x.meta'
 
 A game that already has metadata on the card is skipped, apart from a title

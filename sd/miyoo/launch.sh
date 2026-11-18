@@ -6,7 +6,7 @@
 # Wi-Fi and ssh come up below, from boot.env's WIFI and SSH.
 # Not here yet: sleep and power-off (plorpos-f1p.7).
 SD=/mnt/SDCARD
-DIR=$SD/TortOS
+DIR=$SD/plorpOS
 export TORTOS_USERDATA=$SD/.userdata/miyooflip
 export HOME=$TORTOS_USERDATA
 # Ours first (SDL2, FFmpeg), then the firmware's (libmi_* for MI_AO).
@@ -17,6 +17,8 @@ export TORTOS_DIR=$DIR USERDATA_PATH=$TORTOS_USERDATA LOGS_PATH=$LOGS
 mkdir -p "$LOGS" "$SD/Bios" "$SD/Saves" "$SD/Roms" "$SD/.userdata/shared"
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 echo "plorpOS on the Miyoo Mini Flip, uptime $(cut -d' ' -f1 /proc/uptime)" > "$LOG"
+# The install folder's rename (plorpos-nzi): what is left of TortOS/ moves in.
+sh "$DIR/folder-move.sh" "$SD" >> "$LOG" 2>&1
 
 # Full clock: ondemand held 1.0 GHz while mGBA fell behind in play
 # (2026-11-04). Until the Flip has a real power policy (plorpos-f1p.7).

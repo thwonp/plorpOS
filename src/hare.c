@@ -895,7 +895,7 @@ bool hare_start(const char *roms_dir, const char *card_dir,
 
 	/* A root that is missing is one nobody can make: the page does not edit
 	 * the roots themselves, and the card's top level is not a root. v1.0
-	 * shipped no Music/, and updating only TortOS/ does not bring one. EEXIST
+	 * shipped no Music/, and updating only plorpOS/ does not bring one. EEXIST
 	 * is the usual answer and is ignored with the rest. */
 	for (i = 0; i < xfer_root_count(); i++) {
 		mkdir(xfer_root_at(i)->path, 0777);

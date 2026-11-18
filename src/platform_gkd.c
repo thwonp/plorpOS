@@ -33,27 +33,21 @@
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
  * SD card, as ROCKNIX mounts it; userdata per device, as on the Brick. */
-#ifdef PLATFORM_RGDS
 /* The Anbernic RG DS (plorpos-rgds) shares this file: ROCKNIX, sway, PipeWire
  * and libmali as on the GKD. PLATFORM_RGDS marks where its hardware differs -
- * the install folder (plorpOS from the start, plorpos-nzi), the pad
- * (InputPlumber's virtual one), and the top panel's backlight. */
+ * the pad (InputPlumber's virtual one) and the top panel's backlight - and its
+ * own userdata folder. */
 const char *P_ROOT = "/storage/games-external/plorpOS";
 const char *P_CARD = "/storage/games-external";
 const char *P_ROMS = "/storage/games-external/Roms";
+#ifdef PLATFORM_RGDS
 const char *P_USERDATA = "/storage/games-external/.userdata/rgds";
+#else
+const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
+#endif
 const char *P_SHARED = "/storage/games-external/.userdata/shared";
 const char *P_WEB = "/storage/games-external/plorpOS/res/web";
 const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
-#else
-const char *P_ROOT = "/storage/games-external/TortOS";
-const char *P_CARD = "/storage/games-external";
-const char *P_ROMS = "/storage/games-external/Roms";
-const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
-const char *P_SHARED = "/storage/games-external/.userdata/shared";
-const char *P_WEB = "/storage/games-external/TortOS/res/web";
-const char *P_FONT = "/storage/games-external/TortOS/menu.ttf";
-#endif
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {

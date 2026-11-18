@@ -62,9 +62,9 @@ int main(void)
 	ck(sl_find(&l, "Smooth") == 2, "found by name");
 	ck(sl_find(&l, "Gone") == 0, "a name no longer listed is None");
 	ck(sl_find(&l, "") == 0 && sl_find(&l, NULL) == 0, "no name is None");
-	ck(sl_fields(&l, 1, "/c/TortOS/shaders", out, sizeof out) &&
-	   !strcmp(out, "shader=/c/TortOS/shaders/pixellate.glsl:nearest:0,"
-	                "/c/TortOS/shaders/lcd3x.glsl:nearest:0\tfinal=nearest"),
+	ck(sl_fields(&l, 1, "/c/plorpOS/shaders", out, sizeof out) &&
+	   !strcmp(out, "shader=/c/plorpOS/shaders/pixellate.glsl:nearest:0,"
+	                "/c/plorpOS/shaders/lcd3x.glsl:nearest:0\tfinal=nearest"),
 	   "two passes become paths, final follows");
 	ck(sl_fields(&l, 2, "/s", out, sizeof out) &&
 	   !strcmp(out, "shader=/s/stock.glsl:nearest:3\tfinal=linear"), "one pass");
@@ -88,7 +88,7 @@ int main(void)
 		snprintf(what, sizeof what, "%s: every file present", l.e[i].name);
 		ck(ok, what);
 	}
-	ck(sl_fields(&l, sl_find(&l, "Old TV"), "/storage/games-external/TortOS/shaders",
+	ck(sl_fields(&l, sl_find(&l, "Old TV"), "/storage/games-external/plorpOS/shaders",
 	             out, sizeof out), "the longest entry fits");
 
 	printf(fails ? "\n%d FAILED\n" : "\nALL PASS\n", fails);
