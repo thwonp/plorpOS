@@ -32,6 +32,9 @@
 #include <time.h>
 #include <unistd.h>
 #include "platform_dev.h"
+#ifdef PLATFORM_ZERO40
+#include "touch.h"
+#endif
 
 /* The front function keys report on the gamepad node as BTN_THUMBL/BTN_THUMBR
  * (317/318). SDL maps them to joystick buttons 9 and 10, which emulators call
@@ -52,7 +55,11 @@
 const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
+#ifdef PLATFORM_ZERO40
+const char *P_USERDATA = "/mnt/SDCARD/.userdata/zero40";
+#else
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/tg3040";
+#endif
 const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
 /* Over The Hare's page. On the card rather than in the binary so it can be
  * restyled with a text editor and a reload, which is the whole argument for
@@ -62,14 +69,22 @@ const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
+#ifdef PLATFORM_ZERO40
+	"PLATFORM=zero40", "DEVICE=zero40",
+#else
 	"PLATFORM=tg3040", "DEVICE=brick",
+#endif
 	"SDCARD_PATH=/mnt/SDCARD",
 	"BIOS_PATH=/mnt/SDCARD/Bios",
 	"CHEATS_PATH=/mnt/SDCARD/Cheats",
 	"SAVES_PATH=/mnt/SDCARD/Saves",
 	NULL
 };
+#ifdef PLATFORM_ZERO40
+const char plat_child_libpath[] = ":/usr/magicx/lib";   /* oakMOSS's SDL2 (TrimUI's) */
+#else
 const char plat_child_libpath[] = ":/usr/trimui/lib";
+#endif
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/plorpOS/pico8sdl.so";
 /* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */
@@ -82,6 +97,9 @@ const char *plat_bright_keys(void) { return "Menu+Vol"; }   /* plorpos-reo.22 */
  * hwserial names the model and nothing else on the device does. */
 bool plat_is_brick_pro(void)
 {
+#ifdef PLATFORM_ZERO40
+	return false;
+#endif
 	static int pro = -1;
 	if (pro < 0) {
 		char line[256];
@@ -109,18 +127,36 @@ bool plat_two_sticks(void) { return plat_is_brick_pro(); }
  * pressing the buttons settled it in one try. The table below is correct;
  * this note exists so the next person to notice that JOY_Y sits at the index
  * called BTN_NORTH does not "fix" it again. */
+#ifdef PLATFORM_ZERO40
+/* The Zero 40's "magicx-input" (oakMOSS's simplepad), measured 2026-11-17 by
+ * pairing raw codes with the indices SDL gave them (plorpos-auv.1): 304 305
+ * 307 308 310 311 312 313 314 315 317, then the low keys 103 105 106 108 114
+ * 115 158. The d-pad is four buttons, not a hat; L2/R2 are buttons; MENU is
+ * KEY_BACK (158) on this kernel, not the 353 oakMOSS's notes give. A/B/X/Y
+ * sit as on the Brick: A 305 right, B 304 bottom, X 308 top, Y 307 left. */
+enum {
+	JOY_B = 0, JOY_A = 1, JOY_Y = 2, JOY_X = 3,
+	JOY_L1 = 4, JOY_R1 = 5, JOY_L2 = 6, JOY_R2 = 7,
+	JOY_SELECT = 8, JOY_START = 9, JOY_L3 = 10,
+	JOY_UP = 11, JOY_LEFT = 12, JOY_RIGHT = 13, JOY_DOWN = 14,
+	JOY_VOLDN = 15, JOY_VOLUP = 16, JOY_MENU = 17,
+};
+#define CODE_MENU KEY_BACK
+#else
 enum {
 	JOY_B = 0, JOY_A = 1, JOY_Y = 2, JOY_X = 3,
 	JOY_L1 = 4, JOY_R1 = 5, JOY_SELECT = 6, JOY_START = 7,
 	JOY_MENU = 8, JOY_L3 = 9, JOY_R3 = 10,
 	JOY_VOLDN = 13, JOY_VOLUP = 14,
 };
+#define CODE_MENU BTN_MODE
+#endif
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static SDL_Joystick *joy;
 
-static int fd_keys = -1;  /* sunxi-keyboard: volume keys */
+static int fd_keys = -1;  /* sunxi-keyboard: volume keys (none on the Zero 40) */
 static int fd_joy = -1;   /* TRIMUI Player1: raw, for the front F1/F2 keys */
 
 /* The d-pad and the left stick both drive IN_LEFT..IN_DOWN; each keeps its
@@ -292,6 +328,87 @@ static void open_joystick(void)
 	}
 }
 
+#if defined(PLATFORM_ZERO40) && defined(__linux__)
+/* An input node by its kernel name, or -1. */
+static int input_open_named(const char *want)
+{
+	char path[32], name[64];
+	int i, fd;
+
+	for (i = 0; i < 16; i++) {
+		snprintf(path, sizeof path, "/dev/input/event%d", i);
+		if ((fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0) continue;
+		name[0] = '\0';
+		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0 && !strcmp(name, want))
+			return fd;
+		close(fd);
+	}
+	return -1;
+}
+
+/* The touch panel (axs_ts): five type-B slots in panel pixels, 480x800 as the
+ * picture is drawn. Read straight from evdev - the firmware SDL's fbdev
+ * driver delivers no fingers - and handed to touch.c as the SDL finger events
+ * the Rotate and the RG DS feed it. launch.sh loads the module in the
+ * background after the launcher starts, so the node is looked for again once
+ * a second until it is there. */
+#define TS_SLOTS 5
+static int fd_touch = -1;
+static unsigned ts_tried;
+static int ts_max_x = 480, ts_max_y = 800;
+static int ts_slot;
+static struct { int id, x, y; bool down, was, moved; } ts[TS_SLOTS];
+
+static void touch_open(void)
+{
+	struct input_absinfo a;
+	unsigned now = plat_now_ms();
+
+	if (fd_touch >= 0 || (ts_tried && now - ts_tried < 1000)) return;
+	ts_tried = now | 1;
+	if ((fd_touch = input_open_named("axs_ts")) < 0) return;
+	if (ioctl(fd_touch, EVIOCGABS(ABS_MT_POSITION_X), &a) == 0 && a.maximum > 0) ts_max_x = a.maximum;
+	if (ioctl(fd_touch, EVIOCGABS(ABS_MT_POSITION_Y), &a) == 0 && a.maximum > 0) ts_max_y = a.maximum;
+	fprintf(stderr, "touch: axs_ts open, %dx%d\n", ts_max_x, ts_max_y);
+}
+
+static void touch_emit(int i, Uint32 type)
+{
+	SDL_Event e;
+
+	memset(&e, 0, sizeof e);
+	e.type = type;
+	e.tfinger.fingerId = i;
+	e.tfinger.x = (float)ts[i].x / (float)ts_max_x;
+	e.tfinger.y = (float)ts[i].y / (float)ts_max_y;
+	touch_event(&e, plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+}
+
+static void touch_read(void)
+{
+	struct input_event ev;
+	int i;
+
+	touch_open();
+	while (fd_touch >= 0 && read(fd_touch, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_ABS) {
+			if (ev.code == ABS_MT_SLOT) ts_slot = ev.value >= 0 && ev.value < TS_SLOTS ? ev.value : 0;
+			else if (ev.code == ABS_MT_TRACKING_ID) ts[ts_slot].down = ev.value >= 0;
+			else if (ev.code == ABS_MT_POSITION_X) { ts[ts_slot].x = ev.value; ts[ts_slot].moved = true; }
+			else if (ev.code == ABS_MT_POSITION_Y) { ts[ts_slot].y = ev.value; ts[ts_slot].moved = true; }
+		} else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+			for (i = 0; i < TS_SLOTS; i++) {
+				if (ts[i].down && !ts[i].was) touch_emit(i, SDL_FINGERDOWN);
+				else if (ts[i].down && ts[i].moved) touch_emit(i, SDL_FINGERMOTION);
+				else if (!ts[i].down && ts[i].was) touch_emit(i, SDL_FINGERUP);
+				ts[i].was = ts[i].down;
+				ts[i].moved = false;
+			}
+		}
+	}
+}
+#endif
+
 bool plat_input_init(void)
 {
 	char marker[512];
@@ -309,9 +426,17 @@ bool plat_input_init(void)
 		open_joystick();
 	}
 #ifdef __linux__
+#ifdef PLATFORM_ZERO40
+	/* By name: the touch panel's module loads after boot (launch.sh) and
+	 * shifts nothing, but the numbers are an enumeration order, not a promise. */
+	if (fd_power < 0) fd_power = input_open_named("axp2202-pek");
+	if (fd_joy < 0) fd_joy = input_open_named("magicx-input");
+	touch_open();
+#else
 	if (fd_power < 0) fd_power = open("/dev/input/event1", O_RDONLY | O_NONBLOCK);
 	if (fd_keys < 0) fd_keys = open("/dev/input/event0", O_RDONLY | O_NONBLOCK);
 	if (fd_joy < 0) fd_joy = open("/dev/input/event3", O_RDONLY | O_NONBLOCK);
+#endif
 #endif
 	return true;
 }
@@ -330,6 +455,9 @@ void plat_input_flush(void)
 	memset(rstick_dir, 0, sizeof rstick_dir);
 	SDL_JoystickUpdate();
 	menu_filter_reset(joy && SDL_JoystickGetButton(joy, JOY_MENU));
+#ifdef PLATFORM_ZERO40
+	touch_reset();
+#endif
 #ifdef __linux__
 	{
 		struct input_event ev;
@@ -353,7 +481,7 @@ void plat_input_quit(void)
  * The menu it opens is drawn over the frozen child: see child_hide. */
 int menu_key(int *code)
 {
-	*code = BTN_MODE;
+	*code = CODE_MENU;
 	return fd_joy;
 }
 
@@ -371,7 +499,7 @@ bool levels_alt(void)
 	unsigned char bits[KEY_MAX / 8 + 1] = { 0 };
 
 	return fd_joy >= 0 && ioctl(fd_joy, EVIOCGKEY(sizeof bits), bits) >= 0 &&
-	       (bits[BTN_MODE / 8] >> (BTN_MODE % 8) & 1);
+	       (bits[CODE_MENU / 8] >> (CODE_MENU % 8) & 1);
 #else
 	return false;
 #endif
@@ -439,6 +567,42 @@ void child_quiet(pid_t pid, bool on)
 	fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
 }
 
+#ifdef PLATFORM_ZERO40
+/* The d-pad's four buttons, as hat_dir's index (left, right, up, down). */
+static int joy_dir(int jb)
+{
+	switch (jb) {
+	case JOY_LEFT: return 0;
+	case JOY_RIGHT: return 1;
+	case JOY_UP: return 2;
+	case JOY_DOWN: return 3;
+	default: return -1;
+	}
+}
+
+static in_button map_joy_button(int jb)
+{
+	switch (jb) {
+	case JOY_A: return IN_ACCEPT;
+	case JOY_B: return IN_BACK;
+	case JOY_X: return IN_X;
+	case JOY_Y: return IN_Y;
+	case JOY_L1: return IN_L1;
+	case JOY_R1: return IN_R1;
+	case JOY_L2: return IN_L2;
+	case JOY_R2: return IN_R2;
+	case JOY_L3: return IN_L3;
+	case JOY_START: return IN_START;
+	case JOY_SELECT: return IN_SELECT;
+	case JOY_MENU: return IN_MENU;
+	/* Volume is read raw (poll_raw_fd), where MENU held makes it brightness;
+	 * here as well it would move both. */
+	default: return IN_NONE;
+	}
+}
+#else
+static int joy_dir(int jb) { (void)jb; return -1; }
+
 static in_button map_joy_button(int jb)
 {
 	switch (jb) {
@@ -460,6 +624,7 @@ static in_button map_joy_button(int jb)
 	default: return IN_NONE;
 	}
 }
+#endif
 
 static void set_dirs(in_state *st);
 
@@ -469,7 +634,12 @@ static void set_dirs(in_state *st);
  * position in this list is its JOY_ index. */
 static bool raw_pad_event(const struct input_event *ev, in_state *st)
 {
+#ifdef PLATFORM_ZERO40
+	static const int codes[] = { 304, 305, 307, 308, 310, 311, 312, 313, 314, 315, 317,
+	                             103, 105, 106, 108, 114, 115, 158 };
+#else
 	static const int codes[] = { 304, 305, 307, 308, 310, 311, 314, 315, 316 };
+#endif
 	size_t i;
 
 	if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y)) {
@@ -489,7 +659,10 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 	if (ev->type != EV_KEY || ev->value == 2) return false;
 	for (i = 0; i < sizeof codes / sizeof codes[0]; i++)
 		if (ev->code == codes[i]) {
-			set_btn(st, map_joy_button((int)i), ev->value == 1);
+			int d = joy_dir((int)i);
+
+			if (d >= 0) { hat_dir[d] = ev->value == 1; set_dirs(st); }
+			else set_btn(st, map_joy_button((int)i), ev->value == 1);
 			return true;
 		}
 	return false;
@@ -519,10 +692,12 @@ static void poll_raw_fd(int fd, in_state *st)
 			continue;
 		}
 		if (ev.code == KEY_POWER) b = IN_POWER;
+#ifndef PLATFORM_ZERO40   /* its 317 is L3, and it has no function keys */
 		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_LEFT : CODE_FN_LEFT))
 			b = IN_FN1;
 		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT))
 			b = IN_FN2;
+#endif
 		if (b != IN_NONE)
 			set_btn(st, b, ev.value == 1);
 	}
@@ -595,8 +770,12 @@ void plat_input_poll(in_state *st)
 		case SDL_JOYBUTTONUP:
 			if (dbg_input && e.type == SDL_JOYBUTTONDOWN)
 				fprintf(stderr, "[in] joy button=%d\n", e.jbutton.button);
-			set_btn(st, map_joy_button(e.jbutton.button),
-			        e.type == SDL_JOYBUTTONDOWN);
+			if (joy_dir(e.jbutton.button) >= 0) {
+				hat_dir[joy_dir(e.jbutton.button)] = e.type == SDL_JOYBUTTONDOWN;
+				set_dirs(st);
+			} else
+				set_btn(st, map_joy_button(e.jbutton.button),
+				        e.type == SDL_JOYBUTTONDOWN);
 			break;
 		case SDL_JOYHATMOTION:
 			hat_dir[0] = (e.jhat.value & SDL_HAT_LEFT)  != 0;
@@ -608,6 +787,17 @@ void plat_input_poll(in_state *st)
 		case SDL_JOYAXISMOTION:
 			/* The Brick Pro's left stick is a second d-pad. The Brick's
 			 * virtual pad advertises these axes too but never moves them. */
+#ifdef PLATFORM_ZERO40
+			/* Its one stick reports the vertical on axis 0 and the
+			 * horizontal, negated, on axis 1 (oakMOSS hardware-notes;
+			 * Dedicated OS's table agrees). */
+			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
+				if (e.jaxis.axis == 0) stick_axis(&stick_dir[2], e.jaxis.value);
+				else stick_axis(&stick_dir[0], -e.jaxis.value);
+				set_dirs(st);
+			}
+			break;
+#endif
 			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
 				stick_axis(&stick_dir[e.jaxis.axis == 0 ? 0 : 2], e.jaxis.value);
 				set_dirs(st);
@@ -638,10 +828,14 @@ void plat_input_poll(in_state *st)
 	poll_raw_fd(fd_power, st);
 	poll_raw_fd(fd_keys, st);
 	poll_raw_fd(fd_joy, st);
+#ifdef PLATFORM_ZERO40
+	touch_read();
+	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */
+#endif
 	menu_filter(st);
 }
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(PLATFORM_ZERO40)   /* the LEDs' helpers */
 static void write_str(const char *path, const char *val)
 {
 	int fd = open(path, O_WRONLY);
@@ -664,7 +858,7 @@ static bool reads_zero(const char *path)
 
 void plat_leds_off(void)
 {
-#ifdef __linux__
+#if defined(__linux__) && !defined(PLATFORM_ZERO40)   /* no LEDs there */
 	/* Stop the animation engine, scale every group to zero, then zero all 23
 	 * raw channels (both models have 23) directly -- so it holds whatever state the stock input
 	 * daemon left the engine in. Only channels that are lit get written: each
@@ -1049,6 +1243,10 @@ static bool switch_locks;
 static bool mute_switch_down(void)
 {
 	char c = 0;
+
+#ifdef PLATFORM_ZERO40
+	return false;        /* no mute switch; gpio243 is something else there */
+#endif
 
 	if (mute_fd < 0) mute_fd = open(MUTE_GPIO, O_RDONLY | O_CLOEXEC);
 	if (mute_fd < 0) return false;

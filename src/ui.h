@@ -331,7 +331,7 @@ typedef enum {
  * tap on which types at once - records them by id instead; any tap on one
  * hands the id to ui_hit_take, read on the screen's next poll (-1: none).
  * ui_hit_clear drops what was recorded so far, as a backdrop drew it. */
-#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 #define UI_TOUCH 1          /* a touch panel drives the UI (touch.c) */
 #endif
 #ifdef UI_TOUCH

@@ -90,9 +90,9 @@ static int run(char *const argv[], char *out, size_t cap)
 #define WPA_SUPP  "/usr/sbin/wpa_supplicant"
 #define IP_BIN    "/sbin/ip"
 #endif
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 #include "platform.h"
-#if defined(PLATFORM_MIYOO)
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)   /* no /run on either */
 #define WPA_SOCK "/var/run/wpa_supplicant"
 #else
 #define WPA_SOCK "/run/wpa_supplicant"
@@ -170,7 +170,7 @@ static void dhcp_start(void);
 #else
 #define UDHCPC_S ""
 #endif
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 /* The lease, once the link is up - as launch_frontend.sh does at boot. Not
  * left to wifi_status: that asks only when something polls it, and the Wi-Fi
  * screen reads it once, after its scan, which finishes before the association
@@ -211,7 +211,7 @@ bool wifi_up(void)
 	if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
 	    strstr(out, "PONG")) return true;
 
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 	/* Our own daemon, on the card's config so saved networks survive a
 	 * BaseOS update. wlan0 can be late - BaseOS loads the driver in the
 	 * background, and a slow radio holds it until ~7 s uptime - so the start
@@ -237,6 +237,21 @@ bool wifi_up(void)
 		}
 #else
 		snprintf(conf, sizeof conf, "%s/wpa_supplicant.conf", P_USERDATA);
+#if defined(PLATFORM_ZERO40)
+		/* oakMOSS loads no radio and leaves the supplicant to the launcher:
+		 * the XR829's driver by name (it pulls in xradio_core and _mac);
+		 * wlan0 is there ~3 s later (measured 2026-11-17). */
+		if (access("/sys/class/net/" WLAN, F_OK) != 0) {
+			char *drv[] = { (char *)"/usr/sbin/modprobe", (char *)"xradio_wlan", NULL };
+			run(drv, NULL, 0);
+		}
+		{
+			char *up[] = { (char *)IP_BIN, (char *)"link", (char *)"set",
+			               (char *)"dev", (char *)WLAN, (char *)"up", NULL };
+			for (i = 0; i < 10 && access("/sys/class/net/" WLAN, F_OK) != 0; i++) sleep(1);
+			run(up, NULL, 0);
+		}
+#endif
 #endif
 		if (access(conf, F_OK) != 0 && (f = fopen(conf, "w"))) {
 			fputs("update_config=1\n", f);
@@ -266,7 +281,7 @@ bool wifi_up(void)
 		sleep(1);
 		if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
 		    strstr(out, "PONG")) {
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 			dhcp_after_join();
 #else
 			/* The scan can finish before auto-association. Start the vendor
@@ -298,7 +313,7 @@ static void lease_drop(void)
 void wifi_down(void)
 {
 	g_dhcp_asked = false;
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 	/* The daemon goes, and the lease with it (lease_drop). And the lease is
 	 * forgotten as asked for: wifi_status re-arms only on a state it can
 	 * read, and with no daemon it reads none - so the next association after
@@ -584,7 +599,7 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 		if (!g_dhcp_asked) { g_dhcp_asked = true; dhcp_start(); }
 		return WIFI_CONNECTING;
 	}
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 	g_dhcp_asked = false;              /* not associated: arm for the next one */
 #endif
 	/* Brick's client is already retrying while association completes. Keep
@@ -692,7 +707,7 @@ fail:
 	 * INACTIVE and the saved entry marked [DISABLED]. Put them back. */
 	if (!reused) wpa(out, sizeof out, "remove_network", id, NULL, NULL);
 	wpa(out, sizeof out, "enable_network", "all", NULL, NULL);
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 	/* And stay off: enabled, the saved list would rejoin the previous
 	 * network the moment this returns, and a failed join must not do that
 	 * (user, 2026-10-05). It rejoins at the next Wi-Fi on or boot. */
@@ -706,7 +721,7 @@ bool wifi_forget(const char *ssid)
 	char out[4096];
 	char *line, *save;
 	bool hit = false;
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 	char cur[64];
 
 	wifi_status(cur, sizeof cur, NULL, 0);
@@ -728,7 +743,7 @@ bool wifi_forget(const char *ssid)
 	if (hit) {
 		char tmp[128];
 		wpa(tmp, sizeof tmp, "save_config", NULL, NULL, NULL);
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 		/* The network in use: its lease stayed on wlan0, and another saved
 		 * network rejoining read as connected on the old address, never
 		 * asking for its own (plorpos-7ny.5, 2026-10-06). */
@@ -759,7 +774,7 @@ bool wifi_svc_set(wifi_svc s, bool on)
 }
 #endif
 
-#if defined(PLATFORM_MIYOO) && defined(__linux__)
+#if (defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)) && defined(__linux__)
 #include "db.h"
 /* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
  * fresh card. The switch is the "ssh" setting, which boot.env carries to
@@ -1350,7 +1365,7 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO)) && defined(__linux__))
+#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)) && defined(__linux__))
 /* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }

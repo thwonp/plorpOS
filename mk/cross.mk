@@ -7,7 +7,8 @@ BUILD := build
 # the GKD, BUILD=build/gkd (and the H700, build/h700).
 PLATFORM ?= brick
 # The RG DS runs ROCKNIX as the GKD does and shares its device file (rgds below).
-PLATFORM_SRC := $(if $(filter rgds,$(PLATFORM)),gkd,$(PLATFORM))
+# The Zero 40 runs the Brick's device file on oakMOSS (zero40 below).
+PLATFORM_SRC := $(if $(filter rgds,$(PLATFORM)),gkd,$(if $(filter zero40,$(PLATFORM)),brick,$(PLATFORM)))
 SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM_SRC).c
 CC ?= aarch64-linux-gnu-gcc
 
@@ -29,6 +30,12 @@ ifeq ($(PLATFORM),rgds)
 # sway, PipeWire and libmali - and PLATFORM_RGDS where the hardware differs
 # (two panels, InputPlumber's pad, backlight names; src/platform_gkd.c).
 CFLAGS += -DPLATFORM_GKD -DPLATFORM_RGDS
+endif
+ifeq ($(PLATFORM),zero40)
+# MagicX Zero 40 on oakMOSS (plorpos-auv): the Brick's branches all fit - same
+# A133P, GE8300 and SDL2 - and PLATFORM_ZERO40 where it differs (the pad, touch,
+# Wi-Fi, the 480x800 portrait panel; src/platform_brick.c).
+CFLAGS += -DPLATFORM_ZERO40
 endif
 ifeq ($(PLATFORM),h700)
 # Anbernic H700 on BaseOS (plorpos-7ny), NOT "on ROCKNIX": bt.c, btvol.c and

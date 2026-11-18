@@ -730,8 +730,9 @@ bool db_write_boot_env(void)
 	             db_get_int(g_dev, "bluetooth", 0) ? 1 : 0,
 	             strchr(tz, '\'') ? "UTC" : tz);
 	if (n < 0 || n >= (int)sizeof body) return false;
-#if defined(PLATFORM_MIYOO)
-	/* The Flip's ssh switch (plorpos-f1p.62.2): launch.sh starts dropbear. */
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)
+	/* The Flip's and the Zero 40's ssh switch (plorpos-f1p.62.2, plorpos-auv):
+	 * launch.sh starts dropbear. */
 	{
 		int m = snprintf(body + n, sizeof body - (size_t)n, "SSH='%d'\n",
 		                 db_get_int(g_dev, "ssh", 0) ? 1 : 0);

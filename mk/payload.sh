@@ -32,6 +32,13 @@ elif [ "$PLATFORM" = rgds ]; then
 	OUT=$ROOT/out/rgds
 	CARD=$OUT/card
 	ZIP=
+elif [ "$PLATFORM" = zero40 ]; then
+	# The MagicX Zero 40 on oakMOSS (plorpos-auv): the zip's contents go on the
+	# card that hosts - SD1's SPRUCEOS partition or SD2.
+	B=$ROOT/build/zero40
+	OUT=$ROOT/out/zero40
+	CARD=$OUT
+	ZIP=$ROOT/out/plorpOS-zero40-v$VERSION.zip
 elif [ "$PLATFORM" = h700 ]; then
 	B=$ROOT/build/h700
 	OUT=$ROOT/out/h700
@@ -108,6 +115,14 @@ elif [ "$PLATFORM" = rgds ]; then
 	cp -R "$ROOT/vendor/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$B/adbroot.so" "$P/rgds/adb/"
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
+elif [ "$PLATFORM" = zero40 ]; then
+	cp "$B/musectl" "$P/"
+	cp "$ROOT/sd/zero40/launch.sh" "$ROOT/sd/zero40/radio.sh" "$ROOT/sd/zero40/ssh.sh" "$P/"
+	[ -f "$B/dropbearmulti" ] || { echo "no $B/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
+	cp "$B/dropbearmulti" "$P/"           # ssh: oakMOSS has no server (sd/zero40/ssh.sh)
+	mkdir -p "$OUT/.tmp_update"
+	cp "$ROOT/sd/zero40/updater" "$OUT/.tmp_update/"   # oakMOSS's hand-off (runmagicx.sh)
+	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
@@ -178,6 +193,8 @@ cp "$ROOT/config/systems.cfg" "$P/"
 [ "$PLATFORM" = h700 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # The Brick also has the DS (plorpos-reo.21): its own build of DSperate, one
 # screen at a time (mk/build-dsperate-brick.sh).
+# The Zero 40 has the DS shelf on the same DSperate build; no Ports yet.
+[ "$PLATFORM" = zero40 ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -193,7 +210,8 @@ if [ "$PLATFORM" = rgds ]; then
 elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
-elif [ "$PLATFORM" = brick ]; then
+elif [ "$PLATFORM" = brick ] || [ "$PLATFORM" = zero40 ]; then
+	# The Zero 40 is the Brick's CPU and C library family: its cores as they are.
 	[ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
 		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
 	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
@@ -228,6 +246,10 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$OUT/.tmp_update/updater"
+      du -sh "$OUT"; echo "payload ready: $OUT"
+      rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
+      echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
 rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"; exit 0 ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \

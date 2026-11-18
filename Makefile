@@ -4,7 +4,7 @@
 # docs/building.md covers every port.
 IMAGE := tortos-toolchain
 # Which device: brick (the Brick and Brick Pro, the default), gkd, h700, rotate,
-# miyoo (the Mini Flip), rgds (the RG DS) or nano. The Brick builds into build/
+# miyoo (the Mini Flip), rgds (the RG DS), zero40 (the MagicX Zero 40) or nano. The Brick builds into build/
 # against sysroot/, the others into build/<platform>/ against sysroot-<platform>/
 # (the Nano: sdk-nano/, mk/nano.mk). All but the Nano compile one device file,
 # src/platform_$(PLATFORM).c.
@@ -34,6 +34,8 @@ ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),rgds)
 all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so build/rgds/adbroot.so
+else ifeq ($(PLATFORM),zero40)
+all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -81,7 +83,7 @@ VERSION ?= 1.9
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd rgds h700 rotate miyoo,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd rgds h700 rotate miyoo zero40,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -244,6 +246,31 @@ build/rgds/tortos.elf build/rgds/muse build/rgds/musectl &: \
 		if [ "$$src" -nt build/rgds/tortos.elf ]; then \
 			echo "STALE: build/rgds/tortos.elf is older than $$src" >&2; \
 			echo "  the container did not rebuild. rm build/rgds/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+
+# The MagicX Zero 40 on oakMOSS (plorpos-auv): the Brick's sources (SRC_BRICK -
+# it shares platform_brick.c, with -DPLATFORM_ZERO40 from mk/cross.mk) against the
+# Brick's sysroot. Same A133P, PowerVR GE8300 and TrimUI SDL2 2.26 family; oakMOSS's
+# glibc 2.38 is newer than the sysroot's.
+build/zero40/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/zero40 creds
+
+build/zero40/tortos.elf build/zero40/muse build/zero40/musectl &: \
+                      $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/zero40/ss_creds.h \
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot/usr/include/SDL2 ] || { \
+		echo "no sysroot; run: mk/fetch-sysroot.sh (needs the Brick)" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=zero40 BUILD=build/zero40 SYSROOT=/work/sysroot \
+		VERSION=$(VERSION) creds build/zero40/tortos.elf build/zero40/muse build/zero40/musectl
+	@for src in $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk build/zero40/ss_creds.h; do \
+		if [ "$$src" -nt build/zero40/tortos.elf ]; then \
+			echo "STALE: build/zero40/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/zero40/tortos.elf and try again." >&2; \
 			exit 1; \
 		fi; \
 	done
