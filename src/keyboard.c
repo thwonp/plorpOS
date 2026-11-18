@@ -93,9 +93,12 @@ static void del_left(kb_state *k)
 
 /* ---------- drawing ------------------------------------------------------- */
 
-#define PANEL_W   860
+/* Narrowed to the screen where it is narrower than the panel (the Zero 40's
+ * 768 units, plorpos-auv.3), the keys with it; every landscape screen is at
+ * least 1024 wide and keeps 860 and 72. */
+#define PANEL_W   (TORTOS_SCREEN_W - 32 < 860 ? TORTOS_SCREEN_W - 32 : 860)
 #define PANEL_H   580
-#define KEY_W      72
+#define KEY_W     (PANEL_W < 860 ? (PANEL_W - 40 - (KB_COLS - 1) * KEY_GAP) / KB_COLS : 72)
 #define KEY_H      60
 #define KEY_GAP     6
 

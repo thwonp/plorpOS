@@ -59,6 +59,8 @@ slots-wide         --screen games --slots 2 1.78
 nowplaying         --nowplaying 0 1 30
 nowplaying-paused  --nowplaying 0 1 30 --paused
 EOF
+# More, one per line in the same form (SHOT_EXTRA="name args\n...").
+[ -z "${SHOT_EXTRA:-}" ] || printf '%s\n' "$SHOT_EXTRA" >> "$OUT/.list"
 
 # The vendored objects get their own directory: the host checks build the same
 # ones into build-native/tp with the host libc, which this image cannot link.

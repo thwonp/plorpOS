@@ -38,11 +38,12 @@
 
 /* What the device's FFmpeg - the daemon's - can open (measured in the
  * sysroots, plorpos-1lw.8): http and https on the RG DS, GKD and Rotate; http
- * alone on the Brick; neither on the H700 (BaseOS) or the Miyoo Flip. A URL
+ * alone on the Brick; neither on the H700 (BaseOS), the Miyoo Flip or the
+ * Zero 40 (the H700's FFmpeg, plorpos-auv). A URL
  * the daemon cannot open is fetched to the card first (the cache below) and
  * played from there. The Rotate defines PLATFORM_H700 too. */
 #if (defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE)) || defined(PLATFORM_MIYOO) || \
-    defined(PLEX_FETCH_FIRST)
+    defined(PLATFORM_ZERO40) || defined(PLEX_FETCH_FIRST)
 #define STREAM_HTTP 0
 #define STREAM_TLS  0
 #elif defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)

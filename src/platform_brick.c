@@ -34,6 +34,7 @@
 #include "platform_dev.h"
 #ifdef PLATFORM_ZERO40
 #include "touch.h"
+#include "ui.h"       /* UI_TOUCH, ui_hit_frame */
 #endif
 
 /* The front function keys report on the gamepad node as BTN_THUMBL/BTN_THUMBR
@@ -278,6 +279,9 @@ bool plat_video_init_over_child(void)
 
 void plat_present(SDL_Renderer *r)
 {
+#ifdef UI_TOUCH
+	ui_hit_frame();   /* a tap now means what this frame shows (the Zero 40) */
+#endif
 	SDL_RenderPresent(r);
 #ifdef __linux__
 	if (ov_surf && r == ren) {
@@ -397,6 +401,19 @@ static void touch_read(void)
 			else if (ev.code == ABS_MT_POSITION_X) { ts[ts_slot].x = ev.value; ts[ts_slot].moved = true; }
 			else if (ev.code == ABS_MT_POSITION_Y) { ts[ts_slot].y = ev.value; ts[ts_slot].moved = true; }
 		} else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+			/* The kernel drops a position equal to the slot's last one, so a
+			 * finger landing on the column or row the previous one lifted
+			 * from brings no X or Y of its own - and a launcher started since
+			 * has none to keep. Asked of the kernel then, per slot
+			 * (EVIOCGMTSLOTS; EVIOCGABS reads 0 for these axes here). */
+			if (ts[ts_slot].down && !ts[ts_slot].was && !ts[ts_slot].moved) {
+				struct { __u32 code; __s32 v[TS_SLOTS]; } q;
+
+				q.code = ABS_MT_POSITION_X;
+				if (ioctl(fd_touch, EVIOCGMTSLOTS(sizeof q), &q) == 0) ts[ts_slot].x = q.v[ts_slot];
+				q.code = ABS_MT_POSITION_Y;
+				if (ioctl(fd_touch, EVIOCGMTSLOTS(sizeof q), &q) == 0) ts[ts_slot].y = q.v[ts_slot];
+			}
 			for (i = 0; i < TS_SLOTS; i++) {
 				if (ts[i].down && !ts[i].was) touch_emit(i, SDL_FINGERDOWN);
 				else if (ts[i].down && ts[i].moved) touch_emit(i, SDL_FINGERMOTION);

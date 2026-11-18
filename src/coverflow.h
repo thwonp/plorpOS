@@ -80,7 +80,18 @@ typedef struct {
 	float grow;
 	int side_alpha;   /* alpha of fully off-center cards (center is 255) */
 	int strips;       /* vertical subdivisions per card */
+	/* On a portrait screen (the Zero 40, plorpos-auv.3) the row turns into a
+	 * column: cards step down the screen and tilt about their horizontal axis,
+	 * with no reflection - the next card is where it would fall. p_width is
+	 * the focused card's width as a fraction of the screen's, p_center_y its
+	 * centre as a fraction of the screen's height, p_step the distance to the
+	 * next card as a fraction of the focused card's height. 0 p_width keeps
+	 * the row (cf_vertical). */
+	float p_width, p_center_y, p_step;
 } cf_layout;
+
+/* Whether this layout draws as a column on this screen. */
+bool cf_vertical(const cf_layout *lay, int screen_w, int screen_h);
 
 extern const cf_layout CF_LAYOUT_SYSTEMS;
 extern const cf_layout CF_LAYOUT_GAMES;

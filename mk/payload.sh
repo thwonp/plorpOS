@@ -122,6 +122,16 @@ elif [ "$PLATFORM" = zero40 ]; then
 	cp "$B/dropbearmulti" "$P/"           # ssh: oakMOSS has no server (sd/zero40/ssh.sh)
 	mkdir -p "$OUT/.tmp_update"
 	cp "$ROOT/sd/zero40/updater" "$OUT/.tmp_update/"   # oakMOSS's hand-off (runmagicx.sh)
+	# Muse's FFmpeg: oakMOSS has none (TrimUI's firmware carries the Brick's).
+	# The H700's own build (mk/fetch-h700-sysroot.sh: from source, glibc 2.17
+	# symbols, no network), the sonames Muse links against.
+	mkdir -p "$P/lib"
+	L=$ROOT/sysroot-h700/usr/lib
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
+			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	done
+	cp "$L/COPYING.LGPLv2.1" "$P/lib/"
 	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"

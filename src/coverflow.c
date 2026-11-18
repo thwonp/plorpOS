@@ -43,6 +43,7 @@ const cf_layout CF_LAYOUT_SYSTEMS = {
 	.size = 0.81f, .aspect = 0.78f, .step = 0.82f, .side_scale = 0.38f,
 	.center_y = 0.415f, .tilt = 0.0f, .reflect = 1.34f,
 	.side_alpha = 140, .strips = 16, .wide_area = 0.80f,
+	.p_width = 0.56f, .p_center_y = 0.45f, .p_step = 0.88f,
 };
 
 /* One system filling the screen, flat, sliding in from off the edge.
@@ -80,6 +81,7 @@ const cf_layout CF_LAYOUT_GAMES = {
 	.center_y = 0.47f, .tilt = 0.82f, .reflect = 1.52f,
 	.side_alpha = 150, .strips = 16,
 	.equal_area = true, .grow = GAMES_GROW,
+	.p_width = 0.52f, .p_center_y = 0.43f, .p_step = 0.98f,
 };
 
 /* Muse's shelf: album covers, which are square, where the games layouts are
@@ -93,6 +95,7 @@ const cf_layout CF_LAYOUT_ALBUMS = {
 	.size = 0.60f, .aspect = 1.00f, .step = 0.74f, .side_scale = 0.62f,
 	.center_y = 0.54f, .tilt = 0.82f, .reflect = 1.52f,
 	.side_alpha = 150, .strips = 16,
+	.p_width = 0.62f, .p_center_y = 0.42f, .p_step = 0.92f,
 };
 
 /* The card's height on this screen: the stage's, plus its share of the rest. */
@@ -120,9 +123,24 @@ static float card_h(const cf_layout *lay, int screen_h)
 	return CF_STAGE_H * lay->size + spare * lay->grow;
 }
 
+bool cf_vertical(const cf_layout *lay, int screen_w, int screen_h)
+{
+	return screen_h > screen_w && lay->p_width > 0.0f;
+}
+
 void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *out)
 {
 	int top = (screen_h - CF_STAGE_H) / 2;
+
+	if (cf_vertical(lay, screen_w, screen_h)) {
+		float vw = screen_w * lay->p_width, vh = vw / lay->aspect;
+
+		out->w = (int)vw;
+		out->h = (int)vh;
+		out->x = (int)(screen_w * 0.5f - vw * 0.5f);
+		out->y = (int)(screen_h * lay->p_center_y - vh * 0.5f);
+		return;
+	}
 	float ch = card_h(lay, screen_h);
 	float cw = ch * lay->aspect;
 	out->w = (int)cw;
@@ -412,6 +430,11 @@ static void proj_point(const cf_proj *p, float lx, float ly, float *sx, float *s
 	*sy = p->oy + ly * s;
 }
 
+/* cf_draw is drawing a column (cf_vertical): draw_card hands its fitted art to
+ * draw_card_v. A file-level flag rather than a parameter so the fit stays one
+ * piece of code for both. */
+static bool g_cf_vert;
+
 static void render_quad(SDL_Renderer *r, SDL_Texture *tex,
                         const float xy[8], const float uv[8],
                         const SDL_Color col[4])
@@ -426,6 +449,42 @@ static void render_quad(SDL_Renderer *r, SDL_Texture *tex,
 	}
 	static const int idx[6] = { 0, 1, 2, 0, 2, 3 };
 	SDL_RenderGeometry(r, tex, v, 4, idx, 6);
+}
+
+/* A card in the column (cf_vertical): pitched about its horizontal axis, the
+ * row's yaw turned a quarter, strips across rather than down, no reflection.
+ * ahw/ahh are the fitted art's half sizes (draw_card's fit). */
+static void draw_card_v(SDL_Renderer *r, SDL_Texture *tex, float ox, float oy,
+                        float ahw, float ahh, float ang, Uint8 alpha, int strips)
+{
+	cf_proj p = {
+		.ox = oy, .oy = ox,       /* transposed: the row's x is the column's y */
+		.cosa = cosf(ang), .sina = sinf(ang),
+		.focal = ahh * 6.0f + 1.0f,
+	};
+	SDL_Color body[4] = {
+		{ 255, 255, 255, alpha }, { 255, 255, 255, alpha },
+		{ 255, 255, 255, alpha }, { 255, 255, 255, alpha },
+	};
+	int n = fabsf(p.sina) < 1e-4f ? 1 : (strips > 0 ? strips : 16);
+
+	SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+	for (int i = 0; i < n; i++) {
+		float v0 = (float)i / n, v1 = (float)(i + 1) / n;
+		float ly0 = -ahh + v0 * 2.0f * ahh, ly1 = -ahh + v1 * 2.0f * ahh;
+		float a0, b0, a1, b1, a2, b2, a3, b3;
+
+		/* proj_point works in (along, across): along is y here. */
+		proj_point(&p, ly0, -ahw, &a0, &b0);
+		proj_point(&p, ly0, +ahw, &a1, &b1);
+		proj_point(&p, ly1, +ahw, &a2, &b2);
+		proj_point(&p, ly1, -ahw, &a3, &b3);
+		{
+			float xy[8] = { b0, a0, b1, a1, b2, a2, b3, a3 };
+			float uv[8] = { 0, v0, 1, v0, 1, v1, 0, v1 };
+			render_quad(r, tex, xy, uv, body);
+		}
+	}
 }
 
 static void draw_card(SDL_Renderer *r, SDL_Texture *tex, int tw, int th,
@@ -479,6 +538,11 @@ static void draw_card(SDL_Renderer *r, SDL_Texture *tex, int tw, int th,
 			if (tex_ar > frame_ar) ahh = hw / tex_ar;
 			else ahw = hh * tex_ar;
 		}
+	}
+
+	if (g_cf_vert) {
+		draw_card_v(r, tex, ox, oy, ahw, ahh, ang, alpha, lay->strips);
+		return;
 	}
 
 #if defined(PLATFORM_MIYOO)
@@ -613,6 +677,14 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 	float step = cw * lay->step;
 	float cx = screen_w * 0.5f;
 	float cy = top + CF_STAGE_H * lay->center_y + flip_dy(lay);
+	bool vert = cf_vertical(lay, screen_w, screen_h);
+
+	if (vert) {
+		cw = screen_w * lay->p_width;
+		ch = cw / lay->aspect;
+		step = ch * lay->p_step;
+		cy = screen_h * lay->p_center_y;
+	}
 
 	int base = (int)floorf(cf->pos + 0.5f);
 
@@ -678,11 +750,13 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 		int tw = 0, th = 0;
 		float cb = 1.0f;
 		SDL_Texture *tex = get_tex(ctx, slots[a].item, &tw, &th, &cb);
-		float x = cx + d * step;
-		float y = cy;
+		float x = vert ? cx : cx + d * step;
+		float y = vert ? cy + d * step : cy;
 		float hw = cw * 0.5f * scale, hh = ch * 0.5f * scale;
 		if (!tex) continue;
+		g_cf_vert = vert;
 		draw_card(r, tex, tw, th, cb, x, y, hw, hh, ang, alpha, lay);
+		g_cf_vert = false;
 		/* A touch target (ui_hit): the presses from the cursor to this card,
 		 * along the row - recorded far to near, so the nearer card of two
 		 * that overlap is the one a tap gets. */
@@ -690,7 +764,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 			int n = (int)lroundf(d + cf->pos - cf->target);
 			SDL_Rect hr = { (int)(x - hw), (int)(y - hh), (int)(hw * 2), (int)(hh * 2) };
 
-			ui_hit(&hr, n < 0 ? IN_LEFT : IN_RIGHT, n < 0 ? -n : n);
+			ui_hit(&hr, n < 0 ? (vert ? IN_UP : IN_LEFT) : (vert ? IN_DOWN : IN_RIGHT), n < 0 ? -n : n);
 		}
 	}
 	return cf->active;

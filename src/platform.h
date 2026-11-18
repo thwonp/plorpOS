@@ -21,13 +21,17 @@
  * The rest of TortOS talks to this file and to SDL, and to nothing else. */
 
 /* Layout is in units of a screen at least 1024 wide and 768 tall on every
- * device; the panel is plat_scale() pixels to the unit. Whichever side the
+ * landscape device, and 768 wide on a portrait one (the Zero 40's 480x800 is
+ * 768x1280, plorpos-auv.3); the panel is plat_scale() pixels to the unit. Whichever side the
  * panel's shape leaves longer grows - 768 tall on the Brick, 921 on the GKD's
  * 1600x1440, 1152 wide on the RG SP's 720x480 - so both are variables, set
  * once by plat_video_init, that read like constants. */
 #define TORTOS_SCREEN_W plat_screen_w
 #define TORTOS_SCREEN_H plat_screen_h
 extern int plat_screen_w, plat_screen_h;
+/* Taller than wide: the layouts that stack what landscape puts side by side
+ * (the shelf's vertical cover flow, art above a list) ask this. */
+#define UI_PORTRAIT (plat_screen_h > plat_screen_w)
 /* The panel in its own pixels, as Diatom draws on it (plorpos-6ei.17). */
 extern int plat_panel_w, plat_panel_h;
 float plat_scale(void);

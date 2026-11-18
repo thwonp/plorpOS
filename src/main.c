@@ -4252,6 +4252,7 @@ static void draw_systems(app *a)
 	cf_layout lay = sys_layout(&CF_LAYOUT_SYSTEMS);
 
 	cf_focus_rect(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
+	bool col = cf_vertical(&lay, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
 #if defined(PLATFORM_MIYOO)
 	/* Not while a long jump is cutting: the cursor is already at the far end
@@ -4281,8 +4282,8 @@ static void draw_systems(app *a)
 		 * 670 and leaves 20px before the count at 690. The card is sized to
 		 * fit ABOVE this rather than this being pushed down to suit the
 		 * card. */
-		ui_text(a->r, ui_font(UI_F_TITLE), nfit, TORTOS_SCREEN_W / 2, STAGE_Y + 618, 0,
-		        ui_fade(UI_TEXT, label_a));
+		ui_text(a->r, ui_font(UI_F_TITLE), nfit, TORTOS_SCREEN_W / 2,
+		        col ? focus.y + focus.h + 16 : STAGE_Y + 618, 0, ui_fade(UI_TEXT, label_a));
 	}
 
 	if (is_muse(label)) {
@@ -4310,8 +4311,12 @@ static void draw_systems(app *a)
 			 * that says so - clang does not. */
 			snprintf(line, sizeof line, "no games in Roms/%.96s", label->folder);
 	}
-	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0,
-	        ui_fade(UI_TEXT_DIM, label_a));
+	/* In the column the count sits under the card, and under the name when
+	 * the art does not carry one (cf_vertical). */
+	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2,
+	        !col ? STAGE_Y + 690
+	             : focus.y + focus.h + 16 + (CARD_SETS[g_cards].labeled ? 0 : ui_font_line(UI_F_TITLE) + 6),
+	        0, ui_fade(UI_TEXT_DIM, label_a));
 	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
 	        s->accent, rail_sys_hue, a);
 }
@@ -4463,6 +4468,19 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * recorded as current; coming back to it was not a change, and it
 		 * carried on mid-scroll instead of starting over. */
 		unsigned phase = title_phase(a);
+		/* The column on a portrait screen (cf_vertical): the words go under
+		 * the focused card instead of across the top, where the card above
+		 * would be under them. */
+		const cf_layout *row = is_muse(s) ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
+		bool col = cf_vertical(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+		int ty = 40;
+
+		if (col) {
+			SDL_Rect fr;
+
+			cf_focus_rect(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &fr);
+			ty = fr.y + fr.h + 18;
+		}
 		/* The one mark left on a card.
 		 *
 		 * There was a second, a dot on the right, for a game with an autosave
@@ -4476,14 +4494,14 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * descender's depth most titles never use, so a mark placed at
 			 * the box's middle sits visibly below the letters. Descent is
 			 * negative, so half of it lifts. */
-			int dy = 40 + line / 2 + (ft2 ? ui_font_descent(ft2) / 2 : 0);
+			int dy = ty + line / 2 + (ft2 ? ui_font_descent(ft2) / 2 : 0);
 			SDL_Color c = { (Uint8)(gs->accent >> 16), (Uint8)(gs->accent >> 8),
 			                (Uint8)gs->accent, 255 };
 
 			draw_heart(a->r, (float)(margin + hrad), (float)dy, (float)hrad, c);
 		}
 		if (slides) {
-			ui_text_marquee(a->r, ft2, g->title, boxx, 40, boxw,
+			ui_text_marquee(a->r, ft2, g->title, boxx, ty, boxw,
 			                phase, UI_TEXT);
 			/* Not "a title is sliding, so keep drawing". It ping-pongs for
 			 * as long as the game is focused, with 1.4s of stillness at the
@@ -4503,7 +4521,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * set down on a long title with nobody looking is ended by Auto Off,
 			 * so there is no long unattended stretch of it to save. */
 		} else {
-			ui_text(a->r, ft2, g->title, tx, 40, 0, UI_TEXT);
+			ui_text(a->r, ft2, g->title, tx, ty, 0, UI_TEXT);
 		}
 		/* An album is two names, and on Muse's shelf the artist is the one
 		 * the letter jump goes by - so it is said, a step quieter, under the
@@ -4521,7 +4539,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 				else if (!strcmp(g->name, g->title)) under = "";
 			}
 			ui_fit_text(ui_font(UI_F_MENU), under, afit, sizeof afit, boxw);
-			ui_text(a->r, ui_font(UI_F_MENU), afit, tx, 40 + line + 4, 0,
+			ui_text(a->r, ui_font(UI_F_MENU), afit, tx, ty + line + 4, 0,
 			        UI_TEXT_DIM);
 		}
 		/* Where you are in the list, not what this game is - the same kind
@@ -4540,7 +4558,9 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		{
 			int cy = STAGE_Y + 690;
 
-			if (is_muse(s) && g_muse_list_up) {
+			if (col)
+				cy = ty + line + 8 + (is_muse(s) ? ui_font_line(UI_F_MENU) + 4 : 0);
+			else if (is_muse(s) && g_muse_list_up) {
 				SDL_Rect c;
 				int mline = ui_font_line(UI_F_META);
 				int ftop = TORTOS_SCREEN_H - GL_PAD - mline;   /* gl_draw_footer's */
@@ -4611,7 +4631,9 @@ typedef struct {
 enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
        GL_KEY_PICK = -4, GL_KEY_TABS = -5, GL_KEY_QUEUE = -6 };
 
-typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
+/* art_top/art_h: the art's band above the column on a portrait screen
+ * (plorpos-auv.3); 0 where the art is beside it. */
+typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w, art_top, art_h; } gl_geom;
 
 static int gl_footer_h(const gl_list *L)
 {
@@ -4723,6 +4745,20 @@ static void gl_geometry(gl_geom *g, const gl_list *L)
 	g->top = GL_PAD + head + GL_PAD / 2;
 	g->bottom = TORTOS_SCREEN_H - GL_PAD - gl_footer_h(L);
 	g->row_h = gl_row_h();
+	g->art_top = g->art_h = 0;
+	/* Portrait (the Zero 40): the art and its lines in a band under the
+	 * header, the column beneath at the full width (owner, plorpos-auv). */
+	if (L->art && UI_PORTRAIT) {
+		g->art_top = g->top;
+		g->art_h = TORTOS_SCREEN_H * 36 / 100;
+		g->top = g->art_top + g->art_h + GL_PAD / 2;
+		g->rows = (g->bottom - g->top) / g->row_h;
+		if (g->rows < 1) g->rows = 1;
+		g->col_w = TORTOS_SCREEN_W - GL_PAD * 2;
+		g->pane_x = GL_PAD;
+		g->pane_w = TORTOS_SCREEN_W - GL_PAD * 2;
+		return;
+	}
 	g->rows = (g->bottom - g->top) / g->row_h;
 	if (g->rows < 1) g->rows = 1;
 	if (L->art) {
@@ -4761,7 +4797,7 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
 	SDL_Texture *t = NULL;
 
 	gl_geometry(&g, L);
-	bh = g.bottom - g.top - gl_under_h(L);
+	bh = (g.art_h ? g.art_h : g.bottom - g.top) - gl_under_h(L);
 	dw = g.pane_w;
 	dh = bh;
 	if (L->art && L->n > 0) t = L->art(L->ctx, L->cur, &w, &h);
@@ -4775,7 +4811,8 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
 	/* Centred on the screen; under a wide header, between it and the footer,
 	 * so the title clears the cover (owner). */
 	*out = (SDL_Rect){ g.pane_x + (g.pane_w - dw) / 2,
-	                   L->wide_header ? g.top + (g.bottom - g.top - block) / 2
+	                   g.art_h ? g.art_top + (g.art_h - block) / 2
+	                   : L->wide_header ? g.top + (g.bottom - g.top - block) / 2
 	                   : (TORTOS_SCREEN_H - gl_footer_h(L) - block) / 2, dw, dh };
 	if (tex) *tex = t;
 }
@@ -4823,6 +4860,11 @@ static void gl_draw_footer(app *a, const gl_list *L)
 
 	ui_text(a->r, fs, "L2", GL_PAD, ys, -1, UI_TEXT_DIM);
 	ui_text(a->r, fs, "R2", TORTOS_SCREEN_W - GL_PAD, ys, 1, UI_TEXT_DIM);
+	/* Still too wide with a pad between each - five tabs across the Zero 40's
+	 * 768 units (plorpos-auv.3) - and the words take the hints' smaller size. */
+	for (i = 0; i < L->ntabs; i++) total += ui_text_width(f, L->tabs[i]) + (i ? GL_PAD : 0);
+	if (total > room) f = fs;
+	total = 0;
 	for (i = 0; i < L->ntabs; i++) total += ui_text_width(f, L->tabs[i]) + (i ? gap : 0);
 	/* Too wide between L2 and R2: the gaps give way first (owner). */
 	if (total > room && L->ntabs > 1) {
@@ -9062,7 +9104,9 @@ static void about_screen(app *a)
  * follows Gamelist Layout, because which axis moves is what that setting does. */
 static ctl_dir controls_dir(void)
 {
-	return GAMELISTS[g_gl].list ? CTL_LIST : CTL_COVERFLOW;
+	/* A portrait coverflow is a column too (cf_vertical): Up/Down move it. */
+	return GAMELISTS[g_gl].list || cf_vertical(&CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H)
+	       ? CTL_LIST : CTL_COVERFLOW;
 }
 
 /* MENU > Controls: what every button does, a page per place. Read-only like
@@ -12045,11 +12089,13 @@ static void mmss(char *out, size_t n, double sec)
  * of light, and the words beside it. Its own screen and not a panel over the
  * shelf: it is the one screen left open for as long as an album lasts, and
  * what is behind a panel is a picture of games. */
-#define NP_SIDE 432                              /* the cover, on screen */
-#define NP_X    80
+/* Portrait (the Zero 40, plorpos-auv.3): the cover centred near the top and
+ * the words under it, across the screen. */
+#define NP_SIDE (UI_PORTRAIT ? 560 : 432)        /* the cover, on screen */
+#define NP_X    (UI_PORTRAIT ? (TORTOS_SCREEN_W - NP_SIDE) / 2 : 80)
 #define NP_Y    np_y()
-#define NP_TX   (NP_X + NP_SIDE + 56)            /* the words beside it */
-#define NP_TW   (TORTOS_SCREEN_W - NP_TX - 64)
+#define NP_TX   (UI_PORTRAIT ? NP_X : NP_X + NP_SIDE + 56)   /* the words beside it, or under */
+#define NP_TW   (UI_PORTRAIT ? NP_SIDE : TORTOS_SCREEN_W - NP_TX - 64)
 #define NP_HELP_Y (TORTOS_SCREEN_H - 72)         /* the buttons' line */
 
 #define NP_SRC_GAP 18                            /* cover foot to the Source line */
@@ -12064,6 +12110,7 @@ static int np_y(void)
 	int asc = f ? ui_font_ascent(f) : ui_font_height(UI_F_META);
 	int lead = f ? asc - ui_font_cap(f) : 0;  /* the buttons' box top to ink */
 
+	if (UI_PORTRAIT) return 96;
 	return (NP_HELP_Y + lead - NP_SIDE - NP_SRC_GAP - asc) / 2;
 }
 
@@ -12092,6 +12139,25 @@ static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int y,
 
 /* Returns how long until the picture would change by itself, in ms - 0 while
  * a line is sliding - so the loop can leave the screen alone until then. */
+/* The buttons' line - two lines where it is wider than the screen (portrait),
+ * broken at the middle gap. */
+static void np_help(SDL_Renderer *r, TTF_Font *fs, const char *help)
+{
+	const char *gaps[8], *p;
+	int ng = 0;
+	char a1[160];
+
+	for (p = help; (p = strstr(p, "    ")) && ng < 8; p += 4) gaps[ng++] = p;
+	if (ui_text_width(fs, help) <= TORTOS_SCREEN_W - 48 || ng < 1) {
+		ui_text(r, fs, help, TORTOS_SCREEN_W / 2, NP_HELP_Y, 0, UI_TEXT_DIM);
+		return;
+	}
+	p = gaps[(ng - 1) / 2];
+	snprintf(a1, sizeof a1, "%.*s", (int)(p - help), help);
+	ui_text(r, fs, a1, TORTOS_SCREEN_W / 2, NP_HELP_Y - ui_font_line(UI_F_META) - 4, 0, UI_TEXT_DIM);
+	ui_text(r, fs, p + 4, TORTOS_SCREEN_W / 2, NP_HELP_Y, 0, UI_TEXT_DIM);
+}
+
 static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 {
 	SDL_Renderer *r = a->r;
@@ -12137,7 +12203,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	/* Title, artist and album slide together when they are too long, on one
 	 * clock that starts over with each track. */
 	phase = mq_phase(MQ_NP, mn->index, (int)strlen(mn->title));
-	y = NP_Y + 36;
+	y = UI_PORTRAIT ? cov.y + cov.h + NP_SRC_GAP + ui_font_line(UI_F_META) + 28 : NP_Y + 36;
 	/* Where the track comes from, under the cover at its left edge (owner,
 	 * plorpos-1lw.10): the playing track's own source, not the one being
 	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
@@ -12209,7 +12275,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 
 	/* Where in the track. What is left rather than the whole length on the
 	 * right, because the question is usually how long until the next one. */
-	bar = NP_Y + NP_SIDE - 132;
+	bar = UI_PORTRAIT ? y + ui_font_line(UI_F_MENU) + 36 : NP_Y + NP_SIDE - 132;
 	ui_round_rect(r, &(SDL_Rect){ NP_TX, bar, NP_TW, UI_BAR_H }, UI_BAR_H / 2,
 	              (SDL_Color){ 255, 255, 255, 34 });
 	fill = (int)(NP_TW * (k < 0 ? 0 : k > 1 ? 1 : k) + 0.5);
@@ -12232,19 +12298,20 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	if (next && next[0]) {
 		snprintf(line, sizeof line, "Next: %s", next);
 		ui_fit_text(fs, line, fit, sizeof fit, NP_TW);
-		ui_text(r, fs, fit, NP_TX, NP_Y + NP_SIDE - ui_font_height(UI_F_META), -1,
+		ui_text(r, fs, fit, NP_TX,
+		        UI_PORTRAIT ? bar + 16 + ui_font_line(UI_F_META) + 24
+		                    : NP_Y + NP_SIDE - ui_font_height(UI_F_META), -1,
 		        UI_TEXT_DIM);
 	}
 
-	ui_text(r, fs, musec_is_book()
+	np_help(r, fs, musec_is_book()
 	        ? (musec_chapters() > 1
 	           ? (state ? "A: play    L1/R1: chapter    Left/Right: seek    Y: speed"
 	                    : "A: pause    L1/R1: chapter    Left/Right: seek    Y: speed")
 	           : (state ? "A: play    L1/R1: file    Left/Right: seek    Y: speed"
 	                    : "A: pause    L1/R1: file    Left/Right: seek    Y: speed"))
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
-	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
-	        TORTOS_SCREEN_W / 2, NP_HELP_Y, 0, UI_TEXT_DIM);
+	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"));
 	draw_battery(r);
 	return wait;
 }
@@ -13901,11 +13968,15 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		 * and Right a card, Up and Down a letter, L1 and R1 a window. */
 		if (cover && n > 0) {
 			int dir = 0;
+			/* A column on a portrait screen: the axes trade (update_games). */
+			bool col = cf_vertical(&CF_LAYOUT_ALBUMS, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+			in_button back = col ? IN_UP : IN_LEFT, fwd = col ? IN_DOWN : IN_RIGHT;
+			in_button jup = col ? IN_LEFT : IN_UP, jdn = col ? IN_RIGHT : IN_DOWN;
 
-			if (in_repeat(&a->in, IN_LEFT))  { v->cursor = (v->cursor - 1 + n) % n; dir = -1; }
-			if (in_repeat(&a->in, IN_RIGHT)) { v->cursor = (v->cursor + 1) % n; dir = +1; }
-			if (in_repeat(&a->in, IN_DOWN))  v->cursor = shelf_letter_jump(v, +1);
-			if (in_repeat(&a->in, IN_UP))    v->cursor = shelf_letter_jump(v, -1);
+			if (in_repeat(&a->in, back)) { v->cursor = (v->cursor - 1 + n) % n; dir = -1; }
+			if (in_repeat(&a->in, fwd))  { v->cursor = (v->cursor + 1) % n; dir = +1; }
+			if (in_repeat(&a->in, jdn))  v->cursor = shelf_letter_jump(v, +1);
+			if (in_repeat(&a->in, jup))  v->cursor = shelf_letter_jump(v, -1);
 			if (in_repeat(&a->in, IN_L1)) v->cursor = ((v->cursor - CF_WINDOW) % n + n) % n;
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
 			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
@@ -17368,7 +17439,9 @@ static void update_systems(app *a)
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
 	 * directions, and only the press says which. */
-	in_button back = IN_LEFT, fwd = IN_RIGHT;
+	/* A column on a portrait screen (cf_vertical): Up and Down step it. */
+	bool col = cf_vertical(&CF_LAYOUT_SYSTEMS, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+	in_button back = col ? IN_UP : IN_LEFT, fwd = col ? IN_DOWN : IN_RIGHT;
 	int dir = 0;
 
 	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
@@ -17482,8 +17555,10 @@ static void update_games(app *a)
 	 * letter jump always runs across it. Turning the shelf turns the d-pad
 	 * with it and nothing is left doing two jobs. */
 	bool vert = GAMELISTS[g_gl].list;
-	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
-	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
+	/* The coverflow is a column on a portrait screen too (cf_vertical). */
+	bool col = vert || cf_vertical(&CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+	in_button back = col ? IN_UP : IN_LEFT, fwd = col ? IN_DOWN : IN_RIGHT;
+	in_button jup = col ? IN_LEFT : IN_UP, jdn = col ? IN_RIGHT : IN_DOWN;
 	int dir = 0;
 
 	if (in_repeat(&a->in, back)) { v->cursor = (v->cursor - 1 + n) % n; dir = -1; }
@@ -18566,6 +18641,7 @@ static float shot_np_at = 83.0f;
 /* --mode NAME plays whatever the shot shows in that play mode: the mark beside
  * the track count is drawn from it. */
 static const char *shot_mode;
+static const char *shot_gl;          /* --gamelist: a Gamelist Layout id, for the shots */
 static float shot_slot_aspect = 4.0f / 3.0f;
 
 /* A stand-in for a paused game frame, at whatever shape was asked for: the
@@ -19349,6 +19425,7 @@ int main(int argc, char *argv[])
 		}
 		else if (!strcmp(argv[i], "--paused")) shot_np_paused = 1;
 		else if (!strcmp(argv[i], "--mode") && i + 1 < argc) shot_mode = argv[++i];
+		else if (!strcmp(argv[i], "--gamelist") && i + 1 < argc) shot_gl = argv[++i];
 		else if (!strcmp(argv[i], "--sysmove") && i + 1 < argc)
 			shot_sysmove = (float)atof(argv[++i]);
 		else if (!strcmp(argv[i], "--gamemove") && i + 1 < argc)
@@ -19855,7 +19932,7 @@ int main(int argc, char *argv[])
 		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
 		g_cards = cards_index(set);
 		db_get_str(db_dev(), "gamelist_layout", set, sizeof set, GAMELIST_DEFAULT);
-		g_gl = gamelist_index(set);
+		g_gl = gamelist_index(shot_gl ? shot_gl : set);
 	}
 	a.sys_cursor = 0;
 	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");

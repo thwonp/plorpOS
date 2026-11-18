@@ -23,8 +23,8 @@ export SHARED_USERDATA_PATH=$SDCARD/.userdata/shared
 export LOGS_PATH=$USERDATA_PATH/logs
 export HOME=$USERDATA_PATH
 # oakMOSS's SDL2 (TrimUI's 2.26.1, with image, mixer and ttf) lives here and
-# must come first (oakMOSS hardware-notes).
-export LD_LIBRARY_PATH=/usr/magicx/lib:$LD_LIBRARY_PATH
+# must come first (oakMOSS hardware-notes); then plorpOS/lib, Muse's FFmpeg.
+export LD_LIBRARY_PATH=/usr/magicx/lib:$TORTOS_DIR/lib:$LD_LIBRARY_PATH
 export PATH=/usr/magicx/bin:$PATH
 # For SDL_GameController readers (native PICO-8): SDL's automatic mapping
 # drops the four-button d-pad and MENU. Positional, as SDL names them: a is

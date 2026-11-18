@@ -1905,6 +1905,11 @@ void plat_geometry_init(SDL_Renderer *r)
 
 	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
 	g_scale = (float)w / 1024 < (float)h / 768 ? (float)w / 1024 : (float)h / 768;
+	/* A portrait panel (the Zero 40's 480x800, plorpos-auv.3) fits 768 across
+	 * instead: 1024 would shrink everything to 0.47, and 768 at 0.625 is the
+	 * RG SP's scale - at the Zero 40's 233 ppi the same text size, which the
+	 * SP's owners read every day. The height takes the rest (1280 units). */
+	if (h > w) g_scale = (float)w / 768;
 	plat_panel_w = w;
 	plat_panel_h = h;
 	plat_screen_w = (int)(w / g_scale);
