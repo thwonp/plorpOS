@@ -1,5 +1,7 @@
 # Installing on the GKD 350H Ultra
 
+*v1.9.x installs to `TortOS/`; `plorpOS/` starts with the next release.*
+
 plorpOS runs on top of the GKD's own system, ROCKNIX, and changes nothing in
 it. It needs two things: its files on the microSD card, and three small service
 files on the GKD's internal storage that tell ROCKNIX to start plorpOS instead

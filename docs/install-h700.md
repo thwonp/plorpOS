@@ -1,5 +1,7 @@
 # Installing on an Anbernic H700 (RG SP, RG34xxSP, RG35XX H)
 
+*v1.9.x installs to `TortOS/`; `plorpOS/` starts with the next release.*
+
 plorpOS runs on top of **BaseOS**, a small system for Anbernic's H700
 handhelds by Prashant Vaibhav (<https://github.com/pvaibhav/BaseOS>). BaseOS
 goes on one microSD card and starts whatever frontend it finds on the other;

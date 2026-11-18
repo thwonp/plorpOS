@@ -1,5 +1,7 @@
 # Installing on the TrimUI Brick
 
+*v1.9.x installs to `TortOS/`; `plorpOS/` starts with the next release.*
+
 plorpOS runs from the microSD card. The first boot puts a small hook on the
 Brick that looks for the card; take the card out and the Brick starts its stock
 system as before.

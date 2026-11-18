@@ -1,5 +1,7 @@
 # Installing on a Miyoo Mini Flip
 
+*v1.9.x installs to `TortOS/`; `plorpOS/` starts with the next release.*
+
 The Flip has 128 MB of RAM (about 101 MB usable) and no swap, which decides
 what runs; see "Limits".
 
