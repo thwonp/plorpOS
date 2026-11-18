@@ -10,6 +10,8 @@
 #include "db.h"
 #include "platform.h"
 #include "platform_dev.h"
+#include "ui.h"
+#include "touch.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -31,6 +33,19 @@
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
  * SD card, as ROCKNIX mounts it; userdata per device, as on the Brick. */
+#ifdef PLATFORM_RGDS
+/* The Anbernic RG DS (plorpos-rgds) shares this file: ROCKNIX, sway, PipeWire
+ * and libmali as on the GKD. PLATFORM_RGDS marks where its hardware differs -
+ * the install folder (plorpOS from the start, plorpos-nzi), the pad
+ * (InputPlumber's virtual one), and the top panel's backlight. */
+const char *P_ROOT = "/storage/games-external/plorpOS";
+const char *P_CARD = "/storage/games-external";
+const char *P_ROMS = "/storage/games-external/Roms";
+const char *P_USERDATA = "/storage/games-external/.userdata/rgds";
+const char *P_SHARED = "/storage/games-external/.userdata/shared";
+const char *P_WEB = "/storage/games-external/plorpOS/res/web";
+const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
+#else
 const char *P_ROOT = "/storage/games-external/TortOS";
 const char *P_CARD = "/storage/games-external";
 const char *P_ROMS = "/storage/games-external/Roms";
@@ -38,10 +53,15 @@ const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
 const char *P_SHARED = "/storage/games-external/.userdata/shared";
 const char *P_WEB = "/storage/games-external/TortOS/res/web";
 const char *P_FONT = "/storage/games-external/TortOS/menu.ttf";
+#endif
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
+#ifdef PLATFORM_RGDS
+	"PLATFORM=rgds", "DEVICE=rgds",
+#else
 	"PLATFORM=gkd350h", "DEVICE=gkd350h",
+#endif
 	"SDCARD_PATH=/storage/games-external",
 	"BIOS_PATH=/storage/games-external/Bios",
 	"CHEATS_PATH=/storage/games-external/Cheats",
@@ -64,6 +84,11 @@ const char *plat_bright_keys(void) { return "Home+Vol"; }
  * 921 units tall. */
 static SDL_Window *win;
 static SDL_Renderer *ren;
+#ifdef PLATFORM_RGDS
+static SDL_Window *bwin;      /* the bottom panel's (plorpos-rgds.18) */
+static SDL_Renderer *bren;
+static Uint32 b_session_t0;   /* Muse on it, until its first frame (plat_bottom_session) */
+#endif
 
 SDL_Renderer *plat_renderer(void) { return ren; }
 
@@ -129,13 +154,35 @@ bool plat_video_init(void)
 bool plat_video_init_over_child(void) { return plat_video_init(); }
 
 static bool resident_away_pending;
+static bool place_pending;      /* RG DS: the launcher onto the primary after the next present */
+static int place_tries;
+#ifdef PLATFORM_RGDS
+static bool b_move;             /* Primary Bottom: the secondary over to DSI-2 once mapped */
+static int move_tries;
+static bool bottom_over(void);
+#endif
 static void resident_place(bool on_screen);
 static bool helper(char *const argv[]);
-static void launcher_place(bool on_screen);
+static bool launcher_place(bool on_screen);
 
 void plat_present(SDL_Renderer *r)
 {
+#ifdef PLATFORM_RGDS
+	ui_hit_frame();   /* a tap now means what this frame shows */
+#endif
 	SDL_RenderPresent(r);
+#ifdef PLATFORM_RGDS
+	if (b_session_t0 && r == bren) {
+		fprintf(stderr, "bottom: Muse up in %u ms\n", SDL_GetTicks() - b_session_t0);
+		b_session_t0 = 0;
+	}
+#endif
+	/* Retried until sway has mapped the window and the move lands: the
+	 * criteria match nothing before that (swaymsg fails). A few frames. */
+	if (place_pending && (launcher_place(true) || ++place_tries > 30)) place_pending = false, place_tries = 0;
+#ifdef PLATFORM_RGDS
+	if (b_move && (bottom_over() || ++move_tries > 30)) b_move = false, move_tries = 0;
+#endif
 	/* The menu's first frame is up: only now does the paused game go
 	 * (screen_yield). */
 	if (resident_away_pending) {
@@ -148,6 +195,11 @@ void plat_present(SDL_Renderer *r)
 
 void plat_video_quit(void)
 {
+#ifdef PLATFORM_RGDS
+	plat_bottom_off();
+	if (bren) { SDL_DestroyRenderer(bren); bren = NULL; }
+	if (bwin) { SDL_DestroyWindow(bwin); bwin = NULL; }
+#endif
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
 	if (win) { SDL_DestroyWindow(win); win = NULL; }
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -166,28 +218,388 @@ void plat_video_quit(void)
  * Diatom hiding its own window first left sway's black background up until
  * the launcher's first buffer. At a game's start and
  * end there is no resident window to move; the move fails quietly. */
+#ifdef PLATFORM_RGDS
+/* Primary Screen (plorpos-rgds.18.1.3): which panel the launcher and a
+ * single-screen game use; the secondary window gets the other. A DS game
+ * always has the top for its top screen (rgds_game_top, set at its launch). */
+static bool g_prim_bottom;
+bool rgds_game_top;
+#define SEC_OUT  (g_prim_bottom ? "DSI-2" : "DSI-1")
+
+/* Workspace 1 - the launcher, a game, a port: everything placed "on the
+ * screen" goes there - onto the primary panel, lit. While a DS game runs
+ * that is the top whatever Primary Screen says. */
+static bool ws1_bottom;        /* where workspace 1 was last put */
+static bool rp_pending;        /* a game's window still to be put on workspace 1 */
+static bool cp_pending;        /* a port's, likewise */
+static int cp_tries;
+static int rp_tries;
+
+/* The game's window, once sway has mapped it: at a launch it can open on
+ * another workspace than 1 while the panels are being rearranged. From the
+ * launcher's 10 Hz tick during a game; up to 5 s. */
+void plat_rgds_game_tick(void)
+{
+	char c[160];
+	char *argv[] = { "swaymsg", c, NULL };
+	pid_t pid = diatom_pid();
+
+	if (!rp_pending || pid <= 0) return;
+	snprintf(c, sizeof c, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
+	if (helper(argv) || ++rp_tries > 50) rp_pending = false;
+}
+
+/* A port or native PICO-8 asks for fullscreen on SDL's display 0, the top
+ * panel, whatever has the focus: with Primary Bottom, its window is taken
+ * onto workspace 1 once it is there. From the native tick; up to 5 s. */
+void plat_rgds_child_tick(void)
+{
+	char *argv[] = { "swaymsg", "[title=\"^(?!plorpOS|diatom)\" workspace=\"^(?!1$|plorpos-launcher$|plorpos-hidden$)\"] move container to workspace 1, focus, fullscreen enable", NULL };
+
+	if (!cp_pending) return;
+	if (helper(argv) || ++cp_tries > 50) cp_pending = false;
+}
+static bool helper(char *const argv[]);
+
+static void ws1_place(void)
+{
+	bool down = g_prim_bottom && !rgds_game_top;
+	char *argv[] = { "swaymsg", (char *)(down
+	        ? "workspace 1, move workspace to output DSI-1, output DSI-1 power on"
+	        : "workspace 1, move workspace to output DSI-2, output DSI-2 power on"), NULL };
+
+	/* Top, and already there: nothing to do - one swaymsg fewer per menu. */
+	if (!g_prim_bottom && !ws1_bottom) return;
+	if (helper(argv)) ws1_bottom = down;
+}
+#endif
+
 static void resident_place(bool on_screen)
 {
-	char crit[96];
+	char crit[256];
 	char *cmd[] = { "swaymsg", crit, NULL };
 	pid_t pid = diatom_pid();
 
 	if (pid <= 0) return;
+	/* By title too: on the RG DS a DS game has a second window, on the
+	 * bottom panel, which stays where it is (plorpos-rgds.17). */
+#ifdef PLATFORM_RGDS
+	if (on_screen) {
+		/* Workspace 1 placed and focused first, on its own: a game's window
+		 * opens wherever the focus is, and at its start there is none yet
+		 * for the move below to find. */
+		ws1_place();
+		snprintf(crit, sizeof crit, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
+		rp_pending = !helper(cmd);   /* not mapped yet: plat_rgds_game_tick tries again */
+		rp_tries = 0;
+		return;
+	}
+	rp_pending = false;
+#endif
 	snprintf(crit, sizeof crit, on_screen
-	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d] move container to workspace plorpos-hidden", (int)pid);
+	         ? "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d title=\"^diatom$\"] move container to workspace plorpos-hidden", (int)pid);
 	helper(cmd);
 }
 
-static void launcher_place(bool on_screen)
+#ifdef PLATFORM_RGDS
+/* ---- the bottom panel (plorpos-rgds.18) -------------------------------------
+ *
+ * A second window, titled so that ROCKNIX's sway config puts it on DSI-1 and
+ * lights that panel (".*Bottom.*"), with a renderer of its own and no vsync:
+ * it is drawn only when what it shows changes, and a vsync wait there would
+ * be the shelf's frame lost. Only while the launcher itself is on the
+ * screen: a game has both panels (a DS game draws its bottom screen there,
+ * diatom port/gkd.c), so leaving the screen hides it and turns the panel off. */
+static int bw, bh;
+static bool b_shown, b_away;
+static unsigned b_epoch;
+static int b_swipe;
+static int b_tap_x = -1, b_tap_y = -1;   /* a tap's panel pixel, -1 none */
+static bool b_keep;                       /* stays up during a one-screen game */
+static bool b_session;                    /* Muse runs there (plat_bottom_session) */
+static bool b_queue;                      /* it shows the queue (plat_bottom_queue) */
+static bool b_game;                       /* the session is beside a running game */
+static void (*b_want_fn)(void);           /* opens Muse there: plat_bottom_on_want */
+static float b_drag, b_ly;                /* the queue's drag: px moved, last y */
+static bool b_primary_tap;                /* the primary touched during a session */
+/* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
+ * panel that is not live asks for the switch, and its events so far are kept
+ * here and handed to the touch engine on the other side once it is live -
+ * the same swipe carries on. Too old to belong to the finger: dropped. */
+#define HELD_MAX 32
+#define HELD_MS  300
+static SDL_Event b_held[HELD_MAX];
+static int b_nheld;
+static Uint32 b_held_at;
+static bool b_want;                       /* a finger on the resting secondary */
+static Uint32 b_carry_until;              /* a switch's finger outlives the flushes till then */
+static bool b_pad_again[IN_COUNT];        /* pressed during a session: the primary's */
+
+static void held_add(const SDL_Event *e)
 {
-	char cmd[128];
+	if (b_nheld == 0) b_held_at = SDL_GetTicks();
+	if (b_nheld < HELD_MAX) b_held[b_nheld++] = *e;
+}
+
+static void held_give(float w, float h)
+{
+	if (SDL_GetTicks() - b_held_at <= HELD_MS)
+		for (int i = 0; i < b_nheld; i++) touch_event(&b_held[i], w, h);
+	b_nheld = 0;
+}
+static void bottom_touch(const SDL_Event *e);
+
+void plat_bottom_keep(bool on) { b_keep = on; }
+
+/* During a game: only the fingers, for the secondary's buttons - the rest of
+ * the queue is the launcher's own, read when it is back. */
+void plat_bottom_pump(void)
+{
+	SDL_Event e[8];
+	int n;
+
+	if (!bwin || !b_shown) return;
+	SDL_PumpEvents();
+	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERMOTION)) > 0)
+		for (int i = 0; i < n; i++) {
+			if (e[i].tfinger.windowID != SDL_GetWindowID(bwin)) continue;
+			/* Muse rests there: a finger opens it beside the game and
+			 * carries on (plorpos-rgds.18.3.5), as on the shelf. */
+			if (b_keep && !b_session) {
+				if (e[i].type == SDL_FINGERDOWN && !b_want) { b_want = true; b_nheld = 0; }
+				if (b_want) held_add(&e[i]);
+			} else if (e[i].type != SDL_FINGERMOTION) bottom_touch(&e[i]);
+		}
+}
+static float b_x0, b_y0;
+static bool b_down;
+
+static bool sway_cmd(const char *cmd);
+
+SDL_Renderer *plat_bottom_begin(int *w, int *h)
+{
+	if ((b_away && !b_shown) || !win) return NULL;   /* away: only a kept one */
+	if (!bwin) {
+		bwin = SDL_CreateWindow("plorpOS Bottom", SDL_WINDOWPOS_UNDEFINED_DISPLAY(1),
+		                        SDL_WINDOWPOS_UNDEFINED_DISPLAY(1), 640, 480,
+		                        SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
+		if (bwin) bren = SDL_CreateRenderer(bwin, -1, SDL_RENDERER_ACCELERATED);
+		if (!bwin || !bren) {
+			fprintf(stderr, "bottom: no window: %s\n", SDL_GetError());
+			if (bwin) SDL_DestroyWindow(bwin);
+			bwin = NULL;
+			b_away = true;       /* not again this time on the screen */
+			return NULL;
+		}
+		SDL_SetRenderDrawBlendMode(bren, SDL_BLENDMODE_BLEND);
+	} else if (!b_shown) {
+		SDL_ShowWindow(bwin);
+	}
+	if (!b_shown) {
+		for (int i = 0; i < 100; i++) {   /* sway's first configure, as above */
+			SDL_PumpEvents();
+			SDL_GetRendererOutputSize(bren, &bw, &bh);
+			if (bw > 1 && bh > 1) break;
+			SDL_Delay(10);
+		}
+		/* In the background: sway takes 350 ms to bring a DSI panel up
+		 * (measured), all of it the shelf's frame otherwise. The window is
+		 * drawn into meanwhile and is there when the panel lights. */
+		{
+			char c[200];
+
+			/* sway's rule puts a "Bottom" window on DSI-1 as it maps, which
+			 * is at its first present: with the primary there, it goes over
+			 * to the top panel after that one (plat_bottom_end). */
+			if (g_prim_bottom) b_move = true;
+			else {
+				snprintf(c, sizeof c, "swaymsg output DSI-1 power on > /dev/null 2>&1 &");
+				if (system(c) != 0) fprintf(stderr, "bottom: swaymsg did not start\n");
+			}
+		}
+		b_shown = true;
+		fprintf(stderr, "bottom: on, %dx%d\n", bw, bh);
+	}
+	*w = bw;
+	*h = bh;
+	return bren;
+}
+
+SDL_Renderer *plat_bottom_renderer(void) { return bren; }
+
+void plat_bottom_on_want(void (*fn)(void)) { b_want_fn = fn; }
+
+void plat_bottom_queue(bool on)
+{
+	if (on == b_queue) return;
+	b_queue = on;
+	b_down = false;
+	b_drag = 0;
+	b_tap_x = b_tap_y = -1;
+}
+
+int plat_bottom_drag(void)
+{
+	int d = (int)b_drag;
+
+	b_drag -= d;
+	return d;
+}
+
+bool plat_bottom_want(void)
+{
+	/* Not taken in time (a menu over the shelf, say): that finger is gone. */
+	if (b_want && SDL_GetTicks() - b_held_at > HELD_MS) { b_want = false; b_nheld = 0; }
+	return b_want;
+}
+
+void plat_bottom_session(bool on, bool game)
+{
+	b_session = on;
+	b_game = on && game;
+	b_session_t0 = on ? SDL_GetTicks() : 0;
+	b_down = false;
+	b_tap_x = b_tap_y = -1;
+	b_swipe = 0;
+	b_want = false;
+	b_primary_tap = false;
+	touch_reset();                         /* the other panel's gesture ends here */
+	/* The finger that asked for the switch, carried on where it is - and
+	 * kept through the flushes the screens opening there make. */
+	b_carry_until = SDL_GetTicks() + HELD_MS;
+	if (on) held_give(bw, bh);
+	else if (!game) held_give(plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+	else {
+		/* Beside a game the pad and the panel were the game's all along. */
+		b_nheld = 0;
+		memset(b_pad_again, 0, sizeof b_pad_again);
+	}
+}
+
+void plat_bottom_end(void)
+{
+	if (bren && b_shown) SDL_RenderPresent(bren);
+}
+
+/* The secondary window onto the top panel (Primary Bottom), lit; false while
+ * sway has not mapped it yet. */
+static bool bottom_over(void)
+{
+	char c[200];
+	char *argv[] = { "swaymsg", c, NULL };
+
+	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to workspace plorpos-secondary", (int)getpid());
+	if (!helper(argv)) return false;
+	/* Its own workspace, shown on the top panel: otherwise whatever is left
+	 * there - the launcher's hidden one, after a DS game - is what shows.
+	 * Lit, and the focus back on workspace 1: the next game opens there. */
+	snprintf(c, sizeof c, "workspace plorpos-secondary, move workspace to output DSI-2, output DSI-2 power on, workspace 1");
+	helper(argv);
+	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] fullscreen enable", (int)getpid());
+	helper(argv);
+	return true;
+}
+
+void plat_bottom_off(void)
+{
+	if (!b_shown) return;      /* never the panel a DS game is using */
+	SDL_HideWindow(bwin);
+	SDL_PumpEvents();
+	/* Not the top panel a DS game is about to use (Primary Bottom). */
+	if (!(b_away && g_prim_bottom && rgds_game_top))
+		sway_cmd(g_prim_bottom ? "output DSI-2 power off" : "output DSI-1 power off");
+	b_shown = false;
+	b_down = false;
+	b_epoch++;                 /* whoever draws it next starts over */
+}
+
+unsigned plat_bottom_epoch(void) { return b_epoch; }
+
+/* Primary Screen changed or read at start: the secondary off its old panel
+ * (now the primary), the launcher onto the new primary; the next draw brings
+ * the secondary up on the other one. */
+void plat_set_primary_bottom(bool on)
+{
+	if (on == g_prim_bottom) return;
+	plat_bottom_off();
+	g_prim_bottom = on;
+	/* After the next present: at start the window is not mapped before its
+	 * first frame, and sway's criteria would find nothing to move. */
+	if (win && !b_away) place_pending = true;
+	sway_cmd(on ? "output DSI-2 power off" : "output DSI-1 power off");   /* lit again when drawn */
+	b_epoch++;
+}
+
+bool plat_bottom_tap(int *x, int *y)
+{
+	if (b_tap_x < 0) return false;
+	*x = b_tap_x; *y = b_tap_y;
+	b_tap_x = b_tap_y = -1;
+	return true;
+}
+
+int plat_bottom_swipe(void)
+{
+	int s = b_swipe;
+
+	b_swipe = 0;
+	return s;
+}
+
+/* A finger on the bottom panel: a swipe is mostly sideways and a sixth of the
+ * panel's width or more. */
+static void bottom_touch(const SDL_Event *e)
+{
+	float dx, dy;
+
+	if (!bwin || !b_shown || e->tfinger.windowID != SDL_GetWindowID(bwin)) return;
+	if (e->type == SDL_FINGERDOWN) { b_down = true; b_x0 = e->tfinger.x; b_y0 = b_ly = e->tfinger.y; return; }
+	if (e->type == SDL_FINGERMOTION) {
+		if (b_down && b_queue) { b_drag += (e->tfinger.y - b_ly) * bh; b_ly = e->tfinger.y; }
+		return;
+	}
+	if (e->type != SDL_FINGERUP || !b_down) return;
+	b_down = false;
+	dx = (e->tfinger.x - b_x0) * bw;
+	dy = (e->tfinger.y - b_y0) * bh;
+	if (dx * dx > dy * dy && (dx > bw / 6.0f || dx < -bw / 6.0f)) b_swipe = dx < 0 ? 1 : -1;
+	/* A tap: the finger moved less than a twentieth of the panel. */
+	else if (dx * dx + dy * dy < (bw / 20.0f) * (bw / 20.0f)) {
+		b_tap_x = (int)(e->tfinger.x * bw);
+		b_tap_y = (int)(e->tfinger.y * bh);
+	}
+}
+#endif
+
+static bool launcher_place(bool on_screen)
+{
+#ifdef PLATFORM_RGDS
+	if (on_screen) rp_pending = false;
+	/* Muse stays up beside a one-screen game (plorpos-rgds.18.1.4); a DS
+	 * game has both panels. */
+	if (!on_screen) { b_away = true; if (!b_keep || rgds_game_top) plat_bottom_off(); }
+	else if (b_away) { b_away = false; b_epoch++; }
+#endif
+	char cmd[256];
 	char *argv[] = { "swaymsg", cmd, NULL };
 
+	/* By title too: the RG DS's Details window on the bottom panel is this
+	 * process's as well, and stays there (plorpos-rgds.18). */
+#ifdef PLATFORM_RGDS
+	/* On the primary panel, lit: a DS game's end may have turned DSI-1 off. */
+	if (on_screen) {
+		ws1_place();
+		snprintf(cmd, sizeof cmd, "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable",
+		         (int)getpid());
+	} else
+#endif
+	/* Off the screen, the focus kept on workspace 1: the game or port opens
+	 * wherever it is, and sway would hand it to Muse beside it (.18.1.4). */
 	snprintf(cmd, sizeof cmd, on_screen
-	         ? "[pid=%d] move container to workspace 1, focus, fullscreen enable"
-	         : "[pid=%d] move container to workspace plorpos-launcher", (int)getpid());
-	helper(argv);
+	         ? "[pid=%d title=\"^plorpOS$\"] move container to workspace 1, focus, fullscreen enable"
+	         : "[pid=%d title=\"^plorpOS$\"] move container to workspace plorpos-launcher; workspace 1", (int)getpid());
+	return helper(argv);
 }
 
 void screen_yield(bool to_game)
@@ -223,6 +635,10 @@ void plat_window_show(bool on)
 	} else {
 		resident_away_pending = false;
 		launcher_place(false);
+#ifdef PLATFORM_RGDS
+		cp_pending = g_prim_bottom;   /* the child's window, once it is up */
+		cp_tries = 0;
+#endif
 	}
 }
 
@@ -237,6 +653,22 @@ void plat_window_show(bool on)
  * stick click, Home and the stick's own directions are reported too, but only
  * the Hotkeys screen's press-to-bind listens (plorpos-gkd.43.3). */
 static int fd_pad = -1, fd_keys = -1;
+#ifdef PLATFORM_RGDS
+/* The RG DS's buttons, sticks and vibrator are held by ROCKNIX's InputPlumber,
+ * which shows them as one virtual DualSense (/usr/share/inputplumber/devices/
+ * 01-rg-ds.yaml). Its buttons carry the codes padmap already has; the d-pad
+ * comes as a hat and the stick as 0..255 around 128 (pad_read). The volume
+ * keys are their own node. */
+#define PAD_NAME  "Sony Interactive Entertainment DualSense Wireless Controller"
+#define KEYS_NAME "gpio-keys-volume"
+/* Home/Back is not on the pad: InputPlumber's map sends it as F1 on its
+ * virtual keyboard. The Anbernic key is the pad's BTN_MODE, Menu as on the GKD. */
+#define HOME_NAME "InputPlumber Keyboard"
+static int fd_home = -1;
+#else
+#define PAD_NAME  "gkd_atom_joypad"
+#define KEYS_NAME "gpio-keys"
+#endif
 static bool home_down;
 /* The d-pad and the stick each keep their own state, so letting go of one
  * does not release a direction the other still holds. Left, right, up, down -
@@ -259,18 +691,29 @@ static const struct { int code; in_button b; } padmap[] = {
 #define STICK_PRESS   450
 #define STICK_RELEASE 300
 
-/* Found by name, not by number: the numbering is probe order. */
+/* Found by name, not by number: the numbering is probe order. The name is
+ * read from sysfs, and only the node that matches is opened: closing an
+ * evdev node costs 7-26 ms on the RG DS, and opening every node to ask its
+ * name closed about twenty of them, 440 ms of the launcher's boot
+ * (plorpos-rgds.12). */
 static int evdev_open(const char *want)
 {
-	char path[32], name[64];
+	char path[48], name[128];
 
 	for (int i = 0; i < 32; i++) {
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device/name", i);
+		FILE *f = fopen(path, "r");
+		if (!f) continue;
+		bool match = false;
+		if (fgets(name, sizeof name, f)) {
+			name[strcspn(name, "\n")] = 0;
+			match = !strcmp(name, want);
+		}
+		fclose(f);
+		if (!match) continue;
 		snprintf(path, sizeof path, "/dev/input/event%d", i);
 		int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-		if (fd < 0) continue;
-		if (ioctl(fd, EVIOCGNAME(sizeof name), name) >= 0 && !strcmp(name, want))
-			return fd;
-		close(fd);
+		if (fd >= 0) return fd;
 	}
 	fprintf(stderr, "input: %s not found\n", want);
 	return -1;
@@ -278,8 +721,11 @@ static int evdev_open(const char *want)
 
 bool plat_input_init(void)
 {
-	if (fd_pad < 0)  fd_pad  = evdev_open("gkd_atom_joypad");
-	if (fd_keys < 0) fd_keys = evdev_open("gpio-keys");
+	if (fd_pad < 0)  fd_pad  = evdev_open(PAD_NAME);
+	if (fd_keys < 0) fd_keys = evdev_open(KEYS_NAME);
+#ifdef PLATFORM_RGDS
+	if (fd_home < 0) fd_home = evdev_open(HOME_NAME);
+#endif
 	/* Read though logind is reading it too: launch.sh's inhibitor only stops
 	 * logind acting on it. */
 	if (fd_power < 0) fd_power = evdev_open("rk805 pwrkey");
@@ -295,11 +741,26 @@ static void drain(int fd)
 void plat_input_flush(void)
 {
 	SDL_Event e;
+#ifdef PLATFORM_RGDS
+	bool carry = (Sint32)(b_carry_until - SDL_GetTicks()) > 0;
+#else
+	bool carry = false;
+#endif
 	SDL_PumpEvents();
-	while (SDL_PollEvent(&e)) { }
+	if (carry) {                     /* all but the fingers (plat_bottom_session) */
+		SDL_FlushEvents(SDL_FIRSTEVENT, SDL_FINGERDOWN - 1);
+		SDL_FlushEvents(SDL_FINGERMOTION + 1, SDL_LASTEVENT);
+	} else {
+		while (SDL_PollEvent(&e)) { }
+	}
 	drain(fd_pad);
 	drain(fd_keys);
 	drain(fd_power);
+#ifdef PLATFORM_RGDS
+	drain(fd_home);
+	home_down = false;
+	if (!carry) touch_reset();
+#endif
 	/* Their releases were in what was just thrown away. */
 	memset(pad_dir, 0, sizeof pad_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
@@ -356,6 +817,42 @@ static bool helper(char *const argv[])
 	posix_spawn_file_actions_destroy(&fa);
 	return ok;
 }
+
+#ifdef PLATFORM_RGDS
+/* adb over USB (plorpos-rgds.11). The marker is what sd/rgds/launch.sh reads
+ * at boot; adb.sh, beside adbd on the card, starts and stops it now. */
+static void adb_path(char *out, size_t n, bool marker)
+{
+	if (marker) snprintf(out, n, "%s/adb", P_USERDATA);
+	else        snprintf(out, n, "%s/rgds/adb/adb.sh", P_ROOT);
+}
+
+bool plat_adb_on(void)
+{
+	char p[512];
+
+	adb_path(p, sizeof p, true);
+	return access(p, F_OK) == 0;
+}
+
+void plat_adb_set(bool on)
+{
+	char p[512], sh[512];
+	char *cmd[] = { "/bin/sh", sh, on ? "start" : "stop", NULL };
+
+	adb_path(p, sizeof p, true);
+	adb_path(sh, sizeof sh, false);
+	if (on) {
+		/* Not on unless it started: the row then still reads off. */
+		if (!helper(cmd)) { fprintf(stderr, "adb: did not start\n"); return; }
+		FILE *f = fopen(p, "a");
+		if (f) fclose(f);
+	} else {
+		unlink(p);
+		helper(cmd);
+	}
+}
+#endif
 
 /* Only one fullscreen window may be mapped (screen_yield), so the frozen
  * child moves to a workspace of its own, where it is not drawn. Not the
@@ -465,8 +962,25 @@ static void pad_read(in_state *st)
 
 	while (fd_pad >= 0 && read(fd_pad, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 		if (ev.type == EV_ABS) {
+#ifdef PLATFORM_RGDS
+			/* 0..255 around 128, onto the GKD's -900..899. */
+			if (ev.code == ABS_X) stick_axis(&stick_dir[0], (ev.value - 128) * 7);
+			if (ev.code == ABS_Y) stick_axis(&stick_dir[2], (ev.value - 128) * 7);
+			/* The d-pad, a hat here. A press counts when it comes, as the
+			 * GKD's d-pad keys below. */
+			/* L2 and R2 come as the DualSense's analog triggers, 0..255. */
+			if (ev.code == ABS_Z)  set_btn(st, IN_L2, ev.value >= 128);
+			if (ev.code == ABS_RZ) set_btn(st, IN_R2, ev.value >= 128);
+			if (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y) {
+				int i = ev.code == ABS_HAT0X ? 0 : 2;
+				pad_dir[i]     = ev.value < 0;
+				pad_dir[i + 1] = ev.value > 0;
+				if (ev.value) set_btn(st, (in_button)(IN_LEFT + i + (ev.value > 0)), true);
+			}
+#else
 			if (ev.code == ABS_X) stick_axis(&stick_dir[0], ev.value);
 			if (ev.code == ABS_Y) stick_axis(&stick_dir[2], ev.value);
+#endif
 			continue;
 		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
@@ -484,6 +998,13 @@ static void pad_read(in_state *st)
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
 	}
+#ifdef PLATFORM_RGDS
+	while (fd_home >= 0 && read(fd_home, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_F1 && ev.value != 2) {
+			home_down = ev.value == 1;
+			set_btn(st, IN_HOME, home_down);
+		}
+#endif
 	for (int i = 0; i < 4; i++) {
 		set_btn(st, (in_button)(IN_LEFT + i), pad_dir[i] || stick_dir[i]);
 		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
@@ -516,16 +1037,207 @@ static void power_read(in_state *st)
 			set_btn(st, IN_POWER, ev.value == 1);
 }
 
+#ifdef PLATFORM_RGDS
+/* ---- touch over a game: edge swipes from evdev (plorpos-rgds.24.3) -------
+ *
+ * As the RG Rotate's (platform_rotate.c): during a game the launcher's window
+ * hears nothing, so the game's panel is read here, alongside sway (nothing
+ * grabbed), first finger only. A swipe in from the top edge is Muse, from the
+ * bottom the switcher. Two panels, two "Goodix Capacitive TouchScreen"s, told
+ * apart by their controller (fe5c0000 top, fe5e0000 bottom): the game's is
+ * the primary's, or the top for a DS game - its bottom panel is the stylus,
+ * so no swipe is ever taken from it and the Rotate's tight band is not
+ * needed here. */
+static int fd_gtouch[2] = { -2, -2 };   /* top, bottom; -2: not looked for */
+static int g_tmax_x[2], g_tmax_y[2];
+static struct {
+	int  slot, rx, ry;
+	bool down_pending, up_pending, on, fired;
+	int  edge;                     /* +1 top, -1 bottom, 0 none */
+	float x0, y0;
+	unsigned t0;
+	bool more;                     /* another finger came down: not a hold */
+} gs;
+
+/* Held still this long, the in-game menu - the Rotate's diatom hold
+ * (TOUCH_HOLD_MS, 600) read here: diatom's own window hears no touch on the
+ * RG DS's game panel. */
+#define GS_HOLD_MS  600
+#define GS_STILL_PX 30
+
+static int gtouch_open(const char *phys, int k)
+{
+	char path[64], name[64], real[256];
+
+	for (int i = 0; i < 32; i++) {
+		FILE *f;
+		bool goodix = false;
+		struct input_absinfo ax, ay;
+		int fd;
+
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device/name", i);
+		if (!(f = fopen(path, "r"))) continue;
+		goodix = fgets(name, sizeof name, f) && strstr(name, "Goodix");
+		fclose(f);
+		snprintf(path, sizeof path, "/sys/class/input/event%d/device", i);
+		if (!goodix || !realpath(path, real) || !strstr(real, phys)) continue;
+		snprintf(path, sizeof path, "/dev/input/event%d", i);
+		if ((fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0) return -1;
+		g_tmax_x[k] = ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &ax) == 0 ? ax.maximum : 639;
+		g_tmax_y[k] = ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &ay) == 0 ? ay.maximum : 479;
+		return fd;
+	}
+	return -1;
+}
+
+static int gtouch_panel(void) { return g_prim_bottom && !rgds_game_top ? 1 : 0; }
+
+int gesture_fd(void)
+{
+	int k = gtouch_panel();
+
+	if (fd_gtouch[k] == -2) fd_gtouch[k] = gtouch_open(k ? "fe5e0000" : "fe5c0000", k);
+	return fd_gtouch[k];
+}
+
+void gesture_tight(bool on) { (void)on; }
+
+gesture gesture_read(void)
+{
+	struct input_event ev;
+	gesture out = GESTURE_NONE;
+	int fd = gesture_fd(), k = gtouch_panel();
+	int mx = g_tmax_x[k], my = g_tmax_y[k];
+
+	if (fd < 0) return GESTURE_NONE;
+	while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_ABS) {
+			if (ev.code == ABS_MT_SLOT) gs.slot = ev.value;
+			else if (gs.slot != 0) {
+				if (ev.code == ABS_MT_TRACKING_ID && ev.value >= 0) gs.more = true;
+				continue;
+			} else if (ev.code == ABS_MT_TRACKING_ID) {
+				if (ev.value < 0) gs.up_pending = true;
+				else gs.down_pending = true;
+			} else if (ev.code == ABS_MT_POSITION_X) gs.rx = ev.value;
+			else if (ev.code == ABS_MT_POSITION_Y) gs.ry = ev.value;
+			continue;
+		}
+		if (ev.type != EV_SYN || ev.code != SYN_REPORT) continue;
+		if (gs.down_pending) {
+			int band = GESTURE_BAND_PX;
+
+			gs.down_pending = false;
+			gs.on = true;
+			gs.fired = false;
+			gs.more = false;
+			gs.x0 = gs.rx;
+			gs.y0 = gs.ry;
+			gs.t0 = plat_now_ms();
+			/* The sides win the corners, as on the shelf. */
+			gs.edge = gs.rx < band || gs.rx > mx - band ? 0
+			        : gs.ry < band ? 1 : gs.ry > my - band ? -1 : 0;
+		} else if (gs.on && gs.edge && !gs.fired && (gs.ry - gs.y0) * gs.edge >= GESTURE_IN_PX) {
+			gs.fired = true;
+			out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
+		}
+		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
+	}
+	/* Still where it came down, alone, long enough: checked on every call,
+	 * as a finger that stays put sends nothing. */
+	if (out == GESTURE_NONE && gs.on && !gs.fired && !gs.more &&
+	    plat_now_ms() - gs.t0 >= GS_HOLD_MS) {
+		float dx = gs.rx - gs.x0, dy = gs.ry - gs.y0;
+
+		gs.fired = true;
+		if (dx * dx + dy * dy <= GS_STILL_PX * GS_STILL_PX) out = GESTURE_MENU;
+	}
+	return out;
+}
+#endif
+
 void plat_input_poll(in_state *st)
 {
+#ifdef PLATFORM_RGDS
+	/* A finger on the secondary's resting Muse, from any screen's loop - a
+	 * menu, the in-game menu (plorpos-rgds.18.3.8): Muse opens there now,
+	 * and this poll goes on once it is back. */
+	if (b_want_fn && !b_session && !b_queue && plat_bottom_want()) b_want_fn();
+#endif
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
 	SDL_Event e;
-	while (SDL_PollEvent(&e))
+	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) st->quit_requested = true;
+#ifdef PLATFORM_RGDS
+		/* The secondary's fingers are its own (Details, Muse); the
+		 * launcher's are the touch engine's, every gesture the Rotate has
+		 * (plorpos-rgds.24.2). */
+		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP || e.type == SDL_FINGERMOTION) {
+			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
+
+			if (b_session) {
+				if (sec) touch_event(&e, bw, bh);
+				else {                       /* the primary's: back over there */
+					if (e.type == SDL_FINGERDOWN) b_primary_tap = true;
+					if (b_primary_tap) held_add(&e);
+				}
+			} else if (sec && b_queue) {
+				bottom_touch(&e);            /* the queue: taps and drags */
+			} else if (sec && b_keep && b_shown) {
+				/* Muse rests there: the finger opens it and carries on. */
+				if (e.type == SDL_FINGERDOWN && !b_want) { b_want = true; b_nheld = 0; }
+				if (b_want) held_add(&e);
+			} else if (sec) {
+				if (e.type != SDL_FINGERMOTION) bottom_touch(&e);
+			} else touch_event(&e, plat_screen_w * plat_scale(), plat_screen_h * plat_scale());
+		}
+#endif
+	}
+#ifdef PLATFORM_RGDS
+	if (b_session) {
+		/* The pad is the primary's (owner, .18.3.7): a press ends Muse on
+		 * the secondary and is the primary's once it is back. */
+		in_state ps = *st;
+
+		pad_read(&ps);
+		for (int b = 0; b < IN_COUNT; b++) {
+			/* Home is half of brightness (Home + volume): not a press. */
+			if (ps.pressed[b] && !st->pressed[b] && b != IN_HOME) { b_pad_again[b] = true; b_primary_tap = true; }
+		}
+	} else {
+		pad_read(st);
+		for (int b = 0; b < IN_COUNT; b++)
+			if (b_pad_again[b]) { st->pressed[b] = true; b_pad_again[b] = false; }  /* once: a held one fired already */
+	}
+#else
 	pad_read(st);
+#endif
 	keys_read(st);
+#ifdef PLATFORM_RGDS
+	if (b_session && b_game) {
+		/* Beside a game the power button and the game's panel are the game
+		 * loop's to read (diatom_wait, plat_run): anything waiting on them
+		 * ends Muse here, unread, and they have it a moment later. */
+		struct pollfd pf[2] = { { fd_power, POLLIN, 0 }, { gesture_fd(), POLLIN, 0 } };
+
+		if (poll(pf, 2, 0) > 0 && ((pf[0].revents & POLLIN) || (pf[1].revents & POLLIN)))
+			b_primary_tap = true;
+	} else
+#endif
 	power_read(st);
+#ifdef PLATFORM_RGDS
+	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */
+#ifdef PLATFORM_RGDS
+	if (b_session) {
+		/* No switcher from Muse on the secondary: a game it opened would
+		 * start with the launcher on the wrong panel. */
+		st->pressed[IN_SWITCHER] = false;
+		if (b_primary_tap) st->pressed[IN_SELECT] = true;
+	}
+	b_primary_tap = false;
+#endif
+#endif
 	menu_filter(st);
 	plat_sink_follow(false);
 }
@@ -538,18 +1250,35 @@ void plat_leds_off(void) { }
  * sides of a handover: this backlight is non-linear already, raw 40 is the
  * first step that reads as distinct, and above it every 8 units are visible -
  * so twelve rungs evenly spaced from 40 to 255. */
-static const unsigned char bright_ladder[] = {
+#ifdef PLATFORM_RGDS
+/* The RG DS's backlights run 0..1666: the same twelve rungs, scaled. */
+#define BL_RAW_MAX 1666
+static const unsigned short bright_ladder[] = {
+	261, 392, 516, 647, 771, 902, 1026, 1156, 1281, 1411, 1535, 1666
+};
+#else
+#define BL_RAW_MAX 255
+static const unsigned short bright_ladder[] = {
 	40, 60, 79, 99, 118, 138, 157, 177, 196, 216, 235, 255
 };
+#endif
 #define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "ladder and platform.h disagree");
 #define VOL_MAX PLAT_VOL_MAX
+#ifdef PLATFORM_RGDS
+/* The top panel (DSI-2); backlight0 is the bottom one, which launch.sh turns off. */
+#define BACKLIGHT "/sys/class/backlight/backlight1/brightness"
+#else
 #define BACKLIGHT "/sys/class/backlight/backlight/brightness"
+#endif
 
 /* disp_fd is the backlight's brightness file, kept open. There is no mixer
  * device - volume is PipeWire's - so mixer_fd is 0 once the worker below is
  * running: "present", so the nudges run. */
 int mixer_fd = -1, disp_fd = -1;
+#ifdef PLATFORM_RGDS
+static int disp2_fd = -1;    /* the bottom panel's backlight0 */
+#endif
 int cur_vol = -1, cur_bright = -1;
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -610,6 +1339,13 @@ static void backlight_write(int raw)
 
 	if (disp_fd >= 0 && pwrite(disp_fd, s, n, 0) != n)
 		fprintf(stderr, "settings: backlight write %d failed\n", raw);
+#ifdef PLATFORM_RGDS
+	/* The bottom panel at the same level, dark with it too: one brightness
+	 * for both (plorpos-rgds.23; sleep left it lit, .18.2). sway's output
+	 * power, not this, decides whether that panel is on at all. */
+	if (disp2_fd >= 0 && pwrite(disp2_fd, s, n, 0) != n)
+		fprintf(stderr, "settings: bottom backlight write %d failed\n", raw);
+#endif
 }
 
 void apply_brightness(int b)
@@ -1077,6 +1813,9 @@ void plat_settings_init(void)
 
 	disp_fd = open(BACKLIGHT, O_RDWR | O_CLOEXEC);
 	if (disp_fd < 0) fprintf(stderr, "settings: no %s\n", BACKLIGHT);
+#ifdef PLATFORM_RGDS
+	disp2_fd = open("/sys/class/backlight/backlight0/brightness", O_RDWR | O_CLOEXEC);
+#endif
 	if (pthread_create(&t, NULL, vol_worker, NULL) == 0) {
 		pthread_detach(t);
 		mixer_fd = 0;
@@ -1155,7 +1894,7 @@ static void hook_brightness_sync(void)
 {
 	static int synced = -1;
 	extern char **environ;
-	int pct = (bright_ladder[cur_bright] * 100 + 127) / 255;
+	int pct = (bright_ladder[cur_bright] * 100 + BL_RAW_MAX / 2) / BL_RAW_MAX;
 	char cmd[128];
 	char *argv[] = { "timeout", "2", "sh", "-c", cmd, NULL };
 	pid_t pid;
@@ -1197,6 +1936,16 @@ static void *hook_watch(void *arg)
 			        raw, bright_ladder[cur_bright]);
 			apply_brightness(cur_bright);
 		}
+#ifdef PLATFORM_RGDS
+		/* The hook restores the bottom panel's own old level too (.23). */
+		memset(s, 0, sizeof s);
+		if (disp2_fd >= 0 && pread(disp2_fd, s, sizeof s - 1, 0) > 0 &&
+		    (raw = atoi(s)) != 0 && raw != bright_ladder[cur_bright]) {
+			fprintf(stderr, "sleep: bottom backlight %d after the wake, back to %d\n",
+			        raw, bright_ladder[cur_bright]);
+			apply_brightness(cur_bright);
+		}
+#endif
 		usleep(10 * 1000);
 	}
 	return NULL;

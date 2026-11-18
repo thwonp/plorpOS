@@ -308,6 +308,62 @@ static void card(void)
 	ml_free(&l);
 }
 
+/* Music/Plex/<artist>/<album>: Muse's Plex downloads (plorpos-1lw). */
+static void plex(void)
+{
+	char c[300];
+	ml_lib l;
+	int al;
+
+	printf("Plex downloads under Music/Plex\n");
+	dir("pcard");
+	dir("pcard/Music");
+	dir("pcard/Music/Blur");
+	dir("pcard/Music/Blur/Parklife");
+	touch("pcard/Music/Blur/Parklife/01 Girls And Boys.mp3");
+	dir("pcard/Music/Plex");
+	dir("pcard/Music/Plex/Pixies");
+	dir("pcard/Music/Plex/Pixies/Doolittle");
+	touch("pcard/Music/Plex/Pixies/Doolittle/02 Tame.opus");
+	touch("pcard/Music/Plex/Pixies/Doolittle/01 Debaser.opus");
+	dir("pcard/Music/Plex/Pixies/Plex");                  /* not a container again */
+	touch("pcard/Music/Plex/Pixies/Plex/01 x.mp3");
+	/* Sorted in with the card's own artists, and one of them when the
+	 * card has it too (plorpos-1lw.14). */
+	dir("pcard/Music/Plex/Arcade Fire");
+	dir("pcard/Music/Plex/Arcade Fire/Funeral");
+	touch("pcard/Music/Plex/Arcade Fire/Funeral/01 Tunnels.opus");
+	dir("pcard/Music/Plex/blur");
+	dir("pcard/Music/Plex/blur/13");
+	touch("pcard/Music/Plex/blur/13/01 Tender.opus");
+	snprintf(c, sizeof c, "%s/pcard", root);
+	CHECK(ml_scan_card(c, &l), "a card with Music/Plex scans");
+	CHECK(l.nartists == 3, "Arcade Fire, Blur, Pixies - no Plex, one Blur: %d", l.nartists);
+	if (l.nartists == 3) {
+		int i, k = 0;
+
+		CHECK(!strcmp(l.artists[0].name, "Arcade Fire") && !strcmp(l.artists[1].name, "Blur") &&
+		      !strcmp(l.artists[2].name, "Pixies"), "artists by name: %s, %s, %s",
+		      l.artists[0].name, l.artists[1].name, l.artists[2].name);
+		CHECK(l.artists[1].n == 2 && !strcmp(l.albums[l.artists[1].first].name, "13") &&
+		      !strcmp(l.albums[l.artists[1].first + 1].name, "Parklife"),
+		      "Blur's albums together, by name: %d", l.artists[1].n);
+		for (i = 0; i < l.nartists; i++) {
+			CHECK(l.artists[i].first == k, "artist %d's albums follow the last's", i);
+			k += l.artists[i].n;
+		}
+		CHECK(k == l.nalbums, "every album is an artist's: %d of %d", k, l.nalbums);
+	}
+	al = album_named(&l, "Doolittle");
+	CHECK(al >= 0 && l.albums[al].n == 2, "the downloaded album and its tracks");
+	if (al >= 0)
+		CHECK(!strcmp(l.tracks[l.albums[al].first].path,
+		              "Music/Plex/Pixies/Doolittle/01 Debaser.opus"),
+		      "paths keep the Plex level: %s", l.tracks[l.albums[al].first].path);
+	CHECK(album_named(&l, "Plex") >= 0, "a Plex album under an artist is an album");
+	ml_free(&l);
+}
+
 int main(void)
 {
 	char cmd[300];
@@ -320,6 +376,7 @@ int main(void)
 	scan();
 	orders();
 	card();
+	plex();
 
 	snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
 	if (system(cmd) != 0) { }

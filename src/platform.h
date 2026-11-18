@@ -383,6 +383,54 @@ bool plat_sleep(void);
  * time the screen has already been dark (main.c's music_dark, after the
  * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
+#if defined(PLATFORM_RGDS)
+/* adb over USB (USB Debugging, plorpos-rgds.11): whether it is turned on, and
+ * turning it on or off - now, and from every boot (sd/rgds/adb/adb.sh). */
+bool plat_adb_on(void);
+void plat_adb_set(bool on);
+/* The bottom panel (DSI-1, plorpos-rgds.18), a second window of the launcher's
+ * own. plat_bottom_begin: its renderer to draw a frame into, the panel on and
+ * the window made on first use; NULL while the launcher is off the screen (a
+ * game has both panels) or the window could not be made. plat_bottom_end
+ * presents it. plat_bottom_off: the window hidden and the panel dark.
+ * plat_bottom_epoch counts the launcher's returns to the screen, so a caller
+ * knows to draw again. plat_bottom_swipe: +1 (finger moved left: next), -1,
+ * or 0, since the last call. */
+SDL_Renderer *plat_bottom_begin(int *w, int *h);
+void plat_bottom_end(void);
+/* The secondary's renderer, NULL until its window exists; nothing shown. */
+SDL_Renderer *plat_bottom_renderer(void);
+/* Muse running on the secondary (plorpos-rgds.18.3.2): while on, its fingers
+ * are the touch engine's - every gesture, at its own size - and a finger on
+ * the primary is SELECT, which closes Muse from any of its screens. */
+void plat_bottom_session(bool on, bool game);   /* game: beside a running one */
+/* A finger has landed on the secondary while Muse rests there: open it. */
+bool plat_bottom_want(void);
+/* What plat_input_poll calls for it, from whatever screen is polling. */
+void plat_bottom_on_want(void (*fn)(void));
+/* The secondary shows a list of its own (the queue while Muse is on the
+ * primary): its fingers are taps (plat_bottom_tap) and a vertical drag,
+ * read as pixels moved since the last call (down the panel is +). */
+void plat_bottom_queue(bool on);
+int  plat_bottom_drag(void);
+/* The running port's quiet (Muse playing), set from outside plat_run. */
+void plat_child_quiet(bool quiet);
+void plat_bottom_off(void);
+unsigned plat_bottom_epoch(void);
+int  plat_bottom_swipe(void);
+/* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
+bool plat_bottom_tap(int *x, int *y);
+/* Primary Screen = Bottom: the launcher and single-screen games on the bottom
+ * panel, the secondary on the top (plorpos-rgds.18.1.3). */
+void plat_set_primary_bottom(bool on);
+/* During a game, from its tick: the game's window onto the primary once mapped. */
+void plat_rgds_game_tick(void);
+void plat_rgds_child_tick(void);   /* a port's window onto the primary */
+/* The secondary kept up beside a one-screen game (Muse), and its touches read
+ * during one. */
+void plat_bottom_keep(bool on);
+void plat_bottom_pump(void);
+#endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
 void plat_set_sleep_timeout(int seconds);
@@ -448,7 +496,9 @@ bool plat_resident_sleep_asked(void);
  * narrows to GESTURE_TIGHT_PX and a swipe must be GESTURE_IN_PX in within
  * GESTURE_TIGHT_MS, the window Diatom holds such a touch back from the core
  * for - the two sides decide the same way from the same numbers. */
-typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER } gesture;
+/* GESTURE_MENU: a finger held still over the game - the in-game menu (RG DS,
+ * plorpos-rgds.24.4; the Rotate's diatom does its own). */
+typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30

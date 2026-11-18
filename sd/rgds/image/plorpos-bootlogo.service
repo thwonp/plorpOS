@@ -1,0 +1,18 @@
+# plorpOS's boot logo on the RG DS image, second half (plorpos-rgds.10).
+# /flash/post-flash.sh draws it in the initramfs in place of ROCKNIX's; the
+# panel is blanked again as systemd starts (measured, cause not traced), so this paints
+# it again as early as a unit can. plorpos-bootlogo.raw is the panel's
+# framebuffer, 640x480 XRGB, made by mk/rgds-image.sh from
+# res/boot/plorpos-wordmark.png.
+[Unit]
+Description=plorpOS boot logo
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/dev/fb0
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'cat /flash/plorpos-bootlogo.raw > /dev/fb0'
+
+[Install]
+WantedBy=sysinit.target

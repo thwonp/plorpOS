@@ -7,6 +7,7 @@
 
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
+#include "config.h"   /* CFG_MAX_SYSTEMS: one hotkey row per shelf */
 
 #include <ctype.h>
 #include <dirent.h>
@@ -132,7 +133,9 @@ const char *plat_coreopt(const char *tag, int i)
  * Unlike turbo, there is no shipped default: this is new and opt-in, and
  * seeding a binding the player never asked for is not what "opt-in" means.
  * A tag with no hotkey.<tag> row plays exactly as it always has. */
-#define HOTKEY_MAX 16
+/* One row per shelf there can be. It was 16, and the RG DS has 19 shelves: the
+ * 17th and later rows were dropped without a word (plorpos-rgds.15). */
+#define HOTKEY_MAX CFG_MAX_SYSTEMS
 static struct { char tag[8]; char map[320]; } hotkeys[HOTKEY_MAX];
 static int nhotkeys = -1;                     /* -1 = not read yet */
 
@@ -141,7 +144,10 @@ static bool hotkey_row(const char *key, const char *value, void *ctx)
 	const char *tag = key + strlen("hotkey.");
 
 	(void)ctx;
-	if (nhotkeys >= HOTKEY_MAX) return false;
+	if (nhotkeys >= HOTKEY_MAX) {
+		fprintf(stderr, "hotkey: more than %d rows; %s and later ignored\n", HOTKEY_MAX, key);
+		return false;
+	}
 	if (strlen(tag) >= sizeof hotkeys[0].tag ||
 	    strlen(value) >= sizeof hotkeys[0].map) {
 		fprintf(stderr, "hotkey: entry too long, ignoring: %.32s\n", tag);
@@ -718,6 +724,11 @@ bool plat_abs_pressed(int fd, const struct input_event *ev)
 	(void)fd;
 	return ev->value > 0;
 }
+/* The running port's quiet, from outside plat_run's loop: Muse open on the
+ * RG DS's secondary beside it runs the tick itself (plorpos-rgds.18.3.5). */
+static pid_t g_run_pid = -1;
+void plat_child_quiet(bool quiet) { if (g_run_pid > 0) child_quiet(g_run_pid, quiet); }
+
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
@@ -731,6 +742,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	run_asleep_ms = 0;
 	pid = run_fork(argv, env, workdir);
 	if (pid < 0) { free(env); return -1; }
+	g_run_pid = pid;
 #ifdef __linux__
 	/* Power as in a resident game: a tap sleeps with the child frozen and
 	 * thawed on wake, a hold ends it and powers off (the caller's
@@ -1399,6 +1411,11 @@ void plat_resident_flush(unsigned timeout_ms)
 bool plat_resident_send(const plat_game *g)
 {
 	const char *tag = g->tag;
+#if defined(PLATFORM_RGDS)
+	extern bool rgds_game_top;
+
+	rgds_game_top = tag && !strcmp(tag, "NDS");   /* a DS game keeps the top panel */
+#endif
 
 	run_power_pressed = false;
 	/* A new game has not reported RUNNING yet. Cleared HERE rather than in
@@ -2063,10 +2080,12 @@ gesture plat_resident_gesture_asked(void)
 	return was;
 }
 
-#if !defined(PLATFORM_ROTATE)
+#ifndef UI_TOUCH
 void plat_touch_free(bool on) { (void)on; }
 bool plat_touch_drag_get(touch_drag_state *d) { memset(d, 0, sizeof *d); return false; }
 void plat_touch_catch(void) { }
+#endif
+#if !defined(PLATFORM_ROTATE) && !defined(PLATFORM_RGDS)
 /* No touch panel: nothing to read, nothing ever swiped. */
 int     gesture_fd(void) { return -1; }
 void    gesture_tight(bool on) { (void)on; }
@@ -2281,6 +2300,13 @@ int plat_resident_wait(void)
 	gesture_read();                  /* touches from before the game */
 	r = diatom_wait();
 	d_wake_fd = -1;
+#if defined(PLATFORM_RGDS)
+	{
+		extern bool rgds_game_top;
+
+		if (r != RES_PAUSED) rgds_game_top = false;   /* over: the launcher's panels again */
+	}
+#endif
 	screen_yield(false);
 #if !defined(PLAT_PIPEWIRE)
 	/* A pause hands the input back too, and with it the level: take the

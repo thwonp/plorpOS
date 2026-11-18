@@ -26,6 +26,7 @@ typedef enum { MU_OFF, MU_STOPPED, MU_PLAYING, MU_PAUSED } mu_state;
 typedef struct {
 	mu_state state;
 	char     title[128], artist[128], album[128];
+	char     codec[32];             /* "FLAC 16/44.1", "OPUS 128"; "" unknown */
 	double   at, len;
 	double   speed;                 /* 1.0 but on a book set otherwise */
 	/* Where in the queue, and how long it is. The PLAY order's place, so
@@ -58,6 +59,34 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
  * restarted inside the 5 s before a save), relative to the root; "" if
  * nothing. Cleared by any new queue. */
 const char *musec_orphan(void);
+
+/* A queue entry the daemon cannot open by its path (plorpos-1lw): a Plex
+ * track, kept in the queue - and in the queue file - as a path in the Plex
+ * cache with no file behind it. `resolve` turns one into what the daemon is
+ * sent (a stream URL, or a downloaded copy) plus what the file's tags may not
+ * say; false for a path that is not one of its own. `owns` says whether the
+ * daemon's path is the one a queue entry resolved to, for taking up a Muse
+ * that outlived the launcher. The URL carries an account token: it goes to
+ * the daemon and nowhere else - never into a log. */
+typedef struct {
+	char url[2048];
+	char title[128], artist[128];
+	/* What the stream is, when the daemon cannot tell (a transcode has no
+	 * bitrate it can read): "OPUS 128". "" to leave it to the daemon. */
+	char codec[32];
+	double len;
+	/* Not playable yet - a device whose FFmpeg cannot stream, fetching the
+	 * track first: the PLAY is asked for again on every poll until it is. */
+	bool wait;
+} musec_remote;
+/* `failed`: the daemon could not open a remote track; true to have it tried
+ * once more (the resolver will look for its server again) - else skipped. */
+void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
+                      bool (*owns)(const char *daemon_path, const char *rel),
+                      bool (*failed)(const char *rel));
+/* The queue's track resolved again for what it shows: a queue restored at
+ * start comes before the library its resolver reads, and shows no title. */
+void musec_retitle(void);
 /* The queue for what Muse is already playing, paths[start], without a PLAY:
  * Muse plays on and the queue follows it (plorpos-3yv.71). n 0: only forgets
  * the orphan. */
@@ -108,6 +137,10 @@ void musec_seek_by(double delta);
 void musec_stop(void);
 
 const mu_now *musec_now(void);
+
+/* Play heard position i of the queue (musec_track's i, mu_now.index's
+ * count) from its start - the shuffle's order kept (plorpos-rgds.18.3.4). */
+void musec_jump(int i);
 
 /* The queued track, relative to the music root, or "" - so a list can mark
  * the row that is playing without comparing titles, which tags can change. */

@@ -124,6 +124,8 @@ bool stats_extra(int i, long *longest, long *last, int *lost);
  * Returns false for a game with no sessions, leaving the outputs untouched. */
 bool stats_lookup(const char *tag, const char *file,
                   long *seconds, long *last);
+/* Its number of sessions, from the same fold: 0 for a game never played. */
+int  stats_launches(const char *tag, const char *file);
 
 long stats_total_seconds(void);
 int  stats_total_launches(void);

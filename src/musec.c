@@ -77,6 +77,15 @@ static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
 static bool     g_restored;         /* the queue came from the card and has not played */
 static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
+/* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
+ * stream's META (a transcode says 0) must not take away. */
+static bool  (*g_resolve)(const char *rel, musec_remote *out);
+static bool  (*g_failed)(const char *rel);
+static int     g_retried = -1;      /* the queue entry tried again after an ERROR */
+static bool  (*g_owns)(const char *daemon_path, const char *rel);
+static double  g_len_fixed;
+static bool    g_wait_remote;      /* a resolve said wait: PLAY again on each poll */
+static unsigned g_wait_ms;
 static bool     g_probed;           /* the one look for a Muse already running */
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
@@ -127,7 +136,7 @@ static void drop(const char *why, int err)
 static void sendf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void sendf(const char *fmt, ...)
 {
-	char line[1400];
+	char line[2600];   /* a Plex transcode URL is ~1 KB (plorpos-1lw) */
 	va_list ap;
 	int n;
 
@@ -194,6 +203,25 @@ static int connected(void)
 	return 0;
 }
 
+static void play_current(void);
+
+/* The resolver's word on what a remote track is, for when the daemon's
+ * META has no rate in it. */
+static char g_codec_remote[32];
+
+static bool has_digit(const char *s)
+{
+	for (; *s; s++) if (*s >= '0' && *s <= '9') return true;
+	return false;
+}
+
+void musec_jump(int i)
+{
+	if (i < 0 || i >= g_qn || !g_order.order) return;
+	g_order.pos = i;
+	play_current();
+}
+
 static void play_current(void)
 {
 	int t = muq_current(&g_order);
@@ -207,26 +235,62 @@ static void play_current(void)
 	 * and the first track of a fresh daemon starts on the speaker. */
 	if (!connected() || !g_sink_said[0]) { g_pending = 1; return; }
 	g_pending = 0;
-	/* Routed BEFORE the PLAY goes, so the track starts where it is heard
-	 * rather than on the speaker for however long the route takes. The
-	 * daemon runs its commands in order, so a SINK sent now lands first. */
-	g_asked = true;
-	if (g_before_heard) g_before_heard();
-	/* Only the queue's first PLAY starts part way: every track after it is
-	 * one the queue moved on to, from its beginning. */
-	sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
-	g_nch = 0;                     /* the new file says its own */
-	/* No title until META: the tag, or the name the file has if it has none. */
-	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
-	              g_title_wait, sizeof g_title_wait);
-	g_now.title[0] = '\0';
-	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
-	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+	{
+		static musec_remote r;   /* 2 KB: off the stack of a 10 Hz game tick */
+		bool remote = g_resolve && g_resolve(q, &r);
+
+		snprintf(g_codec_remote, sizeof g_codec_remote, "%s", remote ? r.codec : "");
+		g_now.codec[0] = '\0';
+
+		if (remote && r.wait) {
+			/* Not playable yet (fetched first): shown as the track asked
+			 * for, stopped, and asked for again on each poll. What played
+			 * before stops now, not when this one is ready. */
+			if (!g_wait_remote) {
+				sendf("STOP");
+				snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+				snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist[0] ? r.artist : g_artist);
+				snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+				g_now.len = g_len_fixed = r.len;
+				g_now.at = 0;
+				g_now.state = MU_STOPPED;
+				g_now.index = g_order.pos;
+				g_now.count = g_qn;
+			}
+			g_wait_remote = true;
+			g_wait_ms = plat_now_ms();
+			memset(r.url, 0, sizeof r.url);
+			return;
+		}
+		g_wait_remote = false;
+		/* Routed BEFORE the PLAY goes, so the track starts where it is heard
+		 * rather than on the speaker for however long the route takes. The
+		 * daemon runs its commands in order, so a SINK sent now lands first. */
+		g_asked = true;
+		if (g_before_heard) g_before_heard();
+		/* Only the queue's first PLAY starts part way: every track after it
+		 * is one the queue moved on to, from its beginning. */
+		if (remote)
+			sendf("PLAY\tpath=%s\tat=%.1f\tspeed=%.2f", r.url, g_start_at, g_speed);
+		else
+			sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
+		g_nch = 0;                     /* the new file says its own */
+		/* No title until META: the tag, or the name the file has if it has none. */
+		if (remote) snprintf(g_title_wait, sizeof g_title_wait, "%s", r.title);
+		else ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
+		                   g_title_wait, sizeof g_title_wait);
+		g_now.title[0] = '\0';
+		snprintf(g_now.artist, sizeof g_now.artist, "%s",
+		         remote && r.artist[0] ? r.artist : g_artist);
+		snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+		g_len_fixed = remote ? r.len : 0;
+		memset(r.url, 0, sizeof r.url);
+	}
 	g_now.at = g_start_at;
 	g_now.speed = g_speed;
 	g_start_at = 0;
 	g_seeking = false;
-	g_now.len = 0;
+	g_now.len = g_len_fixed;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }
@@ -283,7 +347,8 @@ static void adopt(const char *line, const char *state)
 	if (!strcmp(state, "stopped")) return;
 	field(line, "path", path, sizeof path);
 	for (i = 0; i < g_qn; i++)
-		if (!strncmp(path, g_root, rl) && path[rl] == '/' && !strcmp(path + rl + 1, g_q[i]))
+		if ((!strncmp(path, g_root, rl) && path[rl] == '/' && !strcmp(path + rl + 1, g_q[i])) ||
+		    (g_owns && g_owns(path, g_q[i])))
 			break;
 	if (i == g_qn) {
 		queue_set(NULL, 0, 0, 0, false, 1.0, "", "");
@@ -298,6 +363,26 @@ static void adopt(const char *line, const char *state)
 	}
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
+	/* Taken up without a PLAY, so nothing stands in for a title the file's
+	 * tags lack - a Plex stream, or a copy downloaded from one, has none
+	 * (plorpos-1lw). The META before this STATE has been and gone. */
+	{
+		static musec_remote r;
+
+		if (g_resolve && g_resolve(g_q[i], &r)) {
+			if (!g_now.title[0]) snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+			if (r.artist[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist);
+			g_len_fixed = r.len;
+			if (g_now.len <= 0) g_now.len = r.len;
+			snprintf(g_codec_remote, sizeof g_codec_remote, "%s", r.codec);
+			if (!has_digit(g_now.codec) && r.codec[0])
+				snprintf(g_now.codec, sizeof g_now.codec, "%s", r.codec);
+			memset(r.url, 0, sizeof r.url);
+		} else if (!g_now.title[0]) {
+			ml_track_name(strrchr(g_q[i], '/') ? strrchr(g_q[i], '/') + 1 : g_q[i],
+			              g_now.title, sizeof g_now.title);
+		}
+	}
 }
 
 /* The name stands in for a title that did not come. */
@@ -330,6 +415,7 @@ static void event(const char *line)
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
 		if (g_now.state == MU_PLAYING) {
 			g_skips = 0;
+			g_retried = -1;
 			/* A pause asked for while Muse was between states - see
 			 * musec_pause - lands on the first "playing" after it. */
 			if (g_pause_until && (int)(g_pause_until - plat_now_ms()) > 0) sendf("PAUSE");
@@ -360,7 +446,10 @@ static void event(const char *line)
 		field(line, "album", v, sizeof v);
 		if (v[0]) snprintf(g_now.album, sizeof g_now.album, "%s", v);
 		field(line, "len", v, sizeof v);
-		g_now.len = atof(v);
+		g_now.len = atof(v) > 0 ? atof(v) : g_len_fixed;
+		field(line, "codec", v, sizeof v);
+		snprintf(g_now.codec, sizeof g_now.codec, "%s",
+		         !has_digit(v) && g_codec_remote[0] ? g_codec_remote : v);
 	} else if (!strncmp(line, "POS", 3)) {
 		double at;
 
@@ -448,6 +537,8 @@ static void event(const char *line)
 		field(line, "name", g_art[k].name, sizeof g_art[k].name);
 		g_art_n++;
 	} else if (!strncmp(line, "ERROR", 5)) {
+		int k;
+
 		field(line, "why", v, sizeof v);
 		fprintf(stderr, "muse: %s\n", v);
 		title_fallback();
@@ -459,6 +550,11 @@ static void event(const char *line)
 		 * track a second that way (plorpos-ggv.24). Stopped where it is,
 		 * pause/play starts it again. */
 		if (strstr(v, "busy")) { g_asked = false; g_now.state = MU_STOPPED; }
+		/* A remote track whose server stopped answering - Wi-Fi changed
+		 * under it: tried once more, once the resolver has found the server
+		 * again, rather than skipped (plorpos-1lw.19). */
+		else if (g_failed && (k = muq_current(&g_order)) >= 0 && k < g_qn && k != g_retried &&
+		         g_failed(g_q[k])) { g_retried = k; play_current(); }
 		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
 }
@@ -507,6 +603,7 @@ void musec_poll(void)
 	ssize_t got;
 
 	headset_keys();
+	if (g_wait_remote && plat_now_ms() - g_wait_ms >= 250) play_current();
 	if (g_retry_at && (int)(plat_now_ms() - g_retry_at) >= 0) {
 		g_retry_at = 0;
 		if (g_fd >= 0 && !g_sink_waiting && !strcmp(g_sink_sent, g_want) &&
@@ -593,6 +690,7 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
 	g_start_at = at > 0 ? at : 0;
 	g_ran_out = false;
 	g_restored = false;
+	g_wait_remote = false;
 	g_orphan[0] = '\0';
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
@@ -608,18 +706,52 @@ void musec_load(const char *const *paths, int n, int start, double at, bool book
 	t = muq_current(&g_order);
 	g_now.state = MU_STOPPED;
 	g_now.title[0] = '\0';
-	if (t >= 0 && t < g_qn)
-		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
-		              g_now.title, sizeof g_now.title);
+	g_len_fixed = 0;
+	if (t >= 0 && t < g_qn) {
+		static musec_remote r;
+
+		if (g_resolve && g_resolve(g_q[t], &r)) {
+			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+			g_len_fixed = r.len;
+			memset(r.url, 0, sizeof r.url);
+		} else {
+			ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+			              g_now.title, sizeof g_now.title);
+		}
+	}
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
-	g_now.len = 0;
+	g_now.len = g_len_fixed;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }
 
 const char *musec_orphan(void) { return g_orphan; }
+
+void musec_retitle(void)
+{
+	static musec_remote r;
+	int t = muq_current(&g_order);
+	bool live = g_now.state == MU_PLAYING || g_now.state == MU_PAUSED;
+
+	if (t < 0 || t >= g_qn || !g_resolve || (live && g_now.title[0])) return;
+	if (!g_resolve(g_q[t], &r) || !r.title[0]) return;
+	snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+	if (r.artist[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist);
+	g_len_fixed = r.len;
+	if (g_now.len <= 0) g_now.len = r.len;
+	memset(r.url, 0, sizeof r.url);
+}
+
+void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
+                      bool (*owns)(const char *daemon_path, const char *rel),
+                      bool (*failed)(const char *rel))
+{
+	g_resolve = resolve;
+	g_owns = owns;
+	g_failed = failed;
+}
 
 void musec_adopt(const char *const *paths, int n, int start, bool book, double speed,
                  const char *artist, const char *album)
@@ -860,6 +992,7 @@ void musec_seek_by(double delta)
 
 void musec_stop(void)
 {
+	g_wait_remote = false;
 	sendf("STOP");
 }
 

@@ -92,7 +92,6 @@ static int units_up(int v) { return ts == 1.0f ? v : (int)ceilf(v / ts); }
 /* To the nearest panel pixel, so a texture drawn at 1/ts lands 1:1. */
 static float snap(float v) { return roundf(v * ts) / ts; }
 static char font_path_kept[512];
-static SDL_Texture *glow_tex;
 
 /* One title is redrawn on every frame while the rest of the screen changes
  * around it. Rendering TTF text is milliseconds; blitting a texture is not.
@@ -105,8 +104,42 @@ struct text_entry {
 	int w, h;
 	unsigned used;
 };
-static struct text_entry cache[TEXT_CACHE];
-static unsigned cache_clock;
+/* The caches hold textures, and a texture belongs to the renderer that made
+ * it: one set per renderer. The RG DS draws Muse's Now Playing on its second
+ * panel's renderer too (plorpos-rgds.18.3.1); everywhere else only slot 0 is
+ * ever used. rc_use picks the set for the renderer about to be drawn on. */
+#define DIGIT_FONTS 3
+#define GLYPH_CACHE 8
+struct digit_set { TTF_Font *f; SDL_Texture *tex[10]; int w[10], h; };
+struct glyph_entry { ui_glyph g; int size; SDL_Texture *tex; };
+struct rcache {
+	SDL_Renderer      *r;
+	SDL_Texture       *glow;
+	struct text_entry  text[TEXT_CACHE];
+	unsigned           clock;
+	struct digit_set   digits[DIGIT_FONTS];
+	struct glyph_entry glyphs[GLYPH_CACHE];
+};
+#define RCACHES 2
+static struct rcache rcs[RCACHES], *rc = &rcs[0];
+static SDL_Texture *make_glow(SDL_Renderer *r);
+
+static void rc_use(SDL_Renderer *r)
+{
+	int i;
+
+	if (rc->r == r) return;
+	for (i = 0; i < RCACHES; i++)
+		if (rcs[i].r == r) { rc = &rcs[i]; return; }
+	for (i = 0; i < RCACHES; i++)
+		if (!rcs[i].r) break;
+	if (i == RCACHES) return;          /* no third renderer exists */
+	rc = &rcs[i];
+	rc->r = r;
+#if !defined(PLATFORM_MIYOO)
+	if (i > 0) rc->glow = make_glow(r); /* slot 0's is made by ui_init */
+#endif
+}
 
 static SDL_Texture *make_glow(SDL_Renderer *r)
 {
@@ -167,15 +200,16 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
 		}
 	}
+	rc_use(r);
 #if defined(PLATFORM_MIYOO)
-	/* No glow on the Flip: ui_glow draws nothing when glow_tex is NULL. The
+	/* No glow on the Flip: ui_glow draws nothing when rc->glow is NULL. The
 	 * big alpha-modulated copies were about 80% of a scroll frame there
 	 * (122 -> 27 ms without them) and rendered as blotchy halos on the panel
 	 * (plorpos-f1p.14.3). */
-	glow_tex = NULL;
+	rc->glow = NULL;
 	(void)make_glow;
 #else
-	glow_tex = make_glow(r);
+	rc->glow = make_glow(r);
 #endif
 	return fonts[UI_F_TITLE] != NULL;
 }
@@ -183,13 +217,24 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 static void glyphs_free(void);
 static void digits_free(void);
 
+static void text_free(void)
+{
+	for (int i = 0; i < TEXT_CACHE; i++)
+		if (rc->text[i].tex) SDL_DestroyTexture(rc->text[i].tex);
+	memset(rc->text, 0, sizeof rc->text);
+}
+
 void ui_quit(void)
 {
-	glyphs_free();
-	digits_free();
-	for (int i = 0; i < TEXT_CACHE; i++)
-		if (cache[i].tex) { SDL_DestroyTexture(cache[i].tex); cache[i].tex = NULL; }
-	if (glow_tex) { SDL_DestroyTexture(glow_tex); glow_tex = NULL; }
+	for (int k = 0; k < RCACHES; k++) {
+		rc = &rcs[k];
+		glyphs_free();
+		digits_free();
+		text_free();
+		if (rc->glow) SDL_DestroyTexture(rc->glow);
+		memset(rc, 0, sizeof *rc);
+	}
+	rc = &rcs[0];
 	for (int i = 0; i < UI_F_COUNT; i++)
 		if (fonts[i]) { TTF_CloseFont(fonts[i]); fonts[i] = NULL; }
 	if (f_mark) { TTF_CloseFont(f_mark); f_mark = NULL; }
@@ -220,10 +265,12 @@ void ui_set_face(bool head, const char *path, float scale)
 		fonts[i] = f;
 	}
 	/* Everything drawn from the old face: the text cache and the digits. */
-	digits_free();
-	for (i = 0; i < TEXT_CACHE; i++)
-		if (cache[i].tex) { SDL_DestroyTexture(cache[i].tex); cache[i].tex = NULL; }
-	memset(cache, 0, sizeof cache);
+	{
+		struct rcache *was = rc;
+
+		for (i = 0; i < RCACHES; i++) { rc = &rcs[i]; digits_free(); text_free(); }
+		rc = was;
+	}
 }
 
 TTF_Font *ui_font(ui_font_role role)
@@ -264,34 +311,35 @@ static struct text_entry *text_get(SDL_Renderer *r, TTF_Font *f, const char *s,
 	int i, oldest = 0;
 
 	if (!f || !s || !*s) return NULL;
+	rc_use(r);
 	for (i = 0; i < TEXT_CACHE; i++) {
-		if (cache[i].tex && cache[i].font == f && cache[i].rgb == rgb &&
-		    strcmp(cache[i].str, s) == 0) {
-			cache[i].used = ++cache_clock;
-			return &cache[i];
+		if (rc->text[i].tex && rc->text[i].font == f && rc->text[i].rgb == rgb &&
+		    strcmp(rc->text[i].str, s) == 0) {
+			rc->text[i].used = ++rc->clock;
+			return &rc->text[i];
 		}
-		if (!cache[i].tex) { oldest = i; goto fill; }
-		if (cache[i].used < cache[oldest].used) oldest = i;
+		if (!rc->text[i].tex) { oldest = i; goto fill; }
+		if (rc->text[i].used < rc->text[oldest].used) oldest = i;
 	}
 fill:
-	if (cache[oldest].tex) SDL_DestroyTexture(cache[oldest].tex);
-	memset(&cache[oldest], 0, sizeof cache[oldest]);
+	if (rc->text[oldest].tex) SDL_DestroyTexture(rc->text[oldest].tex);
+	memset(&rc->text[oldest], 0, sizeof rc->text[oldest]);
 	{
 		SDL_Surface *surf = TTF_RenderUTF8_Blended(f, s, col);
 		if (!surf) return NULL;
-		cache[oldest].tex = SDL_CreateTextureFromSurface(r, surf);
-		if (cache[oldest].tex && ts != 1.0f)
-			SDL_SetTextureScaleMode(cache[oldest].tex, SDL_ScaleModeNearest);
-		cache[oldest].w = surf->w;
-		cache[oldest].h = surf->h;
+		rc->text[oldest].tex = SDL_CreateTextureFromSurface(r, surf);
+		if (rc->text[oldest].tex && ts != 1.0f)
+			SDL_SetTextureScaleMode(rc->text[oldest].tex, SDL_ScaleModeNearest);
+		rc->text[oldest].w = surf->w;
+		rc->text[oldest].h = surf->h;
 		SDL_FreeSurface(surf);
 	}
-	if (!cache[oldest].tex) return NULL;
-	cache[oldest].font = f;
-	cache[oldest].rgb = rgb;
-	snprintf(cache[oldest].str, sizeof cache[oldest].str, "%s", s);
-	cache[oldest].used = ++cache_clock;
-	return &cache[oldest];
+	if (!rc->text[oldest].tex) return NULL;
+	rc->text[oldest].font = f;
+	rc->text[oldest].rgb = rgb;
+	snprintf(rc->text[oldest].str, sizeof rc->text[oldest].str, "%s", s);
+	rc->text[oldest].used = ++rc->clock;
+	return &rc->text[oldest];
 }
 
 /* A cached line with its top-left at (x,y) in units, at its pixel size. */
@@ -334,12 +382,6 @@ int ui_text_width(TTF_Font *f, const char *s)
  * drawn, apart from the string cache: a clock would otherwise put a string a
  * second into a cache of twelve and push out the title it sits under. One slot
  * per font, and Now Playing uses one font. */
-#define DIGIT_FONTS 3
-static struct {
-	TTF_Font    *f;
-	SDL_Texture *tex[10];
-	int          w[10], h;
-} digits[DIGIT_FONTS];
 
 static void digits_free(void)
 {
@@ -347,8 +389,8 @@ static void digits_free(void)
 
 	for (i = 0; i < DIGIT_FONTS; i++) {
 		for (d = 0; d < 10; d++)
-			if (digits[i].tex[d]) SDL_DestroyTexture(digits[i].tex[d]);
-		memset(&digits[i], 0, sizeof digits[i]);
+			if (rc->digits[i].tex[d]) SDL_DestroyTexture(rc->digits[i].tex[d]);
+		memset(&rc->digits[i], 0, sizeof rc->digits[i]);
 	}
 }
 
@@ -369,26 +411,27 @@ static int digits_for(SDL_Renderer *r, TTF_Font *f)
 	static const SDL_Color white = { 255, 255, 255, 255 };
 	int i, d, slot = -1;
 
+	rc_use(r);
 	for (i = 0; i < DIGIT_FONTS; i++) {
-		if (digits[i].f == f) return i;
-		if (!digits[i].f && slot < 0) slot = i;
+		if (rc->digits[i].f == f) return i;
+		if (!rc->digits[i].f && slot < 0) slot = i;
 	}
 	if (slot < 0) {                      /* all taken: the first makes room */
 		for (d = 0; d < 10; d++)
-			if (digits[0].tex[d]) SDL_DestroyTexture(digits[0].tex[d]);
-		memset(&digits[0], 0, sizeof digits[0]);
+			if (rc->digits[0].tex[d]) SDL_DestroyTexture(rc->digits[0].tex[d]);
+		memset(&rc->digits[0], 0, sizeof rc->digits[0]);
 		slot = 0;
 	}
 	for (d = 0; d < 10; d++) {
 		SDL_Surface *s = TTF_RenderGlyph_Blended(f, (Uint16)('0' + d), white);
 
 		if (!s) continue;
-		digits[slot].tex[d] = SDL_CreateTextureFromSurface(r, s);
-		digits[slot].w[d] = s->w;
-		digits[slot].h = s->h;
+		rc->digits[slot].tex[d] = SDL_CreateTextureFromSurface(r, s);
+		rc->digits[slot].w[d] = s->w;
+		rc->digits[slot].h = s->h;
 		SDL_FreeSurface(s);
 	}
-	digits[slot].f = f;
+	rc->digits[slot].f = f;
 	return slot;
 }
 
@@ -446,24 +489,24 @@ int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
 		s += tab_run(s, run, sizeof run);
 		if (run[0] >= '0' && run[0] <= '9') {
 			int d = run[0] - '0';
-			SDL_Texture *t = digits[k].tex[d];
+			SDL_Texture *t = rc->digits[k].tex[d];
 
 			if (t) {
 				/* Centered. At the cell's right edge, tried 2026-09-29, a
 				 * thin digit closed up on the digit after it and opened a
 				 * gap on the other side instead: "- 1:00: 10". */
-				float dx = at + (float)((cell - digits[k].w[d]) / 2) / ts;
+				float dx = at + (float)((cell - rc->digits[k].w[d]) / 2) / ts;
 
 				SDL_SetTextureColorMod(t, col.r, col.g, col.b);
 				SDL_SetTextureAlphaMod(t, col.a);
 				/* The digits are panel pixels, like text_copy's textures. */
 				if (ts == 1.0f)
 					SDL_RenderCopy(r, t, NULL, &(SDL_Rect){ (int)dx, y,
-					               digits[k].w[d], digits[k].h });
+					               rc->digits[k].w[d], rc->digits[k].h });
 				else
 					SDL_RenderCopyF(r, t, NULL, &(SDL_FRect){ snap(dx),
-					                snap((float)y), digits[k].w[d] / ts,
-					                digits[k].h / ts });
+					                snap((float)y), rc->digits[k].w[d] / ts,
+					                rc->digits[k].h / ts });
 			}
 			at += cell / ts;
 		} else {
@@ -735,16 +778,17 @@ void ui_glow(SDL_Renderer *r, const SDL_Rect *rect, unsigned rgb, int alpha,
 {
 	SDL_Rect dst;
 	int gw, gh;
-	if (!glow_tex) return;
+	rc_use(r);
+	if (!rc->glow) return;
 	gw = (int)(rect->w * spread);
 	gh = (int)(rect->h * spread);
 	dst.x = rect->x + rect->w / 2 - gw / 2;
 	dst.y = rect->y + rect->h / 2 - gh / 2;
 	dst.w = gw;
 	dst.h = gh;
-	SDL_SetTextureColorMod(glow_tex, (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb);
-	SDL_SetTextureAlphaMod(glow_tex, (Uint8)alpha);
-	SDL_RenderCopy(r, glow_tex, NULL, &dst);
+	SDL_SetTextureColorMod(rc->glow, (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb);
+	SDL_SetTextureAlphaMod(rc->glow, (Uint8)alpha);
+	SDL_RenderCopy(r, rc->glow, NULL, &dst);
 }
 
 /* How much of a band the boundary between two colors eats at its widest, in
@@ -1382,14 +1426,13 @@ static SDL_Texture *g_render(SDL_Renderer *r, ui_glyph g, int size)
 }
 
 /* A handful of (mark, size) pairs is all a screen asks for. */
-static struct { ui_glyph g; int size; SDL_Texture *tex; } g_cache[8];
 
 static void glyphs_free(void)
 {
 	int i;
 
-	for (i = 0; i < 8; i++)
-		if (g_cache[i].tex) { SDL_DestroyTexture(g_cache[i].tex); g_cache[i].tex = NULL; }
+	for (i = 0; i < GLYPH_CACHE; i++)
+		if (rc->glyphs[i].tex) { SDL_DestroyTexture(rc->glyphs[i].tex); rc->glyphs[i].tex = NULL; }
 }
 
 void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
@@ -1400,21 +1443,22 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 
 	if (g < 0 || g >= UI_GLYPH_COUNT || size <= 0) return;
 	size = px(size);   /* the cache and the raster are in pixels */
-	for (i = 0; i < 8; i++) {
-		if (g_cache[i].tex && g_cache[i].g == g && g_cache[i].size == size) {
-			t = g_cache[i].tex;
+	rc_use(r);
+	for (i = 0; i < GLYPH_CACHE; i++) {
+		if (rc->glyphs[i].tex && rc->glyphs[i].g == g && rc->glyphs[i].size == size) {
+			t = rc->glyphs[i].tex;
 			break;
 		}
-		if (!g_cache[i].tex && free_slot < 0) free_slot = i;
+		if (!rc->glyphs[i].tex && free_slot < 0) free_slot = i;
 	}
 	if (!t) {
 		if (free_slot < 0) { glyphs_free(); free_slot = 0; }
 		t = g_render(r, g, size);
 		if (!t) return;
 		if (ts != 1.0f) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
-		g_cache[free_slot].g = g;
-		g_cache[free_slot].size = size;
-		g_cache[free_slot].tex = t;
+		rc->glyphs[free_slot].g = g;
+		rc->glyphs[free_slot].size = size;
+		rc->glyphs[free_slot].tex = t;
 	}
 	SDL_SetTextureColorMod(t, col.r, col.g, col.b);
 	SDL_SetTextureAlphaMod(t, col.a);
@@ -1428,7 +1472,7 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 
 /* ---- touch targets (plorpos-3yv.23) -------------------------------------- */
 
-#ifdef PLATFORM_ROTATE
+#ifdef UI_TOUCH
 #define HIT_MAX 64
 
 typedef struct { SDL_Rect r; int button, n; bool id, act; } ui_target;  /* id: n is an id */
@@ -1439,7 +1483,15 @@ typedef struct {
 	SDL_Rect  panel;
 } ui_targets;
 /* The frame being drawn, and the one on the screen. */
-static ui_targets hit_draw, hit_shown;
+/* Two sets: the primary's screen, and the RG DS's secondary when it shows a
+ * list of its own beside the primary's (the queue, plorpos-rgds.18.3.4).
+ * ui_hit_set picks the one that drawing records into and taps are found in. */
+static ui_targets hits_draw[2], hits_shown[2];
+static int hit_set;
+#define hit_draw  hits_draw[hit_set]
+#define hit_shown hits_shown[hit_set]
+
+void ui_hit_set(int k) { hit_set = k ? 1 : 0; }
 
 void ui_hit(const SDL_Rect *r, int button, int n)
 {

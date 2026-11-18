@@ -258,6 +258,73 @@ long net_post_buf(const net_field *f, int n, char *out, size_t outn, int timeout
 	return request_buf(RA_URL, false, f, n, out, outn, timeout_s);
 }
 
+/* See net.h. Its own config, like every blocking call (tmp_config), so the
+ * workers that use it never share one with each other or the main thread. */
+int net_fetch(const char *url, const char *method, const char *const *headers, int nh,
+              const char *out_path, int connect_s, int timeout_s,
+              const volatile int *cancel)
+{
+	char cfg[128];
+	const char *bin = curl_bin();
+	int fd, pfd[2], i, st = -1, code = -1;
+	FILE *f;
+	pid_t pid;
+	char got[8];
+	ssize_t r;
+
+	if (!bin) return -1;
+	tmp_config(cfg, sizeof cfg);
+	fd = open(cfg, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+	if (fd < 0) return -1;
+	if (!(f = fdopen(fd, "w"))) { close(fd); unlink(cfg); return -1; }
+	fprintf(f, "silent\nfail\nlocation\n");
+	fprintf(f, "write-out = "); cfg_quote(f, "%{http_code}"); fputc('\n', f);
+	fprintf(f, "output = "); cfg_quote(f, out_path); fputc('\n', f);
+	if (connect_s > 0) fprintf(f, "connect-timeout = %d\n", connect_s);
+	if (timeout_s > 0) fprintf(f, "max-time = %d\n", timeout_s);
+	/* A stalled transfer gives up rather than holding its worker forever:
+	 * under 1 KB/s for 30 s is a server or a network that has gone. */
+	fprintf(f, "speed-limit = 1024\nspeed-time = 30\n");
+	if (method && strcmp(method, "GET")) { fprintf(f, "request = "); cfg_quote(f, method); fputc('\n', f); }
+	if (g_ca[0]) { fprintf(f, "cacert = "); cfg_quote(f, g_ca); fputc('\n', f); }
+	fprintf(f, "user-agent = "); cfg_quote(f, NET_UA); fputc('\n', f);
+	for (i = 0; i < nh; i++) { fprintf(f, "header = "); cfg_quote(f, headers[i]); fputc('\n', f); }
+	fprintf(f, "url = "); cfg_quote(f, url); fputc('\n', f);
+	fclose(f);
+
+	if (pipe(pfd) != 0) { unlink(cfg); return -1; }
+	pid = fork();
+	if (pid < 0) { close(pfd[0]); close(pfd[1]); unlink(cfg); return -1; }
+	if (pid == 0) {
+		char *argv[] = { (char *)bin, (char *)"-K", cfg, NULL };
+		int devnull = open("/dev/null", O_RDWR);
+
+		if (devnull >= 0) { dup2(devnull, 0); dup2(devnull, 2); close(devnull); }
+		dup2(pfd[1], 1);
+		close(pfd[0]); close(pfd[1]);
+		execv(bin, argv);
+		_exit(127);
+	}
+	close(pfd[1]);
+	for (;;) {
+		pid_t w = waitpid(pid, &st, cancel ? WNOHANG : 0);
+
+		if (w == pid) break;
+		if (w < 0 && errno != EINTR) { st = -1; break; }
+		if (cancel && *cancel) { kill(pid, SIGKILL); waitpid(pid, &st, 0); st = -1; break; }
+		if (cancel) usleep(50 * 1000);
+	}
+	/* The config holds the token: gone once curl has read it, which it
+	 * has by the time it exits - and on a cancel, all the same. */
+	unlink(cfg);
+	r = read(pfd[0], got, sizeof got - 1);
+	close(pfd[0]);
+	if (r > 0) { got[r] = '\0'; code = atoi(got); }
+	else code = 0;
+	if (st == -1) return -1;
+	return code;
+}
+
 /* ---- the same thing, without waiting ------------------------------------ */
 
 static pid_t g_async = -1;

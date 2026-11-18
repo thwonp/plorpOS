@@ -44,6 +44,13 @@ if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
 		exit 1
 fi
 
+# Where weston_pkg's wrapper (Braid, plorpos-rgds.9) looks for PortMaster:
+# it sets XDG_DATA_HOME itself and then tries /opt/tools/PortMaster before
+# anything of ours. /opt is ROCKNIX's /storage/.opt, ext4, so a link works
+# there (the card is exFAT). Port scripts search the same list, so every
+# one of them lands in the same folder.
+# /opt dangles until /storage/.opt exists, and mkdir -p does not follow it.
+[ -e /opt/tools/PortMaster ] || { mkdir -p "$(readlink -f /opt)/tools" && ln -sfn "$PM" /opt/tools/PortMaster; }
 # Every port fullscreen (plorpos-46o.14). ROCKNIX's helper fullscreens the
 # window whose app_id is the binary's name, and a port whose window is named
 # otherwise ran in a small one in the middle (Hydra Castle Labyrinth, Cave
@@ -58,6 +65,14 @@ if [ ! -e /run/plorpos-fullscreen ]; then
 fi
 
 # Always: 2 KB, and ROCKNIX's BusyBox has no cmp.
+# PortMaster's first run on ROCKNIX copies /storage/.config/PortMaster/
+# gamecontrollerdb.txt, which EmulationStation's setup leaves there. A system
+# that never ran EmulationStation (the RG DS image, plorpos-rgds.9) has none
+# and PortMaster stopped with FileNotFoundError: give it ROCKNIX's own database.
+if [ -d /storage/.config/PortMaster ] && [ ! -f /storage/.config/PortMaster/gamecontrollerdb.txt ] &&
+   [ -f /storage/.config/SDL-GameControllerDB/gamecontrollerdb.txt ]; then
+	cp /storage/.config/SDL-GameControllerDB/gamecontrollerdb.txt /storage/.config/PortMaster/
+fi
 cp "$HERE/control.txt" "$PM/control.txt"
 
 cd "$(dirname "$1")" || exit 1

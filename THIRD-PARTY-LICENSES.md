@@ -178,6 +178,22 @@ by rebuilding it.
 
 ---
 
+### adb on the Anbernic RG DS (`plorpOS/rgds/adb/`)
+
+ROCKNIX has no adb daemon, so the RG DS card carries Debian buster's, none of
+it modified, for System Settings > USB Debugging:
+
+| What | Version | License |
+|---|---|---|
+| `adbd` (Debian `android-tools-adbd`) | 5.1.1.r38-1.1 | Apache 2.0 |
+| `libbsd.so.0` (Debian `libbsd0`) | 0.9.1-2+deb10u1 | BSD-3-Clause and others |
+| `libpcre.so.3` (Debian `libpcre3`) | 8.39-12 | BSD-3-Clause |
+| `libcrypto.so.1.1` (Debian `libssl1.1`) | 1.1.1n-0+deb10u3 | OpenSSL and SSLeay |
+
+`mk/fetch-rgds-adbd.sh` pins the four packages by sha256; each package's
+`copyright` file is in `plorpOS/rgds/adb/licenses/`. `adbroot.so` beside them
+is plorpOS's own (`tools/adbroot.c`).
+
 ## Launcher code derived from NextUI (sleep and suspend, CHD reading)
 
 - **Origin:** NextUI, an independent handheld-launcher fork.

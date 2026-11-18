@@ -43,7 +43,11 @@ typedef enum {
 	PM_BT,
 #endif
 	PM_AUDIO,
-	PM_SYSTEM, PM_UI, PM_GAME,
+	PM_SYSTEM, PM_UI,
+#if defined(PLATFORM_RGDS)
+	PM_DUAL,                    /* Dual Screen Settings (plorpos-rgds.18.1) */
+#endif
+	PM_GAME,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
@@ -70,6 +74,9 @@ typedef enum {
 #endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
+#endif
+#if defined(PLATFORM_RGDS)
+	ST_ADB,                     /* adb over USB (plorpos-rgds.11) */
 #endif
 	ST_ROWS
 } st_row;
@@ -131,14 +138,17 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * both kinds, since with one there is nothing to choose between. So the rows
  * move, and which one is where is sys_menu_muse_rows's to say. */
 typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
-               SMM_SETTINGS } sm_muse_row;
-#define SM_MUSE_ROWS 7
+               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX } sm_muse_row;
+#define SM_MUSE_ROWS 9
+/* Source (plorpos-1lw): Local, the card's Music folder, or Plex. On Plex,
+ * Album Art and Rescan Folder go (Plex has the art; Sync Library is in Plex
+ * Settings), and Plex Settings follows Source. */
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
 /* Muse's rows in order, for the kind its shelf shows and whether the card has
  * both. Returns how many. The build and the key handler both ask this, so the
  * two cannot disagree about what row 2 is. */
-int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out);
+int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out);
 
 #define MENU_MAX_ROWS 17
 
@@ -177,6 +187,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	bool muse_both;          /* and the card has both kinds */
+	bool muse_plex;          /* and its source is Plex (plorpos-1lw) */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
@@ -205,6 +216,12 @@ typedef struct {
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
+	bool        adb;         /* RG DS: adb over USB is on (plorpos-rgds.11) */
+	/* RG DS, Dual Screen Settings (plorpos-rgds.18.1): the second panel is
+	 * used on the shelf; it shows Muse rather than Details; the launcher and
+	 * single-screen games are on the bottom panel. A DS game uses both
+	 * panels whatever these say. */
+	bool        dual_on, dual_muse, dual_bottom;
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
@@ -265,5 +282,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 /* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
  * shelf to hide. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* Settings > Dual Screen Settings (RG DS). Returns DU_ROWS. */
+typedef enum { DU_SECONDARY, DU_FUNCTION, DU_PRIMARY, DU_ROWS } du_row;
+int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif

@@ -38,6 +38,11 @@ double dec_len(const dec *d);
 /* A tag, or "" when the file has none: "title", "artist", "album". */
 const char *dec_tag(const dec *d, const char *key);
 
+/* What the file is, for a badge: "FLAC 16/44.1" for lossless, "MP3 320"
+ * for lossy (kbps, snapped to a standard rate within 8%), or just the codec
+ * when no rate is known - a stream often says none. Once per open. */
+void dec_codec(const dec *d, char *out, size_t n);
+
 /* Chapters: M4B carries them; everything else answers 0. */
 int         dec_chapters(const dec *d);
 double      dec_chapter_at(const dec *d, int i);

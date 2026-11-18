@@ -310,6 +310,13 @@ bool stats_lookup(const char *tag, const char *file,
 	return true;
 }
 
+int stats_launches(const char *tag, const char *file)
+{
+	int i = tag && file ? find_row(tag, file) : -1;
+
+	return i < 0 ? 0 : g_rows[i].launches;
+}
+
 bool stats_extra(int i, long *longest, long *last, int *lost)
 {
 	if (i < 0 || i >= g_nrows) return false;

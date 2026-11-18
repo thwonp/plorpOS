@@ -20,6 +20,7 @@
 #include "db.h"
 #include "gamelist.h"
 #include "stats.h"
+#include "details.h"
 #include "sort.h"
 #include "titles.h"
 #include "setmap.h"
@@ -44,6 +45,7 @@
 #include "audioout.h"
 #include "menu.h"
 #include "musec.h"
+#include "plex.h"
 #include "museart.h"
 #include "muselib.h"
 #include "playlist.h"
@@ -1161,6 +1163,11 @@ static sys_order g_order;
  * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
  * read before the drop, so the setting row only exists where there is a tile. */
 static bool g_ports_hidden, g_has_ports;
+#if defined(PLATFORM_RGDS)
+/* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
+ * once and kept here, as details_tick asks every frame. */
+static bool g_dual_on = true, g_dual_muse, g_dual_bottom;
+#endif
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
  * the green its card is drawn in - the iPod's own, sampled from the photograph
@@ -1177,6 +1184,13 @@ static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
+#if defined(PLATFORM_RGDS)
+static app *g_rgds_app;   /* main's, for the secondary's ticks */
+static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
+static bool g_panel_fresh;/* the resting page redraws in full next time */
+#else
+#define g_muse_sec false
+#endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
 static SDL_atomic_t g_walk_done;
@@ -1215,6 +1229,19 @@ static void  year_fill(void);
  * card and a Show row in its menu, rather than a card for books beside it -
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
+/* Muse's source (plorpos-1lw): the card's Music folder, or Plex - the library
+ * g_muse holds. Kept per device as "muse.source"; Plex only when it is set up
+ * and its index is on the card, otherwise the card's. */
+static bool g_muse_plex;
+static bool g_plex_stale;    /* a sync wrote a new index: load it when idle */
+static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle */
+static bool muse_source_saved_plex(void)
+{
+	char s[16];
+
+	db_get_str(db_dev(), "muse.source", s, sizeof s, "local");
+	return !strcmp(s, "plex");
+}
 
 /* Muse's favorites (plorpos-3yv.98): Y on an album marks it, and the
  * Favorites tab (plorpos-era.13) shows only the marked ones. A mark is the card's
@@ -1365,7 +1392,13 @@ static void muse_adopt_orphan(void);
  * Everything that polls Muse comes through here. */
 static void muse_poll(void)
 {
+	const mu_now *mn;
+
 	musec_poll();
+	mn = musec_now();
+	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
+	          mn->at, mn->len);
+	if (mn->state == MU_PLAYING) plex_prefetch(musec_upcoming());
 	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
@@ -1478,8 +1511,9 @@ static const struct { const char *key; int glyph; } MUSE_MODES[MUQ_MODES] = {
  * is not a decode: the album it is for and its texture. `done` means this is
  * what the album will show - its art, or the card made for one with none - and
  * nothing more needs asking. */
-static struct {
-	int          album;
+static struct np_cover {
+	int          album;                     /* -2: g_loose's, of generation `loose` */
+	unsigned     loose;
 	bool         done;
 	SDL_Texture *tex;
 } g_np = { .album = -1 };
@@ -3332,9 +3366,31 @@ static void aout_before_muse(void)
  * resume and R1 both went to the speaker right after a pairing. Paused, they
  * still leave the headset where it is; nothing else can be heard on these
  * screens, so handing it back on every pause would only be churn. */
+#if defined(PLATFORM_RGDS)
+static void muse_panel_game_tick(void (*tick)(void));
+static void muse_queue_tick(void);
+/* Muse open on the secondary beside a game: that game's tick, run from Muse's
+ * own loop meanwhile (plorpos-rgds.18.3.5). NULL on the shelf. */
+static void (*g_sec_tick)(void);
+#endif
+
 static void muse_screen_poll(void)
 {
 	muse_poll();
+#if defined(PLATFORM_RGDS)
+	/* Beside a game: its duties go on - the game quiet while Muse plays,
+	 * play time, the sound's route - ten times a second, as its loop would. */
+	if (g_sec_tick) {
+		static unsigned at;
+		unsigned now = SDL_GetTicks();
+
+		if (now - at >= 100) { at = now; g_sec_tick(); }
+	}
+	/* Under Muse's own screens the secondary shows the queue (.18.3.4). No
+	 * pump: this screen's input poll hands the secondary its fingers by
+	 * window, and a pump here took the primary's too (.18.5). */
+	muse_queue_tick();
+#endif
 	year_fill();
 	if (musec_heard()) aout_apply(false);
 }
@@ -3417,6 +3473,10 @@ static void aout_retry_in_game(void)
 
 static void on_game_tick(void)
 {
+#if defined(PLATFORM_RGDS)
+	plat_rgds_game_tick();
+	muse_panel_game_tick(on_game_tick);
+#endif
 	char msg[96];
 
 	int rc;
@@ -4016,12 +4076,18 @@ static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now();
  * smooth at any render scale: a stack of scan lines drawn in layout units is
  * resampled with the rest of the frame and comes out ragged. */
 #define DISC_TEX 128
-static SDL_Texture *disc_tex;
+/* One per renderer: a texture belongs to the renderer that made it, and the
+ * RG DS draws the battery on its second panel too (plorpos-rgds.18.3.1). */
+static struct { SDL_Renderer *r; SDL_Texture *t; } g_disctex[2];
 
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
 	Uint8 cr, cg, cb, ca;
+	SDL_Texture *disc_tex;
+	int k = g_disctex[0].r && g_disctex[0].r != r;
 
+	if (g_disctex[k].r != r) g_disctex[k].t = NULL, g_disctex[k].r = r;
+	disc_tex = g_disctex[k].t;
 	if (!disc_tex) {
 		SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, DISC_TEX, DISC_TEX, 32,
 		                                                SDL_PIXELFORMAT_ARGB8888);
@@ -4044,6 +4110,7 @@ static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 				SDL_SetTextureBlendMode(disc_tex, SDL_BLENDMODE_BLEND);
 				SDL_SetTextureScaleMode(disc_tex, SDL_ScaleModeLinear);
 			}
+			g_disctex[k].t = disc_tex;
 		}
 	}
 	if (!disc_tex) return;
@@ -4542,7 +4609,7 @@ typedef struct {
 
 /* Fit-cache keys for lists that are not a shelf. */
 enum { GL_KEY_ARTISTS = -1, GL_KEY_PLAYLISTS = -2, GL_KEY_TRACKS = -3,
-       GL_KEY_PICK = -4, GL_KEY_TABS = -5 };
+       GL_KEY_PICK = -4, GL_KEY_TABS = -5, GL_KEY_QUEUE = -6 };
 
 typedef struct { int top, bottom, row_h, rows, col_w, pane_x, pane_w; } gl_geom;
 
@@ -6487,6 +6554,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
+		u.muse_plex  = u.muse && g_muse_plex;
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
@@ -6513,6 +6581,12 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
+#if defined(PLATFORM_RGDS)
+		u.adb = plat_adb_on();
+		u.dual_on = g_dual_on;
+		u.dual_muse = g_dual_muse;
+		u.dual_bottom = g_dual_bottom;
+#endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -9126,7 +9200,7 @@ static int menu_shelf_width(app *a)
 		if (muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
 			int both = ml_count(&g_muse, true) && ml_count(&g_muse, false);
-			int nn = sys_menu_muse_rows(muse_books_shown(), both, ids);
+			int nn = sys_menu_muse_rows(muse_books_shown(), both, g_muse_plex, ids);
 
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
@@ -9377,6 +9451,336 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 #endif
 	}
 	return MENU_STAY;
+}
+
+/* ---- Plex (plorpos-1lw) ---------------------------------------------------- *
+ *
+ * Plex is Muse's second source: these are the screens that set it up and look
+ * after it - Source in Muse's menu, sign-in, the server and library, Plex
+ * Settings, and the waits on the network behind a panel. Everything that
+ * talks to Plex is src/plex.c's, on its own threads; these only poll it. */
+
+static int  muse_pick_run(app *a, const char *heading, const char *const *labels, int n);
+static void muse_toast(const char *msg);
+static void muse_playlists_forget(void);
+
+/* A message, until A or B. */
+static void plex_say(app *a, const char *msg)
+{
+	static const char *const OK[] = { "OK" };
+
+	muse_pick_run(a, msg, OK, 1);
+}
+
+/* `poll` behind a panel saying `msg()`, until it returns non-zero (that) or
+ * B gives up (0). The work goes on either way: B only stops waiting. */
+static int plex_wait(app *a, const char *(*msg)(void), int (*poll)(void))
+{
+	ui_pace pace = {0};
+	int r = 0;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (a->running && !want_quit) {
+		const char *m;
+
+		if ((r = poll()) != 0) break;
+		plat_input_poll(&a->in);
+		muse_poll();
+		if (a->in.quit_requested) { a->running = false; break; }
+		if (menu_leaving(a)) break;
+		m = msg();
+		if (!screen_draw_due(a, &pace, fnv_str(2166136261u, m))) { SDL_Delay(IDLE_POLL_MS); continue; }
+		wait_panel(a, "Plex", m);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	return r;
+}
+
+static const char *plex_msg_servers(void)   { return "Finding your servers..."; }
+static const char *plex_msg_libraries(void) { return "Reading the libraries..."; }
+static const char *plex_msg_sync(void)
+{
+	static char m[96];
+	int d, t;
+
+	plex_sync_state(&d, &t);
+	if (t > 0) snprintf(m, sizeof m, "Syncing %d of %d tracks...", d, t);
+	else snprintf(m, sizeof m, "Asking %s...", plex_server_name());
+	return m;
+}
+static int plex_poll_sync(void)
+{
+	int st = plex_sync_state(NULL, NULL);
+
+	return st == 1 ? 0 : st == 0 ? 1 : -1;
+}
+
+/* The library's index, read again from the server (`force`) or only when it
+ * changed. True when it finished; B leaves it running in the background. */
+static bool plex_sync_screen(app *a, bool force)
+{
+	int r;
+
+	if (!net_online()) { plex_say(a, "Plex needs Wi-Fi"); return false; }
+	plex_sync_start(force);
+	r = plex_wait(a, plex_msg_sync, plex_poll_sync);
+	if (r < 0) plex_say(a, "Plex did not answer");
+	return r > 0;
+}
+
+/* Sign-in: a code to type at plex.tv/link, checked every two seconds. */
+typedef struct { int st; char code[16]; } plex_pin_ui;
+
+static int plex_pin_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	plex_pin_ui *u = ctx;
+
+	(void)max;
+	*heading = "Sign In to Plex";
+	if (u->st == 0) u->st = plex_pin_poll(u->code, sizeof u->code);
+	if (u->st == 1) return 0;                    /* linked: the screen is done */
+	if (u->st < 0) {
+		rows[0] = (menu_row){ "The code expired, or Plex did not answer", NULL, false };
+		rows[1] = (menu_row){ "Try Again", NULL, true };
+		rows[2] = (menu_row){ "Cancel", NULL, true };
+		return 3;
+	}
+	rows[0] = (menu_row){ "On a phone or computer, open", NULL, false };
+	rows[1] = (menu_row){ "plex.tv/link", NULL, false };
+	rows[2] = (menu_row){ "and enter the code", u->code[0] ? u->code : "...", false };
+	rows[3] = (menu_row){ "Cancel", NULL, true };
+	return 4;
+}
+
+static menu_result plex_pin_key(app *a, void *ctx, in_button key, int sel)
+{
+	plex_pin_ui *u = ctx;
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (u->st < 0 && sel == 1) { u->st = 0; u->code[0] = '\0'; plex_pin_start(); return MENU_STAY; }
+	return MENU_DONE;
+}
+
+static bool plex_choose_server(app *a)
+{
+	const char *labels[MENU_RUN_ROWS];
+	char named[16][150];
+	int n, k, i;
+
+	plex_servers_ask();
+	n = plex_wait(a, plex_msg_servers, plex_servers_poll);
+	if (n == 0) return false;
+	if (n < 0) { plex_say(a, "No Plex servers found"); return false; }
+	for (i = 0; i < n && i < 16; i++) {
+		bool owned = false;
+		const char *nm = plex_server_at(i, &owned);
+
+		snprintf(named[i], sizeof named[i], "%s%s", nm, owned ? "" : " (shared)");
+		labels[i] = named[i];
+	}
+	k = n == 1 ? 0 : muse_pick_run(a, "Plex Server", labels, i);
+	if (k < 0) return false;
+	plex_server_pick(k);
+	return true;
+}
+
+static bool plex_choose_library(app *a)
+{
+	const char *labels[MENU_RUN_ROWS];
+	int n, k, i;
+
+	plex_libraries_ask();
+	n = plex_wait(a, plex_msg_libraries, plex_libraries_poll);
+	if (n == 0) return false;
+	if (n < 0) { plex_say(a, "No music libraries on that server"); return false; }
+	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) labels[i] = plex_library_at(i);
+	k = n == 1 ? 0 : muse_pick_run(a, "Music Library", labels, i);
+	if (k < 0) return false;
+	plex_library_pick(k);
+	return true;
+}
+
+/* Whatever is missing of sign-in, server and library. True when Plex is
+ * ready to be a source. */
+static bool plex_setup(app *a)
+{
+	if (!net_online()) { plex_say(a, "Plex needs Wi-Fi"); return false; }
+	if (!plex_signed_in()) {
+		plex_pin_ui u = { 0 };
+
+		plex_pin_start();
+		menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+		         plex_pin_build, plex_pin_key, &u);
+		plex_pin_cancel();
+		if (!plex_signed_in()) return false;
+	}
+	if (!plex_server_name()[0] && !plex_choose_server(a)) return false;
+	if (!plex_library_name()[0] && !plex_choose_library(a)) return false;
+	return plex_ready();
+}
+
+/* Read the card again for the source now saved: Muse's library from it. */
+static void muse_source_reload(app *a)
+{
+	muse_playlists_forget();
+	wait_panel(a, "Muse", "Loading...");
+	rescan_all(a);
+}
+
+/* Source in Muse's menu: Local <-> Plex. True when the library was rebuilt
+ * (the menu goes, as after Rescan Folder). */
+static bool muse_source_flip(app *a)
+{
+	if (g_muse_plex) {
+		db_set_str(db_dev(), "muse.source", "local");
+	} else {
+		if (!plex_setup(a)) return false;
+		db_set_str(db_dev(), "muse.source", "plex");
+		/* The first time, the whole library: a minute or so. B stops
+		 * waiting; Muse switches by itself once it is in (plex_main_poll). */
+		if (!plex_lib_cached() && !plex_sync_screen(a, false)) return false;
+		plex_sync_take();
+	}
+	muse_source_reload(a);
+	return true;
+}
+
+enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_SYNC,
+       PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
+typedef struct { bool rebuilt; char sync[48], dl[160]; } plex_set_ui;
+
+static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	plex_set_ui *u = ctx;
+	bool in = plex_signed_in(), ready = plex_ready();
+	int d, t, st;
+
+	(void)max;
+	*heading = "Plex Settings";
+	if (u->rebuilt) return 0;
+	st = plex_sync_state(&d, &t);
+	if (st == 1 && t > 0) snprintf(u->sync, sizeof u->sync, "%d of %d", d, t);
+	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
+	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
+	else u->sync[0] = '\0';
+	if (!plex_download_status(u->dl, sizeof u->dl)) snprintf(u->dl, sizeof u->dl, "none");
+	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
+	                                              : "Sign In", !in };
+	rows[PX_SERVER]   = (menu_row){ "Server", plex_server_name()[0] ? plex_server_name() : "Choose", in };
+	rows[PX_LIBRARY]  = (menu_row){ "Library", plex_library_name()[0] ? plex_library_name() : "Choose",
+	                                in && plex_server_name()[0] };
+	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
+	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+	rows[PX_SYNC]     = (menu_row){ "Sync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
+	rows[PX_DOWNLOADS]= (menu_row){ "Downloads", u->dl, strcmp(u->dl, "none") != 0 };
+	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
+	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
+	return PX_ROWS;
+}
+
+static int quality_step(int kbps, int d)
+{
+	int i;
+
+	for (i = 0; i < PLEX_QUALITIES && plex_quality_at(i) != kbps; i++) {}
+	if (i == PLEX_QUALITIES) i = 2;
+	i = (i + d + PLEX_QUALITIES) % PLEX_QUALITIES;
+	return plex_quality_at(i);
+}
+
+static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	plex_set_ui *u = ctx;
+	int d = key == IN_LEFT ? -1 : key == IN_RIGHT || key == IN_ACCEPT ? 1 : 0;
+
+	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
+	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
+	if (key != IN_ACCEPT) return MENU_STAY;
+	switch (sel) {
+	case PX_ACCOUNT:
+		plex_setup(a);
+		return MENU_STAY;
+	case PX_SERVER:
+	case PX_LIBRARY:
+		if (sel == PX_SERVER && !plex_choose_server(a)) return MENU_STAY;
+		if (!plex_choose_library(a)) return MENU_STAY;
+		if (!g_muse_plex) return MENU_STAY;
+		/* Another library under the source: read it, then show it. */
+		plex_sync_screen(a, false);
+		plex_sync_take();
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	case PX_SYNC:
+		if (!plex_sync_screen(a, true)) return MENU_STAY;
+		plex_sync_take();
+		if (!g_muse_plex) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	case PX_DOWNLOADS:
+		plex_download_cancel();
+		muse_toast("Downloads stopped");
+		return MENU_STAY;
+	case PX_FAVS:
+		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }
+		plex_sync_favorites();
+		muse_toast("Downloading Plex favorites");
+		return MENU_STAY;
+	case PX_SIGNOUT: {
+		static const char *const YN[] = { "Sign Out", "Cancel" };
+
+		if (muse_pick_run(a, "Sign out of Plex?", YN, 2) != 0) return MENU_STAY;
+		plex_sign_out();
+		db_set_str(db_dev(), "muse.source", "local");
+		if (!g_muse_plex) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	}
+	}
+	return MENU_STAY;
+}
+
+/* True when the library was rebuilt underneath (the caller's menu goes). */
+static bool plex_settings_screen(app *a)
+{
+	plex_set_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         plex_set_build, plex_set_key, &u);
+	return u.rebuilt;
+}
+
+/* From the shelf's own loop - never inside Muse or a menu, since it can
+ * rebuild the library: a sync that wrote a new index, or downloads that
+ * changed Music/Plex under the Local source. And now and then, whether the
+ * library changed on the server. */
+static void plex_main_poll(app *a)
+{
+	static unsigned next_check;
+	unsigned now = plat_now_ms();
+
+	if (plex_sync_take()) g_plex_stale = true;
+	if (plex_download_take_changed()) g_local_stale = true;
+	if (g_walk_thread) return;
+	if ((g_plex_stale && muse_source_saved_plex()) ||
+	    (g_local_stale && !g_muse_plex && !plex_download_status(NULL, 0))) {
+		g_plex_stale = g_local_stale = false;
+		fprintf(stderr, "plex: reading the library again\n");
+		muse_playlists_forget();
+		rescan_all(a);
+		ui_redraw_now();
+		return;
+	}
+	g_plex_stale = g_plex_stale && muse_source_saved_plex();
+	if (g_muse_plex && (int)(now - next_check) >= 0 && net_online()) {
+		plex_sync_start(false);
+		next_check = now + 60u * 60u * 1000u;            /* an hour */
+	}
 }
 
 static void muse_settings_screen(app *a)
@@ -9646,6 +10050,13 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
+#if defined(PLATFORM_RGDS)
+	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now. */
+	if (sel == ST_ADB && (d || key == IN_ACCEPT)) {
+		plat_adb_set(!plat_adb_on());
+		return MENU_STAY;
+	}
+#endif
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
@@ -9770,6 +10181,45 @@ static void ui_settings_screen(app *a)
 	         ui_settings_build, ui_settings_key, &c);
 }
 
+#if defined(PLATFORM_RGDS)
+/* Settings > Dual Screen Settings (plorpos-rgds.18.1): three toggles, each
+ * saved at once and taken up by the shelf's next frame. */
+static int dual_settings_build(void *ctx, menu_row *rows, int max,
+                               const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_dual_build(&u, rows, heading);
+}
+
+static menu_result dual_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	bool *v = sel == DU_SECONDARY ? &g_dual_on : sel == DU_FUNCTION ? &g_dual_muse
+	        : sel == DU_PRIMARY ? &g_dual_bottom : NULL;
+	static const char *const id[DU_ROWS] = { "dual_on", "dual_muse", "dual_bottom" };
+
+	(void)a; (void)ctx;
+	if (!v || !(key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) return MENU_STAY;
+	*v = !*v;
+	db_set_int(db_dev(), id[sel], *v);
+	if (sel == DU_PRIMARY) plat_set_primary_bottom(g_dual_bottom);
+	return MENU_STAY;
+}
+
+static void dual_settings_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         dual_settings_build, dual_settings_key, &c);
+}
+#endif
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -9831,7 +10281,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			sm_muse_row ids[SM_MUSE_ROWS];
 			int n = sys_menu_muse_rows(muse_books_shown(),
 			                           ml_count(&g_muse, true) && ml_count(&g_muse, false),
-			                           ids);
+			                           g_muse_plex, ids);
 			sm_muse_row id = sel >= 0 && sel < n ? ids[sel] : SMM_COUNT;
 
 			if (id == SMM_SORT) {
@@ -9846,6 +10296,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
 				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
+				if (id == SMM_SOURCE) return muse_source_flip(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -9982,6 +10434,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_WIFI:         wifi_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
+#if defined(PLATFORM_RGDS)
+	case PM_DUAL:         dual_settings_screen(a); break;
+#endif
 	case PM_GAME:         game_settings_screen(a); break;
 #if !defined(PLATFORM_MIYOO)
 	case PM_BT:           bt_screen(a); break;
@@ -11211,10 +11666,57 @@ static bool cover_file(int al, char *out, size_t n)
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
 	snprintf(out, n, "%s.png", base);
 	if (file_nonempty(out)) { c->st = COV_PNG; return true; }
+	if (g_muse_plex) {
+		/* Plex's art, fetched to <base>.jpg; cover_answers hears it land. */
+		if (plex_cover_want(al, base)) { c->st = COV_ASKED; c->asked_ms = now; }
+		else c->st = COV_NONE;
+		return false;
+	}
 	if (musec_cover_ask(g_muse.tracks[g_muse.albums[al].first].path, base)) {
 		c->st = COV_ASKED;
 		c->asked_ms = now;
 	}
+	return false;
+}
+
+/* A track playing from outside the library on the shelf - a Local one while
+ * the Source is Plex (plorpos-1lw.15) - has no album number to keep a
+ * cover_state under. Its cover is looked for the same way, through a library
+ * of the one album its folder makes, under this one state. */
+static struct { char base[LIB_PATH * 2]; cover_state c; unsigned gen; } g_loose;
+
+static void loose_lib(const char *track, ml_lib *l, ml_album *al, ml_track *t)
+{
+	*t = (ml_track){ .name = "" };
+	snprintf(t->path, sizeof t->path, "%s", track);
+	*al = (ml_album){ .first = 0, .n = 1 };
+	*l = (ml_lib){ .albums = al, .nalbums = 1, .tracks = t, .ntracks = 1 };
+}
+
+static bool loose_cover_file(const char *track, char *out, size_t n)
+{
+	char base[LIB_PATH * 2];
+	unsigned now = plat_now_ms();
+	ml_lib l; ml_album al; ml_track t;
+	cover_state *c = &g_loose.c;
+
+	loose_lib(track, &l, &al, &t);
+	ml_cover_base(g_muse_root, &l, 0, base, sizeof base);
+	if (!base[0]) return false;
+	if (strcmp(base, g_loose.base)) {
+		snprintf(g_loose.base, sizeof g_loose.base, "%s", base);
+		*c = (cover_state){ COV_UNKNOWN, 0 };
+		g_loose.gen++;
+	}
+	if (c->st == COV_NONE) return false;
+	snprintf(out, n, "%s.jpg", base);
+	if (file_nonempty(out)) return true;
+	snprintf(out, n, "%s.png", base);
+	if (file_nonempty(out)) return true;
+	if (ml_folder_image(g_muse_root, &l, 0, out, n)) return true;
+	if (c->st == COV_ASKED && now - c->asked_ms < 5000) return false;
+	if (musec_cover_ask(track, base)) { c->st = COV_ASKED; c->asked_ms = now; }
+	else c->st = COV_NONE;
 	return false;
 }
 
@@ -11229,9 +11731,17 @@ static bool cover_answers(void)
 	size_t fl;
 	int i;
 
+	while (plex_cover_take(base, sizeof base)) {
+		landed = true;
+		for (i = 0; g_cov && g_muse_plex && i < g_muse.nalbums; i++) {
+			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
+			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
+		}
+	}
 	while (musec_cover_take(base, sizeof base, file, sizeof file)) {
 		landed = true;
 		fl = strlen(file);
+		if (!fl && !strcmp(base, g_loose.base)) g_loose.c.st = COV_NONE;
 		for (i = 0; g_cov && i < g_muse.nalbums; i++) {
 			char pic[LIB_PATH * 2 + 8];
 
@@ -11295,7 +11805,7 @@ static void year_fill(void)
 	unsigned now = plat_now_ms();
 	int al, y, i;
 
-	if (!g_year) return;
+	if (!g_year || g_muse_plex) return;
 	if (musec_year_take(track, sizeof track, &y)) {
 		al = ml_album_of(&g_muse, track);
 		if (al >= 0 && g_year[al] < 0) {
@@ -11373,13 +11883,40 @@ static SDL_Texture *load_cover(SDL_Renderer *r, const char *path)
 
 /* Bring the Now Playing cover up to date with album `al`, which may be -1 for
  * nothing. Called every frame; it costs a comparison once the cover is in. */
+/* np_cover for a Local track the library on the shelf does not hold. */
+static void np_cover_loose(app *a)
+{
+	const mu_now *mn = musec_now();
+	const char *track = mn ? musec_track(mn->index) : NULL;
+	char path[LIB_PATH * 2 + 8];
+	bool got;
+	int w, h;
+
+	if (!track || !track[0] || plex_is_path(track)) {
+		if (g_np.album != -1) np_forget();
+		return;
+	}
+	got = loose_cover_file(track, path, sizeof path);
+	if (g_np.album != -2 || g_np.loose != g_loose.gen) {
+		np_forget();
+		g_np.album = -2;
+		g_np.loose = g_loose.gen;
+	}
+	if (g_np.done) return;
+	if (got && !(g_np.tex = load_cover(a->r, path))) g_loose.c.st = COV_NONE;
+	if (!g_np.tex && g_loose.c.st == COV_NONE)
+		g_np.tex = ui_make_cover(a->r, mn->album[0] ? mn->album : "Music", MUSE_ACCENT, &w, &h);
+	g_np.done = g_np.tex != NULL;
+}
+
 static void np_cover(app *a, int al)
 {
 	char path[LIB_PATH * 2 + 8];
 	int w, h;
 
+	if (al < 0) { np_cover_loose(a); return; }
 	if (al != g_np.album) { np_forget(); g_np.album = al; }
-	if (g_np.done || al < 0) return;
+	if (g_np.done) return;
 	if (cover_file(al, path, sizeof path)) {
 		unsigned t0 = plat_now_ms();
 
@@ -11510,9 +12047,25 @@ static void mmss(char *out, size_t n, double sec)
  * what is behind a panel is a picture of games. */
 #define NP_SIDE 432                              /* the cover, on screen */
 #define NP_X    80
-#define NP_Y    ((TORTOS_SCREEN_H - NP_SIDE) / 2 - 28)
+#define NP_Y    np_y()
 #define NP_TX   (NP_X + NP_SIDE + 56)            /* the words beside it */
 #define NP_TW   (TORTOS_SCREEN_W - NP_TX - 64)
+#define NP_HELP_Y (TORTOS_SCREEN_H - 72)         /* the buttons' line */
+
+#define NP_SRC_GAP 18                            /* cover foot to the Source line */
+
+/* The cover's top: the whole of it - the cover, and the Source line under
+ * it down to its ink's foot - centered between the screen's top and the
+ * buttons' line, on every screen size (plorpos-1lw.11). It was the cover
+ * centered and lifted 28. */
+static int np_y(void)
+{
+	TTF_Font *f = ui_font(UI_F_META);
+	int asc = f ? ui_font_ascent(f) : ui_font_height(UI_F_META);
+	int lead = f ? asc - ui_font_cap(f) : 0;  /* the buttons' box top to ink */
+
+	return (NP_HELP_Y + lead - NP_SIDE - NP_SRC_GAP - asc) / 2;
+}
 
 /* A chapter as Now Playing names it: its own title when it has one worth
  * reading, "Chapter 3" when the title is only its number - Dungeon Crawler
@@ -11570,11 +12123,26 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	        rgb, 34, 1.7f);
 	ui_glow(r, &cov, rgb, 90, 1.7f);
 	if (g_np.tex) SDL_RenderCopy(r, g_np.tex, NULL, &cov);
+	/* What is playing, as the file or stream is - "FLAC 16/44.1", "OPUS 128" -
+	 * on a dark pill in the cover's bottom-left corner, readable on any art
+	 * (plorpos-1lw.9). The words come once per track, with META. */
+	if (mn->codec[0] && fs) {
+		int th = ui_font_height(UI_F_META), pw = ui_text_width(fs, mn->codec) + 28;
+		SDL_Rect pill = { cov.x + 14, cov.y + cov.h - 14 - (th + 6), pw, th + 6 };
+
+		ui_round_rect(r, &pill, pill.h / 2, (SDL_Color){ 0, 0, 0, 170 });
+		ui_text(r, fs, mn->codec, pill.x + 14, pill.y + 3, -1, UI_TEXT);
+	}
 
 	/* Title, artist and album slide together when they are too long, on one
 	 * clock that starts over with each track. */
 	phase = mq_phase(MQ_NP, mn->index, (int)strlen(mn->title));
 	y = NP_Y + 36;
+	/* Where the track comes from, under the cover at its left edge (owner,
+	 * plorpos-1lw.10): the playing track's own source, not the one being
+	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
+	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex" : "Source: Local",
+	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
 		 * count is the order being HEARD, so shuffled it still runs 1 to n.
@@ -11676,7 +12244,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	                    : "A: pause    L1/R1: file    Left/Right: seek    Y: speed"))
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
-	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 72, 0, UI_TEXT_DIM);
+	        TORTOS_SCREEN_W / 2, NP_HELP_Y, 0, UI_TEXT_DIM);
 	draw_battery(r);
 	return wait;
 }
@@ -11717,7 +12285,8 @@ static void np_next_line(char *next, size_t cap)
 	if (musec_is_book() && musec_chapters() > 1 &&
 	    musec_chapter_now() + 1 < musec_chapters())
 		chapter_label(musec_chapter_now() + 1, next, cap);
-	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
+	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()) &&
+	         !plex_title(nt, next, (size_t)cap))
 		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
 }
 
@@ -11902,6 +12471,7 @@ static int muse_playing_album(int *row)
 static pl_info g_pls[PL_SHOW_MAX];
 static char    g_pl_val[PL_SHOW_MAX][12];
 static int     g_npls = -1;              /* -1: read the folder again */
+static void muse_playlists_forget(void) { g_npls = -1; }
 static char    g_muse_toast[160];
 static Uint32  g_muse_toast_until;
 
@@ -11912,13 +12482,16 @@ static struct { bool set, pl; char name[PL_NAME_MAX]; int tab, artist; } g_muse_
 
 static void muse_pl_dir(char *out, size_t n)
 {
+	if (g_muse_plex) { plex_pl_dir(out, n); return; }   /* the source's own */
 	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
 }
 
 static void muse_playlists_load(void)
 {
 	char d[CFG_STR * 2 + 32];
+	static int gen;
 
+	if (gen != plex_pl_gen()) { gen = plex_pl_gen(); g_npls = -1; }   /* Plex Favorites rewritten */
 	if (g_npls >= 0) return;
 	muse_pl_dir(d, sizeof d);
 	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
@@ -11945,6 +12518,11 @@ static const char *muse_toast_now(void)
  * file that has since gone. Once per entry when a playlist opens. */
 static int muse_track_by_path(const char *path)
 {
+	/* 47k Plex tracks and a playlist of hundreds: by key, not by scan. */
+	if (g_muse_plex && plex_is_path(path)) {
+		int t = plex_track_index(path);
+		return t >= 0 && t < g_muse.ntracks && !strcmp(g_muse.tracks[t].path, path) ? t : -1;
+	}
 	for (int t = 0; t < g_muse.ntracks; t++)
 		if (!strcmp(g_muse.tracks[t].path, path)) return t;
 	return -1;
@@ -12010,25 +12588,55 @@ static bool muse_name_prompt(app *a, const char *title, char *buf, int cap)
 }
 
 /* Y on a track (era.6): a playlist to add it to, a new one first. */
+/* Where track `path` is in a playlist, or -1. */
+static int muse_pl_find(const char *dir, const char *name, const char *path)
+{
+	char **v = NULL;
+	int n = pl_read(dir, name, P_CARD, &v), i, at = -1;
+
+	for (i = 0; i < n && at < 0; i++) if (!strcmp(v[i], path)) at = i;
+	if (n > 0) pl_free(v, n);
+	return at;
+}
+
 static void muse_add_to_playlist(app *a, int t)
 {
 	const char *labels[MENU_RUN_ROWS];
 	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[160];
-	int k, n = 0, i;
+	int k, n = 0, i, map[MENU_RUN_ROWS], fav = -1, fav_at = -1;
 
 	if (t < 0 || t >= g_muse.ntracks) return;
 	muse_playlists_load();
-	labels[n++] = "New Playlist...";
-	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) labels[n++] = g_pls[i].name;
+	muse_pl_dir(d, sizeof d);
+	labels[n] = "New Playlist..."; map[n++] = -1;
+	/* On Plex, Favorite Tracks first (the pak's Y): adds the track, or takes
+	 * it out when it is in already. */
+	if (g_muse_plex) {
+		fav_at = muse_pl_find(d, PLEX_FAVS, g_muse.tracks[t].path);
+		fav = n;
+		labels[n] = fav_at >= 0 ? "Remove from " PLEX_FAVS : PLEX_FAVS; map[n++] = -1;
+	}
+	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) {
+		if (g_muse_plex && !strcmp(g_pls[i].name, PLEX_FAVS)) continue;
+		if (!strcmp(g_pls[i].name, PLEX_FAVS_M3U)) continue;   /* the next sync rewrites it */
+		labels[n] = g_pls[i].name; map[n++] = i;
+	}
 	k = muse_pick_run(a, "Add to Playlist", labels, n);
 	if (k < 0) return;
+	if (k == fav) {
+		bool ok = fav_at >= 0 ? pl_remove_at(d, PLEX_FAVS, fav_at)
+		                      : pl_add(d, PLEX_FAVS, g_muse.tracks[t].path);
+		g_npls = -1;
+		muse_toast(!ok ? "Could not change " PLEX_FAVS
+		           : fav_at >= 0 ? "Removed from " PLEX_FAVS : "Added to " PLEX_FAVS);
+		return;
+	}
 	if (k == 0) {
 		name[0] = '\0';
 		if (!muse_name_prompt(a, "New Playlist", name, (int)sizeof name)) return;
 	} else {
-		snprintf(name, sizeof name, "%s", g_pls[k - 1].name);
+		snprintf(name, sizeof name, "%s", g_pls[map[k]].name);
 	}
-	muse_pl_dir(d, sizeof d);
 	if (pl_add(d, name, g_muse.tracks[t].path)) snprintf(msg, sizeof msg, "Added to %s", name);
 	else snprintf(msg, sizeof msg, "Could not add to %s", name);
 	g_npls = -1;
@@ -12115,6 +12723,8 @@ static const char *muse_name_noyear(const char *name)
 static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
 static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "X", "Remove",
                                             "L2/R2", "Move" };
+/* An album from Plex: X downloads it or deletes the copy (plorpos-1lw). */
+static const char *const MTL_HELP_PLEX[] = { "A", "Play", "Y", "Add to Playlist", "X", "Download" };
 
 static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
                               const mu_now *mn, bool loaded, const char *playing)
@@ -12132,8 +12742,8 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	L.key = GL_KEY_TRACKS;
 	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
 	L.wide_header = true;
-	L.help = ts->pl ? MTL_HELP_PL : MTL_HELP;
-	L.nhelp = ts->pl ? 4 : 2;
+	L.help = ts->pl ? MTL_HELP_PL : g_muse_plex && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
+	L.nhelp = ts->pl ? 4 : g_muse_plex && ts->album >= 0 ? 3 : 2;
 	L.n = ts->n;
 	L.cur = sel;
 	L.accent = MUSE_ACCENT;
@@ -12162,7 +12772,10 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	}
 	if (muse_toast_now())
 		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
-	else if (ts->n > 0)
+	else if (g_muse_plex && plex_download_status(line + 12, sizeof line - 12)) {
+		memcpy(line, "Downloading ", 12);
+		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+	} else if (ts->n > 0)
 		snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, ts->n);
 
 	texload_drain(a);
@@ -12199,9 +12812,40 @@ static void muse_tracks_under_draw(app *a, void *ctx)
 	                  mn->state == MU_PLAYING || mn->state == MU_PAUSED, musec_path());
 }
 
+/* Plex: download album `al`, or delete its copy. */
+static void muse_plex_album_menu(app *a, int al)
+{
+	const char *labels[3];
+	int k, n = 0, have = plex_album_downloaded(al), of = g_muse.albums[al].n, dl = -1, del = -1;
+	char head[96];
+
+	snprintf(head, sizeof head, "%d of %d downloaded", have, of);
+	if (plex_album_downloading(al)) {
+		labels[0] = "Cancel Download";
+		if (muse_pick_run(a, head, labels, 1) == 0) {
+			plex_download_cancel_album(al);
+			muse_toast("Download cancelled");
+		}
+		return;
+	}
+	if (have < of) { dl = n; labels[n++] = have ? "Download the Rest" : "Download Album"; }
+	if (have > 0)  { del = n; labels[n++] = "Delete Download"; }
+	k = muse_pick_run(a, head, labels, n);
+	if (k < 0) return;
+	if (k == dl) {
+		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return; }
+		plex_download_album(al);
+		muse_toast("Downloading");
+	} else if (k == del) {
+		plex_delete_album(al);
+		muse_toast("Download deleted");
+	}
+}
+
 static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 {
 	int sel = 0, done = 0, i, home = -1;
+	char dlnote[200];
 	muse_exit how = MUSE_BACK;
 	menu_row *rows;
 	char note[300], t0[16], t1[16];
@@ -12272,6 +12916,10 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			snprintf(note, sizeof note, "%s", g_muse_toast);
 			rows[n++] = MENU_RULE;
 			rows[n++] = MENU_NOTE(note);
+		} else if (g_muse_plex && plex_download_status(dlnote, sizeof dlnote)) {
+			snprintf(note, sizeof note, "Downloading %s", dlnote);
+			rows[n++] = MENU_RULE;
+			rows[n++] = MENU_NOTE(note);
 		} else if (loaded) {
 			mmss(t0, sizeof t0, mn->at);
 			mmss(t1, sizeof t1, mn->len);
@@ -12335,6 +12983,12 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		if (a->in.pressed[IN_Y] && items > 0) {
 			muse_add_to_playlist(a, ts->trk[sel]);
+			continue;
+		}
+		/* Plex: X on an album downloads it, or deletes the copy (the pak's
+		 * Y on an album; Y is Add to Playlist here). */
+		if (g_muse_plex && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
+			muse_plex_album_menu(a, ts->album);
 			continue;
 		}
 		/* A playlist's own keys (owner): X takes the track out, L2 and R2
@@ -12536,6 +13190,12 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
 	 * one left, whatever is playing (owner, plorpos-era.9). */
+#if defined(PLATFORM_RGDS)
+	/* From the secondary: Now Playing whenever something is queued, the
+	 * albums when nothing is (owner, plorpos-rgds.18.3). */
+	if (g_muse_sec) muse_shelf_screen(a, mn->count > 0);
+	else
+#endif
 	muse_shelf_screen(a, !g_muse_card && (mn->state == MU_PLAYING || mn->state == MU_PAUSED));
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
@@ -13052,9 +13712,22 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (L->n > 0) {
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", L->cur + 1, L->n);
 	}
-	/* The header is wide, so a passing word goes under the cover. */
+	/* The header is wide, so a passing word goes under the cover - or a
+	 * Plex download under way, looked at again twice a second while it runs. */
 	if (L->toast && *L->toast && L->nunder < 3)
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
+	else if (g_muse_plex && L->nunder < 3) {
+		char line[200];
+
+		memcpy(line, "Downloading ", 12);
+		if (plex_download_status(line + 12, sizeof line - 12)) {
+			gl_geom g;
+
+			gl_geometry(&g, L);
+			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+			ui_redraw_at(SDL_GetTicks() + 500);
+		}
+	}
 }
 
 static void muse_list_draw(app *a, sysview *v, int asel, int psel)
@@ -13190,6 +13863,22 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			muse_set_filter(v, -1, -1);
 			continue;
 		}
+		/* On the secondary, Back at Muse's top goes round to Now Playing
+		 * (owner, .18.3.8): Muse rests there, it is not left by Back. */
+		if (a->in.pressed[IN_BACK] && g_muse_sec) {
+			if (musec_now()->count > 0) {
+				muse_exit how = muse_now_screen(a);
+
+				if (how == MUSE_CLOSE || g_muse_gone) break;
+				if (how == MUSE_REBUILT) {
+					if (!(v = muse_shelf_refind(a))) break;
+					synced = -1;
+					muse_artists_build();
+				}
+				ui_redraw_now();
+			}
+			continue;
+		}
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
 		{
 			int hit = ui_hit_take(), t = -1;   /* a footer tab tapped */
@@ -13243,6 +13932,14 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 		/* Y marks the album under the cursor, or unmarks it. */
 		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);
+		/* Plex: X on an album downloads it or deletes the copy, on every
+		 * album view - not only inside its track list (plorpos-1lw.12). */
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_plex && v->album &&
+		    !g_muse.albums[v->album[v->cursor]].book) {
+			muse_plex_album_menu(a, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
 
 		if (a->in.pressed[IN_ACCEPT] && n > 0) {
 			if (artists) {
@@ -15342,10 +16039,21 @@ static run_choice native_menu(void *ctx)
  * (plorpos-gkd.50.23). And the game is silent while Muse plays, Diatom's
  * ADR-0032, followed live - pausing Muse brings the game back within a
  * tenth of a second (plorpos-gkd.50.17). */
+#if defined(PLATFORM_RGDS)
+static void muse_panel_game_tick(void (*tick)(void));
+static bool native_tick(void *ctx);
+/* A port's tick from Muse's loop: its quiet is plat_run's to send, so sent. */
+static void native_tick_sec(void) { plat_child_quiet(native_tick(NULL)); }
+#endif
+
 static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+#if defined(PLATFORM_RGDS)
+	plat_rgds_child_tick();
+	muse_panel_game_tick(native_tick_sec);
+#endif
 	music_keys();
 	recent_flush();                  /* as on_game_tick */
 #if !defined(PLAT_PIPEWIRE)
@@ -15578,7 +16286,9 @@ static void pm_data(char *out, size_t n, const char *rel)
  * folder: sd/<device>/portmaster on the card (plorpos-46o.5). */
 static void pm_here(char *out, size_t n, const char *leaf)
 {
-#if defined(PLATFORM_GKD)
+#if defined(PLATFORM_RGDS)	/* before GKD: the RG DS build defines both */
+	snprintf(out, n, "%s/rgds/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_GKD)
 	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_ROTATE)	/* before H700: the Rotate build defines both */
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
@@ -16019,6 +16729,18 @@ static void launch(app *a)
 {
 	int sys, item;
 
+#if defined(PLATFORM_RGDS)
+	/* The secondary off before the game starts: a DS game lights the bottom
+	 * panel for its own second screen, and an off sent after that would win.
+	 * Muse stays beside any other game (plorpos-rgds.18.1.4). */
+	{
+		const sysview *v = &a->view[a->sys_cursor];
+		bool ds = v->list.count > 0 &&
+		          is_nds_tag(a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
+
+		if (!g_dual_muse || ds) plat_bottom_off();
+	}
+#endif
 	launch_one(a);
 	for (;;) {
 		if (g_switch_fav) { g_switch_fav = false; refresh_favorites_shelf(a); }
@@ -17469,7 +18191,7 @@ static int muse_walk(void *unused)
 	unsigned t0 = plat_now_ms();
 
 	(void)unused;
-	g_walk_ok = ml_scan_card(g_muse_root, &g_walk_lib);
+	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
 	g_walk_ms = plat_now_ms() - t0;
 	SDL_AtomicSet(&g_walk_done, 1);
 	return 0;
@@ -17520,7 +18242,19 @@ static void muse_install(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	year_load();
+	if (g_muse_plex) {
+		/* The queue kept from before was restored ahead of this library:
+		 * its track's title and length are known only now. */
+		musec_retitle();
+		/* Plex says every album's year: nothing for the daemon to read. */
+		free(g_year);
+		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
+			for (i = 0; i < g_muse.nalbums; i++) g_year[i] = plex_album_year(i);
+		g_year_asked = -1;
+		g_year_read = 0;
+	} else {
+		year_load();
+	}
 	flat_albums_find();
 	for (i = 0; i < g_muse.nalbums; i++) {
 		char key[LIB_PATH + 8], val[16];
@@ -17574,7 +18308,10 @@ static void build_muse_shelf(app *a, bool bg)
 	np_forget();
 	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
 	muse_tidy_singles();
-	{
+	g_muse_plex = muse_source_saved_plex() && plex_lib_cached();
+	if (!g_muse_plex && muse_source_saved_plex())
+		plex_sync_start(false);      /* set up, never synced: on its way */
+	if (!g_muse_plex) {
 		char dir[sizeof g_muse_root + 16];
 
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
@@ -17591,7 +18328,7 @@ static void build_muse_shelf(app *a, bool bg)
 
 		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
 		muse_tabs_load();
-		g_muse_books = !strcmp(show, "books");
+		g_muse_books = !strcmp(show, "books") && !g_muse_plex;
 	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
@@ -18116,9 +18853,450 @@ static void take_shot(app *a)
 	}
 }
 
+#if defined(PLATFORM_RGDS)
+/* ---- Details on the bottom panel (plorpos-rgds.18) -------------------------
+ *
+ * The game under the shelf's cursor, on the RG DS's bottom panel: Card, Story
+ * and Stats, swiped between (details.c draws them). Gathered and drawn only
+ * once the cursor has rested DETAILS_SETTLE_MS on a game - scrolling through
+ * a shelf costs nothing - or on a swipe, and again each time the launcher
+ * comes back to the screen. Anywhere but a shelf of games the panel is off. */
+#define DETAILS_SETTLE_MS 150
+
+static void details_when(long t, char *out, size_t n)
+{
+	time_t now = time(NULL), then = (time_t)t;
+	struct tm a, b;
+	long days;
+
+	if (t <= 0) { out[0] = '\0'; return; }
+	localtime_r(&now, &a);
+	localtime_r(&then, &b);
+	a.tm_hour = b.tm_hour = 12; a.tm_min = b.tm_min = a.tm_sec = b.tm_sec = 0;
+	days = (long)((mktime(&a) - mktime(&b)) / 86400);
+	if (days <= 0)      snprintf(out, n, "Today");
+	else if (days == 1) snprintf(out, n, "Yesterday");
+	else if (days < 7)  snprintf(out, n, "%ld days ago", days);
+	else                strftime(out, n, "%d %b %Y", &b);
+}
+
+static void details_gather(app *a, int owner, const game_entry *g, details_info *d)
+{
+	const system_cfg *s = &a->sys.systems[owner];
+	game_meta m;
+	char p[LIB_PATH * 3];
+	long secs = 0, last = 0;
+
+	memset(d, 0, sizeof *d);
+	snprintf(d->title, sizeof d->title, "%s", g->title[0] ? g->title : g->name);
+	snprintf(d->sys, sizeof d->sys, "%s", strlen(s->name) <= 8 ? s->name : s->tag);
+	d->accent = s->accent;
+	if (db_game_get(db_lib(), s->folder, g->file, &m)) {
+		if (m.title[0]) snprintf(d->title, sizeof d->title, "%s", m.title);
+		snprintf(d->year, sizeof d->year, "%.4s", m.year);
+		snprintf(d->publisher, sizeof d->publisher, "%s", m.publisher[0] ? m.publisher : m.developer);
+		{
+			const char *gg = m.genres;      /* "A,B" -> "A, B", as gi_gather */
+			size_t k = 0;
+			while (*gg && k + 2 < sizeof d->genre) {
+				d->genre[k++] = *gg;
+				if (*gg++ == ',' && *gg != ' ') d->genre[k++] = ' ';
+			}
+			d->genre[k] = '\0';
+		}
+		if (m.players[0])
+			snprintf(d->players, sizeof d->players, "%s player%s", m.players, strcmp(m.players, "1") ? "s" : "");
+		snprintf(d->synopsis, sizeof d->synopsis, "%s", m.synopsis);
+	}
+	stats_summarize(STATS_ALL, false, (long)time(NULL));
+	if (stats_lookup(s->tag, g->file, &secs, &last) && secs > 0)
+		stats_format(secs, d->played, sizeof d->played);
+	details_when(last, d->last, sizeof d->last);
+	d->launches = stats_launches(s->tag, g->file);
+	/* As gi_gather: no game is running at the shelf, so the loaded set is nobody's. */
+	chv_path(P_ROMS, s->folder, g->name, p, sizeof p);
+	if (chv_load(p) && chv_count() > 0) {
+		d->cheevos = true;
+		d->ch_earned = chv_earned();
+		d->ch_total = chv_count();
+		d->pts_earned = chv_points_earned();
+		d->pts_total = chv_points_total();
+	}
+	/* The card's own picture (box art, a PICO-8 cart, a port's), else the
+	 * frame its state left, as the shelf shows when there is no art. */
+	if (!card_art_path(s, g, p, sizeof p) || access(p, R_OK) != 0)
+		preview_path(a, owner, g, p, sizeof p);
+	if (access(p, R_OK) == 0) snprintf(d->art, sizeof d->art, "%s", p);
+}
+
+/* The secondary panel's Muse is Muse's own Now Playing (plorpos-rgds.18.3.1):
+ * np_draw onto the secondary's renderer, with a cover texture of its own -
+ * a texture belongs to the renderer that made it. Redrawn when what it shows
+ * changes, and when the clock or a sliding line moves - those not while the
+ * shelf is being driven (busy), so a frame is never lost under the thumb.
+ * slide: a line too long for its column slides, a full-screen draw every
+ * frame (7-16 ms each, 24% of a core measured); only on the shelf. Beside a
+ * game the GPU is the game's, and the picture moves once a second. */
+static void np_on(SDL_Renderer *r, struct np_cover *mine, int al)
+{
+	struct np_cover kept = g_np;
+	SDL_Renderer *was = g_rgds_app->r;
+
+	g_np = *mine;
+	g_rgds_app->r = r;
+	np_cover(g_rgds_app, al);
+	*mine = g_np;
+	g_np = kept;
+	g_rgds_app->r = was;
+}
+
+/* Everything Now Playing shows but the clock and a sliding line. */
+static void np_key(char *key, size_t n, const mu_now *mn, SDL_Texture *tex, const char *next)
+{
+	snprintf(key, n, "%d|%d|%d|%s|%s|%s|%p|%d|%d|%d|%d|%s",
+	         (int)mn->state, mn->index, mn->count, mn->title, mn->artist, mn->album,
+	         (void *)tex, musec_is_book() ? -1 : (int)musec_mode(), muse_hold(),
+	         musec_chapter_now(), (int)(musec_speed() * 100 + 0.5), next);
+}
+
+static void muse_panel_tick(bool fresh, bool busy, bool slide)
+{
+	static struct np_cover np_b = { .album = -1 };
+	static char shown[1200];
+	static unsigned due, gen;
+	const mu_now *mn = musec_now();
+	char key[1200], next[128];
+	unsigned now = SDL_GetTicks(), t0, wait;
+	int w, h, x, y, al;
+	SDL_Renderer *r;
+
+	if (!g_rgds_app || !mn || g_muse_sec) return;  /* Muse itself draws there */
+	if (g_panel_fresh) fresh = true, g_panel_fresh = false;
+	while (plat_bottom_tap(&x, &y)) { }          /* a tap opens Muse: details_tick */
+	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
+		if (np_b.tex) SDL_DestroyTexture(np_b.tex);
+		np_b = (struct np_cover){ .album = -1 };
+		gen = g_muse_gen;
+	}
+	al = ml_album_of(&g_muse, musec_track(mn->index));
+	if ((r = plat_bottom_renderer())) np_on(r, &np_b, al);
+	np_next_line(next, sizeof next);
+	np_key(key, sizeof key, mn, np_b.tex, next);
+	if (!fresh && !strcmp(key, shown) && (busy || (int)(now - due) < 0)) return;
+	t0 = SDL_GetTicks();
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	np_on(r, &np_b, al);                          /* the window may be new */
+	{
+		SDL_Renderer *was = g_rgds_app->r;
+		struct np_cover kept = g_np;
+
+		g_rgds_app->r = r;
+		g_np = np_b;
+		/* In the launcher's units, as on the primary; Details draws this
+		 * renderer in panel pixels. */
+		int ph = shot_phase;
+
+		SDL_RenderSetScale(r, plat_scale(), plat_scale());
+		if (!slide) shot_phase = 0;           /* long lines at rest, at their start */
+		wait = np_draw(g_rgds_app, mn, next, muse_hold());
+		shot_phase = ph;
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		g_np = kept;
+		g_rgds_app->r = was;
+	}
+	plat_bottom_end();
+	/* The tex in the key as drawn: a cover that came in this time round. */
+	np_key(key, sizeof key, mn, np_b.tex, next);
+	snprintf(shown, sizeof shown, "%s", key);
+	due = now + (slide && wait < 1000 ? wait : 1000);
+	if (g_ft) fprintf(stderr, "details: muse page in %u ms\n", SDL_GetTicks() - t0);
+}
+
+/* The secondary panel (plorpos-rgds.18, .18.1): on for as long as the launcher
+ * is on the screen and Secondary Screen is on - lit already when a shelf
+ * opens, so its page only has to be drawn. Details for the game under the
+ * cursor, the system's page on the carousel, or Muse. */
+/* During a game (both kinds' ticks, 10 Hz): Muse beside it keeps playing its
+ * part - the clock, and a finger on it opens Muse there (.18.3.5). The
+ * secondary's fingers are read here: nothing else reads events in a game.
+ * tick: the game's own, for Muse's loop to run meanwhile. */
+static void muse_on_secondary(app *a, void (*tick)(void));
+
+static void muse_panel_game_tick(void (*tick)(void))
+{
+	if (!g_dual_on || !g_dual_muse || g_muse_sec) return;   /* Muse runs it */
+	plat_bottom_queue(false);
+	plat_bottom_pump();
+	if (plat_bottom_want() && g_rgds_app) { muse_on_secondary(g_rgds_app, tick); return; }
+	muse_panel_tick(false, false, false);
+}
+
+/* The queue on the secondary while Muse is open on the primary
+ * (plorpos-rgds.18.3.4): the tracks in the order they will be heard, the one
+ * playing marked as a track list marks it. A drag scrolls it a row per row
+ * of finger, a tap plays the row. It follows the music until it is dragged,
+ * and then stays where it was left - never back by itself (owner) - until a
+ * tap plays a row or Muse opens again. Its taps are found in a hit set of its own (ui_hit_set 1): the
+ * primary's screen is live beside it. */
+static const char *queue_title(void *ctx, int i)
+{
+	static char buf[8][160];
+	static unsigned k;
+	const char *p = musec_track(i), *slash;
+	char *out = buf[k++ & 7];
+
+	(void)ctx;
+	if (!p) return "";
+	if (plex_title(p, out, sizeof buf[0])) return out;
+	slash = strrchr(p, '/');
+	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
+	return out;
+}
+
+static const char *queue_value(void *ctx, int i)
+{
+	const mu_now *mn = musec_now();
+
+	(void)ctx;
+	if (i != mn->index) return NULL;
+	return mn->state == MU_PLAYING ? "playing" : mn->state == MU_PAUSED ? "paused" : NULL;
+}
+
+static void muse_queue_tick(void)
+{
+	static int cur, acc, row_px;
+	static unsigned last;
+	static bool dragged;
+	static char shown[96];
+	const mu_now *mn = musec_now();
+	app *a = g_rgds_app;
+	unsigned now = SDL_GetTicks();
+	int n, d, x, y, w, h;
+	char key[96];
+	gl_list L;
+	gl_geom g;
+	SDL_Renderer *r;
+
+	if (!a || !mn || !g_dual_on || !g_dual_muse || g_muse_sec) return;
+	plat_bottom_queue(true);
+	g_panel_fresh = true;                 /* the resting page, after Muse */
+	if (now - last > 500) shown[0] = '\0', dragged = false;  /* Muse just opened */
+	last = now;
+	n = mn->count;
+	d = plat_bottom_drag();
+	if (d && row_px > 0) {
+		/* Down the panel shows the rows above: the list follows the finger. */
+		for (acc += d; acc >= row_px; acc -= row_px) cur--;
+		for (; acc <= -row_px; acc += row_px) cur++;
+		dragged = true;
+	}
+	if (plat_bottom_tap(&x, &y) && n > 0) {
+		int b = 0, k = 0;
+		bool act = false;
+		float s = plat_scale() > 0 ? plat_scale() : 1;
+
+		ui_hit_set(1);
+		if (ui_hit_find((int)(x / s), (int)(y / s), &b, &k, &act) == UI_HIT_ITEM)
+			musec_jump(b == IN_UP ? cur - k : cur + k);
+		ui_hit_set(0);
+		dragged = false;                      /* and back to following it */
+	}
+	if (!dragged) { cur = mn->index; acc = 0; }
+	if (cur > n - 1) cur = n - 1;
+	if (cur < 0) cur = 0;
+
+	snprintf(key, sizeof key, "%d|%d|%d|%d|%.40s", n, mn->index, (int)mn->state, cur, mn->title);
+	if (!strcmp(key, shown)) return;
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	memset(&L, 0, sizeof L);
+	L.key = GL_KEY_QUEUE;
+	L.header = "Queue";
+	L.n = n;
+	L.cur = cur;
+	L.accent = MUSE_ACCENT;
+	L.ctx = a;
+	L.title = queue_title;
+	L.value = queue_value;
+	L.empty = "Nothing queued";
+	{
+		SDL_Renderer *was = a->r;
+
+		a->r = r;
+		SDL_RenderSetScale(r, plat_scale(), plat_scale());
+		ui_hit_set(1);
+		draw_background(a);
+		gl_geometry(&g, &L);
+		row_px = (int)(g.row_h * plat_scale() + 0.5f);
+		gl_draw(a, &L);
+		ui_hit_frame();
+		ui_hit_set(0);
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		a->r = was;
+	}
+	plat_bottom_end();
+	snprintf(shown, sizeof shown, "%s", key);
+}
+
+/* Muse on the secondary (plorpos-rgds.18.3.2): Muse's own screens, run as
+ * they run on the primary, drawn on the secondary's renderer and driven by
+ * its touch (and the pad). The primary keeps its last frame; a finger on it
+ * is SELECT, which closes Muse. Textures belong to a renderer, so every
+ * cached one is let go on the way over and again on the way back; the
+ * covers load again as they are drawn. */
+/* What Muse draws from that belongs to one renderer: its shelf's covers,
+ * the Now Playing cover and the menus' backdrop - let go at each switch, and
+ * loaded again where they are drawn. Nothing else: the primary's cards and
+ * covers stay, so it comes back as it was, without a frame of blanks. */
+static void muse_textures_forget(app *a)
+{
+	texload_bump();
+	for (int i = 0; i < a->sys.count; i++) {
+		if (!is_muse(&a->sys.systems[i])) continue;
+		for (int k = 0; k < a->view[i].list.count; k++)
+			if (a->view[i].tex[k]) { SDL_DestroyTexture(a->view[i].tex[k]); a->view[i].tex[k] = NULL; }
+	}
+	np_forget();
+	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
+}
+
+static void muse_on_secondary(app *a, void (*tick)(void))
+{
+	SDL_Renderer *was = a->r, *r;
+	unsigned t0 = SDL_GetTicks();
+	int w, h, ph = shot_phase;
+
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	muse_textures_forget(a);
+	a->r = r;
+	SDL_RenderSetScale(r, plat_scale(), plat_scale());
+	g_muse_sec = true;
+	/* Its taps in a set of their own: the screen under it on the primary
+	 * keeps its map for the finger that comes back (.18.3.8). */
+	ui_hit_set(1);
+	plat_bottom_session(true, tick != NULL);
+	if (tick) {
+		/* Beside a game the GPU is the game's: lines too long rest rather
+		 * than slide, and Muse draws only when something changes. The
+		 * game's presses queued meanwhile are not Muse's. */
+		g_sec_tick = tick;
+		shot_phase = 0;
+		plat_input_flush();
+	}
+	fprintf(stderr, "muse: on the secondary%s (%u ms to switch)\n", tick ? " beside a game" : "",
+	        SDL_GetTicks() - t0);
+	muse_open(a, NULL, NULL);
+	g_sec_tick = NULL;
+	shot_phase = ph;
+	g_muse_sec = false;
+	ui_hit_set(0);
+	muse_textures_forget(a);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	a->r = was;
+	/* The resting Now Playing at once, not Muse's last frame - a menu on the
+	 * primary does not tick the secondary. */
+	muse_panel_tick(true, false, false);
+	ui_redraw_now();
+	memset(&a->in, 0, sizeof a->in);
+	/* Last: it hands the primary the finger (or the button) that ended the
+	 * session, so no flush after it. */
+	plat_bottom_session(false, tick != NULL);
+	fprintf(stderr, "muse: back from the secondary\n");
+}
+
+/* Any screen's poll, when a finger lands on the secondary's resting Muse
+ * (plat_bottom_on_want): the in-game menu, a settings menu (.18.3.8). */
+static void muse_want_hook(void)
+{
+	if (g_rgds_app && g_dual_on && g_dual_muse && !g_muse_sec) muse_on_secondary(g_rgds_app, NULL);
+}
+
+static void details_tick(app *a)
+{
+	static details_info d;
+	static char shown[LIB_PATH + 16], pend[LIB_PATH + 16];
+	static unsigned pend_at, epoch;
+	static int page;
+	static bool on, init, was_muse;
+	const sysview *v = &a->view[a->sys_cursor];
+	int swipe = plat_bottom_swipe(), w, h, tx, ty;
+	char key[LIB_PATH + 16];
+	unsigned now = SDL_GetTicks();
+	bool draw = false, game, fresh = false;
+	SDL_Renderer *r;
+
+	if (!init) {
+		char dir[512];
+		const char *slash = strrchr(P_FONT, '/');
+		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - P_FONT) : 1, slash ? P_FONT : ".");
+		details_init(dir);
+		init = true;
+	}
+	if (!g_dual_on) {
+		if (on) { plat_bottom_off(); on = false; }
+		shown[0] = pend[0] = '\0';
+		return;
+	}
+	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse) {
+		epoch = plat_bottom_epoch();
+		shown[0] = '\0';
+		pend_at = now - DETAILS_SETTLE_MS;
+		fresh = true;
+	}
+	was_muse = g_dual_muse;
+	plat_bottom_keep(g_dual_muse);
+	plat_bottom_queue(false);
+	if (g_dual_muse) {
+		static unsigned last_in;
+
+		for (int b = 0; b < IN_COUNT; b++)
+			if (a->in.pressed[b] || a->in.down[b]) { last_in = now; break; }
+		if (plat_bottom_want()) { muse_on_secondary(a, NULL); return; }
+		muse_panel_tick(fresh, now - last_in < 1000, true);
+		on = true;
+		return;
+	}
+	while (plat_bottom_tap(&tx, &ty)) { }          /* Details takes swipes only */
+	game = a->screen == SCREEN_GAMES && v->list.count > 0;
+	if (game) snprintf(key, sizeof key, "%d/%s", a->sys_cursor, v->list.items[v->cursor].file);
+	else      snprintf(key, sizeof key, "sys/%d", a->sys_cursor);
+	if (strcmp(key, shown)) {
+		/* Into a shelf from the carousel: at once. Along a list: once the
+		 * cursor rests, so scrolling does not draw every step. */
+		if (game && !strncmp(shown, "sys/", 4)) pend_at = now - DETAILS_SETTLE_MS;
+		else if (strcmp(key, pend)) pend_at = now;
+		snprintf(pend, sizeof pend, "%s", key);
+		if (now - pend_at >= DETAILS_SETTLE_MS) {
+			if (game) details_gather(a, shelf_owner(a, a->sys_cursor, v->cursor), &v->list.items[v->cursor], &d);
+			snprintf(shown, sizeof shown, "%s", key);
+			draw = true;
+		}
+	}
+	if (game && swipe && shown[0]) { page = (page + swipe + DETAILS_PAGES) % DETAILS_PAGES; draw = true; }
+	if (!draw || !(r = plat_bottom_begin(&w, &h))) return;
+	if (game) details_draw(r, w, h, &d, page);
+	else {
+		const system_cfg *s = &a->sys.systems[a->sys_cursor];
+		char line[64];
+		int gc = v->list.count;
+
+		if (is_muse(s)) snprintf(line, sizeof line, "Music and audiobooks");
+		else snprintf(line, sizeof line, "%d game%s", gc, gc == 1 ? "" : "s");
+		details_draw_system(r, w, h, s->name, s->accent, line);
+	}
+	plat_bottom_end();
+	on = true;
+	if (g_ft) fprintf(stderr, "details: %s up %u ms after the cursor rested\n", game ? "game" : "system",
+	                  SDL_GetTicks() - pend_at - DETAILS_SETTLE_MS);
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	app a = { 0 };
+#if defined(PLATFORM_RGDS)
+	g_rgds_app = &a;
+	plat_bottom_on_want(muse_want_hook);
+#endif
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
 	bool loader;                  /* texload's threads are running */
@@ -18564,6 +19742,11 @@ int main(int argc, char *argv[])
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
 		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
+#if defined(PLATFORM_RGDS)
+		g_dual_on     = db_get_int(db_dev(), "dual_on", 1) != 0;
+		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
+		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
+#endif
 		order_systems(&a);
 	}
 
@@ -18609,6 +19792,8 @@ int main(int argc, char *argv[])
 			/* Before Muse is ever spawned: its codec, by name (AOUT_CODEC_PCM). */
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
+			plex_init(P_CARD, P_SHARED);
+			musec_set_remote(plex_resolve, plex_owns, plex_stream_failed);
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);
@@ -18720,6 +19905,9 @@ int main(int argc, char *argv[])
 	t_mark("diatom connect");
 
 	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
+#if defined(PLATFORM_RGDS)
+	plat_set_primary_bottom(g_dual_bottom);   /* Primary Screen (plorpos-rgds.18.1.3) */
+#endif
 	t_mark("video");
 	a.r = plat_renderer();
 	t_mark("renderer");
@@ -18898,6 +20086,9 @@ int main(int argc, char *argv[])
 		 * SETAUDIO while idle, so a cable plugged in at the shelf moves the
 		 * sound before the next launch rather than at it. */
 		aout_apply(false);
+#if defined(PLATFORM_RGDS)
+		details_tick(&a);
+#endif
 
 		/* An account answer that outlived its game, merged when it lands, and
 		 * then whatever was waiting on it sent. */
@@ -18912,6 +20103,7 @@ int main(int argc, char *argv[])
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
 		muse_walk_poll(&a);
+		plex_main_poll(&a);
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,

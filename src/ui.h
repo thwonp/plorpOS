@@ -331,13 +331,19 @@ typedef enum {
  * tap on which types at once - records them by id instead; any tap on one
  * hands the id to ui_hit_take, read on the screen's next poll (-1: none).
  * ui_hit_clear drops what was recorded so far, as a backdrop drew it. */
-#ifdef PLATFORM_ROTATE
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
+#define UI_TOUCH 1          /* a touch panel drives the UI (touch.c) */
+#endif
+#ifdef UI_TOUCH
 void ui_hit(const SDL_Rect *r, int button, int n);
 void ui_hit_act(const SDL_Rect *r, int button, int n);
 void ui_hit_id(const SDL_Rect *r, int id);
 void ui_hit_modal(const SDL_Rect *panel);
 void ui_hit_clear(void);
 void ui_hit_frame(void);
+/* The hit set drawing records into and ui_hit_find reads: 0 the primary's,
+ * 1 the RG DS secondary's own list (plorpos-rgds.18.3.4). */
+void ui_hit_set(int k);
 ui_hit_kind ui_hit_find(int x, int y, int *button, int *n, bool *act);
 void ui_hit_give(int id);
 int  ui_hit_take(void);

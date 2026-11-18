@@ -20,19 +20,21 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
  * cannot be used teaches nobody why. */
 #define NEEDS_WIFI(on) ((on) ? NULL : "needs Wi-Fi")
 
-int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
+int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out)
 {
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
 	if (both) out[n++] = SMM_SHOW;
 	out[n++] = SMM_SORT;
-	if (!books) out[n++] = SMM_ART;
+	if (!books && !plex) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
-	out[n++] = SMM_RESCAN;
+	if (!plex) out[n++] = SMM_RESCAN;   /* Plex's Sync Library is in Plex Settings (1lw.17) */
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
+	out[n++] = SMM_SOURCE;
+	if (plex) out[n++] = SMM_PLEX;
 	return n;
 }
 
@@ -54,7 +56,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		}
 		if (u->muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, ids);
+			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, u->muse_plex, ids);
 
 			for (k = 0; k < n; k++)
 				switch (ids[k]) {
@@ -80,6 +82,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 				case SMM_RESCAN:
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };
 					break;
+				case SMM_SOURCE:
+					out[k] = (menu_row){ "Source", u->muse_plex ? "Plex" : "Local", true };
+					break;
+				case SMM_PLEX:
+					out[k] = (menu_row){ "Plex Settings", NULL, true };
+					break;
 				case SMM_TABS:
 					out[k] = (menu_row){ "Tab Settings", NULL, true };
 					break;
@@ -98,6 +106,14 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
 		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
 		                             : (menu_row){ "Default Display", u->fill,    true };
+#if defined(PLATFORM_RGDS)
+		/* A DS game always has both panels here, each screen filling its
+		 * own: no layout or fit to pick (plorpos-rgds.18.1). */
+		if (u->nds) {
+			out[SM_DISPLAY] = (menu_row){ "Default Layout",  "both screens", false };
+			out[SM_FILL]    = (menu_row){ "Default Display", "full panel",   false };
+		}
+#endif
 		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
 		/* Button Mapping is out until there is something behind it. Diatom
@@ -171,6 +187,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
 	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
+#if defined(PLATFORM_RGDS)
+	out[PM_DUAL]         = (menu_row){ "Dual Screen Settings", NULL, true };
+#endif
 	/* How games start, stop and rewind (plorpos-pyz). */
 	out[PM_GAME]         = (menu_row){ "Game Settings", NULL,   true  };
 	/* What every button does, per screen. Needs nothing of the device, which
@@ -221,6 +240,11 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif
+#if defined(PLATFORM_RGDS)
+	/* plorpos-rgds.11: a root shell for any computer on the cable, so off
+	 * until asked for. */
+	out[ST_ADB]      = (menu_row){ "USB Debugging", u->adb ? "on" : "off", true };
+#endif
 	return ST_ROWS;
 }
 
@@ -239,6 +263,17 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_PORTS]    = (menu_row){ "Ports Tile",
 	                               u->ports_hidden ? "Hidden" : "Visible", true };
 	return u->has_ports ? US_ROWS : US_PORTS;
+}
+
+int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
+{
+	*heading = "Dual Screen Settings";
+	out[DU_SECONDARY] = (menu_row){ "Secondary Screen", u->dual_on ? "on" : "off", true };
+	/* What the second panel shows on the shelf - nothing to choose while it
+	 * is off. */
+	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse" : "Details", u->dual_on };
+	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
+	return DU_ROWS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

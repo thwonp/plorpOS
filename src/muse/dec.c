@@ -108,9 +108,25 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 	d->speed = speed > 0.1 ? speed : 1.0;
 	d->at = at > 0 ? at : 0;
 
-	if (avformat_open_input(&d->fmt, path, NULL, NULL) < 0) {
-		snprintf(err, errn, "cannot open the file");
-		goto fail;
+	{
+		/* A stream gives up after 10 s of silence from the server, rather
+		 * than waiting forever on a connection Wi-Fi took away mid-song: the
+		 * read fails, the track ends, and the launcher finds the server
+		 * again for the next (plorpos-1lw.19). Files are not affected. */
+		AVDictionary *o = NULL;
+		int e;
+
+		if (strstr(path, "://")) av_dict_set(&o, "rw_timeout", "10000000", 0);
+		e = avformat_open_input(&d->fmt, path, NULL, &o);
+		av_dict_free(&o);
+
+		if (e < 0) {
+			char why[64];
+
+			av_strerror(e, why, sizeof why);
+			snprintf(err, errn, "cannot open the file (%s)", why);
+			goto fail;
+		}
 	}
 	if (avformat_find_stream_info(d->fmt, NULL) < 0) {
 		snprintf(err, errn, "cannot read the file's streams");
@@ -236,6 +252,65 @@ double dec_len(const dec *d)
 {
 	return d->fmt && d->fmt->duration != AV_NOPTS_VALUE
 	       ? d->fmt->duration / (double)AV_TIME_BASE : 0;
+}
+
+void dec_codec(const dec *d, char *out, size_t n)
+{
+	static const int STD[] = { 32, 48, 64, 96, 112, 128, 160, 192, 224, 256, 320 };
+	const AVCodecParameters *p;
+	const char *name, *fmt;
+	char up[16];
+	bool lossless = false;
+	int64_t br;
+	int i, kbps, bits;
+
+	*out = '\0';
+	if (!d || !d->fmt || d->si < 0) return;
+	p = d->fmt->streams[d->si]->codecpar;
+	fmt = d->fmt->iformat ? d->fmt->iformat->name : "";
+	switch (p->codec_id) {
+	case AV_CODEC_ID_MP3:     name = "MP3"; break;
+	case AV_CODEC_ID_AAC:     name = "AAC"; break;
+	case AV_CODEC_ID_OPUS:    name = "OPUS"; break;
+	case AV_CODEC_ID_VORBIS:  name = "VORBIS"; break;
+	case AV_CODEC_ID_FLAC:    name = "FLAC"; lossless = true; break;
+	case AV_CODEC_ID_ALAC:    name = "ALAC"; lossless = true; break;
+	case AV_CODEC_ID_WAVPACK: name = "WV"; lossless = true; break;
+	case AV_CODEC_ID_APE:     name = "APE"; lossless = true; break;
+	default:
+		if (p->codec_id >= AV_CODEC_ID_FIRST_AUDIO && p->codec_id < AV_CODEC_ID_ADPCM_IMA_QT) {
+			name = strstr(fmt, "wav") ? "WAV" : strstr(fmt, "aiff") ? "AIFF" : "PCM";
+			lossless = true;
+		} else {
+			snprintf(up, sizeof up, "%s", avcodec_get_name(p->codec_id));
+			for (i = 0; up[i]; i++) if (up[i] >= 'a' && up[i] <= 'z') up[i] -= 32;
+			name = up;
+		}
+	}
+	if (lossless) {
+		char khz[16];
+
+		bits = p->bits_per_raw_sample ? p->bits_per_raw_sample : p->bits_per_coded_sample;
+		snprintf(khz, sizeof khz, "%.1f", p->sample_rate / 1000.0);
+		if (strlen(khz) > 2 && !strcmp(khz + strlen(khz) - 2, ".0")) khz[strlen(khz) - 2] = '\0';
+		if (!p->sample_rate) snprintf(out, n, "%s", name);
+		else if (bits) snprintf(out, n, "%s %d/%s", name, bits, khz);
+		else snprintf(out, n, "%s %s", name, khz);
+		return;
+	}
+	br = p->bit_rate ? p->bit_rate : d->fmt->bit_rate;
+	kbps = (int)((br + 500) / 1000);
+	/* The nearest standard rate within 8% (a tie goes up): VBR averages
+	 * wander - a 128 kbps Opus from Plex reads 120 from its size. */
+	{
+		int best = 0;
+
+		for (i = 0; i < (int)(sizeof STD / sizeof STD[0]); i++)
+			if (!best || abs(kbps - STD[i]) <= abs(kbps - best)) best = STD[i];
+		if (kbps * 100 >= best * 92 && kbps * 100 <= best * 108) kbps = best;
+	}
+	if (kbps > 0) snprintf(out, n, "%s %d", name, kbps);
+	else snprintf(out, n, "%s", name);
 }
 
 const char *dec_tag(const dec *d, const char *key)

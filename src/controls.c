@@ -10,7 +10,7 @@ static const char *const NAMES[CTL_PAGES] = {
 	[CTL_GAME]     = "In a game",
 	[CTL_MUSE]     = "In Muse",
 	[CTL_ANYWHERE] = "Anywhere",
-#ifdef PLATFORM_ROTATE
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
 	[CTL_TOUCH]    = "Touch",
 #endif
 };
@@ -115,7 +115,7 @@ static int anywhere(menu_row *out)
 	return n;
 }
 
-#ifdef PLATFORM_ROTATE
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
 /* What touch_at, touch_drag and touch_poll make of a finger, and the edges
  * gesture_read turns into buttons (plorpos-3yv.59). Taps, drags, the
  * switcher's cards and the DS's lower screen do what they look like they do,
@@ -143,7 +143,7 @@ int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 	case CTL_GAME:     n = game(out);        break;
 	case CTL_MUSE:     n = muse(out);        break;
 	case CTL_ANYWHERE: n = anywhere(out);    break;
-#ifdef PLATFORM_ROTATE
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
 	case CTL_TOUCH:    n = touch(out);       break;
 #endif
 	default:           n = moving(dir, out); break;
