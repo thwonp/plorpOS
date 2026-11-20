@@ -9797,7 +9797,7 @@ static int plex_queue_build(void *ctx, menu_row *rows, int max, const char **hea
 		snprintf(u->cnt[i], sizeof u->cnt[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
 		rows[n++] = (menu_row){ u->q[i].title, u->q[i].now ? "downloading" : u->cnt[i], true };
 	}
-	if (!u->n) { rows[n++] = MENU_NOTE("Nothing to download"); return n; }
+	if (!u->n) return 0;                 /* all done or cancelled: back to Plex Settings */
 	rows[n++] = MENU_RULE;
 	rows[n++] = MENU_NOTE(plex_download_status(u->foot, sizeof u->foot) ? u->foot : "");
 	rows[n++] = MENU_NOTE("X: cancel the album");
