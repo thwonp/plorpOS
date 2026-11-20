@@ -12933,13 +12933,14 @@ static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
 /* An album's name without the year its folder starts with ("2010 Cerulean"
  * is Cerulean): the track list's header, whose cover has the year under it
  * already (owner). Only when that number IS the album's year - "1000 gecs"
- * (2019) is a title. The album lists keep it - it is what they sort and jump
+ * (2019) is a title. Never on Plex: there the name is the album's own
+ * (its tag), not a folder's. The album lists keep it - it is what they sort and jump
  * by. */
 static const char *muse_name_noyear(const char *name, int year)
 {
 	const char *p = name;
 
-	if (year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	if (!g_muse_plex && year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
 	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ' &&
 	    atoi(p) == year) {
 		p += 5;
