@@ -9665,17 +9665,20 @@ static int plex_pin_build(void *ctx, menu_row *rows, int max, const char **headi
 	*heading = "Sign In to Plex";
 	if (u->st == 0) u->st = plex_pin_poll(u->code, sizeof u->code);
 	if (u->st == 1) return 0;                    /* linked: the screen is done */
+	/* Short rows, so none slides on a 480 px portrait screen (plorpos-auv.18). */
 	if (u->st < 0) {
-		rows[0] = (menu_row){ "The code expired, or Plex did not answer", NULL, false };
-		rows[1] = (menu_row){ "Try Again", NULL, true };
-		rows[2] = (menu_row){ "Cancel", NULL, true };
-		return 3;
+		rows[0] = (menu_row){ "The code expired,", NULL, false };
+		rows[1] = (menu_row){ "or Plex did not answer", NULL, false };
+		rows[2] = (menu_row){ "Try Again", NULL, true };
+		rows[3] = (menu_row){ "Cancel", NULL, true };
+		return 4;
 	}
-	rows[0] = (menu_row){ "On a phone or computer, open", NULL, false };
-	rows[1] = (menu_row){ "plex.tv/link", NULL, false };
-	rows[2] = (menu_row){ "and enter the code", u->code[0] ? u->code : "...", false };
-	rows[3] = (menu_row){ "Cancel", NULL, true };
-	return 4;
+	rows[0] = (menu_row){ "On a phone or computer,", NULL, false };
+	rows[1] = (menu_row){ "open plex.tv/link", NULL, false };
+	rows[2] = (menu_row){ "and enter the code", NULL, false };
+	rows[3] = (menu_row){ u->code[0] ? u->code : "...", NULL, false };
+	rows[4] = (menu_row){ "Cancel", NULL, true };
+	return 5;
 }
 
 static menu_result plex_pin_key(app *a, void *ctx, in_button key, int sel)
@@ -9684,7 +9687,7 @@ static menu_result plex_pin_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
-	if (u->st < 0 && sel == 1) { u->st = 0; u->code[0] = '\0'; plex_pin_start(); return MENU_STAY; }
+	if (u->st < 0 && sel == 2) { u->st = 0; u->code[0] = '\0'; plex_pin_start(); return MENU_STAY; }
 	return MENU_DONE;
 }
 
