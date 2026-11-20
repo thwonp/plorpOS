@@ -12932,14 +12932,16 @@ static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
 
 /* An album's name without the year its folder starts with ("2010 Cerulean"
  * is Cerulean): the track list's header, whose cover has the year under it
- * already (owner). The album lists keep it - it is what they sort and jump
+ * already (owner). Only when that number IS the album's year - "1000 gecs"
+ * (2019) is a title. The album lists keep it - it is what they sort and jump
  * by. */
-static const char *muse_name_noyear(const char *name)
+static const char *muse_name_noyear(const char *name, int year)
 {
 	const char *p = name;
 
-	if (isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
-	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ') {
+	if (year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ' &&
+	    atoi(p) == year) {
 		p += 5;
 		while (*p == ' ' || *p == '-') p++;
 		if (*p) return p;
@@ -12967,7 +12969,7 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	g_mtl.state = mn->state;
 	memset(&L, 0, sizeof L);
 	L.key = GL_KEY_TRACKS;
-	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
+	L.header = ts->album >= 0 ? muse_name_noyear(ts->head, g_year ? g_year[ts->album] : 0) : ts->head;
 	L.wide_header = true;
 	L.help = ts->pl ? MTL_HELP_PL : g_muse_plex && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
 	L.nhelp = ts->pl ? 4 : g_muse_plex && ts->album >= 0 ? 3 : 2;
@@ -13730,7 +13732,7 @@ static const char *mal_title(void *ctx, int i)
 	const sysview *v = &a->view[a->sys_cursor];
 	int al = v->album ? v->album[i] : -1;
 
-	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title);
+	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title, g_year[al]);
 	return v->list.items[i].title;
 }
 
