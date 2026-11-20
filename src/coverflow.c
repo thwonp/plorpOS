@@ -43,7 +43,7 @@ const cf_layout CF_LAYOUT_SYSTEMS = {
 	.size = 0.81f, .aspect = 0.78f, .step = 0.82f, .side_scale = 0.38f,
 	.center_y = 0.415f, .tilt = 0.0f, .reflect = 1.34f,
 	.side_alpha = 140, .strips = 16, .wide_area = 0.80f,
-	.p_width = 0.56f, .p_center_y = 0.45f, .p_step = 0.88f,
+	.p_width = 0.56f, .p_center_y = 0.49f, .p_step = 0.88f,
 };
 
 /* One system filling the screen, flat, sliding in from off the edge.

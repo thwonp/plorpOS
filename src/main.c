@@ -4216,6 +4216,32 @@ static void shelf_pacing(coverflow *cf)
  * reflective surface and a photographed console floats above it, and one
  * layout draws both. Only system art gets it - box art is card-like whatever
  * the theme is, so the games shelf sits flush. */
+/* The portrait column's chrome (plorpos-auv.11, owner): the words just above
+ * the focused card, the rail down the left edge and "n / N" under its lower
+ * end, as on the old Vertical shelf (removed in plorpos-gwf.2). `foot` is what
+ * the bottom edge holds below them: Muse's tabs. */
+#define COL_TEXT_GAP 14
+#define COL_RAIL_X   23
+#define COL_RAIL_TOP 170
+
+/* How visible the words over the column's focused card are: the cards pass
+ * through them while it moves, so they fade out and back as it lands. */
+static float col_fade(const coverflow *cf)
+{
+	float off = fabsf(cf->pos - roundf(cf->pos));
+
+	return !cf->active ? 1.0f : off > 0.25f ? 0.0f : 1.0f - off * 4.0f;
+}
+
+static void col_rail(app *a, float pos, int count, const char *n, unsigned rgb,
+                     ui_rail_hue hue, void *ctx, int foot)
+{
+	int ny = TORTOS_SCREEN_H - 23 - foot - ui_font_line(UI_F_META);
+
+	ui_rail_v(a->r, COL_RAIL_X, COL_RAIL_TOP, ny - 12, pos, count, rgb, hue, ctx);
+	ui_text(a->r, ui_font(UI_F_META), n, COL_RAIL_X, ny, -1, UI_TEXT_DIM);
+}
+
 static cf_layout sys_layout(const cf_layout *base)
 {
 	cf_layout lay = *base;
@@ -4230,6 +4256,7 @@ static cf_layout sys_layout(const cf_layout *base)
 		lay.p_width = 0.72f;
 		lay.p_aspect = 1.0f;
 		lay.p_step = 0.86f;
+		lay.p_center_y = 0.45f;   /* Fancy Pants sits lower: its name stacks above */
 		lay.side_scale = 0.40f;
 		lay.p_slice_l = 55.0f / 640;
 		lay.p_slice_r = 584.0f / 640;
@@ -4292,14 +4319,14 @@ static void draw_systems(app *a)
 	/* The system the words below describe: the cursor's, changing the instant
 	 * the button goes down - seven cards move at once and the eye is on them. */
 	const system_cfg *label = s;
-	float label_a = 1.0f;
+	float label_a = col ? col_fade(&a->cf_sys) : 1.0f;
+	/* In the column the name sits just above the focused card and the count
+	 * just under it (owner); ny is the name's line, cy the count's. */
+	int cy = STAGE_Y + 690, ny = STAGE_Y + 618;
 
-	/* In the column the cards pass through where the words sit: they fade
-	 * out while it moves and back as it lands. */
-	if (col && a->cf_sys.active) {
-		float off = fabsf(a->cf_sys.pos - roundf(a->cf_sys.pos));
-
-		label_a = off > 0.25f ? 0.0f : 1.0f - off * 4.0f;
+	if (col) {
+		ny = focus.y - COL_TEXT_GAP - ui_font_line(UI_F_TITLE);
+		cy = focus.y + focus.h + COL_TEXT_GAP;
 	}
 
 	/* Art that does not name itself gets named here, in the gap between the
@@ -4314,7 +4341,7 @@ static void draw_systems(app *a)
 		 * fit ABOVE this rather than this being pushed down to suit the
 		 * card. */
 		ui_text(a->r, ui_font(UI_F_TITLE), nfit, TORTOS_SCREEN_W / 2,
-		        col ? focus.y + focus.h + 16 : STAGE_Y + 618, 0, ui_fade(UI_TEXT, label_a));
+		        ny, 0, ui_fade(UI_TEXT, label_a));
 	}
 
 	if (is_muse(label)) {
@@ -4342,12 +4369,14 @@ static void draw_systems(app *a)
 			 * that says so - clang does not. */
 			snprintf(line, sizeof line, "no games in Roms/%.96s", label->folder);
 	}
-	/* In the column the count sits under the card, and under the name when
-	 * the art does not carry one (cf_vertical). */
-	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2,
-	        !col ? STAGE_Y + 690
-	             : focus.y + focus.h + 16 + (CARD_SETS[g_cards].labeled ? 0 : ui_font_line(UI_F_TITLE) + 6),
+	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, cy,
 	        0, ui_fade(UI_TEXT_DIM, label_a));
+	if (col) {
+		snprintf(line, sizeof line, "%d / %d", a->sys_cursor + 1, a->sys.count);
+		col_rail(a, a->cf_sys.pos, a->sys.count, line, s->accent,
+		         rail_sys_hue, a, 0);
+		return;
+	}
 	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
 	        s->accent, rail_sys_hue, a);
 }
@@ -4499,18 +4528,20 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * recorded as current; coming back to it was not a change, and it
 		 * carried on mid-scroll instead of starting over. */
 		unsigned phase = title_phase(a);
-		/* The column on a portrait screen (cf_vertical): the words go under
-		 * the focused card instead of across the top, where the card above
-		 * would be under them. */
+		/* The column on a portrait screen (cf_vertical): the words sit just
+		 * above the focused card, and fade while the cards pass through
+		 * them (plorpos-auv.11). */
 		const cf_layout *row = is_muse(s) ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
 		bool col = cf_vertical(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+		float ta = col ? col_fade(&v->cf) : 1.0f;
 		int ty = 40;
 
 		if (col) {
 			SDL_Rect fr;
 
 			cf_focus_rect(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &fr);
-			ty = fr.y + fr.h + 18;
+			ty = fr.y - COL_TEXT_GAP - line
+			     - (is_muse(s) ? ui_font_line(UI_F_MENU) + 4 : 0);
 		}
 		/* The one mark left on a card.
 		 *
@@ -4527,13 +4558,13 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * negative, so half of it lifts. */
 			int dy = ty + line / 2 + (ft2 ? ui_font_descent(ft2) / 2 : 0);
 			SDL_Color c = { (Uint8)(gs->accent >> 16), (Uint8)(gs->accent >> 8),
-			                (Uint8)gs->accent, 255 };
+			                (Uint8)gs->accent, (Uint8)(255 * ta) };
 
 			draw_heart(a->r, (float)(margin + hrad), (float)dy, (float)hrad, c);
 		}
 		if (slides) {
 			ui_text_marquee(a->r, ft2, g->title, boxx, ty, boxw,
-			                phase, UI_TEXT);
+			                phase, ui_fade(UI_TEXT, ta));
 			/* Not "a title is sliding, so keep drawing". It ping-pongs for
 			 * as long as the game is focused, with 1.4s of stillness at the
 			 * start and 0.9s at the far end, and ui_pingpong asks for the
@@ -4552,7 +4583,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * set down on a long title with nobody looking is ended by Auto Off,
 			 * so there is no long unattended stretch of it to save. */
 		} else {
-			ui_text(a->r, ft2, g->title, tx, ty, 0, UI_TEXT);
+			ui_text(a->r, ft2, g->title, tx, ty, 0, ui_fade(UI_TEXT, ta));
 		}
 		/* An album is two names, and on Muse's shelf the artist is the one
 		 * the letter jump goes by - so it is said, a step quieter, under the
@@ -4571,7 +4602,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			}
 			ui_fit_text(ui_font(UI_F_MENU), under, afit, sizeof afit, boxw);
 			ui_text(a->r, ui_font(UI_F_MENU), afit, tx, ty + line + 4, 0,
-			        UI_TEXT_DIM);
+			        ui_fade(UI_TEXT_DIM, ta));
 		}
 		/* Where you are in the list, not what this game is - the same kind
 		 * of thing the rail says, so it goes where the rail is.
@@ -4589,9 +4620,15 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		{
 			int cy = STAGE_Y + 690;
 
-			if (col)
-				cy = ty + line + 8 + (is_muse(s) ? ui_font_line(UI_F_MENU) + 4 : 0);
-			else if (is_muse(s) && g_muse_list_up) {
+			/* The column says it under the rail, on the left. */
+			if (col) {
+				bool tabs = is_muse(s) && g_muse_list_up;
+
+				col_rail(a, v->cf.pos, v->list.count, count, s->accent, NULL, NULL,
+				         tabs ? ui_font_line(UI_F_META) + GL_PAD / 2 : 0);
+				return;
+			}
+			if (is_muse(s) && g_muse_list_up) {
 				SDL_Rect c;
 				int mline = ui_font_line(UI_F_META);
 				int ftop = TORTOS_SCREEN_H - GL_PAD - mline;   /* gl_draw_footer's */
@@ -5176,6 +5213,8 @@ static void draw_games(app *a)
 	bool albums = is_muse(s);
 	const cf_layout *row = albums ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
 
+	bool col = cf_vertical(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+
 	if (cf_draw(&v->cf, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->list.count,
 	            game_get_tex, a, row))
 		ui_redraw_now();
@@ -5201,8 +5240,9 @@ static void draw_games(app *a)
 		gl_draw_footer(a, &L);
 		return;
 	}
-	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
-	        s->accent, NULL, NULL);
+	if (!col)
+		ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->cf.pos, v->list.count,
+		        s->accent, NULL, NULL);
 }
 
 /* The shelf, without presenting it: the options menu draws over a live one, so

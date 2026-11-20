@@ -267,6 +267,11 @@ typedef unsigned (*ui_rail_hue)(void *ctx, int index);
  * its system's accent. */
 void ui_rail(SDL_Renderer *r, int screen_w, int screen_h, float index, int count,
              unsigned rgb, ui_rail_hue hue, void *ctx);
+/* The same down a portrait column's left edge, from `top` to `bottom`, the
+ * first item at the top (plorpos-auv.11, after the Vertical shelf's rail
+ * removed in plorpos-gwf.2). */
+void ui_rail_v(SDL_Renderer *r, int x, int top, int bottom, float index, int count,
+               unsigned rgb, ui_rail_hue hue, void *ctx);
 
 /* A filled rounded rectangle. SDL has no such primitive; this is the middle as
  * one rect and the two caps as one inset row each, so a panel costs a few
