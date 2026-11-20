@@ -1072,6 +1072,15 @@ struct pl_ctl_elem_value {
 
 #define DISP_LCD_SET_BRIGHTNESS 0x102
 #define DISP_LCD_GET_BRIGHTNESS 0x103
+/* The Zero 40's panel runs its backlight the other way: a higher raw value is
+ * darker and 255 is off (oakMOSS hardware-notes, "Backlight polarity"; the
+ * owner saw Menu+Vol go the wrong way and sleep light the screen up,
+ * plorpos-auv.15). Every raw value to and from the driver goes through this. */
+#ifdef PLATFORM_ZERO40
+#define BL_RAW(v) (255 - (v))
+#else
+#define BL_RAW(v) (v)
+#endif
 
 /* Perceived brightness is proportional, not linear, so the rungs are
  * geometric. The first is the panel's measured floor: 0 and 1 are black on
@@ -1406,7 +1415,7 @@ void apply_brightness(int b)
 
 	cur_bright = b;
 	if (disp_fd < 0) return;
-	a[1] = bright_ladder[b];
+	a[1] = BL_RAW(bright_ladder[b]);
 	ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
 
@@ -1417,7 +1426,7 @@ void apply_brightness(int b)
  * alone, so apply_brightness(cur_bright) puts the player's level back. */
 void backlight_off(void)
 {
-	unsigned long a[4] = { 0, 0, 0, 0 };
+	unsigned long a[4] = { 0, BL_RAW(0), 0, 0 };
 
 	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
@@ -1455,6 +1464,7 @@ void plat_settings_init(void)
 		int raw = ioctl(disp_fd, DISP_LCD_GET_BRIGHTNESS, (unsigned long[4]){ 0, 0, 0, 0 });
 		int i;
 		if (raw >= 0) {
+			raw = BL_RAW(raw);
 			b = 0;
 			for (i = 1; i <= BRIGHT_MAX; i++)
 				if (abs(bright_ladder[i] - raw) < abs(bright_ladder[b] - raw)) b = i;
