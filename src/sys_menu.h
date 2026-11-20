@@ -51,10 +51,10 @@ typedef enum {
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
-/* A side mute switch: the Bricks only. The GKD and the H700s (the Rotate
- * defines PLATFORM_H700 too) have none; Playback Settings' Sleep Button Lock is
- * a plain software toggle there. */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+/* A side mute switch: the Bricks only. The GKD, the H700s (the Rotate
+ * defines PLATFORM_H700 too) and the Zero 40 (Brick code, no switch) have
+ * none; Playback Settings' Sleep Button Lock is a plain software toggle there. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && !defined(PLATFORM_ZERO40)
 #define SYS_HAS_MUTESW 1
 #else
 #define SYS_HAS_MUTESW 0
