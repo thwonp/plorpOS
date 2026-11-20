@@ -189,6 +189,8 @@ const char *musec_track(int i);
 /* What plays when this track finishes, or NULL when that is nothing or not yet
  * decided - see muq_upcoming. For "Next:", which has to follow the mode. */
 const char *musec_upcoming(void);
+/* The one k places on (musec_upcoming is k = 1), or NULL. */
+const char *musec_upcoming_n(int k);
 
 /* The play mode, src/musequeue.h. Applied to the queue playing now without
  * changing its track, and kept for every queue after it; saving it is the

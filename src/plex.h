@@ -122,9 +122,16 @@ bool plex_owns(const char *daemon_path, const char *rel);
 /* musec's word that the daemon could not open a track (ERROR): true when it
  * is Plex's, and the connection is found again before it is tried again. */
 bool plex_stream_failed(const char *rel);
-/* The track after the one playing: fetched ahead, on a device that has to
- * fetch a track before it can play it. Cheap to call every frame. */
-void plex_prefetch(const char *rel);
+/* The track playing and the next `n` (the queue's order): fetched ahead, in
+ * order and within the cache's budget, on a device that has to fetch a track
+ * before it can play it. Cheap to call every frame. */
+void plex_prefetch(const char *playing, const char *const *next, int n);
+/* How many tracks plex_prefetch is handed (1, 3, 5 or 10; plorpos-1lw.22),
+ * and whether this device fetches first at all (else it streams, and the
+ * setting does nothing). */
+int  plex_ahead(void);
+void plex_set_ahead(int n);
+bool plex_fetches_first(void);
 /* Every frame Muse is polled: what plays, for Plex's timeline. */
 void plex_tick(const char *rel, int state, double at, double len);
 

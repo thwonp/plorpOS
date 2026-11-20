@@ -474,6 +474,10 @@ second screen work as they do for the card's music.
 - **Check for Updates** (in Plex Settings) reads only what changed on the
   server since the last sync, in seconds. Muse also does this every hour.
 - **Resync Library** (in Plex Settings) reads the whole library again.
+- **Pre-fetch Tracks** (in Plex Settings; 1, 3, 5 or 10) is how many of the
+  next tracks a device that can't stream fetches while one plays, so they
+  start at once. Fetched tracks share 100 MB on the card; the oldest go
+  first. Devices that stream show "streams".
 - **Plex Settings** has the server, the library, both qualities, the download
   queue (the albums still to come; X on one cancels it) and Sign Out.
 

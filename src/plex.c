@@ -53,7 +53,10 @@
 #define STREAM_HTTP 1
 #define STREAM_TLS  0
 #endif
-#define CACHE_KEEP  4          /* tracks fetched first that stay on the card */
+/* Fetched first: what stays on the card, and how far ahead (plorpos-1lw.22). */
+#define CACHE_MB    100        /* the cache's budget; the oldest go first */
+#define AHEAD_MAX   10         /* the most tracks fetched ahead (the setting's top) */
+#define CACHE_Q     16         /* wishes waiting: the one now and those ahead */
 
 /* Plexamp's Opus profile, from the pak (a tshark capture of Plexamp). */
 #define OPUS_PROFILE \
@@ -79,7 +82,7 @@ static struct {
 	char server[128], server_id[64];
 	conn conns[MAX_CONNS]; int nconns;
 	int  section; char library[128];
-	int  stream_kbps, download_kbps;
+	int  stream_kbps, download_kbps, ahead;
 } C;
 static char g_base[256];                  /* the connection that answered */
 static char g_rel_root[400];              /* card-relative cache root for this library */
@@ -128,8 +131,8 @@ static void cfg_save(void)
 	        C.client, C.token, C.account, C.server, C.server_id);
 	for (i = 0; i < C.nconns; i++)
 		fprintf(f, "conn=%d %d %s\n", C.conns[i].local, C.conns[i].relay, C.conns[i].uri);
-	fprintf(f, "section=%d\nlibrary=%s\nstream_kbps=%d\ndownload_kbps=%d\n",
-	        C.section, C.library, C.stream_kbps, C.download_kbps);
+	fprintf(f, "section=%d\nlibrary=%s\nstream_kbps=%d\ndownload_kbps=%d\nahead=%d\n",
+	        C.section, C.library, C.stream_kbps, C.download_kbps, C.ahead);
 	fflush(f);
 	fsync(fd);
 	fclose(f);
@@ -143,6 +146,7 @@ static void cfg_load(void)
 
 	memset(&C, 0, sizeof C);
 	C.stream_kbps = C.download_kbps = 128;   /* the pak's defaults */
+	C.ahead = 1;
 	cfg_path(p, sizeof p);
 	if ((f = fopen(p, "r"))) {
 		while (fgets(line, sizeof line, f)) {
@@ -160,6 +164,7 @@ static void cfg_load(void)
 			else if (!strcmp(line, "library"))   snprintf(C.library, sizeof C.library, "%s", v);
 			else if (!strcmp(line, "stream_kbps"))   C.stream_kbps = atoi(v);
 			else if (!strcmp(line, "download_kbps")) C.download_kbps = atoi(v);
+			else if (!strcmp(line, "ahead"))         C.ahead = atoi(v);
 			else if (!strcmp(line, "conn") && C.nconns < MAX_CONNS) {
 				int lo, re, k = 0;
 				if (sscanf(v, "%d %d %n", &lo, &re, &k) >= 2 && k > 0) {
@@ -1445,7 +1450,11 @@ static bool download_one(int key, char reason)
 static pthread_t g_cache_th;
 static bool g_cache_up;
 static pthread_cond_t g_cache_cv = PTHREAD_COND_INITIALIZER;
-static int g_cache_q[4], g_cache_n;       /* keys, the one wanted now first */
+static int g_cache_q[CACHE_Q], g_cache_n; /* keys, the one wanted now first */
+/* What plex_prefetch last asked for: the playing track's key and those ahead.
+ * The trim never deletes them; a change takes back the wishes no longer
+ * wanted. Under g_mu. */
+static int g_keep[AHEAD_MAX + 1], g_nkeep;
 
 static bool need_fetch(const char *base)
 {
@@ -1464,32 +1473,49 @@ static bool cache_file(const px_track *t, char *out, size_t n)
 	return false;
 }
 
-/* The newest CACHE_KEEP stay; a fetch half done is never one of them. */
+/* The cache within CACHE_MB, the oldest out first - never a fetch half done,
+ * the track playing or one wanted ahead. */
 static void cache_trim(void)
 {
 	char d[700], p[1100];
 	DIR *dd;
 	struct dirent *e;
-	struct { char name[64]; time_t m; } f[64];
-	int n = 0, i, j;
+	struct { char name[64]; time_t m; off_t sz; } f[96];
+	int n = 0, i, j, keep[AHEAD_MAX + 1], nkeep;
+	long long total = 0;
 
+	LOCK();
+	nkeep = g_nkeep;
+	memcpy(keep, g_keep, sizeof keep[0] * (size_t)nkeep);
+	UNLOCK();
 	snprintf(d, sizeof d, "%s/cache", g_dir);
 	if (!(dd = opendir(d))) return;
-	while ((e = readdir(dd)) && n < 64) {
+	while ((e = readdir(dd)) && n < 96) {
 		struct stat st;
 
 		if (e->d_name[0] == '.' || strstr(e->d_name, ".part")) continue;
 		snprintf(p, sizeof p, "%s/%s", d, e->d_name);
 		if (stat(p, &st) != 0) continue;
 		snprintf(f[n].name, sizeof f[n].name, "%s", e->d_name);
-		f[n++].m = st.st_mtime;
+		f[n].m = st.st_mtime;
+		f[n].sz = st.st_size;
+		total += f[n++].sz;
 	}
 	closedir(dd);
-	for (i = 0; i < n; i++) {
-		int newer = 0;
+	while (total > (long long)CACHE_MB << 20) {
+		int old = -1, k;
 
-		for (j = 0; j < n; j++) if (f[j].m > f[i].m) newer++;
-		if (newer >= CACHE_KEEP) { snprintf(p, sizeof p, "%s/%s", d, f[i].name); unlink(p); }
+		for (i = 0; i < n; i++) {
+			if (f[i].sz < 0) continue;                       /* gone already */
+			for (k = atoi(f[i].name), j = 0; j < nkeep && keep[j] != k; j++) {}
+			if (j < nkeep) continue;
+			if (old < 0 || f[i].m < f[old].m) old = i;
+		}
+		if (old < 0) break;                                  /* all of it wanted */
+		snprintf(p, sizeof p, "%s/%s", d, f[old].name);
+		unlink(p);
+		total -= f[old].sz;
+		f[old].sz = -1;
 	}
 }
 
@@ -1537,7 +1563,7 @@ static void cache_want(int key, bool now)
 		if (now && i > 1) { memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(i - 1)); g_cache_q[1] = key; }
 		return;
 	}
-	if (g_cache_n == 4) g_cache_n = 3;           /* the oldest wish goes */
+	if (g_cache_n == CACHE_Q) g_cache_n = CACHE_Q - 1;   /* the newest wish goes */
 	if (now && g_cache_n) {                      /* behind the one in flight */
 		memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(g_cache_n - 1));
 		g_cache_q[1] = key;
@@ -2032,21 +2058,57 @@ mark:
 	}
 }
 
-void plex_prefetch(const char *rel)
+/* The size a fetch of t will be, about: Opus at its rate, the original
+ * at a CD's FLAC. */
+static long long fetch_bytes(const px_track *t)
 {
-	static int last;
-	char base[256], f[1100];
-	int i, key = plex_is_path(rel) ? key_of(rel) : 0;
+	return (long long)t->dur_ms * (C.stream_kbps ? C.stream_kbps : 1000) / 8;
+}
 
-	if (!key || key == last) return;
-	last = key;
+void plex_prefetch(const char *playing, const char *const *next, int n)
+{
+	static int last[AHEAD_MAX + 1], nlast = -1;
+	int keys[AHEAD_MAX + 1], nk = 0, i, j, t;
+	long long sum = 0;
+	char base[256], f[1100];
+
+	keys[nk++] = plex_is_path(playing) ? key_of(playing) : 0;
+	for (i = 0; i < n && i < AHEAD_MAX; i++)
+		keys[nk++] = plex_is_path(next[i]) ? key_of(next[i]) : 0;
+	if (nk == nlast && !memcmp(keys, last, sizeof keys[0] * (size_t)nk)) return;
+	memcpy(last, keys, sizeof keys[0] * (size_t)nk);
+	nlast = nk;
 	LOCK();
+	/* Wishes ahead that are no longer ahead go (the one in flight finishes;
+	 * one wanted now, by the player, is the playing track and stays). */
+	for (i = j = 1; i < g_cache_n; i++) {
+		int k = g_cache_q[i], a, b;
+
+		for (a = 0; a < g_nkeep && g_keep[a] != k; a++) {}
+		for (b = 0; b < nk && keys[b] != k; b++) {}
+		if (a < g_nkeep && b == nk) continue;
+		g_cache_q[j++] = k;
+	}
+	if (g_cache_n > 1) g_cache_n = j;
+	memcpy(g_keep, keys, sizeof keys[0] * (size_t)nk);
+	g_nkeep = nk;
 	snprintf(base, sizeof base, "%s", g_base);
-	if (base[0] && need_fetch(base) && (i = tab_find(&g_tab, key)) >= 0 &&
-	    !local_copy(&g_tab.tr[i], f, sizeof f) && !cache_file(&g_tab.tr[i], f, sizeof f))
-		cache_want(key, false);
+	/* In order, as long as the guess at their size fits the budget. */
+	if (base[0] && need_fetch(base))
+		for (i = 1; i < nk; i++) {
+			if (!keys[i] || (t = tab_find(&g_tab, keys[i])) < 0) continue;
+			if (local_copy(&g_tab.tr[t], f, sizeof f)) continue;
+			sum += fetch_bytes(&g_tab.tr[t]);
+			if (i > 1 && sum > (long long)CACHE_MB << 20) break;
+			if (!cache_file(&g_tab.tr[t], f, sizeof f)) cache_want(keys[i], false);
+		}
+	if (!base[0]) nlast = -1;            /* no connection yet: again next poll */
 	UNLOCK();
 }
+
+int plex_ahead(void) { return C.ahead >= 1 && C.ahead <= AHEAD_MAX ? C.ahead : 1; }
+void plex_set_ahead(int n) { C.ahead = n; cfg_save(); }
+bool plex_fetches_first(void) { return !STREAM_HTTP || !STREAM_TLS; }
 
 int plex_album_downloaded(int al)
 {

@@ -67,5 +67,9 @@ void muq_set_mode(muq *q, muq_mode m);
  * decided yet - a shuffle that has run out is shuffled again only when it gets
  * there. */
 int muq_upcoming(const muq *q);
+/* The track k places on (k >= 1), as muq_upcoming is for k = 1: wrapping
+ * under repeat-all (never back round to the one playing), and under
+ * repeat-one only k = 1. -1 when there is none. */
+int muq_upcoming_n(const muq *q, int k);
 
 #endif

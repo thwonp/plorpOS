@@ -1408,7 +1408,13 @@ static void muse_poll(void)
 	mn = musec_now();
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
-	if (mn->state == MU_PLAYING) plex_prefetch(musec_upcoming());
+	if (mn->state == MU_PLAYING) {
+		const char *next[10];
+		int k, n = plex_ahead();
+
+		for (k = 0; k < n && k < 10 && (next[k] = musec_upcoming_n(k + 1)); k++) {}
+		plex_prefetch(musec_path(), next, k);
+	}
 	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
@@ -9818,9 +9824,9 @@ static void plex_queue_screen(app *a)
 	         plex_queue_build, plex_queue_key, &u);
 }
 
-enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_CHECK, PX_SYNC,
+enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
-typedef struct { bool rebuilt; char sync[48], dl[160]; } plex_set_ui;
+typedef struct { bool rebuilt; char sync[48], dl[160], ahead[8]; } plex_set_ui;
 
 static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -9850,6 +9856,10 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	                                in && plex_server_name()[0] };
 	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
 	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+	/* plorpos-1lw.22: only where a track is fetched before it plays. */
+	snprintf(u->ahead, sizeof u->ahead, "%d", plex_ahead());
+	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
+	                                plex_fetches_first() };
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates", NULL, ready && st != 1 };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
 	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
@@ -9875,6 +9885,14 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 
 	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
+	if (sel == PX_AHEAD && d) {
+		static const int AHEAD[] = { 1, 3, 5, 10 };
+		int i;
+
+		for (i = 0; i < 4 && AHEAD[i] != plex_ahead(); i++) {}
+		plex_set_ahead(AHEAD[((i == 4 ? 0 : i) + d + 4) % 4]);
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PX_ACCOUNT:
