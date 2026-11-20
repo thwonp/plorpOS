@@ -31,6 +31,14 @@ export PATH=/usr/magicx/bin:$PATH
 # the bottom button. The stick's axes are swapped, the horizontal negated.
 export SDL_GAMECONTROLLERCONFIG="1900000012b400006666000000010000,magicx-input,a:b0,b:b1,x:b2,y:b3,back:b8,start:b9,guide:b17,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,leftstick:b10,dpup:b11,dpleft:b12,dpright:b13,dpdown:b14,leftx:a1~,lefty:a0,platform:Linux,"
 
+# USB Debugging (plorpos-auv.12, System Settings): the OTG port reads its ID
+# pin low on a computer's cable too and would make itself a host, so with the
+# setting on it is forced to device mode for adb (src/platform_brick.c).
+if [ -f "$USERDATA_PATH/adb" ]; then
+	( echo usb_device > /sys/devices/platform/soc/usbc0/otg_role &&
+	  : > /tmp/plorpos-usb-device ) 2> /dev/null &
+fi
+
 mkdir -p "$BIOS_PATH" "$ROMS_PATH" "$SAVES_PATH" "$USERDATA_PATH" "$LOGS_PATH" \
          "$SHARED_USERDATA_PATH"
 

@@ -387,11 +387,17 @@ bool plat_sleep(void);
  * time the screen has already been dark (main.c's music_dark, after the
  * music stopped), counted toward PLAT_SUSPEND_AFTER_S; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
-#if defined(PLATFORM_RGDS)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 /* adb over USB (USB Debugging, plorpos-rgds.11): whether it is turned on, and
- * turning it on or off - now, and from every boot (sd/rgds/adb/adb.sh). */
+ * turning it on or off - now, and from every boot (sd/rgds/adb/adb.sh). On
+ * the Zero 40 (plorpos-auv.12) off waits for the next boot: plat_adb_restart. */
 bool plat_adb_on(void);
 void plat_adb_set(bool on);
+#endif
+#if defined(PLATFORM_ZERO40)
+bool plat_adb_restart(void);
+#endif
+#if defined(PLATFORM_RGDS)
 /* The bottom panel (DSI-1, plorpos-rgds.18), a second window of the launcher's
  * own. plat_bottom_begin: its renderer to draw a frame into, the panel on and
  * the window made on first use; NULL while the launcher is off the screen (a

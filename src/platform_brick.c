@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <spawn.h>
 #ifdef __linux__
 #include <linux/fb.h>
 #include <linux/input.h>
@@ -1765,3 +1766,56 @@ bool plat_battery(int *pct, bool *charging)
 {
 	return battery_read("/sys/class/power_supply/axp2202-battery", pct, charging);
 }
+
+#if defined(PLATFORM_ZERO40)
+/* USB Debugging (plorpos-auv.12). adbd always runs on oakMOSS, but the Zero
+ * 40's OTG port reads its ID pin low on a computer's cable too, so the
+ * vendor's OTG manager makes it a host - adb unreachable, and 5 V driven back
+ * into the computer. Writing usb_device to otg_role forces device mode; it
+ * also stops the manager's ID scan for the rest of the boot, and nothing
+ * restarts that short of a reboot (SDK usbc0_platform.c device_chose). So on
+ * is now and from every boot (sd/zero40/launch.sh reads the marker); off is
+ * from the next boot, and the row says "off · restart needed" until then. Off by
+ * default: the port is for gamepads and USB DACs until asked. */
+#define USB_OTG_ROLE "/sys/devices/platform/soc/usbc0/otg_role"
+#define USB_FORCED   "/tmp/plorpos-usb-device"   /* forced in this boot */
+
+static void adb_marker(char *out, size_t n)
+{
+	snprintf(out, n, "%s/adb", P_USERDATA);
+}
+
+bool plat_adb_on(void)
+{
+	char p[512];
+
+	adb_marker(p, sizeof p);
+	return access(p, F_OK) == 0;
+}
+
+bool plat_adb_restart(void)
+{
+	return !plat_adb_on() && access(USB_FORCED, F_OK) == 0;
+}
+
+void plat_adb_set(bool on)
+{
+	char p[512];
+	char *sh[] = { "/bin/sh", "-c",
+		"( echo usb_device > " USB_OTG_ROLE " && : > " USB_FORCED " ) 2> /dev/null &",
+		NULL };
+	pid_t pid;
+
+	adb_marker(p, sizeof p);
+	if (!on) {
+		unlink(p);
+		return;
+	}
+	FILE *f = fopen(p, "a");
+	if (f) fclose(f);
+	/* The driver waits up to a second for its scan to stop, then reloads the
+	 * gadget: out of the UI's way, in a shell's background job. */
+	if (posix_spawn(&pid, "/bin/sh", NULL, NULL, sh, environ) == 0)
+		waitpid(pid, NULL, 0);
+}
+#endif

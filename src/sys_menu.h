@@ -75,8 +75,8 @@ typedef enum {
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
-#if defined(PLATFORM_RGDS)
-	ST_ADB,                     /* adb over USB (plorpos-rgds.11) */
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+	ST_ADB,                     /* adb over USB (plorpos-rgds.11, auv.12) */
 #endif
 	ST_ROWS
 } st_row;
@@ -216,7 +216,8 @@ typedef struct {
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
-	bool        adb;         /* RG DS: adb over USB is on (plorpos-rgds.11) */
+	bool        adb;         /* RG DS, Zero 40: adb over USB is on (plorpos-rgds.11) */
+	bool        adb_restart; /* Zero 40: turned off, still on until a restart (auv.12) */
 	/* RG DS, Dual Screen Settings (plorpos-rgds.18.1): the second panel is
 	 * used on the shelf; it shows Muse rather than Details; the launcher and
 	 * single-screen games are on the bottom panel. A DS game uses both

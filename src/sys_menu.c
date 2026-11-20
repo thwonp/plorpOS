@@ -240,10 +240,13 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif
-#if defined(PLATFORM_RGDS)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 	/* plorpos-rgds.11: a root shell for any computer on the cable, so off
-	 * until asked for. */
-	out[ST_ADB]      = (menu_row){ "USB Debugging", u->adb ? "on" : "off", true };
+	 * until asked for. The Zero 40 can only give its OTG port back to
+	 * gamepads and DACs at the next boot (plorpos-auv.12), and says so. */
+	out[ST_ADB]      = (menu_row){ "USB Debugging",
+	                               u->adb ? "on" : u->adb_restart ? "off · restart needed" : "off",
+	                               true };
 #endif
 	return ST_ROWS;
 }

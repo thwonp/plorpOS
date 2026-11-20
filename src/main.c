@@ -6694,8 +6694,13 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
-#if defined(PLATFORM_RGDS)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 		u.adb = plat_adb_on();
+#endif
+#if defined(PLATFORM_ZERO40)
+		u.adb_restart = plat_adb_restart();
+#endif
+#if defined(PLATFORM_RGDS)
 		u.dual_on = g_dual_on;
 		u.dual_muse = g_dual_muse;
 		u.dual_bottom = g_dual_bottom;
@@ -10165,8 +10170,9 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-#if defined(PLATFORM_RGDS)
-	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now. */
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now
+	 * (on the Zero 40, off at the next boot - plorpos-auv.12). */
 	if (sel == ST_ADB && (d || key == IN_ACCEPT)) {
 		plat_adb_set(!plat_adb_on());
 		return MENU_STAY;
