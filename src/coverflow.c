@@ -95,7 +95,7 @@ const cf_layout CF_LAYOUT_ALBUMS = {
 	.size = 0.60f, .aspect = 1.00f, .step = 0.74f, .side_scale = 0.62f,
 	.center_y = 0.54f, .tilt = 0.82f, .reflect = 1.52f,
 	.side_alpha = 150, .strips = 16,
-	.p_width = 0.62f, .p_center_y = 0.42f, .p_step = 0.92f,
+	.p_width = 0.62f, .p_center_y = 0.42f, .p_step = 1.00f,
 };
 
 /* The card's height on this screen: the stage's, plus its share of the rest. */
