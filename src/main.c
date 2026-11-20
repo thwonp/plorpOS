@@ -9818,7 +9818,7 @@ static void plex_queue_screen(app *a)
 	         plex_queue_build, plex_queue_key, &u);
 }
 
-enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_SYNC,
+enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_CHECK, PX_SYNC,
        PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
 typedef struct { bool rebuilt; char sync[48], dl[160]; } plex_set_ui;
 
@@ -9850,6 +9850,7 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	                                in && plex_server_name()[0] };
 	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
 	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+	rows[PX_CHECK]    = (menu_row){ "Check for Updates", NULL, ready && st != 1 };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
 	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
 	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
@@ -9887,6 +9888,15 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		/* Another library under the source: read it, then show it. */
 		plex_sync_screen(a, false);
 		plex_sync_take();
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	case PX_CHECK:                       /* plorpos-1lw.24: only what changed */
+		if (!plex_sync_screen(a, false)) return MENU_STAY;
+		if (plex_sync_outcome() != 2) { muse_toast("Library is up to date"); return MENU_STAY; }
+		muse_toast("Library updated");
+		plex_sync_take();
+		if (!g_muse_plex) return MENU_STAY;
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;

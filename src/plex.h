@@ -84,11 +84,15 @@ bool plex_lib_cached(void);
 bool plex_lib_load(ml_lib *out);
 /* An album's year, by its index in the ml_lib plex_lib_load made last. */
 int  plex_album_year(int al);
-/* Sync in the background: `force` always, else only when Plex says the
- * library changed since the index was written. */
+/* Sync in the background: `force` reads the whole library again; else only
+ * when Plex says it changed since the index was written, and then only what
+ * changed (the whole of it when tracks were deleted, or for an older index). */
 void plex_sync_start(bool force);
 /* 1 running (done/total so far), 0 idle, -1 the last one failed. */
 int  plex_sync_state(int *done, int *total);
+/* How the last sync ended: 1 nothing had changed, 2 the index was updated,
+ * -1 it failed, 0 none yet (or one running). */
+int  plex_sync_outcome(void);
 /* True once after a sync wrote a new index: time to load it. */
 bool plex_sync_take(void);
 

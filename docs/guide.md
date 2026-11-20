@@ -471,7 +471,9 @@ second screen work as they do for the card's music.
   loved on Plex (in Plexamp, for example) and lists them in a playlist,
   **Plex Favorites**, on both sources. Run it again to catch up with
   Plex: new loves are added, and the copies of tracks you unloved are deleted.
-- **Resync Library** (in Plex Settings) reads the whole library again. Muse also checks for changes on the server every hour.
+- **Check for Updates** (in Plex Settings) reads only what changed on the
+  server since the last sync, in seconds. Muse also does this every hour.
+- **Resync Library** (in Plex Settings) reads the whole library again.
 - **Plex Settings** has the server, the library, both qualities, the download
   queue (the albums still to come; X on one cancels it) and Sign Out.
 
