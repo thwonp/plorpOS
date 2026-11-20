@@ -120,6 +120,8 @@ elif [ "$PLATFORM" = zero40 ]; then
 	cp "$ROOT/sd/zero40/launch.sh" "$ROOT/sd/zero40/radio.sh" "$ROOT/sd/zero40/ssh.sh" "$P/"
 	[ -f "$B/dropbearmulti" ] || { echo "no $B/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
 	cp "$B/dropbearmulti" "$P/"           # ssh: oakMOSS has no server (sd/zero40/ssh.sh)
+	[ -f "$B/curl" ] || { echo "no $B/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
+	cp "$B/curl" "$P/"                    # oakMOSS has no curl: net.c finds this one beside cacert.pem
 	mkdir -p "$OUT/.tmp_update"
 	cp "$ROOT/sd/zero40/updater" "$OUT/.tmp_update/"   # oakMOSS's hand-off (runmagicx.sh)
 	# Muse's FFmpeg: oakMOSS has none (TrimUI's firmware carries the Brick's).
@@ -256,7 +258,7 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
-zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$OUT/.tmp_update/updater"
+zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
