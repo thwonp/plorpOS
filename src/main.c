@@ -4222,7 +4222,6 @@ static void shelf_pacing(coverflow *cf)
  * the bottom edge holds below them: Muse's tabs. */
 #define COL_TEXT_GAP 14
 #define COL_RAIL_X   23
-#define COL_RAIL_TOP 170
 
 /* How visible the words over the column's focused card are: the cards pass
  * through them while it moves, so they fade out and back as it lands. */
@@ -4233,12 +4232,15 @@ static float col_fade(const coverflow *cf)
 	return !cf->active ? 1.0f : off > 0.25f ? 0.0f : 1.0f - off * 4.0f;
 }
 
+/* The rail runs down the left edge, centred on the screen: as far from the top
+ * as its foot is from the bottom, with "n / N" under the foot (owner). */
 static void col_rail(app *a, float pos, int count, const char *n, unsigned rgb,
                      ui_rail_hue hue, void *ctx, int foot)
 {
 	int ny = TORTOS_SCREEN_H - 23 - foot - ui_font_line(UI_F_META);
+	int bot = ny - 12;
 
-	ui_rail_v(a->r, COL_RAIL_X, COL_RAIL_TOP, ny - 12, pos, count, rgb, hue, ctx);
+	ui_rail_v(a->r, COL_RAIL_X, TORTOS_SCREEN_H - bot, bot, pos, count, rgb, hue, ctx);
 	ui_text(a->r, ui_font(UI_F_META), n, COL_RAIL_X, ny, -1, UI_TEXT_DIM);
 }
 
