@@ -9775,6 +9775,49 @@ static bool muse_source_flip(app *a)
 	return true;
 }
 
+/* Download Queue (plorpos-1lw.21): the albums still to download, one row
+ * each; X cancels that album, as Cancel Download on the album does. */
+#define PLEX_QMAX 48
+typedef struct { plex_queued q[PLEX_QMAX]; int n; char foot[160], cnt[PLEX_QMAX][24]; } plex_queue_ui;
+
+static int plex_queue_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	plex_queue_ui *u = ctx;
+	int i, n = 0;
+
+	*heading = "Download Queue";
+	u->n = plex_download_queue(u->q, PLEX_QMAX < max - 3 ? PLEX_QMAX : max - 3);
+	for (i = 0; i < u->n; i++) {
+		snprintf(u->cnt[i], sizeof u->cnt[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
+		rows[n++] = (menu_row){ u->q[i].title, u->q[i].now ? "downloading" : u->cnt[i], true };
+	}
+	if (!u->n) { rows[n++] = MENU_NOTE("Nothing to download"); return n; }
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE(plex_download_status(u->foot, sizeof u->foot) ? u->foot : "");
+	rows[n++] = MENU_NOTE("X: cancel the album");
+	return n;
+}
+
+static menu_result plex_queue_key(app *a, void *ctx, in_button key, int sel)
+{
+	plex_queue_ui *u = ctx;
+
+	(void)a;
+	if (key == IN_X && sel >= 0 && sel < u->n) {
+		plex_download_cancel_album(u->q[sel].al);
+		muse_toast("Download cancelled");
+	}
+	return MENU_STAY;
+}
+
+static void plex_queue_screen(app *a)
+{
+	plex_queue_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         plex_queue_build, plex_queue_key, &u);
+}
+
 enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_SYNC,
        PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
 typedef struct { bool rebuilt; char sync[48], dl[160]; } plex_set_ui;
@@ -9793,7 +9836,13 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
-	if (!plex_download_status(u->dl, sizeof u->dl)) snprintf(u->dl, sizeof u->dl, "none");
+	{
+		plex_queued q[PLEX_QMAX];
+		int nq = plex_download_queue(q, PLEX_QMAX);
+
+		if (!nq) snprintf(u->dl, sizeof u->dl, "none");
+		else snprintf(u->dl, sizeof u->dl, nq == 1 ? "1 album" : "%d%s albums", nq, nq == PLEX_QMAX ? "+" : "");
+	}
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
 	                                              : "Sign In", !in };
 	rows[PX_SERVER]   = (menu_row){ "Server", plex_server_name()[0] ? plex_server_name() : "Choose", in };
@@ -9801,8 +9850,8 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	                                in && plex_server_name()[0] };
 	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
 	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
-	rows[PX_SYNC]     = (menu_row){ "Sync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
-	rows[PX_DOWNLOADS]= (menu_row){ "Downloads", u->dl, strcmp(u->dl, "none") != 0 };
+	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
+	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
 	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
 	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
 	return PX_ROWS;
@@ -9849,8 +9898,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_DOWNLOADS:
-		plex_download_cancel();
-		muse_toast("Downloads stopped");
+		plex_queue_screen(a);
 		return MENU_STAY;
 	case PX_FAVS:
 		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }

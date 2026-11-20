@@ -471,9 +471,9 @@ second screen work as they do for the card's music.
   loved on Plex (in Plexamp, for example) and lists them in a playlist,
   **Plex Favorites**, on both sources. Run it again to catch up with
   Plex: new loves are added, and the copies of tracks you unloved are deleted.
-- **Sync Library** (in Plex Settings) reads the library again. Muse also checks for changes on the server every hour.
-- **Plex Settings** has the server, the library, both qualities, downloads
-  in progress (A stops them) and Sign Out.
+- **Resync Library** (in Plex Settings) reads the whole library again. Muse also checks for changes on the server every hour.
+- **Plex Settings** has the server, the library, both qualities, the download
+  queue (the albums still to come; X on one cancels it) and Sign Out.
 
 Away from home, Muse reaches the server the way Plexamp does: its remote
 address, or Plex's relay. It finds the way again by itself when the network

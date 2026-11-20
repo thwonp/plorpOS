@@ -1914,6 +1914,28 @@ bool plex_album_downloading(int al)
 	return yes;
 }
 
+int plex_download_queue(plex_queued *out, int max)
+{
+	int i, j, n = 0;
+
+	LOCK();
+	for (i = g_dl_pos; i < g_dlq_n; i++) {
+		int t = tab_find(&g_tab, g_dlq[i].key), al;
+
+		if (t < 0 || (i == g_dl_pos && g_dl_cancel)) continue;   /* stopping */
+		al = g_tab.tr[t].album;
+		for (j = 0; j < n && out[j].al != al; j++) {}
+		if (j < n) { out[j].tracks++; continue; }
+		if (n == max) continue;
+		out[n] = (plex_queued){ .al = al, .tracks = 1, .now = i == g_dl_pos };
+		snprintf(out[n].title, sizeof out[n].title, "%s", g_tab.al[al].title);
+		snprintf(out[n].artist, sizeof out[n].artist, "%s", g_tab.ar[g_tab.al[al].artist].name);
+		n++;
+	}
+	UNLOCK();
+	return n;
+}
+
 void plex_download_cancel_album(int al)
 {
 	int i, k;

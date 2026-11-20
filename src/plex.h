@@ -133,6 +133,11 @@ void plex_delete_album(int al);
 /* Album al has tracks waiting or in flight; Cancel Download stops them and
  * removes the copies the download made (a favourite's stays). */
 bool plex_album_downloading(int al);
+/* The albums waiting in the download queue, in queue order, at most `max`:
+ * the album (index as plex_album_downloading), how many of its tracks are
+ * still queued, and whether one of them is downloading now. */
+typedef struct { int al, tracks; bool now; char title[96], artist[64]; } plex_queued;
+int  plex_download_queue(plex_queued *out, int max);
 void plex_download_cancel_album(int al);
 /* In the background: download the tracks loved on Plex (rated 10), delete
  * the copies of ones loved no more, and write PLEX_FAVS_M3U in
