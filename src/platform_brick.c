@@ -1424,11 +1424,46 @@ void apply_brightness(int b)
  * apply_brightness(0): rung 0 is 2/255, still lit, which is a dim screen
  * rather than a dark one (found on hardware, 2026-09-28). cur_bright is left
  * alone, so apply_brightness(cur_bright) puts the player's level back. */
+#ifdef PLATFORM_ZERO40
+/* The Zero 40's darkest raw value, 255, still leaves the inverted PWM 1/256
+ * on: a visible glow in the dark (owner, plorpos-auv.15). The driver cannot
+ * go past it, so the channel's period register is set to all-active: no
+ * light at all. Waking needs nothing: every rung is a duty change from 255's,
+ * which the driver writes to the register again (it skips only a duty equal
+ * to the one it last set). PWM0 PPR: entire cycles - 1 in [31:16], active
+ * cycles in [15:0]; 0x01DF0186 at 207 (390 of 480). */
+#define PWM_BASE   0x0300A000
+#define PWM0_PPR   0x104
+static void pwm_dark(void)
+{
+	static volatile uint32_t *pwm = NULL;
+
+	if (!pwm) {
+		int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
+		void *m;
+
+		if (fd < 0) return;
+		m = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, PWM_BASE);
+		close(fd);
+		if (m == MAP_FAILED) return;
+		pwm = m;
+	}
+	{
+		uint32_t ppr = pwm[PWM0_PPR / 4];
+
+		pwm[PWM0_PPR / 4] = (ppr & 0xFFFF0000u) | ((ppr >> 16) + 1);
+	}
+}
+#endif
+
 void backlight_off(void)
 {
 	unsigned long a[4] = { 0, BL_RAW(0), 0, 0 };
 
 	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
+#ifdef PLATFORM_ZERO40
+	pwm_dark();
+#endif
 }
 /* END PolyForm-Noncommercial-1.0.0 */
 
