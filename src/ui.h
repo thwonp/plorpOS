@@ -81,6 +81,8 @@ typedef enum {
 	UI_F_CARD,
 	UI_F_BADGE,   /* the battery's number, small enough for the corner */
 	UI_F_LIST,    /* a game shelf's rows on the Gamelist Layout lists */
+	UI_F_COLTITLE,/* the title over a portrait column's card: bold at the menu
+	               * size (plorpos-auv.14); portrait screens only, else UI_F_TITLE */
 	UI_F_COUNT
 } ui_font_role;
 

@@ -52,7 +52,8 @@
 #define BODY_SCALE 0.98f
 static bool is_head(int role)
 {
-	return role == UI_F_TITLE || role == UI_F_LABEL || role == UI_F_CARD;
+	return role == UI_F_TITLE || role == UI_F_LABEL || role == UI_F_CARD ||
+	       role == UI_F_COLTITLE;
 }
 /* UI Settings > Header Font and Body Font (plorpos-8m1.3, plorpos-3yv.60):
  * set by ui_set_face, used by ui_init. Empty = the shipped face. */
@@ -68,6 +69,7 @@ static const float font_mul[UI_F_COUNT] = {
 	/* The list rows: the menu's size read too large there (owner, plorpos-gwf),
 	 * so UI_LIST_PT of the menu's 48 on the Brick, scaled like the rest. */
 	[UI_F_LIST]  = 1.34f * UI_LIST_PT / 48.0f,
+	[UI_F_COLTITLE] = 1.34f, /* 43: the title read too large over the column (owner) */
 };
 
 static TTF_Font *fonts[UI_F_COUNT];
@@ -195,6 +197,8 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 			float k = is_head(i) ? head_scale : body_scale;
 			int pt = (int)(FONT_BASE * font_mul[i] * k * font_k * ts + 0.5f);
 
+			/* Nothing in landscape draws it: not opened there. */
+			if (i == UI_F_COLTITLE && !UI_PORTRAIT) { fonts[i] = NULL; continue; }
 			fonts[i] = TTF_OpenFont(path, pt);
 			if (!fonts[i])
 				fprintf(stderr, "font %s @%d: %s\n", path, pt, TTF_GetError());
@@ -256,6 +260,7 @@ void ui_set_face(bool head, const char *path, float scale)
 		TTF_Font *f;
 
 		if (is_head(i) != head) continue;
+		if (!fonts[i]) continue;              /* UI_F_COLTITLE in landscape */
 		pt = (int)(FONT_BASE * font_mul[i] * *k * font_k * ts + 0.5f);
 		if (!(f = TTF_OpenFont(kept, pt))) {
 			fprintf(stderr, "font %s @%d: %s\n", kept, pt, TTF_GetError());
@@ -276,6 +281,7 @@ void ui_set_face(bool head, const char *path, float scale)
 TTF_Font *ui_font(ui_font_role role)
 {
 	if (role < 0 || role >= UI_F_COUNT) return NULL;
+	if (!fonts[role] && role == UI_F_COLTITLE) return fonts[UI_F_TITLE];
 	return fonts[role];
 }
 

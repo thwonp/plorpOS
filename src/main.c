@@ -4512,8 +4512,10 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * screen and a short title is centered exactly where it always was.
 		 * The cost is a narrower box, so a few more titles slide; sliding is
 		 * the thing that made a narrow box acceptable. */
-		TTF_Font *ft2 = ui_font(UI_F_TITLE);
-		int line = ui_font_line(UI_F_TITLE);
+		/* Smaller in the portrait column, still bold (plorpos-auv.14). */
+		int tfont = UI_PORTRAIT ? UI_F_COLTITLE : UI_F_TITLE;
+		TTF_Font *ft2 = ui_font(tfont);
+		int line = ui_font_line(tfont);
 		int margin = line / 2;
 		int hrad = line * 2 / 5;
 		int lead = margin + hrad * 2 + hrad;      /* edge, heart, its gap */
