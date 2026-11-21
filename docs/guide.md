@@ -280,14 +280,15 @@ Muse plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
-Rescan Folder for music copied on while the device was running, Playback
-Settings (not on the Miyoo Mini Flip), and, from the next release, Source: the
-card's music, or [Plex](#plex).
+Muse, has the album count, Sort By, Album Art (below), Tab Settings, Rescan
+Folder for music copied on while the device was running, Playback Settings
+(not on the Miyoo Mini Flip), and Source.
 
-**Show** switches the shelf between music and audiobooks, and is there only
-when the card has both. Muse opens on whichever you left it on, except that
-SELECT with a book playing lands on the books, on that book.
+**Source** picks what the shelf holds: Local Music, Local Audiobooks,
+[Plex Music](#plex) or [Audiobookshelf](#audiobookshelf). (Before the next
+release this was two rows, Show and Source.) Muse opens on whichever you left
+it on, except that SELECT with a book playing lands on the books, on that
+book.
 
 **Sort By** puts the shelf in order by artist, the way the folders are, by
 album title, two of the same title going in their artists' order, or by year,
@@ -368,7 +369,8 @@ folder: one named cover or folder, or the only one there.
 With something playing or paused, SELECT goes straight to **Now Playing**: the
 cover, the track, where in it you are, and what comes next. From the next
 release it also shows the format in the cover's corner (such as FLAC 16/44.1
-or OPUS 128) and where the track comes from (Source: Local or Plex).
+or OPUS 128) and where the track comes from (Source: Local, Plex or
+Audiobookshelf).
 
 | | |
 |---|---|
@@ -487,6 +489,29 @@ changes; a song cut off by that ends, and the next one plays.
 
 Plex sees what Muse plays and counts a play at 90%, as Plexamp does. The
 sign-in is kept on the card in `.userdata/shared/plex/`.
+
+### Audiobookshelf
+
+*Coming in the next release.*
+
+Muse can play the books on an Audiobookshelf server on your home network.
+Set **Source** to Audiobookshelf. The first time, type the server's address
+(such as `192.168.0.2:13378`), then your username and password. Muse reads
+the library once (about 10 seconds for 700 books) and keeps it on the card.
+Books stream on every device; they need Wi-Fi and the server on the same
+network.
+
+- **Your place follows you.** Opening a book picks up where you left it,
+  here or in the Audiobookshelf app, whichever was later. While a book plays,
+  Muse sends its place every 15 seconds and when you pause, and marks it
+  finished at the end.
+- **X on a book** downloads it, or deletes the copy. Downloads go in
+  `Audiobooks/<author>/<title>/`, so they show under Local Audiobooks too,
+  and still send their place to the server.
+- **Audiobookshelf Settings** has Check for Updates (only what changed),
+  Resync Library (everything) and Sign Out. Muse checks every hour by itself.
+
+The sign-in is kept on the card in `.userdata/shared/abs/`.
 
 ## The shelf
 
