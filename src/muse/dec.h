@@ -33,6 +33,14 @@ int dec_read(dec *d, int16_t *buf, int max);
 /* Where the output is, in the FILE's seconds - which is not the number of
  * seconds played once the speed is not 1. */
 double dec_pos(const dec *d);
+/* Move the open file to `at` seconds: no new connection to a stream's server
+ * beyond the one ranged request, where a dec_open follows every redirect and
+ * reads the stream's header again - 2-5 s over Wi-Fi (owner, plorpos-7ni.10).
+ * 0 when it could not, and `d` is then only fit for dec_close. */
+int dec_seek(dec *d, double at);
+/* Play on at `speed` from where the decoder is, reading nothing again. 0 when
+ * it could not, and `d` is then only fit for dec_close. */
+int dec_speed(dec *d, double speed);
 double dec_len(const dec *d);
 
 /* A tag, or "" when the file has none: "title", "artist", "album". */

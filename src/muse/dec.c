@@ -11,6 +11,7 @@
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
+#include <libavutil/audio_fifo.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
 
@@ -54,6 +55,7 @@ struct dec {
 	double           base;       /* file seconds at the first frame kept */
 	int              base_set;
 	int64_t          given;      /* frames handed over since `base` */
+	AVAudioFifo     *held;       /* the last chain's tail, after a speed change */
 };
 
 static int build_graph(dec *d, char *err, size_t errn)
@@ -223,6 +225,12 @@ int dec_read(dec *d, int16_t *buf, int max)
 			}
 			continue;
 		}
+		if (d->held && av_audio_fifo_size(d->held) > 0) {
+			void *p = buf + (size_t)got * DEC_CHANNELS;
+
+			got += av_audio_fifo_read(d->held, &p, max - got);
+			continue;
+		}
 		{
 			int r = av_buffersink_get_frame(d->sink, d->out);
 
@@ -345,6 +353,58 @@ const char *dec_chapter_title(const dec *d, int i)
 	return e ? e->value : "";
 }
 
+int dec_seek(dec *d, double at)
+{
+	char err[64];
+
+	if (!d || !d->fmt) return 0;
+	if (at < 0) at = 0;
+	if (av_seek_frame(d->fmt, -1, (int64_t)(at * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD) < 0)
+		return 0;
+	avcodec_flush_buffers(d->cc);
+	av_frame_unref(d->in);
+	av_frame_unref(d->out);
+	d->out_have = d->out_off = 0;
+	if (d->held) av_audio_fifo_reset(d->held);
+	avfilter_graph_free(&d->g);
+	if (!build_graph(d, err, sizeof err)) return 0;
+	d->fed_eof = 0;
+	d->at = at;
+	d->base_set = 0;
+	d->given = 0;
+	return 1;
+}
+
+int dec_speed(dec *d, double speed)
+{
+	char err[64];
+	double was = d ? d->speed : 1;
+	int64_t left;
+
+	if (!d || !d->g || speed < 0.1) return 0;
+	if (!d->held && !(d->held = av_audio_fifo_alloc(AV_SAMPLE_FMT_S16, DEC_CHANNELS, 8192)))
+		return 0;
+	/* The old chain told it has everything, so atempo hands over what it was
+	 * still holding; that plays, at the old speed, before the new chain's. */
+	if (!d->fed_eof && av_buffersrc_add_frame(d->src, NULL) < 0) return 0;
+	while (av_buffersink_get_frame(d->sink, d->in) >= 0) {
+		av_audio_fifo_write(d->held, (void **)d->in->data, d->in->nb_samples);
+		av_frame_unref(d->in);
+	}
+	avfilter_graph_free(&d->g);
+	d->speed = speed;
+	if (!build_graph(d, err, sizeof err)) return 0;
+	if (d->fed_eof && av_buffersrc_add_frame(d->src, NULL) < 0) return 0;   /* nothing more comes */
+	/* dec_pos counts frames at the speed they were made at: the ones not yet
+	 * handed over were made at the old one. */
+	left = av_audio_fifo_size(d->held) + (d->out_have ? d->out->nb_samples - d->out_off : 0);
+	if (d->base_set) {
+		d->base += ((double)(d->given + left) * was - (double)left * speed) / DEC_RATE;
+		d->given = 0;
+	}
+	return 1;
+}
+
 void dec_close(dec *d)
 {
 	if (!d) return;
@@ -352,6 +412,7 @@ void dec_close(dec *d)
 	av_frame_free(&d->out);
 	av_packet_free(&d->pkt);
 	avfilter_graph_free(&d->g);
+	if (d->held) av_audio_fifo_free(d->held);
 	avcodec_free_context(&d->cc);
 	avformat_close_input(&d->fmt);
 	free(d);
