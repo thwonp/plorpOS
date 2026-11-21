@@ -46,6 +46,22 @@ int pod_subscribe(const char *feed_url, const char *title, const char *image);
  * already subscribed. */
 int pod_import_opml(const char *path, int *had);
 
+/* Whether a feed is subscribed to already. */
+bool pod_subscribed(const char *feed_url);
+/* Show `show` (an artist of the library) gone: its index, art and queue
+ * entries, and its downloaded copies too when `copies`. False when not one. */
+bool pod_unsubscribe(int show, bool copies);
+
+/* ---- search (plorpos-7ni.7): Apple's iTunes Search API, no account or key -------------- */
+
+typedef struct { char title[128], author[96], feed[1024], image[1024]; } pod_hit;
+void pod_search_start(const char *term);
+/* 0 searching, 1 done, -1 no answer. */
+int  pod_search_poll(void);
+/* The results of the last search that answered, at most `max`; those
+ * without a feed are left out. */
+int  pod_search_results(pod_hit *out, int max);
+
 /* ---- syncing ------------------------------------------------------------------------------ */
 
 /* Every show's feed fetched again, in the background. */

@@ -10258,10 +10258,16 @@ static int pod_autodel(void)
 
 static void pod_autodel_day(void);
 
-enum { PDX_CHECK, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
+enum { PDX_CHECK, PDX_SEARCH, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
+/* The search's results, in Muse's long list (defined with it). */
+static int pod_pick_hits(app *a, const char *header, char (*title)[128], char (*value)[48], int n);
 /* A row's word for a few seconds - "Up to date", "Added 16" - since a toast is
  * a list's and is never seen over this menu (plorpos-i8d.7). */
-typedef struct { bool rebuilt; char check[48], import[48]; Uint32 check_until, import_until; } pod_set_ui;
+typedef struct {
+	bool rebuilt;
+	char check[48], import[48], search[48];
+	Uint32 check_until, import_until, search_until;
+} pod_set_ui;
 
 static int pod_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -10275,9 +10281,56 @@ static int pod_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	if (st == 1 && t > 0) snprintf(u->check, sizeof u->check, "%d of %d", d, t), u->check_until = now + 1000;
 	rows[PDX_CHECK]  = (menu_row){ "Check for Updates", now < u->check_until ? u->check : NULL,
 	                              st != 1 && pod_show_count() > 0 };
+	rows[PDX_SEARCH] = (menu_row){ "Search Podcasts", now < u->search_until ? u->search : NULL, true };
 	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, true };
 	rows[PDX_AUTODEL] = (menu_row){ "Auto-Delete", POD_AUTODEL[pod_autodel()], true };
 	return PDX_ROWS;
+}
+
+static const char *pod_msg_search(void) { return "Searching..."; }
+static int pod_poll_search(void) { return pod_search_poll(); }
+
+/* Search Podcasts (plorpos-7ni.7): a word or two on the keyboard, Apple's
+ * podcast directory asked, and A on a result subscribes to it and fetches.
+ * True when a show was added. */
+static bool pod_search_screen(app *a, pod_set_ui *u)
+{
+	static char term[128];
+	char (*title)[128] = NULL, (*value)[48] = NULL;
+	pod_hit *h = NULL;
+	kb_result kr;
+	int n, k, i;
+	bool added = false;
+
+	if (!net_online()) { plex_say(a, "Search needs Wi-Fi"); return false; }
+	kr = kb_prompt(a->r, &a->in, "Search Podcasts", term, (int)sizeof term, MUSE_ACCENT,
+	               abs_kb_backdrop, power_due_ctx, a);
+	if (kr == KB_POWER) { power_off(a); return false; }
+	if (kr != KB_ACCEPT || !term[0]) return false;
+	pod_search_start(term);
+	if (src_wait(a, "Podcasts", pod_msg_search, pod_poll_search) <= 0) {
+		if (pod_search_poll() < 0) plex_say(a, "The search did not answer");
+		return false;
+	}
+	if (!(h = calloc(25, sizeof *h)) || !(title = calloc(25, sizeof *title)) ||
+	    !(value = calloc(25, sizeof *value))) goto out;
+	if (!(n = pod_search_results(h, 25))) { plex_say(a, "No podcasts found"); goto out; }
+	for (i = 0; i < n; i++) {
+		snprintf(title[i], sizeof title[i], "%s", h[i].title);
+		snprintf(value[i], sizeof value[i], "%s", pod_subscribed(h[i].feed) ? "Subscribed" : h[i].author);
+	}
+	if ((k = pod_pick_hits(a, term, title, value, n)) < 0) goto out;
+	if (pod_subscribed(h[k].feed)) { plex_say(a, "Already subscribed"); goto out; }
+	if (pod_subscribe(h[k].feed, h[k].title, h[k].image) <= 0) { plex_say(a, "Could not subscribe"); goto out; }
+	snprintf(u->search, sizeof u->search, "Added %.36s", h[k].title);
+	if (pod_sync_screen(a) > 0) pod_sync_take(NULL);
+	u->search_until = SDL_GetTicks() + 4000;
+	added = true;
+out:
+	free(h);
+	free(title);
+	free(value);
+	return added;
 }
 
 /* The library read again when it is the one on the shelf. */
@@ -10317,6 +10370,9 @@ static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
 		u->check_until = SDL_GetTicks() + 3000;
 		return MENU_STAY;
 	}
+	case PDX_SEARCH:
+		if (pod_search_screen(a, u) && pod_reload(a, u)) return MENU_DONE;
+		return MENU_STAY;
 	case PDX_IMPORT: {
 		char names[POD_OPML_MAX][128], path[4096];
 		const char *labels[POD_OPML_MAX];
@@ -13255,10 +13311,11 @@ typedef struct { char (*title)[128]; char (*value)[48]; } lp_rows;
 
 static const char *lp_title(void *ctx, int i) { return ((lp_rows *)ctx)->title[i]; }
 static const char *lp_value(void *ctx, int i) { return ((lp_rows *)ctx)->value[i]; }
-static const char *const LP_HELP[] = { "A", "Play", "B", "Back" };
 
-static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int start)
+/* `verb`: what A does, for the help line ("Play", "Subscribe"). */
+static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int start, const char *verb)
 {
+	const char *const help[] = { "A", verb, "B", "Back" };
 	ui_pace pace = {0};
 	gl_scroll gs = {0};
 	gl_list L;
@@ -13284,7 +13341,7 @@ static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int 
 		L.ctx = rows;
 		L.title = lp_title;
 		L.value = lp_value;
-		L.help = LP_HELP;
+		L.help = help;
 		L.nhelp = 2;
 		L.empty = "Nothing yet";
 		gl_geometry(&g, &L);
@@ -13313,6 +13370,13 @@ static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int 
 	return chosen;
 }
 
+static int pod_pick_hits(app *a, const char *header, char (*title)[128], char (*value)[48], int n)
+{
+	lp_rows rows = { title, value };
+
+	return muse_long_pick(a, header, &rows, n, 0, "Subscribe");
+}
+
 /* More > Chapters: the m4b's chapters when the file has them (as L1/R1 go),
  * else the book's files. A plays from the start of the one chosen. */
 static bool np_chapters(app *a)
@@ -13339,7 +13403,7 @@ static bool np_chapters(app *a)
 		if (i == cur) snprintf(rows.value[i], sizeof rows.value[i], "%s",
 		                       mn->state == MU_PAUSED ? "paused" : "playing");
 	}
-	k = muse_long_pick(a, "Chapters", &rows, n, cur);
+	k = muse_long_pick(a, "Chapters", &rows, n, cur, "Play");
 	free(rows.title);
 	free(rows.value);
 	if (k < 0) return false;
@@ -13535,7 +13599,7 @@ static bool np_timeline(app *a)
 			         h12 ? h12 : 12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM");
 		}
 	}
-	k = muse_long_pick(a, "Timeline", &rows, n, 0);
+	k = muse_long_pick(a, "Timeline", &rows, n, 0, "Play");
 	free(rows.title);
 	free(rows.value);
 	if (k < 0 || ev[k].index >= mn->count) return false;
@@ -15467,6 +15531,32 @@ static void pod_mark_unplayed(int al)
 	pod_at_forget(al);
 }
 
+/* X on a show: Unsubscribe, asked first; a show with downloaded episodes
+ * asks whether they go too (owner). True when the library was read again. */
+static bool muse_pod_unsubscribe(app *a, int ar)
+{
+	static const char *const ONE[] = { "Unsubscribe" };
+	static const char *const COPIES[] = { "Keep Downloads", "Delete Downloads" };
+	const ml_artist *r = &g_muse.artists[ar];
+	char msg[200];
+	int i, dl = 0, k;
+	bool copies = false;
+
+	if (muse_pick_run(a, r->name, ONE, 1) != 0) return false;
+	for (i = r->first; i < r->first + r->n; i++) dl += pod_downloaded(i, NULL, 0);
+	if (dl) {
+		snprintf(msg, sizeof msg, "%d downloaded episode%s", dl, dl == 1 ? "" : "s");
+		if ((k = muse_pick_run(a, msg, COPIES, 2)) < 0) return false;
+		copies = k == 1;
+	} else {
+		snprintf(msg, sizeof msg, "Unsubscribe from %s?", r->name);
+		if (!confirm_panel(a, "Unsubscribe", msg, "Unsubscribe")) return false;
+	}
+	if (!pod_unsubscribe(ar, copies)) return false;
+	muse_source_reload(a);
+	return true;
+}
+
 /* X on an episode: its download, Played or not, the Queue. */
 static void muse_pod_ep_menu(app *a, sysview *v, int al)
 {
@@ -15844,6 +15934,17 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_pod && v->album) {
 			muse_pod_ep_menu(a, v, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
+		/* X on a show: Unsubscribe (plorpos-7ni.7). */
+		if (a->in.pressed[IN_X] && artists && n > 0 && g_muse_pod) {
+			if (muse_pod_unsubscribe(a, g_mar.ix[g_mls_asel])) {
+				if (!(v = muse_shelf_refind(a))) break;
+				synced = -1;
+				muse_artists_build();
+				if (g_mls_asel >= g_mar.n) g_mls_asel = g_mar.n > 0 ? g_mar.n - 1 : 0;
+			}
 			ui_redraw_now();
 			continue;
 		}

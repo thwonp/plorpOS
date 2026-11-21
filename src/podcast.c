@@ -15,6 +15,7 @@
 
 #include "net.h"
 #include "podfeed.h"
+#include "rajson.h"
 
 #define LANDED 32
 
@@ -242,7 +243,7 @@ int pod_import_opml(const char *path, int *had)
 
 /* ---- jobs ------------------------------------------------------------------------------ */
 
-enum { J_SYNC, J_COVER };
+enum { J_SYNC, J_COVER, J_SEARCH };
 typedef struct job {
 	int kind;
 	char a[1100], b[700];
@@ -1219,6 +1220,142 @@ bool pod_download_take_changed(void)
 	return c;
 }
 
+/* ---- search -------------------------------------------------------------------------------------- */
+
+#define HITS 25
+static pod_hit g_hits[HITS];
+static int g_nhits;
+static volatile int g_search = 1;        /* 0 searching, 1 done, -1 failed */
+
+static void do_search(job *j)
+{
+	char url[1200], tmp[128], *body;
+	pod_hit *h;
+	size_t len;
+	int code, n = 0;
+
+	snprintf(url, sizeof url, "https://itunes.apple.com/search?media=podcast&entity=podcast&limit=%d&term=%s",
+	         HITS, j->a);
+	tmp_for("search", tmp, sizeof tmp);
+	code = net_fetch(url, "GET", NULL, 0, tmp, 10, 20, NULL);
+	body = code == 200 ? slurp(tmp, &len) : NULL;
+	unlink(tmp);
+	if (!body || !(h = calloc(HITS, sizeof *h))) {
+		free(body);
+		fprintf(stderr, "pod: search HTTP %d\n", code);
+		g_search = -1;
+		return;
+	}
+	{
+		jsv root = js_root(body, len), res, it = { 0 }, e, v;
+
+		if (js_member(root, "results", &res))
+			while (n < HITS && js_next(res, &it, &e)) {
+				pod_hit *o = &h[n];
+
+				memset(o, 0, sizeof *o);
+				if (js_member(e, "feedUrl", &v)) js_str(v, o->feed, sizeof o->feed);
+				if (!o->feed[0]) continue;
+				if (js_member(e, "collectionName", &v)) js_str(v, o->title, sizeof o->title);
+				if (js_member(e, "artistName", &v)) js_str(v, o->author, sizeof o->author);
+				if (js_member(e, "artworkUrl600", &v)) js_str(v, o->image, sizeof o->image);
+				n++;
+			}
+	}
+	free(body);
+	LOCK();
+	memcpy(g_hits, h, sizeof *h * (size_t)n);
+	g_nhits = n;
+	UNLOCK();
+	free(h);
+	fprintf(stderr, "pod: search, %d shows\n", n);
+	g_search = 1;
+}
+
+void pod_search_start(const char *term)
+{
+	job *j;
+
+	if (!term || !term[0] || !(j = calloc(1, sizeof *j))) return;
+	j->kind = J_SEARCH;
+	net_urlencode(term, j->a, sizeof j->a);
+	g_search = 0;
+	push(j, true);
+}
+
+int pod_search_poll(void) { return g_search; }
+
+int pod_search_results(pod_hit *out, int max)
+{
+	int n;
+
+	LOCK();
+	n = g_nhits < max ? g_nhits : max;
+	memcpy(out, g_hits, sizeof *out * (size_t)n);
+	UNLOCK();
+	return n;
+}
+
+/* ---- unsubscribing ---------------------------------------------------------------------------------- */
+
+bool pod_subscribed(const char *feed_url)
+{
+	char sid[12];
+	bool yes;
+
+	snprintf(sid, sizeof sid, "%08llx", fnv(feed_url, NULL) & 0xffffffffULL);
+	LOCK(); yes = sub_find(sid) >= 0; UNLOCK();
+	return yes;
+}
+
+bool pod_unsubscribe(int show, bool copies)
+{
+	char sid[12], p[800], dir[700], *slash;
+	int k, i;
+
+	LOCK();
+	if (show < 0 || show >= g_tab.nshows) { UNLOCK(); return false; }
+	cpy(sid, sizeof sid, g_tab.show_sid[show]);
+	/* Its copies, and the folder they were in if that leaves it empty. */
+	dir[0] = '\0';
+	for (i = 0; i < g_tab.n; i++) {
+		if (strcmp(g_tab.e[i].sid, sid) || !g_tab.e[i].dl) continue;
+		if (copies) {
+			snprintf(p, sizeof p, "%s/%s", g_card, g_tab.e[i].dl);
+			unlink(p);
+			if (!dir[0] && (slash = strrchr(p, '/'))) { *slash = '\0'; cpy(dir, sizeof dir, p); }
+		}
+		free(g_tab.e[i].dl);
+		g_tab.e[i].dl = NULL;
+	}
+	/* Out of the Queue. */
+	for (i = 0; i < g_nq; ) {
+		if (!strncmp(g_q[i], sid, strlen(sid)) && g_q[i][strlen(sid)] == '/') {
+			memmove(g_q + i, g_q + i + 1, sizeof g_q[0] * (size_t)(g_nq - i - 1));
+			g_nq--;
+		} else {
+			i++;
+		}
+	}
+	q_save_locked();
+	if ((k = sub_find(sid)) >= 0) {
+		memmove(g_subs + k, g_subs + k + 1, sizeof *g_subs * (size_t)(g_nsubs - k - 1));
+		g_nsubs--;
+		subs_save_locked();
+	}
+	UNLOCK();
+	if (dir[0]) rmdir(dir);                      /* only when empty */
+	/* Its index and art. */
+	snprintf(p, sizeof p, "%s/%s/eps.tsv", g_dir, sid); unlink(p);
+	snprintf(p, sizeof p, "%s/%s/dl.tsv", g_dir, sid); unlink(p);
+	snprintf(p, sizeof p, "%s/%s/.media/show.jpg", g_dir, sid); unlink(p);
+	snprintf(p, sizeof p, "%s/%s/.media/show.png", g_dir, sid); unlink(p);
+	snprintf(p, sizeof p, "%s/%s/.media", g_dir, sid); rmdir(p);
+	snprintf(p, sizeof p, "%s/%s", g_dir, sid); rmdir(p);
+	fprintf(stderr, "pod: unsubscribed %s%s\n", sid, copies ? ", copies deleted" : "");
+	return true;
+}
+
 /* ---- the worker ------------------------------------------------------------------------------- */
 
 static void *api_main(void *arg)
@@ -1235,6 +1372,7 @@ static void *api_main(void *arg)
 		switch (j->kind) {
 		case J_SYNC:  do_sync(); g_sync_run = 0; break;
 		case J_COVER: do_cover(j); break;
+		case J_SEARCH: do_search(j); break;
 		}
 		free(j);
 	}
