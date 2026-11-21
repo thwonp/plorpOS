@@ -1356,6 +1356,8 @@ static void book_key(int al, char *out, size_t n)
  * copy plays - streamed or downloaded - so opening the other copy starts
  * where this device last was, not at that folder's own older place
  * (plorpos-9rf.10). */
+static void tl_book_id(int al, char *out, size_t n);
+
 static bool book_item_key(int al, char *key, size_t n)
 {
 	char id[64];
@@ -1400,6 +1402,10 @@ static void book_finish(int al)
 	book_key(al, key, sizeof key);
 	db_set_str(db_dev(), key, "finished");
 	if (book_item_key(al, key, sizeof key)) db_set_str(db_dev(), key, "finished");
+	/* When, for the Playlists tab's Completed (plorpos-i8d.4). */
+	tl_book_id(al, key + 9, sizeof key - 9);
+	memcpy(key, "bookdone.", 9);
+	db_set_int(db_dev(), key, (int)time(NULL));
 	g_book_done[al] = true;
 	abs_book_finished(g_muse.tracks[g_muse.albums[al].first].path);
 	fprintf(stderr, "muse: finished %s\n", g_muse.albums[al].name);
@@ -13082,6 +13088,13 @@ static void tl_note(int al, int index, double at, bool play)
 	long sz;
 
 	tl_book_id(al, id, sizeof id);
+	/* When it was last played or paused, for Continue Listening (i8d.4). */
+	{
+		char key[LIB_PATH + 16];
+
+		snprintf(key, sizeof key, "booklast.%s", id);
+		db_set_int(db_dev(), key, (int)time(NULL));
+	}
 	tl_path(path, sizeof path);
 	if (!(f = fopen(path, "a"))) return;
 	fprintf(f, "%s\t%lld\t%d\t%.1f\t%c\n", id, (long long)time(NULL), index, at, play ? 'P' : 'S');
@@ -14420,8 +14433,7 @@ static void muse_tabs_save(void)
 
 static bool muse_tab_shown(int t)
 {
-	return t >= 0 && t < MT_N && g_mt_on[t] &&
-	       (t != MT_PLAYLISTS || !muse_books_shown());
+	return t >= 0 && t < MT_N && g_mt_on[t];
 }
 
 static int muse_tab_pos(int t)
@@ -14659,6 +14671,263 @@ static void muse_favs_sync(sysview *v, int tab)
 
 /* What a List-display Muse screen shows: the artists, or the albums (all,
  * favorites, or one artist's). `asel` is the artist row. */
+/* ---- Audiobook playlists (plorpos-i8d.4) ------------------------------------ *
+ *
+ * The Playlists tab on the audiobook sources holds three lists made from what
+ * the device - and for a server book, the server - knows, read-only:
+ * Continue Listening (the ten books last played and not finished, newest
+ * first), Completed (every finished one, newest first) and Random (five,
+ * new ones each time it opens). "Played" is booklast.<book>, written with the
+ * timeline's play and pause; "finished" bookdone.<book>, with book_finish.
+ * A book played before those were kept still counts, after the dated ones. */
+enum { BPL_CONTINUE, BPL_COMPLETED, BPL_RANDOM, BPL_N };
+static const char *const BPL_NAME[BPL_N] = { "Continue Listening", "Completed", "Random" };
+#define BPL_CONTINUE_MAX 10
+#define BPL_RANDOM_N     5
+
+static const char *bpl_title(void *ctx, int i) { (void)ctx; return BPL_NAME[i]; }
+
+typedef struct { int al; char *id, *dir; long long last, done; bool fin, place; } bpl_book;
+typedef struct { bpl_book *b; int n; size_t skip; bool by_dir; } bpl_scan;
+
+static bpl_book *bpl_find(bpl_scan *s, const char *name)
+{
+	for (int i = 0; i < s->n; i++)
+		if (!strcmp(s->by_dir ? s->b[i].dir : s->b[i].id, name)) return &s->b[i];
+	return NULL;
+}
+
+static bool bpl_each_last(const char *key, const char *val, void *ctx)
+{
+	bpl_book *b = bpl_find(ctx, key + ((bpl_scan *)ctx)->skip);
+
+	if (b) b->last = atoll(val);
+	return true;
+}
+
+static bool bpl_each_done(const char *key, const char *val, void *ctx)
+{
+	bpl_book *b = bpl_find(ctx, key + ((bpl_scan *)ctx)->skip);
+
+	if (b) b->done = atoll(val);
+	return true;
+}
+
+/* A place ("book.<folder>", "absplace.<item>"): finished, or somewhere in. */
+static bool bpl_each_place(const char *key, const char *val, void *ctx)
+{
+	bpl_scan *s = ctx;
+	char name[LIB_PATH + 8];
+	bpl_book *b;
+
+	snprintf(name, sizeof name, "%s%s", s->by_dir ? "" : "abs:", key + s->skip);
+	if (!(b = bpl_find(s, name))) return true;
+	if (!strcmp(val, "finished")) b->fin = true;
+	else if (val[0]) b->place = true;
+	return true;
+}
+
+static const bpl_book *g_bpl_sort;
+static int bpl_by_last(const void *x, const void *y)
+{
+	long long a = g_bpl_sort[*(const int *)x].last, b = g_bpl_sort[*(const int *)y].last;
+	return a < b ? 1 : a > b ? -1 : 0;
+}
+static int bpl_by_done(const void *x, const void *y)
+{
+	long long a = g_bpl_sort[*(const int *)x].done, b = g_bpl_sort[*(const int *)y].done;
+	return a < b ? 1 : a > b ? -1 : 0;
+}
+
+/* List `which` of the books in the library now showing, as album indexes. */
+static int bpl_build(int which, int *out, int max)
+{
+	static unsigned seed;
+	bpl_book *b = calloc((size_t)g_muse.nalbums + 1, sizeof *b);
+	int *k = calloc((size_t)g_muse.nalbums + 1, sizeof *k);
+	int nb = 0, nk = 0, i, n = 0;
+	bpl_scan sc;
+
+	if (!b || !k) { free(b); free(k); return 0; }
+	for (i = 0; i < g_muse.nalbums; i++) {
+		const char *p = g_muse.tracks[g_muse.albums[i].first].path, *slash = strrchr(p, '/');
+		char id[LIB_PATH];
+
+		if (!g_muse.albums[i].book) continue;
+		tl_book_id(i, id, sizeof id);
+		b[nb].al = i;
+		b[nb].id = strdup(id);
+		b[nb].dir = strndup(p, slash ? (size_t)(slash - p) : 0);
+		if (!b[nb].id || !b[nb].dir) { free(b[nb].id); free(b[nb].dir); continue; }
+		nb++;
+	}
+	sc = (bpl_scan){ b, nb, 9, false };
+	db_each_prefix(db_dev(), "booklast.", bpl_each_last, &sc);
+	db_each_prefix(db_dev(), "bookdone.", bpl_each_done, &sc);
+	db_each_prefix(db_dev(), "absplace.", bpl_each_place, &sc);
+	sc = (bpl_scan){ b, nb, 5, true };
+	db_each_prefix(db_dev(), "book.", bpl_each_place, &sc);
+	/* The server's word on its books: the phone's listening counts too. */
+	for (i = 0; i < nb; i++) {
+		long long ms;
+		bool fin;
+		double cur;
+
+		if (strncmp(b[i].id, "abs:", 4) || !abs_server_place(b[i].id + 4, &ms, &fin, &cur)) continue;
+		if (fin) { b[i].fin = true; if (ms / 1000 > b[i].done) b[i].done = ms / 1000; }
+		else if (cur > 0) b[i].place = true;
+		if (ms / 1000 > b[i].last) b[i].last = ms / 1000;
+	}
+	for (i = 0; i < nb; i++) {
+		if (which == BPL_CONTINUE && (b[i].fin || !b[i].place)) continue;
+		if (which == BPL_COMPLETED && !b[i].fin) continue;
+		k[nk++] = i;
+	}
+	g_bpl_sort = b;
+	if (which == BPL_CONTINUE) qsort(k, (size_t)nk, sizeof *k, bpl_by_last);
+	if (which == BPL_COMPLETED) qsort(k, (size_t)nk, sizeof *k, bpl_by_done);
+	if (which == BPL_RANDOM) {
+		seed ^= plat_now_ms() * 2654435761u;
+		for (i = 0; i < nk - 1 && i < BPL_RANDOM_N; i++) {
+			int j;
+
+			seed = seed * 1103515245u + 12345u;
+			j = i + (int)((seed >> 8) % (unsigned)(nk - i));
+			{ int t = k[i]; k[i] = k[j]; k[j] = t; }
+		}
+	}
+	if (which == BPL_CONTINUE && nk > BPL_CONTINUE_MAX) nk = BPL_CONTINUE_MAX;
+	if (which == BPL_RANDOM && nk > BPL_RANDOM_N) nk = BPL_RANDOM_N;
+	for (i = 0; i < nk && n < max; i++) out[n++] = b[k[i]].al;
+	for (i = 0; i < nb; i++) { free(b[i].id); free(b[i].dir); }
+	free(b);
+	free(k);
+	return n;
+}
+
+/* One of them, as a list of books with their covers: A plays one as the
+ * Books tab does, B comes back here and then to the tab. */
+typedef struct { app *a; const int *al; int n; } bl_ctx;
+
+static const char *bl_title(void *ctx, int i) { return g_muse.albums[((bl_ctx *)ctx)->al[i]].name; }
+
+static SDL_Texture *bl_art(void *ctx, int i, int *w, int *h)
+{
+	bl_ctx *c = ctx;
+	app *a = c->a;
+	sysview *v = &a->view[a->sys_cursor];
+	float cb = 0.0f;
+	int k;
+
+	if (!is_muse(&a->sys.systems[a->sys_cursor]) || (k = muse_card_of(v, c->al[i])) < 0) return NULL;
+	if (v->cursor != k) { v->cursor = k; cf_reset(&v->cf, k); }
+	return game_get_tex(a, k, w, h, &cb);
+}
+
+static const char *const BL_HELP[] = { "A", "Play" };
+
+static muse_exit muse_book_list(app *a, int which)
+{
+	int *al = calloc((size_t)g_muse.nalbums + 1, sizeof *al), sel = 0;
+	unsigned t0 = plat_now_ms();
+	sysview *v = &a->view[a->sys_cursor];
+	muse_exit how = MUSE_BACK;
+	ui_pace pace = {0};
+	gl_scroll gs = {0};
+	bl_ctx c = { a, al, 0 };
+	int home = v->cursor;
+
+	if (!al) return MUSE_BACK;
+	c.n = bpl_build(which, al, g_muse.nalbums);
+	fprintf(stderr, "muse: %s, %d books in %u ms\n", BPL_NAME[which], c.n, plat_now_ms() - t0);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		gl_list L;
+		gl_geom g;
+
+		muse_screen_poll();
+		if (cover_answers()) ui_redraw_now();
+		gl_poll(a, &gs, true);
+		if (a->in.quit_requested) { a->running = false; how = MUSE_CLOSE; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
+		}
+		if (a->in.pressed[IN_BACK]) break;
+		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
+		if (a->in.pressed[IN_MENU]) {
+			how = muse_menu(a);
+			if (how != MUSE_BACK) break;
+			continue;
+		}
+		memset(&L, 0, sizeof L);
+		L.key = GL_KEY_PICK;
+		L.header = BPL_NAME[which];
+		L.wide_header = true;
+		L.n = c.n;
+		L.accent = MUSE_ACCENT;
+		L.ctx = &c;
+		L.title = bl_title;
+		L.art = bl_art;
+		L.help = BL_HELP;
+		L.nhelp = 1;
+		L.empty = which == BPL_COMPLETED ? "No finished books yet" : "No books started yet";
+		gl_geometry(&g, &L);
+		if (c.n > 0) {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + c.n - 1) % c.n;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % c.n;
+			if (in_repeat(&a->in, IN_L1))   sel = gl_page_step(sel, c.n, g.rows, -1);
+			if (in_repeat(&a->in, IN_R1))   sel = gl_page_step(sel, c.n, g.rows, +1);
+			gl_scroll_apply(&gs, &sel, c.n);
+			if (a->in.pressed[IN_ACCEPT]) {
+				how = muse_book(a, al[sel]);
+				if (how != MUSE_BACK || g_muse_gone) break;
+				ui_redraw_now();
+				continue;
+			}
+		}
+		vol_keys(&a->in);
+		L.cur = sel;
+		L.phase = mq_phase(MQ_SHELF, -5, sel);
+		if (c.n > 0) {
+			int al0 = al[sel], y = g_year && g_year[al0] > 0 ? g_year[al0] : 0;
+			char line[200];
+
+			if (y) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, g_muse.artists[muse_artist_of(al0)].name);
+			else   snprintf(line, sizeof line, "%s", g_muse.artists[muse_artist_of(al0)].name);
+			ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
+			snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, c.n);
+		}
+		if (!screen_draw_due(a, &pace, (Uint32)(sel * 7919 + c.n))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		texload_drain(a);
+		draw_background(a);
+		if (c.n > 0 && is_muse(&a->sys.systems[a->sys_cursor])) {
+			SDL_Rect r;
+
+			gl_art_rect(&L, &r, NULL);
+			prime_toward(a, a->sys_cursor, v->cursor);
+			evict_far(v, TEX_KEEP_NEAR);
+			ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+		}
+		gl_draw(a, &L);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	/* The album cursor the list borrowed for its covers. */
+	if (how != MUSE_REBUILT && home >= 0 && home < v->list.count && v->cursor != home) {
+		v->cursor = home;
+		cf_reset(&v->cf, home);
+	}
+	free(al);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	return how;
+}
+
 static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
 
@@ -14681,6 +14950,15 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->value = mar_value;
 		L->empty = "Nothing here";
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
+		return;
+	}
+	if (tab == MT_PLAYLISTS && books) {
+		L->key = GL_KEY_PLAYLISTS;
+		L->header = "Playlists";
+		L->n = BPL_N;
+		L->cur = psel < BPL_N ? psel : 0;
+		L->title = bpl_title;
+		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
 	if (tab == MT_PLAYLISTS) {
@@ -14858,14 +15136,16 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
 		bool artists = tab == MT_ARTISTS && !drilled;
 		bool lists = tab == MT_PLAYLISTS;
+		bool books = muse_books_shown();     /* lists then are the made ones (i8d.4) */
 		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
 		unsigned ft0, ft1;
 
 		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
-		if (lists) muse_playlists_load();
+		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
-		  : artists ? g_mar.n : lists ? g_npls : 0;
+		  : artists ? g_mar.n : lists ? (books ? BPL_N : g_npls) : 0;
+		if (lists && g_mls_psel >= n) g_mls_psel = n > 0 ? n - 1 : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		gl_poll(a, &gs, !cover);   /* the Coverflow tab steps as the shelf does */
@@ -14976,7 +15256,8 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (artists) {
 				muse_set_filter(v, g_mar.ix[g_mls_asel], -1);
 			} else if (lists) {
-				muse_exit how = muse_playlist_open(a, g_mls_psel, false);
+				muse_exit how = books ? muse_book_list(a, g_mls_psel)
+				                      : muse_playlist_open(a, g_mls_psel, false);
 
 				if (how == MUSE_CLOSE || g_muse_gone) break;
 				if (how == MUSE_REBUILT) {
@@ -15000,7 +15281,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		/* Y - the Rotate's long press - on a playlist: Delete (asked first)
 		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
 		 * tab (owner, plorpos-3yv.110.1). */
-		if (a->in.pressed[IN_Y] && lists && n > 0) {
+		if (a->in.pressed[IN_Y] && lists && !books && n > 0) {
 			static const char *const OPTS[] = { "Delete", "Rename" };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
 			int k;

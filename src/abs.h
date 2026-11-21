@@ -91,6 +91,10 @@ int  abs_book_place(const char *track, int *index, double *at);
 bool abs_item(const char *track, char *id, size_t n);
 bool abs_book_secs(const char *id, int index, double at, double *secs);
 bool abs_book_file(const char *id, double secs, int *index, double *at);
+/* What the server last said of item `id` (/api/me, pulled when Muse opens):
+ * false when it has nothing; else its lastUpdate in ms, whether it is
+ * finished, and the seconds in (plorpos-i8d.4's lists). */
+bool abs_server_place(const char *id, long long *last_ms, bool *fin, double *cur);
 /* What plays, each poll: file `index` of the book `track` is in, `at` into it.
  * state 1 playing, 2 paused, 0 stopped. Sent every 15 s and on every change. */
 void abs_tick(const char *track, int index, double at, int state);

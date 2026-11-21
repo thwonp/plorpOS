@@ -1324,6 +1324,17 @@ bool abs_book_file(const char *id, double secs, int *index, double *at)
 	return true;
 }
 
+bool abs_server_place(const char *id, long long *last_ms, bool *fin, double *cur)
+{
+	ab_prog *pr;
+	bool ok = false;
+
+	LOCK();
+	if ((pr = prog_find(id))) { *last_ms = pr->last; *fin = pr->fin; *cur = pr->cur; ok = true; }
+	UNLOCK();
+	return ok;
+}
+
 /* ---- play on a paused book (plorpos-9rf.9) -------------------------------------------- */
 
 #define RESUME_WAIT_MS 1500
