@@ -14,6 +14,7 @@
 #include <libavutil/audio_fifo.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
+#include <libavutil/opt.h>
 
 /* The resampler, and the only part of this chain anyone would hear go wrong.
  *
@@ -117,11 +118,41 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 		 * read fails, the track ends, and the launcher finds the server
 		 * again for the next (plorpos-1lw.19). Files are not affected. */
 		AVDictionary *o = NULL;
+		char *to = NULL;
 		int e;
 
+		/* Where an https stream's redirects end, opened rather than the URL
+		 * given: FFmpeg's seek goes back to the URL it was given and walks
+		 * every redirect again, since a podcast's tracking hops (302s, no
+		 * Expires) are never cached - 4 hops, 1.6-1.9 s a seek on the 34xxsp
+		 * against 0.3 s to the end of them (plorpos-7ni.10). One connection
+		 * more on opening. Plain http (Plex, Audiobookshelf on the LAN) is
+		 * opened once, as it was. */
+		if (!strncmp(path, "https://", 8)) {
+			AVIOContext *pb = NULL;
+			uint8_t *loc = NULL;
+
+			av_dict_set(&o, "rw_timeout", "10000000", 0);
+			if (avio_open2(&pb, path, AVIO_FLAG_READ, NULL, &o) >= 0) {
+				if (av_opt_get(pb, "location", AV_OPT_SEARCH_CHILDREN, &loc) >= 0 && loc &&
+				    strcmp((char *)loc, path) && strstr((char *)loc, "://"))
+					to = strdup((char *)loc);
+				av_free(loc);
+				avio_closep(&pb);
+			}
+			av_dict_free(&o);
+		}
 		if (strstr(path, "://")) av_dict_set(&o, "rw_timeout", "10000000", 0);
-		e = avformat_open_input(&d->fmt, path, NULL, &o);
+		e = avformat_open_input(&d->fmt, to ? to : path, NULL, &o);
+		if (e < 0 && to) e = avformat_open_input(&d->fmt, path, NULL, &o);   /* as given, then */
+		free(to);
 		av_dict_free(&o);
+		/* An https stream's MP3 seeks to the byte its time is at, rather than
+		 * reading forward from the last frame it indexed - the whole way, over
+		 * Wi-Fi, which was most of a seek's 2-7 s (plorpos-7ni.10). Exact for
+		 * CBR, which a podcast's MP3 nearly always is; a VBR one lands near.
+		 * Files on the card, and http on the LAN, keep the exact seek. */
+		if (e >= 0 && !strncmp(path, "https://", 8)) d->fmt->flags |= AVFMT_FLAG_FAST_SEEK;
 
 		if (e < 0) {
 			char why[64];
