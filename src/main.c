@@ -1502,6 +1502,8 @@ static int pod_row_now_al(void)
  * ran out plays the first one in the Queue next, or nothing (owner: an empty
  * Queue stops). The next is started from muse_poll, after book_keep. */
 static void pod_mark_played(int al);
+static bool pod_in_player(int al);
+static void pod_autodel_played(int al);
 static int pod_up_next(int done);
 static bool book_start(int al);
 static void muse_toast(const char *msg);
@@ -1530,6 +1532,7 @@ static void book_keep(bool now)
 	}
 	if (ran_out && pod_is_path(track)) {
 		if (!g_book_done[al]) pod_mark_played(al);   /* not already at 95% */
+		pod_autodel_played(al);                      /* the player is done with it */
 		pod_queue_remove(al);
 		g_pod_next = pod_up_next(al);
 		g_bk.al = -1;
@@ -15637,16 +15640,19 @@ static bool pod_fav(int al)
 	return muse_fav_is(dir);
 }
 
-/* The day-old played copies, gone. */
+/* The played copies Auto-Delete wants gone: a day old, or under When Played
+ * one left past 95% while it played (pod_mark_played kept it). Never the
+ * episode in the player. */
 static void pod_autodel_day(void)
 {
 	char key[LIB_PATH + 16];
 	long long now = (long long)time(NULL), done;
-	int al, gone = 0;
+	int al, gone = 0, mode = pod_autodel();
 
-	if (!g_muse_pod || !g_book_done || pod_autodel() != POD_AUTODEL_DAY) return;
+	if (!g_muse_pod || !g_book_done || mode == POD_AUTODEL_OFF) return;
 	for (al = 0; al < g_muse.nalbums; al++) {
-		if (!g_book_done[al] || !pod_downloaded(al, NULL, 0) || pod_fav(al)) continue;
+		if (!g_book_done[al] || pod_in_player(al) || !pod_downloaded(al, NULL, 0) || pod_fav(al)) continue;
+		if (mode == POD_AUTODEL_PLAYED) { gone += pod_delete_download(al); continue; }
 		tl_book_id(al, key + 9, sizeof key - 9);
 		memcpy(key, "bookdone.", 9);
 		done = db_get_int(db_dev(), key, 0);
@@ -15655,15 +15661,33 @@ static void pod_autodel_day(void)
 	if (gone) fprintf(stderr, "pod: auto-deleted %d played downloads\n", gone);
 }
 
+/* Episode al is the one in the player, playing or paused: read from the
+ * player itself, since g_bk.al is not set yet on book_keep's first look. */
+static bool pod_in_player(int al)
+{
+	const mu_now *mn = musec_now();
+
+	return (mn->state == MU_PLAYING || mn->state == MU_PAUSED) && musec_is_book() &&
+	       ml_album_of(&g_muse, musec_track(mn->index)) == al;
+}
+
+/* Under Auto-Delete When Played, episode al's copy gone (a favorite stays). */
+static void pod_autodel_played(int al)
+{
+	if (pod_autodel() == POD_AUTODEL_PLAYED && pod_downloaded(al, NULL, 0) && !pod_fav(al))
+		pod_delete_download(al);
+}
+
 /* Played by hand (X), or heard to 95%: finished, out of the Queue, and its
- * copy gone if Auto-Delete says so. */
+ * copy gone if Auto-Delete says so - but never from under the player, which
+ * cut the last 5% and started Up Next (plorpos-7ni.21): the playing one's copy
+ * goes when it ends (book_keep), or at the next sweep (pod_autodel_day). */
 static void pod_mark_played(int al)
 {
 	book_finish(al);
 	pod_queue_remove(al);
 	pod_at_forget(al);
-	if (pod_autodel() == POD_AUTODEL_PLAYED && pod_downloaded(al, NULL, 0) && !pod_fav(al))
-		pod_delete_download(al);
+	if (!pod_in_player(al)) pod_autodel_played(al);
 }
 
 /* After episode `done`: the first one in the Queue that is not it, or -1. */
