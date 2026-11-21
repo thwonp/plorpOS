@@ -285,8 +285,9 @@ Folder for music copied on while the device was running, Playback Settings
 (not on the Miyoo Mini Flip), and Source.
 
 **Source** picks what the shelf holds: Local Music, Local Audiobooks,
-[Plex Music](#plex) or [Audiobookshelf](#audiobookshelf). (Before the next
-release this was two rows, Show and Source.) Muse opens on whichever you left
+[Plex Music](#plex), [Audiobookshelf](#audiobookshelf) or
+[Podcasts](#podcasts). (Before the next release this was two rows, Show and
+Source.) Muse opens on whichever you left
 it on, except that SELECT with a book playing lands on the books, on that
 book.
 
@@ -536,6 +537,46 @@ network.
   Resync Library (everything) and Sign Out. Muse checks every hour by itself.
 
 The sign-in is kept on the card in `.userdata/shared/abs/`.
+
+### Podcasts
+
+*Coming in the next release.*
+
+Set **Source** to Podcasts. The first time, Podcast Settings opens so you can
+add some:
+
+- **Import OPML** brings in the shows you follow in another app. Export an
+  OPML file from it (AntennaPod: Settings, Import/Export), put it in
+  `Podcasts/` on the card, and choose it.
+- **Search Podcasts** finds shows by name in Apple's podcast directory. A on
+  one subscribes to it.
+
+Muse fetches every show's new episodes when you open it (at most every half
+hour) and when you choose **Check for Updates**. Nothing is fetched in the
+background.
+
+The tabs are **Podcasts** (your shows; A shows a show's episodes, newest
+first), **New** (everything you have not played), **Downloads**, **Favorites**
+and **Queue**. A row shows a dot and the length for an episode you have not
+started, the time left, or Played.
+
+- **A** plays an episode. It streams, so it needs Wi-Fi, unless it is
+  downloaded. It plays like a book: L1/R1 seek, X has Speed, Sleep Timer and
+  Timeline, and each episode keeps its own place.
+- An episode counts as **played** at 95%.
+- **X on an episode**: Download (or Cancel, or Delete the copy), Mark Played
+  or Unplayed, Add to Queue or Remove.
+- **Y** marks a favorite.
+- **Queue** is what plays next. When an episode ends, the first one in the
+  Queue starts; played episodes leave it, and when it is empty playback
+  stops. In the Queue, L1/R1 move an episode up or down.
+- **X on a show** unsubscribes. If you downloaded some of its episodes, you
+  choose whether they go too.
+
+Downloads go in `Podcasts/<show>/` and play without Wi-Fi.
+**Auto-Delete** in Podcast Settings removes a download when it is played, or
+a day after; favorites are never deleted. On the Brick an episode is
+downloaded before it plays (its player cannot stream from secure sites).
 
 ## The shelf
 
