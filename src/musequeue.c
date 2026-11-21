@@ -155,9 +155,14 @@ void muq_set_mode(muq *q, muq_mode m)
 
 int muq_upcoming(const muq *q)
 {
-	if (q->n == 0) return -1;
-	if (q->mode == MUQ_REPEAT_ONE) return q->order[q->pos];
-	if (q->pos + 1 < q->n) return q->order[q->pos + 1];
-	if (q->mode == MUQ_REPEAT_ALL) return q->order[0];
+	return muq_upcoming_n(q, 1);
+}
+
+int muq_upcoming_n(const muq *q, int k)
+{
+	if (q->n == 0 || k < 1) return -1;
+	if (q->mode == MUQ_REPEAT_ONE) return k == 1 ? q->order[q->pos] : -1;
+	if (q->pos + k < q->n) return q->order[q->pos + k];
+	if (q->mode == MUQ_REPEAT_ALL && k < q->n) return q->order[(q->pos + k) % q->n];
 	return -1;
 }

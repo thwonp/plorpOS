@@ -29,7 +29,7 @@ int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out)
 	out[n++] = SMM_SORT;
 	if (!books && !plex) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
-	if (!plex) out[n++] = SMM_RESCAN;   /* Plex's Sync Library is in Plex Settings (1lw.17) */
+	if (!plex) out[n++] = SMM_RESCAN;   /* Plex's Resync Library is in Plex Settings (1lw.17) */
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif

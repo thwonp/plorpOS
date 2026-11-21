@@ -53,7 +53,10 @@
 #define STREAM_HTTP 1
 #define STREAM_TLS  0
 #endif
-#define CACHE_KEEP  4          /* tracks fetched first that stay on the card */
+/* Fetched first: what stays on the card, and how far ahead (plorpos-1lw.22). */
+#define CACHE_MB    100        /* the cache's budget; the oldest go first */
+#define AHEAD_MAX   10         /* the most tracks fetched ahead (the setting's top) */
+#define CACHE_Q     16         /* wishes waiting: the one now and those ahead */
 
 /* Plexamp's Opus profile, from the pak (a tshark capture of Plexamp). */
 #define OPUS_PROFILE \
@@ -79,7 +82,7 @@ static struct {
 	char server[128], server_id[64];
 	conn conns[MAX_CONNS]; int nconns;
 	int  section; char library[128];
-	int  stream_kbps, download_kbps;
+	int  stream_kbps, download_kbps, ahead;
 } C;
 static char g_base[256];                  /* the connection that answered */
 static char g_rel_root[400];              /* card-relative cache root for this library */
@@ -128,8 +131,8 @@ static void cfg_save(void)
 	        C.client, C.token, C.account, C.server, C.server_id);
 	for (i = 0; i < C.nconns; i++)
 		fprintf(f, "conn=%d %d %s\n", C.conns[i].local, C.conns[i].relay, C.conns[i].uri);
-	fprintf(f, "section=%d\nlibrary=%s\nstream_kbps=%d\ndownload_kbps=%d\n",
-	        C.section, C.library, C.stream_kbps, C.download_kbps);
+	fprintf(f, "section=%d\nlibrary=%s\nstream_kbps=%d\ndownload_kbps=%d\nahead=%d\n",
+	        C.section, C.library, C.stream_kbps, C.download_kbps, C.ahead);
 	fflush(f);
 	fsync(fd);
 	fclose(f);
@@ -143,6 +146,7 @@ static void cfg_load(void)
 
 	memset(&C, 0, sizeof C);
 	C.stream_kbps = C.download_kbps = 128;   /* the pak's defaults */
+	C.ahead = 1;
 	cfg_path(p, sizeof p);
 	if ((f = fopen(p, "r"))) {
 		while (fgets(line, sizeof line, f)) {
@@ -160,6 +164,7 @@ static void cfg_load(void)
 			else if (!strcmp(line, "library"))   snprintf(C.library, sizeof C.library, "%s", v);
 			else if (!strcmp(line, "stream_kbps"))   C.stream_kbps = atoi(v);
 			else if (!strcmp(line, "download_kbps")) C.download_kbps = atoi(v);
+			else if (!strcmp(line, "ahead"))         C.ahead = atoi(v);
 			else if (!strcmp(line, "conn") && C.nconns < MAX_CONNS) {
 				int lo, re, k = 0;
 				if (sscanf(v, "%d %d %n", &lo, &re, &k) >= 2 && k > 0) {
@@ -779,6 +784,7 @@ typedef struct {
 
 static pthread_t g_sync_th;
 static volatile int g_sync_run, g_sync_done, g_sync_total, g_sync_failed, g_sync_new;
+static volatile int g_sync_last;        /* the last run: 1 up to date, 2 updated, -1 failed */
 static int g_sync_force;
 
 static int cmp_srec(const void *pa, const void *pb)
@@ -828,105 +834,349 @@ static long library_stamp(void)
 	return stamp;
 }
 
-static long index_stamp(void)
+/* The index's header: P, version, the library stamp it was written at, its
+ * tracks, the newest updatedAt among them and the server's track count then
+ * (the last two since plorpos-1lw.24; -1 in an older index). The stamp, or -1
+ * without an index. */
+static long index_head(long *since, long *total)
 {
 	char p[700], line[200];
 	FILE *f;
 	long s = -1;
 
+	*since = *total = -1;
 	index_path(p, sizeof p);
 	if (!(f = fopen(p, "r"))) return -1;
 	if (fgets(line, sizeof line, f) && line[0] == 'P') {
-		char *x[6];
-		if (split(line, x, 6) >= 3) s = atol(x[2]);
+		char *x[7];
+		int n = split(line, x, 7);
+
+		if (n >= 3) s = atol(x[2]);
+		if (n >= 6) { *since = atol(x[4]); *total = atol(x[5]); }
 	}
 	fclose(f);
 	return s;
 }
 
+/* ---- a listing, a page at a time ---- */
+
+typedef bool (*each_fn)(jsv item, void *ctx);
+
+/* Every item of `query`, PAGE at a time, through `each` (false: give up).
+ * How many the listing has, or -1 when the server failed. `progress` counts
+ * into g_sync_done / g_sync_total. */
+static long fetch_all(const char *query, each_fn each, void *ctx, bool progress)
+{
+	char path[600];
+	long start = 0, total = -1;
+
+	for (;;) {
+		char *b = NULL;
+		size_t len;
+		jsv root, mc, md, it = { 0 }, t;
+		int got = 0;
+
+		snprintf(path, sizeof path, "%s%cX-Plex-Container-Start=%ld&X-Plex-Container-Size=%d",
+		         query, strchr(query, '?') ? '&' : '?', start, PAGE);
+		if (server_get(path, &b, &len, 120) != 200 || !b) { free(b); return -1; }
+		root = js_root(b, len);
+		if (!js_member(root, "MediaContainer", &mc)) { free(b); return -1; }
+		if (total < 0) {
+			total = jnum(mc, "totalSize");          /* 0: a listing without one */
+			if (progress) g_sync_total = (int)total;
+		}
+		if (js_member(mc, "Metadata", &md))
+			while (js_next(md, &it, &t)) {
+				got++;
+				if (!each(t, ctx)) { free(b); return -1; }
+			}
+		free(b);
+		start += got;
+		if (progress) g_sync_done = (int)start;
+		if (got == 0 || (total > 0 ? start >= total : got < PAGE)) break;
+	}
+	return total > 0 ? total : start;
+}
+
+/* How many items `query` lists, without any of them. */
+static long list_total(const char *query)
+{
+	char path[600], *b = NULL;
+	size_t len;
+	jsv mc;
+	long n = -1;
+
+	snprintf(path, sizeof path, "%s%cX-Plex-Container-Start=0&X-Plex-Container-Size=0",
+	         query, strchr(query, '?') ? '&' : '?');
+	if (server_get(path, &b, &len, 30) == 200 && b && js_member(js_root(b, len), "MediaContainer", &mc))
+		n = jnum(mc, "totalSize");
+	free(b);
+	return n;
+}
+
+/* ---- the records an index is written from ---- */
+
+typedef struct { srec *r; int n, cap; long since; } sset;   /* since: newest updatedAt */
+
+static void srec_free(srec *x)
+{
+	free(x->title); free(x->tartist); free(x->album_t);
+	free(x->artist_t); free(x->thumb); free(x->part);
+	memset(x, 0, sizeof *x);
+}
+
+static void sset_free(sset *s)
+{
+	for (int i = 0; i < s->n; i++) srec_free(&s->r[i]);
+	free(s->r);
+	memset(s, 0, sizeof *s);
+}
+
+/* Takes x's strings - but not on failure, when they are still the caller's. */
+static bool sset_push(sset *s, srec x)
+{
+	if (s->n == s->cap) {
+		int cap = s->cap ? s->cap * 2 : 4096;
+		srec *r = realloc(s->r, sizeof *r * (size_t)cap);
+
+		if (!r) return false;
+		s->r = r; s->cap = cap;
+	}
+	s->r[s->n++] = x;
+	return true;
+}
+
+/* A track from a listing (a fetch_all `each`). */
+static bool sset_track(jsv t, void *ctx)
+{
+	sset *s = ctx;
+	char ti[512], ta[256], at[256], alt[256], th[256], pk[320];
+	jsv media, mi = { 0 }, m0, parts, pi = { 0 }, p0;
+	long u = jnum(t, "updatedAt");
+	srec x;
+
+	if (u > s->since) s->since = u;
+	pk[0] = '\0';
+	if (js_member(t, "Media", &media) && js_next(media, &mi, &m0) &&
+	    js_member(m0, "Part", &parts) && js_next(parts, &pi, &p0))
+		jstr(p0, "key", pk, sizeof pk);
+	if (!pk[0]) return true;
+	jstr(t, "title", ti, sizeof ti);
+	jstr(t, "originalTitle", ta, sizeof ta);
+	jstr(t, "grandparentTitle", at, sizeof at);
+	jstr(t, "parentTitle", alt, sizeof alt);
+	jstr(t, "parentThumb", th, sizeof th);
+	x = (srec){
+		.key = (int)jnum(t, "ratingKey"),
+		.album = (int)jnum(t, "parentRatingKey"),
+		.artist = (int)jnum(t, "grandparentRatingKey"),
+		.year = (int)jnum(t, "parentYear"),
+		.disc = (int)jnum(t, "parentIndex"),
+		.idx = (int)jnum(t, "index"),
+		.dur = (int)jnum(t, "duration"),
+		.title = dupc(ti), .tartist = dupc(strcmp(ta, at) ? ta : ""),
+		.album_t = dupc(alt[0] ? alt : "Unknown Album"),
+		.artist_t = dupc(at[0] ? at : "Unknown Artist"),
+		.thumb = dupc(th), .part = dupc(pk),
+	};
+	if (!x.key || !x.album || !x.artist) { srec_free(&x); return true; }
+	if (!sset_push(s, x)) { srec_free(&x); return false; }
+	return true;
+}
+
+/* Track i of an index read back as a record. */
+static srec srec_of(const px_table *t, int i)
+{
+	const px_track *tr = &t->tr[i];
+	const px_album *al = &t->al[tr->album];
+	const px_artist *ar = &t->ar[al->artist];
+
+	return (srec){
+		.key = tr->key, .album = al->key, .artist = ar->key, .year = al->year,
+		.disc = tr->disc, .idx = tr->idx, .dur = tr->dur_ms,
+		.title = dupc(tr->title), .tartist = dupc(tr->artist), .album_t = dupc(al->title),
+		.artist_t = dupc(ar->name), .thumb = dupc(al->thumb), .part = dupc(tr->part),
+	};
+}
+
+static bool srec_same(const srec *a, const srec *b)
+{
+	return a->key == b->key && a->album == b->album && a->artist == b->artist &&
+	       a->year == b->year && a->disc == b->disc && a->idx == b->idx && a->dur == b->dur &&
+	       !strcmp(a->title, b->title) && !strcmp(a->tartist, b->tartist) &&
+	       !strcmp(a->album_t, b->album_t) && !strcmp(a->artist_t, b->artist_t) &&
+	       !strcmp(a->thumb, b->thumb) && !strcmp(a->part, b->part);
+}
+
+static int cmp_int(const void *a, const void *b)
+{
+	int x = *(const int *)a, y = *(const int *)b;
+
+	return x < y ? -1 : x > y;
+}
+
+static int cmp_srec_key(const void *a, const void *b)
+{
+	return cmp_int(&((const srec *)a)->key, &((const srec *)b)->key);
+}
+
+/* ---- updating the index in place (plorpos-1lw.24) ---- */
+
+/* Albums and artists Plex changed whose tracks are read again: those whose
+ * title, year or cover (an album) or name (an artist) is no longer what the
+ * index keeps - a track carries those, and its own updatedAt need not move
+ * when they do. One not in the index is new: its tracks are new too, so
+ * they came with the changed tracks already. */
+typedef struct { const px_table *t; int *key; int n, cap; bool artists; } stale;
+
+static bool stale_each(jsv o, void *ctx)
+{
+	stale *s = ctx;
+	char title[256], thumb[256];
+	int key = (int)jnum(o, "ratingKey"), i;
+	bool differs = false;
+
+	jstr(o, "title", title, sizeof title);
+	clean(title);
+	if (s->artists) {
+		if (!title[0]) snprintf(title, sizeof title, "Unknown Artist");
+		for (i = 0; i < s->t->nar && s->t->ar[i].key != key; i++) {}
+		if (i == s->t->nar) return true;
+		differs = strcmp(s->t->ar[i].name, title) != 0;
+	} else {
+		if (!title[0]) snprintf(title, sizeof title, "Unknown Album");
+		jstr(o, "thumb", thumb, sizeof thumb);
+		clean(thumb);
+		for (i = 0; i < s->t->nal && s->t->al[i].key != key; i++) {}
+		if (i == s->t->nal) return true;
+		differs = strcmp(s->t->al[i].title, title) || strcmp(s->t->al[i].thumb, thumb) ||
+		          s->t->al[i].year != (int)jnum(o, "year");
+	}
+	if (!differs) return true;
+	if (s->n == s->cap) {
+		int cap = s->cap ? s->cap * 2 : 64, *k = realloc(s->key, sizeof *k * (size_t)cap);
+
+		if (!k) return false;
+		s->key = k; s->cap = cap;
+	}
+	s->key[s->n++] = key;
+	return true;
+}
+
+/* What changed since `since` (the newest updatedAt the index has), merged
+ * into the index on the card, into `out`. A deleted track leaves no trace in
+ * any listing, so the merge must come out at the server's count less the
+ * tracks a sync skips (no file), as last time: false when it does not, or on
+ * any failure - then the caller reads the library whole. `*changed`: how many
+ * tracks really differ (Plex touches tracks without changing them). */
+static bool sync_incremental(long since, long was_total, sset *out, long *total, int *changed)
+{
+	px_table t;
+	sset ch = { .since = since };
+	stale st = { 0 };
+	char q[300];
+	int *keys = NULL, i, nal;
+	bool ok = false;
+
+	*changed = 0;
+	if (!tab_read(&t)) return false;
+	st.t = &t;
+	fprintf(stderr, "plex: updating %s since %ld\n", C.library, since);
+	snprintf(q, sizeof q, "/library/sections/%d/all?type=10&updatedAt>>=%ld", C.section, since - 1);
+	if (fetch_all(q, sset_track, &ch, true) < 0) goto done;
+	snprintf(q, sizeof q, "/library/sections/%d/all?type=9&updatedAt>>=%ld", C.section, since - 1);
+	if (fetch_all(q, stale_each, &st, false) < 0) goto done;
+	nal = st.n;
+	st.artists = true;
+	snprintf(q, sizeof q, "/library/sections/%d/all?type=8&updatedAt>>=%ld", C.section, since - 1);
+	if (fetch_all(q, stale_each, &st, false) < 0) goto done;
+	for (i = 0; i < st.n; i++) {
+		snprintf(q, sizeof q, i < nal ? "/library/metadata/%d/children" : "/library/metadata/%d/allLeaves",
+		         st.key[i]);
+		if (fetch_all(q, sset_track, &ch, false) < 0) goto done;
+	}
+
+	/* The index less what came again, then what came, once each. */
+	qsort(ch.r, (size_t)ch.n, sizeof *ch.r, cmp_srec_key);
+	if (ch.n && !(keys = malloc(sizeof *keys * (size_t)ch.n))) goto done;
+	for (i = 0; i < ch.n; i++) keys[i] = ch.r[i].key;
+	out->since = ch.since;
+	for (i = 0; i < t.ntr; i++) {
+		srec x;
+
+		if (ch.n && bsearch(&t.tr[i].key, keys, (size_t)ch.n, sizeof *keys, cmp_int)) continue;
+		x = srec_of(&t, i);
+		if (!sset_push(out, x)) { srec_free(&x); goto done; }
+	}
+	for (i = 0; i < ch.n; i++) {
+		int o;
+
+		if (i && keys[i] == keys[i - 1]) continue;              /* freed with ch */
+		if ((o = tab_find(&t, ch.r[i].key)) < 0) (*changed)++;
+		else {
+			srec was = srec_of(&t, o);
+
+			if (!srec_same(&was, &ch.r[i])) (*changed)++;
+			srec_free(&was);
+		}
+		if (!sset_push(out, ch.r[i])) goto done;
+		memset(&ch.r[i], 0, sizeof ch.r[i]);                    /* out's now */
+	}
+	snprintf(q, sizeof q, "/library/sections/%d/all?type=10", C.section);
+	if ((*total = list_total(q)) < 0) goto done;
+	if (*total - out->n != was_total - t.ntr) {
+		fprintf(stderr, "plex: %ld tracks on the server, %d here (%ld then, %d): reading it all\n",
+		        *total, out->n, was_total, t.ntr);
+		goto done;
+	}
+	ok = true;
+done:
+	free(keys);
+	free(st.key);
+	sset_free(&ch);                  /* the duplicates left behind, and on failure the rest */
+	tab_free(&t);
+	return ok;
+}
+
 static void *sync_main(void *arg)
 {
-	srec *r = NULL;
-	int nr = 0, cap = 0, start = 0, total = -1, i;
-	long stamp;
-	char path[400], p[700], tmp[720];
+	sset s = { 0 };
+	long stamp, since, was_total, total = 0;
+	char q[300], p[700], tmp[720];
 	unsigned t0 = now_ms();
+	int i, changed = -1;
+	bool inc = false;
 	FILE *f;
 
 	(void)arg;
 	g_sync_done = 0; g_sync_total = 0;
 	stamp = library_stamp();
 	if (stamp < 0) { g_sync_failed = 1; goto out; }
-	if (!g_sync_force && stamp == index_stamp()) goto out;   /* unchanged */
-	fprintf(stderr, "plex: syncing %s (%s)\n", C.library, g_sync_force ? "asked" : "changed");
-	for (;;) {
-		char *b = NULL;
-		size_t len;
-		jsv root, mc, md, it = { 0 }, t;
-		int code, got = 0;
-
-		snprintf(path, sizeof path,
-		         "/library/sections/%d/all?type=10&X-Plex-Container-Start=%d&X-Plex-Container-Size=%d",
-		         C.section, start, PAGE);
-		code = server_get(path, &b, &len, 120);
-		if (code != 200 || !b) { free(b); g_sync_failed = 1; goto out; }
-		root = js_root(b, len);
-		if (!js_member(root, "MediaContainer", &mc)) { free(b); g_sync_failed = 1; goto out; }
-		if (total < 0) { total = (int)jnum(mc, "totalSize"); g_sync_total = total; }
-		if (js_member(mc, "Metadata", &md))
-			while (js_next(md, &it, &t)) {
-				char s[512], ta[256], at[256], alt[256], th[256], pk[320];
-				jsv media, mi = { 0 }, m0, parts, pi = { 0 }, p0;
-
-				got++;
-				pk[0] = '\0';
-				if (js_member(t, "Media", &media) && js_next(media, &mi, &m0) &&
-				    js_member(m0, "Part", &parts) && js_next(parts, &pi, &p0))
-					jstr(p0, "key", pk, sizeof pk);
-				if (!pk[0]) continue;
-				if (nr == cap) {
-					cap = cap ? cap * 2 : 4096;
-					srec *nr_ = realloc(r, sizeof *r * (size_t)cap);
-					if (!nr_) { free(b); g_sync_failed = 1; goto out; }
-					r = nr_;
-				}
-				jstr(t, "title", s, sizeof s);
-				jstr(t, "originalTitle", ta, sizeof ta);
-				jstr(t, "grandparentTitle", at, sizeof at);
-				jstr(t, "parentTitle", alt, sizeof alt);
-				jstr(t, "parentThumb", th, sizeof th);
-				r[nr] = (srec){
-					.key = (int)jnum(t, "ratingKey"),
-					.album = (int)jnum(t, "parentRatingKey"),
-					.artist = (int)jnum(t, "grandparentRatingKey"),
-					.year = (int)jnum(t, "parentYear"),
-					.disc = (int)jnum(t, "parentIndex"),
-					.idx = (int)jnum(t, "index"),
-					.dur = (int)jnum(t, "duration"),
-					.title = dupc(s), .tartist = dupc(strcmp(ta, at) ? ta : ""),
-					.album_t = dupc(alt[0] ? alt : "Unknown Album"),
-					.artist_t = dupc(at[0] ? at : "Unknown Artist"),
-					.thumb = dupc(th), .part = dupc(pk),
-				};
-				if (r[nr].key && r[nr].album && r[nr].artist) nr++;
-			}
-		free(b);
-		start += got;
-		g_sync_done = start;
-		if (got == 0 || start >= total) break;
+	if (!g_sync_force && stamp == index_head(&since, &was_total)) { g_sync_last = 1; goto out; }
+	if (!g_sync_force && since > 0 && was_total >= 0) {
+		inc = sync_incremental(since, was_total, &s, &total, &changed);
+		if (!inc) { sset_free(&s); changed = -1; }
 	}
-	qsort(r, (size_t)nr, sizeof *r, cmp_srec);
+	if (!inc) {
+		fprintf(stderr, "plex: syncing %s (%s)\n", C.library, g_sync_force ? "asked" : "changed");
+		g_sync_done = g_sync_total = 0;
+		snprintf(q, sizeof q, "/library/sections/%d/all?type=10", C.section);
+		if ((total = fetch_all(q, sset_track, &s, true)) < 0) { g_sync_failed = 1; goto out; }
+	}
+	qsort(s.r, (size_t)s.n, sizeof *s.r, cmp_srec);
 
 	index_path(p, sizeof p);
 	{
-		char d[700], *s;
+		char d[700], *sl;
 		snprintf(d, sizeof d, "%s", p);
-		if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
+		if ((sl = strrchr(d, '/'))) { *sl = '\0'; mkdirs(d); }
 	}
 	snprintf(tmp, sizeof tmp, "%s.new", p);
 	if (!(f = fopen(tmp, "w"))) { g_sync_failed = 1; goto out; }
-	fprintf(f, "P\t1\t%ld\t%d\n", stamp, nr);
-	for (i = 0; i < nr; i++) {
+	fprintf(f, "P\t1\t%ld\t%d\t%ld\t%ld\n", stamp, s.n, s.since, total);
+	for (i = 0; i < s.n; i++) {
+		const srec *r = s.r;
+
 		if (i == 0 || r[i].artist != r[i - 1].artist)
 			fprintf(f, "A\t%d\t%s\n", r[i].artist, r[i].artist_t);
 		if (i == 0 || r[i].album != r[i - 1].album || r[i].artist != r[i - 1].artist)
@@ -937,15 +1187,13 @@ static void *sync_main(void *arg)
 	if (fflush(f) != 0 || fsync(fileno(f)) != 0) { fclose(f); unlink(tmp); g_sync_failed = 1; goto out; }
 	fclose(f);
 	if (rename(tmp, p) != 0) { unlink(tmp); g_sync_failed = 1; goto out; }
-	fprintf(stderr, "plex: %d tracks synced in %u ms\n", nr, now_ms() - t0);
-	g_sync_new = 1;
+	if (inc) fprintf(stderr, "plex: %d tracks, %d changed, updated in %u ms\n", s.n, changed, now_ms() - t0);
+	else fprintf(stderr, "plex: %d tracks synced in %u ms\n", s.n, now_ms() - t0);
+	if (changed) g_sync_new = 1;            /* -1 (a full sync) included */
+	g_sync_last = changed ? 2 : 1;
 out:
-	if (g_sync_failed) fprintf(stderr, "plex: sync failed after %d tracks\n", g_sync_done);
-	for (i = 0; i < nr; i++) {
-		free(r[i].title); free(r[i].tartist); free(r[i].album_t);
-		free(r[i].artist_t); free(r[i].thumb); free(r[i].part);
-	}
-	free(r);
+	if (g_sync_failed) { g_sync_last = -1; fprintf(stderr, "plex: sync failed after %d tracks\n", g_sync_done); }
+	sset_free(&s);
 	g_sync_run = 0;
 	return NULL;
 }
@@ -1202,7 +1450,11 @@ static bool download_one(int key, char reason)
 static pthread_t g_cache_th;
 static bool g_cache_up;
 static pthread_cond_t g_cache_cv = PTHREAD_COND_INITIALIZER;
-static int g_cache_q[4], g_cache_n;       /* keys, the one wanted now first */
+static int g_cache_q[CACHE_Q], g_cache_n; /* keys, the one wanted now first */
+/* What plex_prefetch last asked for: the playing track's key and those ahead.
+ * The trim never deletes them; a change takes back the wishes no longer
+ * wanted. Under g_mu. */
+static int g_keep[AHEAD_MAX + 1], g_nkeep;
 
 static bool need_fetch(const char *base)
 {
@@ -1221,32 +1473,49 @@ static bool cache_file(const px_track *t, char *out, size_t n)
 	return false;
 }
 
-/* The newest CACHE_KEEP stay; a fetch half done is never one of them. */
+/* The cache within CACHE_MB, the oldest out first - never a fetch half done,
+ * the track playing or one wanted ahead. */
 static void cache_trim(void)
 {
 	char d[700], p[1100];
 	DIR *dd;
 	struct dirent *e;
-	struct { char name[64]; time_t m; } f[64];
-	int n = 0, i, j;
+	struct { char name[64]; time_t m; off_t sz; } f[96];
+	int n = 0, i, j, keep[AHEAD_MAX + 1], nkeep;
+	long long total = 0;
 
+	LOCK();
+	nkeep = g_nkeep;
+	memcpy(keep, g_keep, sizeof keep[0] * (size_t)nkeep);
+	UNLOCK();
 	snprintf(d, sizeof d, "%s/cache", g_dir);
 	if (!(dd = opendir(d))) return;
-	while ((e = readdir(dd)) && n < 64) {
+	while ((e = readdir(dd)) && n < 96) {
 		struct stat st;
 
 		if (e->d_name[0] == '.' || strstr(e->d_name, ".part")) continue;
 		snprintf(p, sizeof p, "%s/%s", d, e->d_name);
 		if (stat(p, &st) != 0) continue;
 		snprintf(f[n].name, sizeof f[n].name, "%s", e->d_name);
-		f[n++].m = st.st_mtime;
+		f[n].m = st.st_mtime;
+		f[n].sz = st.st_size;
+		total += f[n++].sz;
 	}
 	closedir(dd);
-	for (i = 0; i < n; i++) {
-		int newer = 0;
+	while (total > (long long)CACHE_MB << 20) {
+		int old = -1, k;
 
-		for (j = 0; j < n; j++) if (f[j].m > f[i].m) newer++;
-		if (newer >= CACHE_KEEP) { snprintf(p, sizeof p, "%s/%s", d, f[i].name); unlink(p); }
+		for (i = 0; i < n; i++) {
+			if (f[i].sz < 0) continue;                       /* gone already */
+			for (k = atoi(f[i].name), j = 0; j < nkeep && keep[j] != k; j++) {}
+			if (j < nkeep) continue;
+			if (old < 0 || f[i].m < f[old].m) old = i;
+		}
+		if (old < 0) break;                                  /* all of it wanted */
+		snprintf(p, sizeof p, "%s/%s", d, f[old].name);
+		unlink(p);
+		total -= f[old].sz;
+		f[old].sz = -1;
 	}
 }
 
@@ -1294,7 +1563,7 @@ static void cache_want(int key, bool now)
 		if (now && i > 1) { memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(i - 1)); g_cache_q[1] = key; }
 		return;
 	}
-	if (g_cache_n == 4) g_cache_n = 3;           /* the oldest wish goes */
+	if (g_cache_n == CACHE_Q) g_cache_n = CACHE_Q - 1;   /* the newest wish goes */
 	if (now && g_cache_n) {                      /* behind the one in flight */
 		memmove(g_cache_q + 2, g_cache_q + 1, sizeof g_cache_q[0] * (size_t)(g_cache_n - 1));
 		g_cache_q[1] = key;
@@ -1557,6 +1826,7 @@ void plex_sync_start(bool force)
 	if (!plex_ready() || g_sync_run) return;
 	g_sync_run = 1;
 	g_sync_failed = 0;
+	g_sync_last = 0;
 	g_sync_force = force || !plex_lib_cached();
 	if (pthread_create(&g_sync_th, NULL, sync_main, NULL) != 0) { g_sync_run = 0; g_sync_failed = 1; return; }
 	pthread_detach(g_sync_th);
@@ -1568,6 +1838,8 @@ int plex_sync_state(int *done, int *total)
 	if (total) *total = g_sync_total;
 	return g_sync_run ? 1 : g_sync_failed ? -1 : 0;
 }
+
+int plex_sync_outcome(void) { return g_sync_last; }
 
 bool plex_sync_take(void)
 {
@@ -1786,21 +2058,57 @@ mark:
 	}
 }
 
-void plex_prefetch(const char *rel)
+/* The size a fetch of t will be, about: Opus at its rate, the original
+ * at a CD's FLAC. */
+static long long fetch_bytes(const px_track *t)
 {
-	static int last;
-	char base[256], f[1100];
-	int i, key = plex_is_path(rel) ? key_of(rel) : 0;
+	return (long long)t->dur_ms * (C.stream_kbps ? C.stream_kbps : 1000) / 8;
+}
 
-	if (!key || key == last) return;
-	last = key;
+void plex_prefetch(const char *playing, const char *const *next, int n)
+{
+	static int last[AHEAD_MAX + 1], nlast = -1;
+	int keys[AHEAD_MAX + 1], nk = 0, i, j, t;
+	long long sum = 0;
+	char base[256], f[1100];
+
+	keys[nk++] = plex_is_path(playing) ? key_of(playing) : 0;
+	for (i = 0; i < n && i < AHEAD_MAX; i++)
+		keys[nk++] = plex_is_path(next[i]) ? key_of(next[i]) : 0;
+	if (nk == nlast && !memcmp(keys, last, sizeof keys[0] * (size_t)nk)) return;
+	memcpy(last, keys, sizeof keys[0] * (size_t)nk);
+	nlast = nk;
 	LOCK();
+	/* Wishes ahead that are no longer ahead go (the one in flight finishes;
+	 * one wanted now, by the player, is the playing track and stays). */
+	for (i = j = 1; i < g_cache_n; i++) {
+		int k = g_cache_q[i], a, b;
+
+		for (a = 0; a < g_nkeep && g_keep[a] != k; a++) {}
+		for (b = 0; b < nk && keys[b] != k; b++) {}
+		if (a < g_nkeep && b == nk) continue;
+		g_cache_q[j++] = k;
+	}
+	if (g_cache_n > 1) g_cache_n = j;
+	memcpy(g_keep, keys, sizeof keys[0] * (size_t)nk);
+	g_nkeep = nk;
 	snprintf(base, sizeof base, "%s", g_base);
-	if (base[0] && need_fetch(base) && (i = tab_find(&g_tab, key)) >= 0 &&
-	    !local_copy(&g_tab.tr[i], f, sizeof f) && !cache_file(&g_tab.tr[i], f, sizeof f))
-		cache_want(key, false);
+	/* In order, as long as the guess at their size fits the budget. */
+	if (base[0] && need_fetch(base))
+		for (i = 1; i < nk; i++) {
+			if (!keys[i] || (t = tab_find(&g_tab, keys[i])) < 0) continue;
+			if (local_copy(&g_tab.tr[t], f, sizeof f)) continue;
+			sum += fetch_bytes(&g_tab.tr[t]);
+			if (i > 1 && sum > (long long)CACHE_MB << 20) break;
+			if (!cache_file(&g_tab.tr[t], f, sizeof f)) cache_want(keys[i], false);
+		}
+	if (!base[0]) nlast = -1;            /* no connection yet: again next poll */
 	UNLOCK();
 }
+
+int plex_ahead(void) { return C.ahead >= 1 && C.ahead <= AHEAD_MAX ? C.ahead : 1; }
+void plex_set_ahead(int n) { C.ahead = n; cfg_save(); }
+bool plex_fetches_first(void) { return !STREAM_HTTP || !STREAM_TLS; }
 
 int plex_album_downloaded(int al)
 {
@@ -1914,6 +2222,28 @@ bool plex_album_downloading(int al)
 	return yes;
 }
 
+int plex_download_queue(plex_queued *out, int max)
+{
+	int i, j, n = 0;
+
+	LOCK();
+	for (i = g_dl_pos; i < g_dlq_n; i++) {
+		int t = tab_find(&g_tab, g_dlq[i].key), al;
+
+		if (t < 0 || (i == g_dl_pos && g_dl_cancel)) continue;   /* stopping */
+		al = g_tab.tr[t].album;
+		for (j = 0; j < n && out[j].al != al; j++) {}
+		if (j < n) { out[j].tracks++; continue; }
+		if (n == max) continue;
+		out[n] = (plex_queued){ .al = al, .tracks = 1, .now = i == g_dl_pos };
+		snprintf(out[n].title, sizeof out[n].title, "%s", g_tab.al[al].title);
+		snprintf(out[n].artist, sizeof out[n].artist, "%s", g_tab.ar[g_tab.al[al].artist].name);
+		n++;
+	}
+	UNLOCK();
+	return n;
+}
+
 void plex_download_cancel_album(int al)
 {
 	int i, k;
@@ -1985,8 +2315,6 @@ static void favs_m3u_write(void)
 }
 
 int plex_pl_gen(void) { return g_pl_gen; }
-
-static int cmp_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
 
 /* The job: the server's loved tracks (rated 10, Plexamp's love), downloaded;
  * the copies of ones loved no more gone; the playlist written now and again

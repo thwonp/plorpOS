@@ -1066,7 +1066,12 @@ const char *musec_track(int i)
 
 const char *musec_upcoming(void)
 {
-	int t = muq_upcoming(&g_order);
+	return musec_upcoming_n(1);
+}
+
+const char *musec_upcoming_n(int k)
+{
+	int t = muq_upcoming_n(&g_order, k);
 
 	return t >= 0 && t < g_qn ? g_q[t] : NULL;
 }

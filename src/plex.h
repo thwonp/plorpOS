@@ -84,11 +84,15 @@ bool plex_lib_cached(void);
 bool plex_lib_load(ml_lib *out);
 /* An album's year, by its index in the ml_lib plex_lib_load made last. */
 int  plex_album_year(int al);
-/* Sync in the background: `force` always, else only when Plex says the
- * library changed since the index was written. */
+/* Sync in the background: `force` reads the whole library again; else only
+ * when Plex says it changed since the index was written, and then only what
+ * changed (the whole of it when tracks were deleted, or for an older index). */
 void plex_sync_start(bool force);
 /* 1 running (done/total so far), 0 idle, -1 the last one failed. */
 int  plex_sync_state(int *done, int *total);
+/* How the last sync ended: 1 nothing had changed, 2 the index was updated,
+ * -1 it failed, 0 none yet (or one running). */
+int  plex_sync_outcome(void);
 /* True once after a sync wrote a new index: time to load it. */
 bool plex_sync_take(void);
 
@@ -118,9 +122,16 @@ bool plex_owns(const char *daemon_path, const char *rel);
 /* musec's word that the daemon could not open a track (ERROR): true when it
  * is Plex's, and the connection is found again before it is tried again. */
 bool plex_stream_failed(const char *rel);
-/* The track after the one playing: fetched ahead, on a device that has to
- * fetch a track before it can play it. Cheap to call every frame. */
-void plex_prefetch(const char *rel);
+/* The track playing and the next `n` (the queue's order): fetched ahead, in
+ * order and within the cache's budget, on a device that has to fetch a track
+ * before it can play it. Cheap to call every frame. */
+void plex_prefetch(const char *playing, const char *const *next, int n);
+/* How many tracks plex_prefetch is handed (1, 3, 5 or 10; plorpos-1lw.22),
+ * and whether this device fetches first at all (else it streams, and the
+ * setting does nothing). */
+int  plex_ahead(void);
+void plex_set_ahead(int n);
+bool plex_fetches_first(void);
 /* Every frame Muse is polled: what plays, for Plex's timeline. */
 void plex_tick(const char *rel, int state, double at, double len);
 
@@ -133,6 +144,11 @@ void plex_delete_album(int al);
 /* Album al has tracks waiting or in flight; Cancel Download stops them and
  * removes the copies the download made (a favourite's stays). */
 bool plex_album_downloading(int al);
+/* The albums waiting in the download queue, in queue order, at most `max`:
+ * the album (index as plex_album_downloading), how many of its tracks are
+ * still queued, and whether one of them is downloading now. */
+typedef struct { int al, tracks; bool now; char title[96], artist[64]; } plex_queued;
+int  plex_download_queue(plex_queued *out, int max);
 void plex_download_cancel_album(int al);
 /* In the background: download the tracks loved on Plex (rated 10), delete
  * the copies of ones loved no more, and write PLEX_FAVS_M3U in

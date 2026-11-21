@@ -48,6 +48,8 @@ static void in_order(void)
 	muq_init(&q, 5, 2, MUQ_IN_ORDER, 1);
 	CHECK(muq_current(&q) == 2, "starts on the track chosen: %d", muq_current(&q));
 	CHECK(muq_upcoming(&q) == 3, "the next is the next: %d", muq_upcoming(&q));
+	CHECK(muq_upcoming_n(&q, 2) == 4 && muq_upcoming_n(&q, 3) == -1,
+	      "two on is the last, three on is nothing (plorpos-1lw.22)");
 	CHECK(muq_ended(&q) == 3 && muq_ended(&q) == 4, "plays on in album order");
 	CHECK(muq_upcoming(&q) == -1, "nothing follows the last track");
 	CHECK(muq_ended(&q) == -1, "and it stops there");
@@ -67,6 +69,8 @@ static void repeat_all(void)
 	printf("repeat all\n");
 	muq_init(&q, 3, 2, MUQ_REPEAT_ALL, 1);
 	CHECK(muq_upcoming(&q) == 0, "the last is followed by the first");
+	CHECK(muq_upcoming_n(&q, 2) == 1 && muq_upcoming_n(&q, 3) == -1,
+	      "ahead wraps, but never round to the one playing");
 	CHECK(muq_ended(&q) == 0, "and plays it");
 	CHECK(muq_prev(&q) == 2, "L1 from the first wraps to the last");
 	CHECK(muq_next(&q) == 0, "R1 from the last wraps to the first");
@@ -80,6 +84,7 @@ static void repeat_one(void)
 	printf("repeat one\n");
 	muq_init(&q, 4, 1, MUQ_REPEAT_ONE, 1);
 	CHECK(muq_upcoming(&q) == 1, "what follows is itself");
+	CHECK(muq_upcoming_n(&q, 2) == -1, "and nothing further ahead");
 	CHECK(muq_ended(&q) == 1 && muq_ended(&q) == 1, "and it plays again, and again");
 	CHECK(muq_failed(&q) == 2, "a track that will not open is not repeated");
 	CHECK(muq_next(&q) == 3, "R1 still moves on");

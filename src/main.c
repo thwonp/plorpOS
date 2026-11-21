@@ -1408,7 +1408,13 @@ static void muse_poll(void)
 	mn = musec_now();
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
-	if (mn->state == MU_PLAYING) plex_prefetch(musec_upcoming());
+	if (mn->state == MU_PLAYING) {
+		const char *next[10];
+		int k, n = plex_ahead();
+
+		for (k = 0; k < n && k < 10 && (next[k] = musec_upcoming_n(k + 1)); k++) {}
+		plex_prefetch(musec_path(), next, k);
+	}
 	muse_adopt_orphan();
 	book_keep(false);
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
@@ -9775,9 +9781,52 @@ static bool muse_source_flip(app *a)
 	return true;
 }
 
-enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_SYNC,
+/* Download Queue (plorpos-1lw.21): the albums still to download, one row
+ * each; X cancels that album, as Cancel Download on the album does. */
+#define PLEX_QMAX 48
+typedef struct { plex_queued q[PLEX_QMAX]; int n; char foot[160], cnt[PLEX_QMAX][24]; } plex_queue_ui;
+
+static int plex_queue_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	plex_queue_ui *u = ctx;
+	int i, n = 0;
+
+	*heading = "Download Queue";
+	u->n = plex_download_queue(u->q, PLEX_QMAX < max - 3 ? PLEX_QMAX : max - 3);
+	for (i = 0; i < u->n; i++) {
+		snprintf(u->cnt[i], sizeof u->cnt[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
+		rows[n++] = (menu_row){ u->q[i].title, u->q[i].now ? "downloading" : u->cnt[i], true };
+	}
+	if (!u->n) return 0;                 /* all done or cancelled: back to Plex Settings */
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE(plex_download_status(u->foot, sizeof u->foot) ? u->foot : "");
+	rows[n++] = MENU_NOTE("X: cancel the album");
+	return n;
+}
+
+static menu_result plex_queue_key(app *a, void *ctx, in_button key, int sel)
+{
+	plex_queue_ui *u = ctx;
+
+	(void)a;
+	if (key == IN_X && sel >= 0 && sel < u->n) {
+		plex_download_cancel_album(u->q[sel].al);
+		muse_toast("Download cancelled");
+	}
+	return MENU_STAY;
+}
+
+static void plex_queue_screen(app *a)
+{
+	plex_queue_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         plex_queue_build, plex_queue_key, &u);
+}
+
+enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
-typedef struct { bool rebuilt; char sync[48], dl[160]; } plex_set_ui;
+typedef struct { bool rebuilt; char sync[48], dl[160], ahead[8]; } plex_set_ui;
 
 static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -9793,7 +9842,13 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
-	if (!plex_download_status(u->dl, sizeof u->dl)) snprintf(u->dl, sizeof u->dl, "none");
+	{
+		plex_queued q[PLEX_QMAX];
+		int nq = plex_download_queue(q, PLEX_QMAX);
+
+		if (!nq) snprintf(u->dl, sizeof u->dl, "none");
+		else snprintf(u->dl, sizeof u->dl, nq == 1 ? "1 album" : "%d%s albums", nq, nq == PLEX_QMAX ? "+" : "");
+	}
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
 	                                              : "Sign In", !in };
 	rows[PX_SERVER]   = (menu_row){ "Server", plex_server_name()[0] ? plex_server_name() : "Choose", in };
@@ -9801,8 +9856,13 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	                                in && plex_server_name()[0] };
 	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
 	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
-	rows[PX_SYNC]     = (menu_row){ "Sync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
-	rows[PX_DOWNLOADS]= (menu_row){ "Downloads", u->dl, strcmp(u->dl, "none") != 0 };
+	/* plorpos-1lw.22: only where a track is fetched before it plays. */
+	snprintf(u->ahead, sizeof u->ahead, "%d", plex_ahead());
+	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
+	                                plex_fetches_first() };
+	rows[PX_CHECK]    = (menu_row){ "Check for Updates", NULL, ready && st != 1 };
+	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
+	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
 	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
 	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
 	return PX_ROWS;
@@ -9825,6 +9885,14 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 
 	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
+	if (sel == PX_AHEAD && d) {
+		static const int AHEAD[] = { 1, 3, 5, 10 };
+		int i;
+
+		for (i = 0; i < 4 && AHEAD[i] != plex_ahead(); i++) {}
+		plex_set_ahead(AHEAD[((i == 4 ? 0 : i) + d + 4) % 4]);
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PX_ACCOUNT:
@@ -9841,6 +9909,15 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
+	case PX_CHECK:                       /* plorpos-1lw.24: only what changed */
+		if (!plex_sync_screen(a, false)) return MENU_STAY;
+		if (plex_sync_outcome() != 2) { muse_toast("Library is up to date"); return MENU_STAY; }
+		muse_toast("Library updated");
+		plex_sync_take();
+		if (!g_muse_plex) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
 	case PX_SYNC:
 		if (!plex_sync_screen(a, true)) return MENU_STAY;
 		plex_sync_take();
@@ -9849,8 +9926,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_DOWNLOADS:
-		plex_download_cancel();
-		muse_toast("Downloads stopped");
+		plex_queue_screen(a);
 		return MENU_STAY;
 	case PX_FAVS:
 		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }
@@ -12856,14 +12932,17 @@ static SDL_Texture *mtl_art(void *ctx, int i, int *w, int *h)
 
 /* An album's name without the year its folder starts with ("2010 Cerulean"
  * is Cerulean): the track list's header, whose cover has the year under it
- * already (owner). The album lists keep it - it is what they sort and jump
+ * already (owner). Only when that number IS the album's year - "1000 gecs"
+ * (2019) is a title. Never on Plex: there the name is the album's own
+ * (its tag), not a folder's. The album lists keep it - it is what they sort and jump
  * by. */
-static const char *muse_name_noyear(const char *name)
+static const char *muse_name_noyear(const char *name, int year)
 {
 	const char *p = name;
 
-	if (isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
-	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ') {
+	if (!g_muse_plex && year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ' &&
+	    atoi(p) == year) {
 		p += 5;
 		while (*p == ' ' || *p == '-') p++;
 		if (*p) return p;
@@ -12891,7 +12970,7 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	g_mtl.state = mn->state;
 	memset(&L, 0, sizeof L);
 	L.key = GL_KEY_TRACKS;
-	L.header = ts->album >= 0 ? muse_name_noyear(ts->head) : ts->head;
+	L.header = ts->album >= 0 ? muse_name_noyear(ts->head, g_year ? g_year[ts->album] : 0) : ts->head;
 	L.wide_header = true;
 	L.help = ts->pl ? MTL_HELP_PL : g_muse_plex && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
 	L.nhelp = ts->pl ? 4 : g_muse_plex && ts->album >= 0 ? 3 : 2;
@@ -13654,7 +13733,7 @@ static const char *mal_title(void *ctx, int i)
 	const sysview *v = &a->view[a->sys_cursor];
 	int al = v->album ? v->album[i] : -1;
 
-	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title);
+	if (al >= 0 && g_year && g_year[al] > 0) return muse_name_noyear(v->list.items[i].title, g_year[al]);
 	return v->list.items[i].title;
 }
 
