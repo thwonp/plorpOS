@@ -13046,6 +13046,17 @@ static Uint32  g_muse_toast_until;
  * or an album reached from the Albums tab or from an artist (`artist`). */
 static struct { bool set, pl; char name[PL_NAME_MAX]; int tab, artist; } g_muse_from;
 
+/* What was just played was started here: playlist `pl` (or NULL), the tab
+ * and artist showing. */
+static void muse_from_note(const char *pl)
+{
+	g_muse_from.set = true;
+	g_muse_from.pl = pl != NULL;
+	snprintf(g_muse_from.name, sizeof g_muse_from.name, "%s", pl ? pl : "");
+	g_muse_from.tab = g_muse_list_up ? muse_tab() : -1;
+	g_muse_from.artist = muse_artist_filter();
+}
+
 static void muse_pl_dir(char *out, size_t n)
 {
 	if (g_muse_plex) { plex_pl_dir(out, n); return; }   /* the source's own */
@@ -13574,11 +13585,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 					          al >= 0 ? g_muse.artists[muse_artist_of(al)].name : "",
 					          ts->album >= 0 ? g_muse.albums[ts->album].name : ts->head);
 					free(paths);
-					g_muse_from.set = true;
-					g_muse_from.pl = ts->pl != NULL;
-					snprintf(g_muse_from.name, sizeof g_muse_from.name, "%s", ts->pl ? ts->pl : "");
-					g_muse_from.tab = g_muse_list_up ? muse_tab() : -1;
-					g_muse_from.artist = muse_artist_filter();
+					muse_from_note(ts->pl);
 				}
 			}
 			open_now = true;
@@ -13821,9 +13828,10 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	return g_muse_gone;
 }
 
-/* A on a book: where it was left, straight onto Now Playing with its files
- * underneath. The beginning for a book never started or finished; nothing new
- * for the book already playing or paused, which A only opens. */
+/* A on a book: where it was left, straight onto Now Playing, and B back to
+ * the list it was picked from - its files are under More > Chapters
+ * (plorpos-i8d.2). The beginning for a book never started or finished;
+ * nothing new for the book already playing or paused, which A only opens. */
 static muse_exit muse_book(app *a, int al)
 {
 	const mu_now *mn = musec_now();
@@ -13842,7 +13850,8 @@ static muse_exit muse_book(app *a, int al)
 		          g_muse.artists[muse_artist_of(al)].name, b->name);
 		free(paths);
 	}
-	return muse_tracks(a, al, true);
+	muse_from_note(NULL);           /* SELECT's B comes back here too */
+	return muse_now_screen(a);
 }
 
 /* A on card `k` of Muse's shelf: its album's tracks, over the shelf, or a
@@ -14433,7 +14442,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					g_muse_favs = false;
 					muse_set_filter(v, pa, playing);
 				}
-				how = muse_tracks(a, playing, true);
+				/* A book's Now Playing goes back to its list (plorpos-i8d.2). */
+				how = g_muse.albums[playing].book ? muse_now_screen(a)
+				                                  : muse_tracks(a, playing, true);
 			}
 			if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return; }
 			if (how == MUSE_REBUILT) {
