@@ -75,6 +75,10 @@ static char     g_sink_said[128];   /* what it last reported, "" not yet */
 static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
+/* A resume the launcher holds until it has asked a server where the book is
+ * (plorpos-9rf.9): shown as playing, sent once musec_resume_release says. */
+static bool   (*g_resume_hold)(const char *rel);
+static bool     g_held;
 static bool     g_restored;         /* the queue came from the card and has not played */
 static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
 /* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
@@ -903,13 +907,23 @@ void musec_toggle(void)
 	bool recent = g_pause_sent && (int)(plat_now_ms() - g_pause_sent) < 1500;
 	bool playing = g_asked || (g_now.state == MU_PLAYING && !recent);
 
+	if (g_held) {                        /* pressed again while held: stays paused */
+		g_held = g_asked = false;
+		return;
+	}
 	if (playing) {
 		g_asked = false;
 		g_pause_sent = plat_now_ms() | 1;
 		sendf("PAUSE");
 	} else if (g_now.state == MU_PAUSED || recent) {
+		int t = muq_current(&g_order);
+
 		g_asked = true;
 		g_pause_sent = 0;
+		if (g_now.state == MU_PAUSED && g_resume_hold && t >= 0 && t < g_qn && g_resume_hold(g_q[t])) {
+			g_held = true;
+			return;
+		}
 		if (g_before_heard) g_before_heard();   /* see play_current */
 		sendf("RESUME");
 	}
@@ -917,6 +931,21 @@ void musec_toggle(void)
 }
 
 void musec_on_before_heard(void (*fn)(void)) { g_before_heard = fn; }
+void musec_on_resume(bool (*hold)(const char *rel)) { g_resume_hold = hold; }
+
+void musec_resume_release(int index, double at)
+{
+	if (!g_held) return;
+	g_held = false;
+	if (index < 0 || index >= g_qn || !g_order.order) {
+		if (g_before_heard) g_before_heard();
+		sendf("RESUME");
+		return;
+	}
+	g_order.pos = index;                 /* a book: in order, so position is file */
+	g_start_at = at > 0 ? at : 0;
+	play_current();
+}
 void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }

@@ -89,6 +89,12 @@ int  abs_book_place(const char *track, int *index, double *at);
 /* What plays, each poll: file `index` of the book `track` is in, `at` into it.
  * state 1 playing, 2 paused, 0 stopped. Sent every 15 s and on every change. */
 void abs_tick(const char *track, int index, double at, int state);
+/* Play on a paused book (plorpos-9rf.9): its place asked of the server, and
+ * the resume held meanwhile. True when asked; then abs_resume_poll each poll:
+ * -1 nothing asked, 0 waiting, 1 done - `index` -1 to resume where it is,
+ * else the file and seconds the server's newer place is at. 1.5 s at most. */
+bool abs_resume_hold(const char *track);
+int  abs_resume_poll(int *index, double *at);
 /* The book ran out: finished on the server too. */
 void abs_book_finished(const char *track);
 

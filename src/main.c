@@ -1466,6 +1466,12 @@ static void muse_poll(void)
 	 * order, so the queue's index is the file's (plorpos-9rf.5). */
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
+	{
+		int idx;
+		double at;
+
+		if (abs_resume_poll(&idx, &at) > 0) musec_resume_release(idx, at);
+	}
 	if (mn->state == MU_PLAYING) {
 		const char *next[10];
 		int k, n = plex_ahead();
@@ -10026,6 +10032,8 @@ static bool muse_owns(const char *daemon_path, const char *rel)
 	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel);
 }
 static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
+/* Play on a paused Audiobookshelf book: its place on the server first. */
+static bool muse_resume_hold(const char *rel) { return musec_is_book() && abs_resume_hold(rel); }
 
 /* Source in Muse's menu (plorpos-9rf.2): one of four, from a list. True when
  * the library was rebuilt or the kind shown changed (the menu goes, as after
@@ -20376,6 +20384,7 @@ int main(int argc, char *argv[])
 			plex_init(P_CARD, P_SHARED);
 			abs_init(P_CARD, P_SHARED);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
+			musec_on_resume(muse_resume_hold);
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);

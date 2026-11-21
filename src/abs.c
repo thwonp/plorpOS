@@ -287,7 +287,7 @@ static int req(const char *method, const char *path, const char *json,
 
 /* ---- jobs ---------------------------------------------------------------------------- */
 
-enum { J_CHECK, J_LOGIN, J_COVER, J_PUSH, J_PULL, J_LOAD };
+enum { J_CHECK, J_LOGIN, J_COVER, J_PUSH, J_PULL, J_LOAD, J_PLACE };
 typedef struct job {
 	int kind;
 	char a[700], b[700];
@@ -1260,31 +1260,110 @@ void abs_progress_refresh(void)
 	if ((j = job_new(J_PULL))) push(j, true);
 }
 
-int abs_book_place(const char *track, int *index, double *at)
+/* Under g_mu: the server's place for `id` when it moved since this device
+ * last sent or took one - 1 with file and seconds, 2 finished - else 0. */
+static int place_locked(const char *id, int *index, double *at)
 {
-	char id[64];
 	ab_prog *pr;
-	int b, k, r = 0;
+	int b, k;
 	double left;
 
-	if (!item_of(track, id, sizeof id)) return 0;
-	tab_ensure();
-	LOCK();
-	if (!(pr = prog_find(id)) || pr->last == seen_get(id)) goto out;
+	if (!(pr = prog_find(id)) || pr->last == seen_get(id)) return 0;
 	seen_set(id, pr->last);
 	seen_save(true);
-	if (pr->fin) { r = 2; goto out; }
-	if ((b = tab_find(&g_tab, id)) < 0) goto out;
+	if (pr->fin) return 2;
+	if ((b = tab_find(&g_tab, id)) < 0) return 0;
 	left = pr->cur;
 	for (k = 0; k < g_tab.b[b].n - 1 && left >= g_tab.f[g_tab.b[b].first + k].dur; k++)
 		left -= g_tab.f[g_tab.b[b].first + k].dur;
 	*index = k;
 	*at = left < 0 ? 0 : left;
-	r = 1;
 	fprintf(stderr, "abs: the server's place wins: file %d at %.0f s\n", k + 1, *at);
-out:
+	return 1;
+}
+
+int abs_book_place(const char *track, int *index, double *at)
+{
+	char id[64];
+	int r;
+
+	if (!item_of(track, id, sizeof id)) return 0;
+	tab_ensure();
+	LOCK();
+	r = place_locked(id, index, at);
 	UNLOCK();
 	return r;
+}
+
+/* ---- play on a paused book (plorpos-9rf.9) -------------------------------------------- */
+
+#define RESUME_WAIT_MS 1500
+static char g_rc_id[64];                 /* under g_mu */
+static volatile int g_rc_state;          /* 0 none, 1 asking, 2 answered */
+static unsigned g_rc_t0;
+
+/* One book's place, read fresh: into g_prog, as /api/me's list would have it. */
+static void do_check_place(job *j)
+{
+	char path[160], *body;
+	size_t len;
+	int code;
+
+	snprintf(path, sizeof path, "/api/me/progress/%.100s", j->a);
+	code = req("GET", path, NULL, &body, &len, 5);
+	LOCK();
+	if (code == 200) {
+		jsv root = js_root(body, len), v;
+		ab_prog *pr = prog_find(j->a);
+
+		if (!pr) {
+			ab_prog *nl = realloc(g_prog, sizeof *nl * (size_t)(g_nprog + 1));
+			if (nl) { g_prog = nl; pr = &g_prog[g_nprog++]; snprintf(pr->id, sizeof pr->id, "%.63s", j->a); }
+		}
+		if (pr) {
+			pr->cur = jnum(root, "currentTime");
+			pr->fin = js_member(root, "isFinished", &v) && js_is_true(v);
+			pr->last = (long long)jnum(root, "lastUpdate");
+		}
+	}
+	if (!strcmp(g_rc_id, j->a) && g_rc_state == 1) g_rc_state = 2;
+	UNLOCK();
+	free(body);
+}
+
+bool abs_resume_hold(const char *track)
+{
+	char id[64];
+	job *j;
+
+	if (!abs_signed_in() || !item_of(track, id, sizeof id) || !(j = job_new(J_PLACE))) return false;
+	snprintf(j->a, sizeof j->a, "%s", id);
+	LOCK();
+	snprintf(g_rc_id, sizeof g_rc_id, "%s", id);
+	g_rc_state = 1;
+	g_rc_t0 = now_ms();
+	UNLOCK();
+	push(j, true);
+	return true;
+}
+
+int abs_resume_poll(int *index, double *at)
+{
+	unsigned ms;
+
+	if (!g_rc_state) return -1;
+	ms = now_ms() - g_rc_t0;
+	if (g_rc_state == 1 && ms < RESUME_WAIT_MS) return 0;
+	*index = -1;
+	*at = 0;
+	LOCK();
+	if (g_rc_state == 2 && place_locked(g_rc_id, index, at) != 1) *index = -1;
+	fprintf(stderr, "abs: play checked the server's place in %u ms%s\n", ms,
+	        g_rc_state == 1 ? " (no answer: the device's place)" : *index >= 0 ? "" : " (the device's place)");
+	g_rc_state = 0;
+	g_rc_id[0] = '\0';
+	UNLOCK();
+	return 1;
 }
 
 void abs_tick(const char *track, int index, double at, int state)
@@ -1352,6 +1431,7 @@ static void *api_main(void *arg)
 		case J_PUSH:  do_push(j); break;
 		case J_PULL:  pull_progress(); break;
 		case J_LOAD:  tab_ensure(); break;
+		case J_PLACE: do_check_place(j); break;
 		}
 		memset(j, 0, sizeof *j);
 		free(j);
