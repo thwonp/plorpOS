@@ -1491,6 +1491,40 @@ static void book_keep(bool now)
 static char g_queue_file[CFG_STR * 2];
 
 static void muse_adopt_orphan(void);
+static void tl_watch(void);
+
+/* More > Sleep Timer (plorpos-i8d.1). When it runs out the book is paused -
+ * its place kept to the second, and sent - and the device sleeps, whatever is
+ * left in the queue. Counted where Muse is polled - every screen, through a
+ * game - and in the dark (music_dark), so it runs wherever the book is heard.
+ * In a game it only pauses: the game is not put to sleep under the player. */
+static unsigned g_sleep_at;        /* plat_now_ms when it runs out; 0 off */
+static unsigned g_sleep_fired;     /* when it ran out, for power_check; 0 none */
+
+/* Seconds left, 0 when off. */
+static int sleep_timer_left(void)
+{
+	int ms;
+
+	if (!g_sleep_at) return 0;
+	ms = (int)(g_sleep_at - plat_now_ms());
+	return ms > 0 ? (ms + 999) / 1000 : 1;
+}
+
+static void sleep_timer_set(int minutes)
+{
+	g_sleep_at = minutes > 0 ? (plat_now_ms() + (unsigned)minutes * 60000u) | 1u : 0;
+	fprintf(stderr, "muse: sleep timer %s%d min\n", minutes > 0 ? "" : "off, ", minutes);
+}
+
+static void sleep_timer_tick(void)
+{
+	if (!g_sleep_at || (int)(plat_now_ms() - g_sleep_at) < 0) return;
+	g_sleep_at = 0;
+	g_sleep_fired = plat_now_ms() | 1u;
+	if (musec_playing()) musec_pause();
+	fprintf(stderr, "muse: sleep timer ran out\n");
+}
 
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
  * Everything that polls Muse comes through here. */
@@ -1499,6 +1533,7 @@ static void muse_poll(void)
 	const mu_now *mn;
 
 	musec_poll();
+	sleep_timer_tick();
 	mn = musec_now();
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
@@ -1521,6 +1556,7 @@ static void muse_poll(void)
 	}
 	muse_adopt_orphan();
 	book_keep(false);
+	tl_watch();
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
 
@@ -1583,26 +1619,24 @@ static double book_speed(int al)
 	return x >= 0.5 && x <= 2.0 ? x : 1.0;
 }
 
-/* Y on a book's Now Playing: the next speed, 1x to 2x in quarters and then
- * 0.75x before coming round - the speeds a listener reaches for, in the order
- * they reach for them. Set on the book as it plays and kept for it. */
-static void book_cycle_speed(void)
-{
-	static const double STEPS[] = { 1.0, 1.25, 1.5, 1.75, 2.0, 0.75 };
-	int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
-	double now = musec_speed(), next = STEPS[0];
-	char key[LIB_PATH + 16], val[16];
-	size_t k;
+/* More > Speed on a book's Now Playing (plorpos-i8d.1): 0.8x to 2x in
+ * tenths, set on the book as it plays and kept for it. It was Y, cycling
+ * quarters; the owner moved it here (2026-11-20). */
+#define BOOK_SPEED_MIN 0.8
+#define BOOK_SPEED_MAX 2.0
 
-	for (k = 0; k < sizeof STEPS / sizeof STEPS[0]; k++)
-		if (fabs(STEPS[k] - now) < 0.01) {
-			next = STEPS[(k + 1) % (sizeof STEPS / sizeof STEPS[0])];
-			break;
-		}
-	musec_set_speed(next);
+static void book_set_speed(double x)
+{
+	int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
+	char key[LIB_PATH + 16], val[16];
+
+	x = round(x * 10) / 10;
+	if (x < BOOK_SPEED_MIN) x = BOOK_SPEED_MIN;
+	if (x > BOOK_SPEED_MAX) x = BOOK_SPEED_MAX;
+	musec_set_speed(x);
 	if (al < 0 || !g_muse.albums[al].book) return;
 	book_speed_key(al, key, sizeof key);
-	snprintf(val, sizeof val, "%.2f", next);
+	snprintf(val, sizeof val, "%.2f", x);
 	db_set_str(db_dev(), key, val);
 }
 
@@ -12747,6 +12781,12 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			ui_text(r, fs, line, gx, y, -1, acc);
 			gx += ui_text_width(fs, line) + 12;
 		}
+		/* The sleep timer while it runs, in the minutes left (plorpos-i8d.1). */
+		if (sleep_timer_left() > 0) {
+			snprintf(line, sizeof line, "Sleep %dm", (sleep_timer_left() + 59) / 60);
+			ui_text(r, fs, line, gx, y, -1, acc);
+			gx += ui_text_width(fs, line) + 12;
+		}
 		/* The Mute Switch down in muse button lock: what the buttons will
 		 * do once the screen goes dark, which is nothing. Only while it is
 		 * down, as an iPod shows its hold. TortOS-7cv. */
@@ -12805,10 +12845,10 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 
 	np_help(r, fs, musec_is_book()
 	        ? (musec_chapters() > 1
-	           ? (state ? "A: play    L1/R1: chapter    Left/Right: seek    Y: speed"
-	                    : "A: pause    L1/R1: chapter    Left/Right: seek    Y: speed")
-	           : (state ? "A: play    L1/R1: file    Left/Right: seek    Y: speed"
-	                    : "A: pause    L1/R1: file    Left/Right: seek    Y: speed"))
+	           ? (state ? "A: play    L1/R1: chapter    Left/Right: seek    X: more"
+	                    : "A: pause    L1/R1: chapter    Left/Right: seek    X: more")
+	           : (state ? "A: play    L1/R1: file    Left/Right: seek    X: more"
+	                    : "A: pause    L1/R1: file    Left/Right: seek    X: more"))
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"));
 	draw_battery(r);
@@ -12866,11 +12906,356 @@ static void np_under_draw(app *a, void *ctx)
 	np_draw(a, musec_now(), next, muse_hold());
 }
 
+/* ---- A book's More (plorpos-i8d.1) ---------------------------------------- *
+ *
+ * X on a book's Now Playing, on either audiobook source: Speed, Sleep Timer,
+ * Chapters and Timeline. */
+
+/* A list too long for a menu - a book's chapters, its timeline - on the
+ * lists' own drawer: the row chosen, or -1 for B. */
+typedef struct { char (*title)[128]; char (*value)[48]; } lp_rows;
+
+static const char *lp_title(void *ctx, int i) { return ((lp_rows *)ctx)->title[i]; }
+static const char *lp_value(void *ctx, int i) { return ((lp_rows *)ctx)->value[i]; }
+static const char *const LP_HELP[] = { "A", "Play", "B", "Back" };
+
+static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int start)
+{
+	ui_pace pace = {0};
+	gl_scroll gs = {0};
+	gl_list L;
+	gl_geom g;
+	int sel = start >= 0 && start < n ? start : 0, chosen = -1;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		muse_screen_poll();
+		gl_poll(a, &gs, true);
+		if (a->in.quit_requested) { a->running = false; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); break; }
+		}
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
+		memset(&L, 0, sizeof L);
+		L.key = GL_KEY_PICK;
+		L.header = header;
+		L.n = n;
+		L.accent = MUSE_ACCENT;
+		L.ctx = rows;
+		L.title = lp_title;
+		L.value = lp_value;
+		L.help = LP_HELP;
+		L.nhelp = 2;
+		L.empty = "Nothing yet";
+		gl_geometry(&g, &L);
+		if (n > 0) {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
+			if (in_repeat(&a->in, IN_L1))   sel = gl_page_step(sel, n, g.rows, -1);
+			if (in_repeat(&a->in, IN_R1))   sel = gl_page_step(sel, n, g.rows, +1);
+			gl_scroll_apply(&gs, &sel, n);
+			if (a->in.pressed[IN_ACCEPT]) { chosen = sel; break; }
+		}
+		vol_keys(&a->in);
+		L.cur = sel;
+		L.phase = mq_phase(MQ_SHELF, -4, sel);
+		if (!screen_draw_due(a, &pace, (Uint32)(sel * 7919 + n))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		draw_background(a);
+		gl_draw(a, &L);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	return chosen;
+}
+
+/* More > Chapters: the m4b's chapters when the file has them (as L1/R1 go),
+ * else the book's files. A plays from the start of the one chosen. */
+static bool np_chapters(app *a)
+{
+	const mu_now *mn = musec_now();
+	int nch = musec_chapters(), n = nch > 1 ? nch : mn->count, i, k;
+	lp_rows rows = { calloc((size_t)n + 1, sizeof *rows.title), calloc((size_t)n + 1, sizeof *rows.value) };
+	int cur = nch > 1 ? musec_chapter_now() : mn->index;
+
+	if (!rows.title || !rows.value) { free(rows.title); free(rows.value); return false; }
+	for (i = 0; i < n; i++) {
+		if (nch > 1) {
+			chapter_label(i, rows.title[i], sizeof rows.title[i]);
+			mmss(rows.value[i], sizeof rows.value[i], musec_chapter_at(i));
+		} else {
+			const char *t = musec_track(i);
+
+			if (!t || (!abs_title(t, rows.title[i], sizeof rows.title[i]) &&
+			           !plex_title(t, rows.title[i], sizeof rows.title[i])))
+				ml_track_name(t && strrchr(t, '/') ? strrchr(t, '/') + 1 : t ? t : "",
+				              rows.title[i], sizeof rows.title[i]);
+		}
+		if (i == cur) snprintf(rows.value[i], sizeof rows.value[i], "%s",
+		                       mn->state == MU_PAUSED ? "paused" : "playing");
+	}
+	k = muse_long_pick(a, "Chapters", &rows, n, cur);
+	free(rows.title);
+	free(rows.value);
+	if (k < 0) return false;
+	if (nch > 1) musec_jump_at(mn->index, musec_chapter_at(k));
+	else         musec_jump_at(k, 0);
+	return true;
+}
+
+/* TIMELINE: every play and pause of a book, when and where - one line each in
+ * muse-timeline.tsv, "<book>\t<epoch>\t<file>\t<seconds>\tP|S". A book on the
+ * Audiobookshelf server is named by its item, so both copies share one; any
+ * other by its folder. The last TL_KEEP of each book are kept. Written only on
+ * a play or a pause, never while it plays. */
+#define TL_KEEP 50
+#define TL_FILE_MAX (64 * 1024)
+
+typedef struct { long long when; int index; double at; char kind; } tl_ev;
+
+static void tl_path(char *out, size_t n) { snprintf(out, n, "%s/muse-timeline.tsv", P_USERDATA); }
+
+static void tl_book_id(int al, char *out, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path, *slash = strrchr(p, '/');
+	char id[64];
+
+	if (abs_item(p, id, sizeof id)) snprintf(out, n, "abs:%s", id);
+	else snprintf(out, n, "%.*s", slash ? (int)(slash - p) : 0, p);
+}
+
+/* The file over TL_FILE_MAX: each book's last TL_KEEP lines kept. */
+static void tl_compact(const char *path)
+{
+	char **ln = NULL, buf[LIB_PATH + 96], tmp[CFG_STR * 2 + 40];
+	int n = 0, cap = 0, i, j;
+	bool *keep;
+	FILE *f = fopen(path, "r");
+
+	if (!f) return;
+	while (fgets(buf, sizeof buf, f)) {
+		if (n == cap) {
+			char **nl = realloc(ln, sizeof *ln * (size_t)(cap = cap ? cap * 2 : 256));
+			if (!nl) break;
+			ln = nl;
+		}
+		if (!(ln[n] = strdup(buf))) break;
+		n++;
+	}
+	fclose(f);
+	if ((keep = calloc((size_t)n + 1, sizeof *keep))) {
+		for (i = n - 1; i >= 0; i--) {
+			size_t idl = strcspn(ln[i], "\t");
+			int later = 0;
+
+			for (j = i + 1; j < n && later < TL_KEEP; j++)
+				if (keep[j] && !strncmp(ln[j], ln[i], idl) && ln[j][idl] == '\t') later++;
+			keep[i] = later < TL_KEEP;
+		}
+		snprintf(tmp, sizeof tmp, "%s.tmp", path);
+		if ((f = fopen(tmp, "w"))) {
+			for (i = 0; i < n; i++) if (keep[i]) fputs(ln[i], f);
+			if (fclose(f) == 0) rename(tmp, path);
+		}
+		free(keep);
+	}
+	for (i = 0; i < n; i++) free(ln[i]);
+	free(ln);
+}
+
+static void tl_note(int al, int index, double at, bool play)
+{
+	char path[CFG_STR * 2 + 32], id[LIB_PATH];
+	FILE *f;
+	long sz;
+
+	tl_book_id(al, id, sizeof id);
+	tl_path(path, sizeof path);
+	if (!(f = fopen(path, "a"))) return;
+	fprintf(f, "%s\t%lld\t%d\t%.1f\t%c\n", id, (long long)time(NULL), index, at, play ? 'P' : 'S');
+	sz = ftell(f);
+	fclose(f);
+	if (sz > TL_FILE_MAX) tl_compact(path);
+}
+
+/* From muse_poll: a book that starts playing or pauses. Not what was already
+ * so when the launcher came up, and not the moments between two files. */
+static void tl_watch(void)
+{
+	static char last_dir[LIB_PATH];
+	static char last_kind;              /* 0 until the first look */
+	const mu_now *mn = musec_now();
+	const char *t, *slash;
+	char kind, dir[LIB_PATH];
+	int al;
+
+	if (!musec_is_book() || g_walk_thread || g_muse.ntracks == 0) return;
+	if (mn->state == MU_PLAYING) kind = 'P';
+	else if (mn->state == MU_PAUSED) kind = 'S';
+	else return;
+	t = musec_track(mn->index);
+	if (!t || (al = ml_album_of(&g_muse, t)) < 0 || !g_muse.albums[al].book) return;
+	slash = strrchr(t, '/');
+	snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - t) : 0, t);
+	if (last_kind && (kind != last_kind || strcmp(dir, last_dir)))
+		tl_note(al, mn->index, mn->at, kind == 'P');
+	last_kind = kind;
+	snprintf(last_dir, sizeof last_dir, "%s", dir);
+}
+
+/* Book `al`'s events, newest first, at most `max`. */
+static int tl_load(int al, tl_ev *out, int max)
+{
+	char path[CFG_STR * 2 + 32], id[LIB_PATH], buf[LIB_PATH + 96];
+	size_t idl;
+	int n = 0, i;
+	FILE *f;
+
+	tl_book_id(al, id, sizeof id);
+	idl = strlen(id);
+	tl_path(path, sizeof path);
+	if (!(f = fopen(path, "r"))) return 0;
+	while (fgets(buf, sizeof buf, f)) {
+		tl_ev e;
+		char k;
+
+		if (strncmp(buf, id, idl) || buf[idl] != '\t') continue;
+		if (sscanf(buf + idl + 1, "%lld\t%d\t%lf\t%c", &e.when, &e.index, &e.at, &k) != 4) continue;
+		e.kind = k;
+		if (n == max) { memmove(out, out + 1, sizeof *out * (size_t)(max - 1)); n--; }
+		out[n++] = e;
+	}
+	fclose(f);
+	for (i = 0; i < n / 2; i++) { tl_ev x = out[i]; out[i] = out[n - 1 - i]; out[n - 1 - i] = x; }
+	return n;
+}
+
+/* Where an event was: the whole book's time when the server says how long
+ * its files are, else the file and the time into it. */
+static void tl_where(int al, int index, double at, char *out, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path;
+	char id[64], t[16];
+	double secs;
+
+	if (abs_item(p, id, sizeof id) && abs_book_secs(id, index, at, &secs)) { mmss(out, n, secs); return; }
+	mmss(t, sizeof t, at);
+	if (g_muse.albums[al].n > 1) snprintf(out, n, "file %d, %s", index + 1, t);
+	else snprintf(out, n, "%s", t);
+}
+
+/* More > Timeline: A plays from the moment chosen. */
+static bool np_timeline(app *a)
+{
+	const mu_now *mn = musec_now();
+	int al = ml_album_of(&g_muse, musec_track(mn->index)), n, i, k;
+	tl_ev ev[TL_KEEP];
+	lp_rows rows;
+	char where[48];
+
+	if (al < 0) return false;
+	n = tl_load(al, ev, TL_KEEP);
+	rows.title = calloc((size_t)n + 1, sizeof *rows.title);
+	rows.value = calloc((size_t)n + 1, sizeof *rows.value);
+	if (!rows.title || !rows.value) { free(rows.title); free(rows.value); return false; }
+	for (i = 0; i < n; i++) {
+		time_t w = (time_t)ev[i].when;
+		struct tm *tm = localtime(&w);
+
+		tl_where(al, ev[i].index, ev[i].at, where, sizeof where);
+		snprintf(rows.title[i], sizeof rows.title[i], "%s  %s", ev[i].kind == 'P' ? "Play" : "Pause", where);
+		if (tm) {
+			/* "Nov 21 4:31 AM", as the save slots write it. */
+			char mon[8];
+			int h12 = tm->tm_hour % 12;
+
+			strftime(mon, sizeof mon, "%b", tm);
+			snprintf(rows.value[i], sizeof rows.value[i], "%s %d %d:%02d %s", mon, tm->tm_mday,
+			         h12 ? h12 : 12, tm->tm_min, tm->tm_hour < 12 ? "AM" : "PM");
+		}
+	}
+	k = muse_long_pick(a, "Timeline", &rows, n, 0);
+	free(rows.title);
+	free(rows.value);
+	if (k < 0 || ev[k].index >= mn->count) return false;
+	musec_jump_at(ev[k].index, ev[k].at);
+	return true;
+}
+
+static void speed_label(double x, char *out, size_t n)
+{
+	if (fabs(x * 10 - round(x * 10)) < 0.01) snprintf(out, n, "%.1fx", x);
+	else snprintf(out, n, "%.2fx", x);
+}
+
+static int np_more_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	static char spd[16], slp[16], chp[32];
+	const mu_now *mn = musec_now();
+	int left = sleep_timer_left();
+
+	(void)ctx;
+	(void)max;
+	*heading = "More";
+	speed_label(musec_speed(), spd, sizeof spd);
+	if (left > 0) snprintf(slp, sizeof slp, "%d min", (left + 59) / 60);
+	else snprintf(slp, sizeof slp, "Off");
+	if (musec_chapters() > 1) snprintf(chp, sizeof chp, "%d of %d", musec_chapter_now() + 1, musec_chapters());
+	else snprintf(chp, sizeof chp, "%d of %d", mn->index + 1, mn->count);
+	rows[0] = (menu_row){ "Speed", spd, true };
+	rows[1] = (menu_row){ "Sleep Timer", slp, true };
+	rows[2] = (menu_row){ "Chapters", chp, true };
+	rows[3] = (menu_row){ "Timeline", NULL, true };
+	return 4;
+}
+
+/* Speed and Sleep Timer are ladders: left/right step, A steps on and wraps,
+ * as Playback Settings' Screen Off. The timer's steps are from what is left:
+ * 28 minutes left goes up to 30, down to 20. */
+static menu_result np_more_key(app *a, void *ctx, in_button key, int sel)
+{
+	bool step = key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT;
+
+	(void)ctx;
+	if (sel == 0 && step) {
+		double x = round(musec_speed() * 10) / 10;
+
+		if (key == IN_LEFT)       x -= 0.1;
+		else if (key == IN_RIGHT) x += 0.1;
+		else                      x = x > BOOK_SPEED_MAX - 0.05 ? BOOK_SPEED_MIN : x + 0.1;
+		book_set_speed(x);
+	}
+	if (sel == 1 && step) {
+		int left = sleep_timer_left(), m = left > 0 ? (left + 59) / 60 : 0, to;
+
+		if (key == IN_LEFT)       to = m <= 10 ? 0 : (m - 1) / 10 * 10;
+		else if (key == IN_RIGHT) to = m >= 90 ? 90 : (m / 10 + 1) * 10;
+		else                      to = m >= 90 ? 0 : (m / 10 + 1) * 10;
+		sleep_timer_set(to);
+	}
+	if (sel == 2 && key == IN_ACCEPT) return np_chapters(a) ? MENU_DONE : MENU_STAY;
+	if (sel == 3 && key == IN_ACCEPT) return np_timeline(a) ? MENU_DONE : MENU_STAY;
+	return MENU_STAY;
+}
+
+static void np_more(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         np_more_build, np_more_key, NULL);
+	g_menu_closing = false;
+}
+
 static muse_exit muse_now_screen(app *a)
 {
 	struct {
 		mu_state st;
-		int at, len, index, count, mode, chapter, speed;
+		int at, len, index, count, mode, chapter, speed, sleep;
 		bool lock;
 		char title[128], artist[128], album[128];
 		SDL_Texture *tex;
@@ -12920,11 +13305,13 @@ static muse_exit muse_now_screen(app *a)
 		 * which made one button mean two things a screen apart; it is left
 		 * free in Muse for something that needs it. Eric's call, 2026-09-19. */
 		if (a->in.pressed[IN_ACCEPT])       musec_toggle();
-		/* The mode, on music; on a book, which plays in order whatever the
-		 * mode says, its speed. */
-		if (a->in.pressed[IN_Y]) {
-			if (musec_is_book()) book_cycle_speed();
-			else                 muse_cycle_mode();
+		/* The mode, on music. A book plays in order whatever the mode says;
+		 * its speed is under X's More (plorpos-i8d.1). */
+		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
+		if (a->in.pressed[IN_X] && musec_is_book()) {
+			np_more(a);
+			memset(&drawn, 0, sizeof drawn);     /* the menu drew over it */
+			continue;
 		}
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
@@ -12957,6 +13344,7 @@ static muse_exit muse_now_screen(app *a)
 		shown.lock = muse_hold();
 		shown.chapter = musec_chapter_now();
 		shown.speed = (int)(musec_speed() * 100 + 0.5);
+		shown.sleep = (sleep_timer_left() + 59) / 60;
 		for (b = 0; b < IN_COUNT && !touched; b++)
 			touched = a->in.pressed[b] || a->in.down[b];
 		now = plat_now_ms();
@@ -15746,6 +16134,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		unsigned now;
 
 		musec_poll();
+		sleep_timer_tick();          /* paused here, it suspends after the grace */
 		/* Routed in the dark too, as Muse's own screens route: a headset
 		 * that drops and comes back with the screen off took the song to
 		 * the speaker and left it there until a wake (2026-10-06). */
@@ -15797,6 +16186,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	a->idle.since_ms = plat_now_ms();
+	g_sleep_fired = 0;               /* this was its sleep */
 	return end;
 }
 
@@ -15845,6 +16235,7 @@ static bool sleep_cycle(app *a)
 	stats_asleep(plat_now_ms() - t0);
 	memset(&a->in, 0, sizeof a->in);
 	a->idle.since_ms = plat_now_ms();
+	g_sleep_fired = 0;
 	return awake;
 }
 /* END PolyForm-Noncommercial-1.0.0 */
@@ -15860,6 +16251,12 @@ static pwr_action power_check(app *a)
 {
 	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
 
+	/* The sleep timer just ran out (plorpos-i8d.1) - just: one that ran out
+	 * in a game must not sleep the device when its menu opens much later. */
+	if (pa == PWR_NONE && g_sleep_fired) {
+		if ((int)(plat_now_ms() - g_sleep_fired) < 60000) pa = PWR_SLEEP;
+		g_sleep_fired = 0;
+	}
 	if (pa == PWR_NONE && idle_due(a)) {
 #if defined(PLATFORM_MIYOO)
 		pa = PWR_SLEEP;                    /* the power-off is the sleep's timer */

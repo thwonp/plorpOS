@@ -1033,6 +1033,16 @@ void musec_seek_by(double delta)
 	seek_to(t);
 }
 
+void musec_jump_at(int i, double at)
+{
+	if (i < 0 || i >= g_qn || !g_order.order) return;
+	if (at < 0) at = 0;
+	if (i == g_order.pos && g_now.state == MU_PLAYING) { seek_to(at); return; }
+	g_order.pos = i;
+	g_start_at = at;
+	play_current();
+}
+
 void musec_stop(void)
 {
 	g_wait_remote = false;

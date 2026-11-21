@@ -141,6 +141,9 @@ const mu_now *musec_now(void);
 /* Play heard position i of the queue (musec_track's i, mu_now.index's
  * count) from its start - the shuffle's order kept (plorpos-rgds.18.3.4). */
 void musec_jump(int i);
+/* A book's file i from `at` seconds into it - a seek when that file is the one
+ * playing (More > Chapters and Timeline, plorpos-i8d.1). */
+void musec_jump_at(int i, double at);
 
 /* The queued track, relative to the music root, or "" - so a list can mark
  * the row that is playing without comparing titles, which tags can change. */
