@@ -1001,6 +1001,224 @@ bool pod_cover_take(char *base, size_t n)
 	return got;
 }
 
+/* ---- downloads ---------------------------------------------------------------------------------- */
+
+#define DL_Q 64
+static char g_dl_q[DL_Q][32];            /* "<show>/<episode>" waiting, under g_mu */
+static int g_dl_n;
+static char g_dl_key[32];                /* the one being fetched */
+static char g_dl_part[800];
+static volatile int g_dl_cancel, g_dl_changed;
+static pthread_cond_t g_dl_cv = PTHREAD_COND_INITIALIZER;
+
+/* A name a FAT card takes: no path or reserved characters, no trailing dot or
+ * space, at most `max` bytes. */
+static void safe_name(const char *in, char *out, size_t max)
+{
+	size_t o = 0;
+
+	for (; *in && o + 1 < max; in++) {
+		unsigned char c = (unsigned char)*in;
+
+		out[o++] = c < 0x20 || strchr("/\\:*?\"<>|", c) ? '_' : (char)c;
+	}
+	while (o > 0 && (out[o - 1] == ' ' || out[o - 1] == '.')) o--;
+	while (o > 0 && ((unsigned char)out[o - 1] & 0xC0) == 0x80 && o + 1 >= max) o--;
+	out[o] = '\0';
+	if (!o) snprintf(out, max, "Untitled");
+}
+
+/* Under g_mu: the show's dl.tsv written from the table. */
+static void dl_write_locked(const char *sid)
+{
+	char p[700], *b;
+	size_t cap = 4096, len = 0;
+	int i;
+
+	for (i = 0; i < g_tab.n; i++) if (g_tab.e[i].dl && !strcmp(g_tab.e[i].sid, sid)) cap += strlen(g_tab.e[i].dl) + 32;
+	if (!(b = malloc(cap))) return;
+	for (i = 0; i < g_tab.n; i++)
+		if (g_tab.e[i].dl && !strcmp(g_tab.e[i].sid, sid))
+			len += (size_t)snprintf(b + len, cap - len, "%s\t%s\n", g_tab.e[i].eid, g_tab.e[i].dl);
+	snprintf(p, sizeof p, "%s/%s", g_dir, sid);
+	mkdirs(p);
+	snprintf(p, sizeof p, "%s/%s/dl.tsv", g_dir, sid);
+	if (len) write_file(p, b, len);
+	else unlink(p);
+	free(b);
+}
+
+static bool dl_one(const char *key)
+{
+	char url[1024], sid[12], eid[16], ext[8], title[256], show[256], stage[600], dir[700], dest[1900],
+	     rel[1300], sshow[96], stitle[120], date[16];
+	long long stamp;
+	struct tm tm;
+	time_t t;
+	int al, code, i;
+
+	LOCK();
+	if ((al = album_of_key_locked(key)) < 0 || g_tab.e[al].dl) { UNLOCK(); return false; }
+	cpy(url, sizeof url, g_tab.e[al].url);
+	cpy(sid, sizeof sid, g_tab.e[al].sid);
+	cpy(eid, sizeof eid, g_tab.e[al].eid);
+	cpy(ext, sizeof ext, g_tab.e[al].ext);
+	cpy(title, sizeof title, g_tab.e[al].title);
+	stamp = g_tab.e[al].stamp;
+	show[0] = '\0';
+	for (i = 0; i < g_nsubs; i++) if (!strcmp(g_subs[i].sid, sid)) { cpy(show, sizeof show, g_subs[i].title); break; }
+	UNLOCK();
+	snprintf(stage, sizeof stage, "%.500s/Podcasts/.dl", g_card);
+	mkdirs(stage);
+	snprintf(g_dl_part, sizeof g_dl_part, "%.600s/%.15s%.7s.part", stage, eid, ext);
+	code = net_fetch(url, "GET", NULL, 0, g_dl_part, 15, 0, &g_dl_cancel);
+	if (code != 200) { unlink(g_dl_part); return false; }
+	safe_name(show[0] ? show : sid, sshow, sizeof sshow);
+	safe_name(title, stitle, sizeof stitle);
+	t = (time_t)stamp;
+	gmtime_r(&t, &tm);
+	strftime(date, sizeof date, "%Y-%m-%d", &tm);
+	snprintf(dir, sizeof dir, "%.500s/Podcasts/%s", g_card, sshow);
+	mkdirs(dir);
+	snprintf(rel, sizeof rel, "Podcasts/%s/%s %s%s", sshow, date, stitle, ext);
+	snprintf(dest, sizeof dest, "%s/%s", g_card, rel);
+	if (access(dest, F_OK) == 0) {               /* two of one name and date */
+		snprintf(rel, sizeof rel, "Podcasts/%s/%s %s %s%s", sshow, date, stitle, eid, ext);
+		snprintf(dest, sizeof dest, "%s/%s", g_card, rel);
+	}
+	if (rename(g_dl_part, dest) != 0) { unlink(g_dl_part); return false; }
+	sync();
+	LOCK();
+	if ((al = album_of_key_locked(key)) >= 0) {
+		free(g_tab.e[al].dl);
+		g_tab.e[al].dl = strdup(rel);
+		dl_write_locked(sid);
+	}
+	UNLOCK();
+	return true;
+}
+
+static void *dl_main(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		char key[32];
+		bool ok;
+
+		LOCK();
+		while (!g_dl_n) pthread_cond_wait(&g_dl_cv, &g_mu);
+		cpy(key, sizeof key, g_dl_q[0]);
+		memmove(g_dl_q, g_dl_q + 1, sizeof g_dl_q[0] * (size_t)--g_dl_n);
+		cpy(g_dl_key, sizeof g_dl_key, key);
+		g_dl_cancel = 0;
+		UNLOCK();
+		ok = dl_one(key);
+		fprintf(stderr, "pod: download %s %s\n", key, ok ? "done" : g_dl_cancel ? "cancelled" : "failed");
+		LOCK();
+		g_dl_key[0] = '\0';
+		g_dl_part[0] = '\0';
+		UNLOCK();
+		g_dl_changed = 1;
+	}
+	return NULL;
+}
+
+int pod_download_state(int al)
+{
+	char key[32];
+	int st = 0;
+
+	if (!pod_ep_key(al, key, sizeof key)) return 0;
+	LOCK();
+	if (!strcmp(g_dl_key, key)) st = 2;
+	for (int i = 0; i < g_dl_n && !st; i++) if (!strcmp(g_dl_q[i], key)) st = 1;
+	UNLOCK();
+	return st;
+}
+
+void pod_download(int al)
+{
+	static bool started;
+	char key[32];
+	pthread_t th;
+
+	if (!pod_ep_key(al, key, sizeof key) || pod_downloaded(al, NULL, 0) || pod_download_state(al)) return;
+	LOCK();
+	if (!started) started = pthread_create(&th, NULL, dl_main, NULL) == 0 && !pthread_detach(th);
+	if (g_dl_n < DL_Q) {
+		cpy(g_dl_q[g_dl_n++], sizeof g_dl_q[0], key);
+		pthread_cond_signal(&g_dl_cv);
+	}
+	UNLOCK();
+}
+
+void pod_download_cancel(int al)
+{
+	char key[32];
+
+	if (!pod_ep_key(al, key, sizeof key)) return;
+	LOCK();
+	if (!strcmp(g_dl_key, key)) g_dl_cancel = 1;
+	for (int i = 0; i < g_dl_n; i++)
+		if (!strcmp(g_dl_q[i], key)) {
+			memmove(g_dl_q + i, g_dl_q + i + 1, sizeof g_dl_q[0] * (size_t)(g_dl_n - i - 1));
+			g_dl_n--;
+			break;
+		}
+	UNLOCK();
+	g_dl_changed = 1;
+}
+
+bool pod_delete_download(int al)
+{
+	char path[1400], sid[12];
+	bool ok = false;
+
+	LOCK();
+	if (al >= 0 && al < g_tab.n && g_tab.e[al].dl) {
+		snprintf(path, sizeof path, "%s/%s", g_card, g_tab.e[al].dl);
+		cpy(sid, sizeof sid, g_tab.e[al].sid);
+		ok = unlink(path) == 0 || errno == ENOENT;
+		if (ok) {
+			free(g_tab.e[al].dl);
+			g_tab.e[al].dl = NULL;
+			dl_write_locked(sid);
+		}
+	}
+	UNLOCK();
+	if (ok) { fprintf(stderr, "pod: deleted %s\n", path); g_dl_changed = 1; }
+	return ok;
+}
+
+bool pod_download_status(char *out, size_t n)
+{
+	char part[800];
+	int waiting;
+	struct stat st;
+
+	LOCK();
+	waiting = g_dl_n;
+	cpy(part, sizeof part, g_dl_part);
+	UNLOCK();
+	if (!part[0]) return false;
+	if (!out) return true;
+	{
+		double mb = stat(part, &st) == 0 ? st.st_size / 1048576.0 : 0;
+
+		if (waiting) snprintf(out, n, "%.0f MB, %d more waiting", mb, waiting);
+		else snprintf(out, n, "%.0f MB", mb);
+	}
+	return true;
+}
+
+bool pod_download_take_changed(void)
+{
+	bool c = g_dl_changed;
+
+	g_dl_changed = 0;
+	return c;
+}
+
 /* ---- the worker ------------------------------------------------------------------------------- */
 
 static void *api_main(void *arg)

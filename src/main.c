@@ -10245,7 +10245,20 @@ static int pod_opml_files(char names[][128], int max)
 	return n;
 }
 
-enum { PDX_CHECK, PDX_IMPORT, PDX_ROWS };
+/* Auto-Delete (plorpos-7ni.6): see pod_mark_played and pod_autodel_day. */
+enum { POD_AUTODEL_OFF, POD_AUTODEL_PLAYED, POD_AUTODEL_DAY, POD_AUTODEL_N };
+static const char *const POD_AUTODEL[POD_AUTODEL_N] = { "Off", "When Played", "24h After Played" };
+
+static int pod_autodel(void)
+{
+	int v = db_get_int(db_dev(), "pod.autodel", POD_AUTODEL_OFF);
+
+	return v >= 0 && v < POD_AUTODEL_N ? v : POD_AUTODEL_OFF;
+}
+
+static void pod_autodel_day(void);
+
+enum { PDX_CHECK, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
 /* A row's word for a few seconds - "Up to date", "Added 16" - since a toast is
  * a list's and is never seen over this menu (plorpos-i8d.7). */
 typedef struct { bool rebuilt; char check[48], import[48]; Uint32 check_until, import_until; } pod_set_ui;
@@ -10263,6 +10276,7 @@ static int pod_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	rows[PDX_CHECK]  = (menu_row){ "Check for Updates", now < u->check_until ? u->check : NULL,
 	                              st != 1 && pod_show_count() > 0 };
 	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, true };
+	rows[PDX_AUTODEL] = (menu_row){ "Auto-Delete", POD_AUTODEL[pod_autodel()], true };
 	return PDX_ROWS;
 }
 
@@ -10279,11 +10293,20 @@ static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
 {
 	pod_set_ui *u = ctx;
 
+	if (sel == PDX_AUTODEL && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
+		int v = pod_autodel();
+
+		v = key == IN_LEFT ? (v > 0 ? v - 1 : 0)
+		  : key == IN_RIGHT ? (v < POD_AUTODEL_N - 1 ? v + 1 : v) : (v + 1) % POD_AUTODEL_N;
+		db_set_int(db_dev(), "pod.autodel", v);
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PDX_CHECK: {
 		int added = 0;
 
+		pod_autodel_day();
 		if (pod_sync_screen(a) <= 0) return MENU_STAY;
 		if (!pod_sync_take(&added)) {
 			snprintf(u->check, sizeof u->check, "Up to date");
@@ -14157,6 +14180,7 @@ static bool muse_download_status(char *out, size_t n)
 {
 	if (g_muse_plex) return plex_download_status(out, n);
 	if (g_muse_abs) return abs_download_status(out, n);
+	if (g_muse_pod) return pod_download_status(out, n);
 	return false;
 }
 
@@ -14509,6 +14533,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_gone = false;
 	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
+	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */
 	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
@@ -14604,6 +14629,12 @@ static sysview *muse_shelf_refind(app *a)
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
+	/* An empty podcast list (Downloads, Queue) is the tab's, not Muse's:
+	 * the whole view again, and the tab filters it once more (7ni.6). */
+	if (muse >= 0 && g_pod_view >= 0 && a->view[muse].list.count <= 0) {
+		g_pod_view = -1;
+		muse_order_view(&a->view[muse]);
+	}
 	if (muse < 0 || a->view[muse].list.count <= 0) return NULL;
 	a->sys_cursor = muse;
 	a->screen = SCREEN_GAMES;
@@ -15338,6 +15369,10 @@ static const char *mal_pod_value(void *ctx, int i)
 	pod_ep e;
 
 	if (al < 0 || !pod_episode(al, &e)) return "";
+	switch (pod_download_state(al)) {
+	case 1: return "Waiting";
+	case 2: return "Downloading";
+	}
 	at = g_book_done && g_book_done[al] ? -2 : pod_at(al);
 	if (at == -2) return "Played";
 	if (at > 0 && e.dur > at) { pod_span(e.dur - at, span, sizeof span); snprintf(o, 32, "%s left", span); return o; }
@@ -15366,12 +15401,44 @@ static void pod_under_line(int al, bool show, char *out, size_t n)
 	else snprintf(out, n, "%s%s", d, pod_downloaded(al, NULL, 0) ? "  \xC2\xB7  Downloaded" : "");
 }
 
-/* Played by hand (X), or heard to 95%: finished, out of the Queue. */
+/* Auto-Delete (plorpos-7ni.6, owner): a downloaded episode's copy goes when
+ * it is played, or a day after - checked when Muse opens and on Check for
+ * Updates, never on a timer. A favorite's copy is never deleted by itself. */
+static bool pod_fav(int al)
+{
+	char dir[LIB_PATH];
+
+	muse_album_dir(al, dir, sizeof dir);
+	return muse_fav_is(dir);
+}
+
+/* The day-old played copies, gone. */
+static void pod_autodel_day(void)
+{
+	char key[LIB_PATH + 16];
+	long long now = (long long)time(NULL), done;
+	int al, gone = 0;
+
+	if (!g_muse_pod || !g_book_done || pod_autodel() != POD_AUTODEL_DAY) return;
+	for (al = 0; al < g_muse.nalbums; al++) {
+		if (!g_book_done[al] || !pod_downloaded(al, NULL, 0) || pod_fav(al)) continue;
+		tl_book_id(al, key + 9, sizeof key - 9);
+		memcpy(key, "bookdone.", 9);
+		done = db_get_int(db_dev(), key, 0);
+		if (done > 0 && now - done >= 24 * 3600 && pod_delete_download(al)) gone++;
+	}
+	if (gone) fprintf(stderr, "pod: auto-deleted %d played downloads\n", gone);
+}
+
+/* Played by hand (X), or heard to 95%: finished, out of the Queue, and its
+ * copy gone if Auto-Delete says so. */
 static void pod_mark_played(int al)
 {
 	book_finish(al);
 	pod_queue_remove(al);
 	pod_at_forget(al);
+	if (pod_autodel() == POD_AUTODEL_PLAYED && pod_downloaded(al, NULL, 0) && !pod_fav(al))
+		pod_delete_download(al);
 }
 
 /* After episode `done`: the first one in the Queue that is not it, or -1. */
@@ -15400,12 +15467,16 @@ static void pod_mark_unplayed(int al)
 	pod_at_forget(al);
 }
 
-/* X on an episode: Played or not, the Queue. Downloads come with 7ni.6. */
+/* X on an episode: its download, Played or not, the Queue. */
 static void muse_pod_ep_menu(app *a, sysview *v, int al)
 {
-	enum { E_PLAYED, E_UNPLAYED, E_QADD, E_QDEL };
+	enum { E_PLAYED, E_UNPLAYED, E_QADD, E_QDEL, E_DL, E_DLCANCEL, E_DLDEL };
 	const char *opts[6];
 	int act[6], n = 0, k;
+
+	if (pod_download_state(al)) { opts[n] = "Cancel Download"; act[n++] = E_DLCANCEL; }
+	else if (pod_downloaded(al, NULL, 0)) { opts[n] = "Delete Download"; act[n++] = E_DLDEL; }
+	else { opts[n] = "Download"; act[n++] = E_DL; }
 
 	if (g_book_done && g_book_done[al]) { opts[n] = "Mark Unplayed"; act[n++] = E_UNPLAYED; }
 	else { opts[n] = "Mark Played"; act[n++] = E_PLAYED; }
@@ -15417,6 +15488,13 @@ static void muse_pod_ep_menu(app *a, sysview *v, int al)
 	case E_UNPLAYED: pod_mark_unplayed(al); muse_toast("Marked unplayed"); break;
 	case E_QADD:     pod_queue_add(al);     muse_toast("Added to Queue"); break;
 	case E_QDEL:     pod_queue_remove(al);  muse_toast("Removed from Queue"); break;
+	case E_DL:
+		if (!net_online()) { plex_say(a, "Downloads need Wi-Fi"); break; }
+		pod_download(al);
+		muse_toast("Downloading");
+		break;
+	case E_DLCANCEL: pod_download_cancel(al); muse_toast("Download cancelled"); break;
+	case E_DLDEL:    muse_toast(pod_delete_download(al) ? "Download deleted" : "Could not delete"); break;
 	}
 	muse_refilter(v, al);
 }
@@ -15512,7 +15590,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	 * Plex download under way, looked at again twice a second while it runs. */
 	if (L->toast && *L->toast && L->nunder < 3)
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
-	else if ((g_muse_plex || g_muse_abs) && L->nunder < 3) {
+	else if ((g_muse_plex || g_muse_abs || g_muse_pod) && L->nunder < 3) {
 		char line[200];
 
 		memcpy(line, "Downloading ", 12);
@@ -15642,6 +15720,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		unsigned ft0, ft1;
 
 		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
+		/* A podcast download landed, or a copy went: Downloads and the rows. */
+		if (g_muse_pod && pod_download_take_changed())
+			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
 		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
 		  : artists ? g_mar.n : lists ? (books ? BPL_N : g_npls) : 0;
@@ -15853,7 +15934,11 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			SDL_Delay(IDLE_POLL_MS);
 	}
 	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
-	if (g_pod_view >= 0 && v) { g_pod_view = -1; muse_refilter(v, -1); }
+	if (g_pod_view >= 0) {
+		g_pod_view = -1;
+		for (int i = 0; i < a->sys.count; i++)
+			if (is_muse(&a->sys.systems[i])) { muse_refilter(&a->view[i], -1); break; }
+	}
 	*vp = v;
 	g_muse_list_up = false;
 	plat_input_flush();
@@ -19788,7 +19873,7 @@ static void muse_order_view(sysview *v)
 				int al = v->album[k];
 
 				if (g_pod_view == MT_ALBUMS ? !(g_book_done && g_book_done[al])
-				                            : pod_downloaded(al, NULL, 0))
+				                            : pod_downloaded(al, NULL, 0) || pod_download_state(al))
 					v->album[kept++] = al;
 			}
 		}

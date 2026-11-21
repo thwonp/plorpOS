@@ -79,6 +79,22 @@ int  pod_album_of_key(const char *key);
 /* Downloaded copy, card-relative, or false (plorpos-7ni.6). */
 bool pod_downloaded(int al, char *rel, size_t n);
 
+/* ---- downloads (plorpos-7ni.6) ---------------------------------------------------------------
+ *
+ * To <card>/Podcasts/<show>/<YYYY-MM-DD> <title>.<ext>, one at a time on a
+ * thread of their own: fetched into Podcasts/.dl/ and moved into place whole.
+ * The episode keeps its place and played mark (they are the episode's, not the
+ * file's), and plays from the copy with no network. */
+
+int  pod_download_state(int al);     /* 0 none, 1 waiting, 2 downloading */
+void pod_download(int al);
+void pod_download_cancel(int al);
+bool pod_delete_download(int al);
+/* A line while downloads run: "1 of 3, 45%". */
+bool pod_download_status(char *out, size_t n);
+/* True once after a download landed or a copy went. */
+bool pod_download_take_changed(void);
+
 /* ---- Up Next (owner, plorpos-7ni.4): the Queue tab, kept as queue.tsv ---------------- */
 
 int  pod_queue_count(void);
