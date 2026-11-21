@@ -10022,7 +10022,9 @@ static bool abs_setup(app *a)
 }
 
 enum { AX_SERVER, AX_ACCOUNT, AX_LIBRARY, AX_CHECK, AX_SYNC, AX_SIGNOUT, AX_ROWS };
-typedef struct { bool rebuilt; char sync[48]; } abs_set_ui;
+/* ok_until: "Up to date" on Check for Updates until then - a toast is a
+ * list's and was never seen over this menu (plorpos-i8d.7). */
+typedef struct { bool rebuilt; char sync[48]; Uint32 ok_until; } abs_set_ui;
 
 static int abs_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -10041,7 +10043,8 @@ static int abs_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	rows[AX_SERVER]  = (menu_row){ "Server", abs_server()[0] ? abs_server() : "none", false };
 	rows[AX_ACCOUNT] = (menu_row){ "Account", in ? abs_user() : "Sign In", !in };
 	rows[AX_LIBRARY] = (menu_row){ "Library", abs_library_name()[0] ? abs_library_name() : "none", false };
-	rows[AX_CHECK]   = (menu_row){ "Check for Updates", NULL, in && st != 1 };
+	rows[AX_CHECK]   = (menu_row){ "Check for Updates",
+	                               SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, in && st != 1 };
 	rows[AX_SYNC]    = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, in && st != 1 };
 	rows[AX_SIGNOUT] = (menu_row){ "Sign Out", NULL, in };
 	return AX_ROWS;
@@ -10064,7 +10067,7 @@ static menu_result abs_set_key(app *a, void *ctx, in_button key, int sel)
 	case AX_CHECK:
 	case AX_SYNC:
 		if (!abs_sync_screen(a, sel == AX_SYNC)) return MENU_STAY;
-		if (!abs_sync_take()) { muse_toast("Library is up to date"); return MENU_STAY; }
+		if (!abs_sync_take()) { u->ok_until = SDL_GetTicks() + 3000; return MENU_STAY; }
 		muse_toast("Library updated");
 		if (!g_muse_abs) return MENU_STAY;
 		muse_source_reload(a);
@@ -10224,7 +10227,7 @@ static void plex_queue_screen(app *a)
 
 enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
-typedef struct { bool rebuilt; char sync[48], dl[160], ahead[8]; } plex_set_ui;
+typedef struct { bool rebuilt; char sync[48], dl[160], ahead[8]; Uint32 ok_until; } plex_set_ui;
 
 static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -10258,7 +10261,8 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	snprintf(u->ahead, sizeof u->ahead, "%d", plex_ahead());
 	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
 	                                plex_fetches_first() };
-	rows[PX_CHECK]    = (menu_row){ "Check for Updates", NULL, ready && st != 1 };
+	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
+	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
 	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
 	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
@@ -10309,7 +10313,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_DONE;
 	case PX_CHECK:                       /* plorpos-1lw.24: only what changed */
 		if (!plex_sync_screen(a, false)) return MENU_STAY;
-		if (plex_sync_outcome() != 2) { muse_toast("Library is up to date"); return MENU_STAY; }
+		if (plex_sync_outcome() != 2) { u->ok_until = SDL_GetTicks() + 3000; return MENU_STAY; }
 		muse_toast("Library updated");
 		plex_sync_take();
 		if (!g_muse_plex) return MENU_STAY;
