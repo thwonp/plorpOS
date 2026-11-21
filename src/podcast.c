@@ -698,6 +698,97 @@ bool pod_downloaded(int al, char *rel, size_t n)
 	return ok;
 }
 
+/* ---- playing ---------------------------------------------------------------------------------- */
+
+/* Under g_mu: the album of an episode path "<root>/<show>/<episode>/ep<ext>", or -1. */
+static int path_album_locked(const char *rel)
+{
+	char key[32];
+	const char *a, *b;
+	size_t n = strlen(g_rel_root);
+
+	if (!rel || strncmp(rel, g_rel_root, n) || rel[n] != '/') return -1;
+	a = rel + n + 1;
+	if (!(b = strchr(a, '/')) || !(b = strchr(b + 1, '/')) || (size_t)(b - a) >= sizeof key) return -1;
+	snprintf(key, sizeof key, "%.*s", (int)(b - a), a);
+	return album_of_key_locked(key);
+}
+
+/* Under g_mu: what album `al` plays from. */
+static void source_locked(int al, char *out, size_t n)
+{
+	if (g_tab.e[al].dl) snprintf(out, n, "%s/%s", g_card, g_tab.e[al].dl);
+	else snprintf(out, n, "%s", g_tab.e[al].url);
+}
+
+bool pod_resolve(const char *rel, musec_remote *out)
+{
+	int al;
+
+	if (!pod_is_path(rel)) return false;
+	memset(out, 0, sizeof *out);
+	LOCK();
+	if ((al = path_album_locked(rel)) < 0) {
+		UNLOCK();
+		snprintf(out->url, sizeof out->url, "pod:missing");
+		return true;
+	}
+	source_locked(al, out->url, sizeof out->url);
+	cpy(out->title, sizeof out->title, g_tab.e[al].title);
+	if (g_tab.e[al].show >= 0 && g_tab.e[al].show < g_tab.nshows) {
+		for (int i = 0; i < g_nsubs; i++)
+			if (!strcmp(g_subs[i].sid, g_tab.e[al].sid)) { cpy(out->artist, sizeof out->artist, g_subs[i].title); break; }
+	}
+	out->len = g_tab.e[al].dur;
+	UNLOCK();
+	return true;
+}
+
+bool pod_owns(const char *daemon_path, const char *rel)
+{
+	char src[2048];
+	int al;
+	bool yes = false;
+
+	if (!pod_is_path(rel)) return false;
+	LOCK();
+	if ((al = path_album_locked(rel)) >= 0) {
+		source_locked(al, src, sizeof src);
+		yes = !strcmp(src, daemon_path) || !strcmp(g_tab.e[al].url, daemon_path);
+	}
+	UNLOCK();
+	return yes;
+}
+
+bool pod_rel_of(const char *daemon_path, char *out, size_t n)
+{
+	char src[2048];
+	bool yes = false;
+
+	if (!daemon_path || !daemon_path[0]) return false;
+	LOCK();
+	for (int al = 0; al < g_tab.n && !yes; al++) {
+		source_locked(al, src, sizeof src);
+		if (!strcmp(src, daemon_path) || !strcmp(g_tab.e[al].url, daemon_path)) {
+			snprintf(out, n, "%s/%s/%s/ep%s", g_rel_root, g_tab.e[al].sid, g_tab.e[al].eid, g_tab.e[al].ext);
+			yes = true;
+		}
+	}
+	UNLOCK();
+	return yes;
+}
+
+bool pod_title(const char *rel, char *out, size_t n)
+{
+	int al;
+
+	if (!pod_is_path(rel)) return false;
+	LOCK();
+	if ((al = path_album_locked(rel)) >= 0) cpy(out, n, g_tab.e[al].title);
+	UNLOCK();
+	return al >= 0;
+}
+
 /* ---- Up Next ---------------------------------------------------------------------------------- */
 
 static char (*g_q)[32];                  /* "<show>/<episode>", in order; under g_mu */

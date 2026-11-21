@@ -1486,6 +1486,14 @@ static int book_place(int al, double *at)
  * and for a new queue about to replace this one. */
 static struct { int al, index; mu_state st; double at; } g_bk = { -1, -1, MU_OFF, 0 };
 
+/* Podcasts (plorpos-7ni.5): heard to 95% is played (owner); an episode that
+ * ran out plays the first one in the Queue next, or nothing (owner: an empty
+ * Queue stops). The next is started from muse_poll, after book_keep. */
+static void pod_mark_played(int al);
+static int pod_up_next(int done);
+static bool book_start(int al);
+static int g_pod_next = -1;
+
 static void book_keep(bool now)
 {
 	const mu_now *mn = musec_now();
@@ -1497,8 +1505,21 @@ static void book_keep(bool now)
 	track = musec_track(mn->index);
 	al = ml_album_of(&g_muse, track);
 	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
+	if (ran_out && pod_is_path(track)) {
+		if (!g_book_done[al]) pod_mark_played(al);   /* not already at 95% */
+		pod_queue_remove(al);
+		g_pod_next = pod_up_next(al);
+		g_bk.al = -1;
+		return;
+	}
 	if (ran_out) { book_finish(al); g_bk.al = -1; return; }
 	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return;
+	if (mn->len > 0 && mn->at >= 0.95 * mn->len && pod_is_path(track)) {
+		/* Played; its place is not kept past here, or it would be
+		 * in progress again. */
+		if (!g_book_done[al]) pod_mark_played(al);   /* book_finish says so in the log */
+		return;
+	}
 	if (now || al != g_bk.al || mn->index != g_bk.index || mn->state != g_bk.st ||
 	    fabs(mn->at - g_bk.at) >= 30) {
 		book_write(al, track, mn->at);
@@ -1615,6 +1636,12 @@ static void muse_poll(void)
 	}
 	muse_adopt_orphan();
 	book_keep(false);
+	if (g_pod_next >= 0) {
+		int al = g_pod_next;
+
+		g_pod_next = -1;
+		book_start(al);
+	}
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
 
@@ -1650,6 +1677,8 @@ static void muse_adopt_orphan(void)
 	al = ml_album_of(&g_muse, t);
 	/* An Audiobookshelf book's file, playing from its stream URL. */
 	if (al < 0 && abs_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
+	/* A podcast episode, streamed or from its download (plorpos-7ni.5). */
+	if (al < 0 && pod_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
 	if (al < 0 || !g_muse.albums[al].book ||
 	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
 	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
@@ -10361,11 +10390,11 @@ static void abs_main_poll(app *a)
 /* musec's remote hooks, for both servers. */
 static bool muse_resolve(const char *rel, musec_remote *out)
 {
-	return plex_resolve(rel, out) || abs_resolve(rel, out);
+	return plex_resolve(rel, out) || abs_resolve(rel, out) || pod_resolve(rel, out);
 }
 static bool muse_owns(const char *daemon_path, const char *rel)
 {
-	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel);
+	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel) || pod_owns(daemon_path, rel);
 }
 static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
 /* Play on a paused Audiobookshelf book - streamed, or a downloaded copy
@@ -13177,7 +13206,8 @@ static void np_next_line(char *next, size_t cap)
 	    musec_chapter_now() + 1 < musec_chapters())
 		chapter_label(musec_chapter_now() + 1, next, cap);
 	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()) &&
-	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap))
+	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap) &&
+	         !pod_title(nt, next, (size_t)cap))
 		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
 }
 
@@ -13278,7 +13308,8 @@ static bool np_chapters(app *a)
 			const char *t = musec_track(i);
 
 			if (!t || (!abs_title(t, rows.title[i], sizeof rows.title[i]) &&
-			           !plex_title(t, rows.title[i], sizeof rows.title[i])))
+			           !plex_title(t, rows.title[i], sizeof rows.title[i]) &&
+			           !pod_title(t, rows.title[i], sizeof rows.title[i])))
 				ml_track_name(t && strrchr(t, '/') ? strrchr(t, '/') + 1 : t ? t : "",
 				              rows.title[i], sizeof rows.title[i]);
 		}
@@ -14527,24 +14558,29 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
  * the list it was picked from - its files are under More > Chapters
  * (plorpos-i8d.2). The beginning for a book never started or finished;
  * nothing new for the book already playing or paused, which A only opens. */
+/* Book `al` from its place. False out of memory. */
+static bool book_start(int al)
+{
+	const ml_album *b = &g_muse.albums[al];
+	const char **paths = calloc((size_t)b->n, sizeof *paths);
+	double at;
+	int i, start = book_place(al, &at);
+
+	if (!paths) return false;
+	for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
+	fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
+	muse_play(paths, b->n, start, at, true, book_speed(al),
+	          g_muse.artists[muse_artist_of(al)].name, b->name);
+	free(paths);
+	return true;
+}
+
 static muse_exit muse_book(app *a, int al)
 {
 	const mu_now *mn = musec_now();
 	bool loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 
-	if (!loaded || muse_playing_album(NULL) != al) {
-		const ml_album *b = &g_muse.albums[al];
-		const char **paths = calloc((size_t)b->n, sizeof *paths);
-		double at;
-		int i, start = book_place(al, &at);
-
-		if (!paths) return MUSE_BACK;
-		for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
-		fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
-		muse_play(paths, b->n, start, at, true, book_speed(al),
-		          g_muse.artists[muse_artist_of(al)].name, b->name);
-		free(paths);
-	}
+	if ((!loaded || muse_playing_album(NULL) != al) && !book_start(al)) return MUSE_BACK;
 	muse_from_note(NULL);           /* SELECT's B comes back here too */
 	return muse_now_screen(a);
 }
@@ -15336,6 +15372,19 @@ static void pod_mark_played(int al)
 	book_finish(al);
 	pod_queue_remove(al);
 	pod_at_forget(al);
+}
+
+/* After episode `done`: the first one in the Queue that is not it, or -1. */
+static int pod_up_next(int done)
+{
+	int q = pod_queue_count();
+
+	for (int k = 0; k < q; k++) {
+		int al = pod_queue_album(k);
+
+		if (al >= 0 && al != done) return al;
+	}
+	return -1;
 }
 
 static void pod_mark_unplayed(int al)
@@ -20881,7 +20930,8 @@ static const char *queue_title(void *ctx, int i)
 
 	(void)ctx;
 	if (!p) return "";
-	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0])) return out;
+	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0]) ||
+	    pod_title(p, out, sizeof buf[0])) return out;
 	slash = strrchr(p, '/');
 	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
 	return out;

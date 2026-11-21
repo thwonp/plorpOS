@@ -88,6 +88,18 @@ void pod_queue_add(int al);          /* at the end, unless there already */
 void pod_queue_remove(int al);
 bool pod_queue_move(int al, int dir);/* a place up (-1) or down (+1); false at an end */
 
+/* ---- playing (plorpos-7ni.5) ------------------------------------------------------------- */
+
+/* An episode's path to what the daemon is sent: the downloaded copy when
+ * there is one, else the enclosure's URL (https: FFmpeg follows the tracking
+ * redirects itself). False for a path that is not a podcast's. */
+bool pod_resolve(const char *rel, musec_remote *out);
+bool pod_owns(const char *daemon_path, const char *rel);
+/* The episode path for what the daemon plays, for taking it up after a
+ * launcher restart. */
+bool pod_rel_of(const char *daemon_path, char *out, size_t n);
+bool pod_title(const char *rel, char *out, size_t n);
+
 /* Where album `al`'s art is kept, without extension: its show's. */
 void pod_cover_base(int al, char *out, size_t n);
 bool pod_cover_want(int al, const char *base);
