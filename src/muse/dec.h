@@ -41,6 +41,9 @@ int dec_seek(dec *d, double at);
 /* Play on at `speed` from where the decoder is, reading nothing again. 0 when
  * it could not, and `d` is then only fit for dec_close. */
 int dec_speed(dec *d, double speed);
+/* Whether the end dec_read reached was a read that failed - a stream whose
+ * server or Wi-Fi went, after rw_timeout - rather than the file's own end. */
+int dec_cut(const dec *d);
 double dec_len(const dec *d);
 
 /* A tag, or "" when the file has none: "title", "artist", "album". */

@@ -1492,6 +1492,7 @@ static struct { int al, index; mu_state st; double at; } g_bk = { -1, -1, MU_OFF
 static void pod_mark_played(int al);
 static int pod_up_next(int done);
 static bool book_start(int al);
+static void muse_toast(const char *msg);
 static int g_pod_next = -1;
 
 static void book_keep(bool now)
@@ -1505,6 +1506,15 @@ static void book_keep(bool now)
 	track = musec_track(mn->index);
 	al = ml_album_of(&g_muse, track);
 	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
+	if (ran_out && pod_is_path(track) && musec_end_cut() && !g_book_done[al]) {
+		/* The stream stopped short - Wi-Fi or the server went: not heard, so
+		 * not played, and nothing starts after it. A plays on from here
+		 * (plorpos-7ni.16). */
+		book_write(al, track, mn->at);
+		muse_toast("Stream lost. Your place is kept.");
+		g_bk.al = -1;
+		return;
+	}
 	if (ran_out && pod_is_path(track)) {
 		if (!g_book_done[al]) pod_mark_played(al);   /* not already at 95% */
 		pod_queue_remove(al);

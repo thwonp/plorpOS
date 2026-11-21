@@ -29,7 +29,9 @@
  *                                              codec: "FLAC 16/44.1", "MP3 320"
  *        CHAPTER i= at= title=                 one per chapter, after META
  *        POS     at= len=                      about once a second while playing
- *        END     path=                         the file ran out by itself
+ *        END     path=  [cut=1]                the file ran out by itself;
+ *                                              cut: a read failed first (a
+ *                                              stream that lost its server)
  *        SINK    device=                       the one in use, after each SINK
  *                                              and on STATUS; "default" when a
  *                                              device would not open
@@ -86,6 +88,7 @@ static struct {
 	double ch_at[256];
 	char   ch_title[256][96];
 	int    ev_meta, ev_end, ev_state, ev_sink;   /* for the main thread to announce */
+	int    end_cut;                   /* the END was a read that failed */
 	char   ev_err[160];
 	char   sink[128];                 /* g_dev, for the main thread to report */
 } S = { .mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER,
@@ -445,6 +448,7 @@ static void *player(void *arg)
 		if (n == 0) {
 			/* The end of the file. What is queued plays out on its own; the
 			 * launcher hears END and decides what comes next. */
+			S.end_cut = dec_cut(g_dec);
 			dec_close(g_dec);
 			g_dec = NULL;
 			S.state = ST_STOPPED;
@@ -536,7 +540,8 @@ static void announce(int fd, int all)
 		send_line(fd, "ERROR\twhy=%s", clean(S.ev_err, a, sizeof a));
 		say("error: %s", S.ev_err);
 	}
-	if (S.ev_end) send_line(fd, "END\tpath=%s", clean(S.path, a, sizeof a));
+	if (S.ev_end) send_line(fd, "END\tpath=%s%s", clean(S.path, a, sizeof a),
+	                        S.end_cut ? "\tcut=1" : "");
 	if (S.ev_state || all)
 		send_line(fd, "STATE\tstate=%s\tpath=%s", st_name(S.state),
 		          clean(S.path, a, sizeof a));

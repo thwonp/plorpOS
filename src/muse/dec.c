@@ -56,6 +56,7 @@ struct dec {
 	int              base_set;
 	int64_t          given;      /* frames handed over since `base` */
 	AVAudioFifo     *held;       /* the last chain's tail, after a speed change */
+	int              cut;        /* the end came from a read that failed */
 };
 
 static int build_graph(dec *d, char *err, size_t errn)
@@ -196,6 +197,7 @@ static int feed(dec *d)
 		/* The decoder wants a packet. */
 		r = av_read_frame(d->fmt, d->pkt);
 		if (r < 0) {
+			if (r != AVERROR_EOF) d->cut = 1;
 			avcodec_send_packet(d->cc, NULL);      /* flush, then drain above */
 			continue;
 		}
@@ -369,10 +371,16 @@ int dec_seek(dec *d, double at)
 	avfilter_graph_free(&d->g);
 	if (!build_graph(d, err, sizeof err)) return 0;
 	d->fed_eof = 0;
+	d->cut = 0;
 	d->at = at;
 	d->base_set = 0;
 	d->given = 0;
 	return 1;
+}
+
+int dec_cut(const dec *d)
+{
+	return d && d->cut;
 }
 
 int dec_speed(dec *d, double speed)

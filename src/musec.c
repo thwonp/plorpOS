@@ -57,6 +57,7 @@ static char    g_title_wait[96];
 static bool    g_book;              /* the queue is a book: in order, always */
 static double  g_start_at;          /* where the first PLAY of a queue starts */
 static bool    g_ran_out;           /* see musec_take_ran_out */
+static bool    g_end_cut;           /* see musec_end_cut */
 static double  g_speed = 1.0;       /* see musec_set_speed */
 /* The playing file's chapters, from the daemon's CHAPTER lines. */
 #define MAX_CHAPTERS 256
@@ -488,6 +489,10 @@ static void event(const char *line)
 		}
 		g_now.at = at;
 	} else if (!strncmp(line, "END", 3)) {
+		char cut[4];
+
+		field(line, "cut", cut, sizeof cut);
+		g_end_cut = cut[0] == '1';
 		advance(false);
 	} else if (!strncmp(line, "SINK", 4)) {
 		char prev[sizeof g_sink_said];
@@ -715,6 +720,7 @@ static void queue_set(const char *const *paths, int n, int start, double at, boo
 	g_skips = 0;
 	g_start_at = at > 0 ? at : 0;
 	g_ran_out = false;
+	g_end_cut = false;
 	g_restored = false;
 	g_wait_remote = false;
 	g_orphan[0] = '\0';
@@ -1181,6 +1187,11 @@ int musec_chapter_now(void)
 	for (i = 0; i < g_nch; i++)
 		if (g_ch_at[i] <= g_now.at + 0.5) c = i;
 	return c;
+}
+
+bool musec_end_cut(void)
+{
+	return g_end_cut;
 }
 
 bool musec_take_ran_out(void)
