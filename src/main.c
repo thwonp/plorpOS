@@ -30,6 +30,7 @@
 #include "platform.h"
 #include "texload.h"
 #include "artshrink.h"
+#include "podcast.h"
 #include "artscrape.h"
 #include "favorites.h"
 #include "recent.h"
@@ -21200,6 +21201,7 @@ int main(int argc, char *argv[])
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
 			abs_init(P_CARD, P_SHARED);
+			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_on_resume(muse_resume_hold);
 			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */

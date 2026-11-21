@@ -57,7 +57,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
-         check-playlist
+         check-playlist check-podfeed
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -834,6 +834,15 @@ build-native/playlist-check: tools/playlist-check.c src/playlist.c src/playlist.
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/playlist-check.c src/playlist.c
+
+# Podcast feeds and OPML (plorpos-7ni.2): the reader's edge cases.
+check-podfeed: build-native/podfeed-check
+	@./build-native/podfeed-check
+
+build-native/podfeed-check: tools/podfeed-check.c src/podfeed.c src/podfeed.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
+	      -o $@ tools/podfeed-check.c src/podfeed.c
 
 check-musequeue: build-native/musequeue-check
 	@./build-native/musequeue-check

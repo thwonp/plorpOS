@@ -216,6 +216,13 @@ static bool started(void)
 	return true;
 }
 
+/* The same, here and now, on the caller's thread: a worker that fetched
+ * the picture itself (podcast art, plorpos-7ni.2). */
+void art_shrink_now(const char *path)
+{
+	if (path && path[0]) shrink_now(path);
+}
+
 void art_shrink(const char *path)
 {
 	size_t      n;
