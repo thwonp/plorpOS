@@ -29,7 +29,8 @@
 # mk/fetch-sysroot.sh, LGPL only (no --enable-gpl, no nonfree), with
 # --disable-everything and then exactly what Muse plays: the formats
 # src/muselib.c lists (mp3, m4a/m4b, aac, flac, ogg/oga, opus, wav), the file
-# protocol, and src/muse/dec.c's filter chain (atempo for SPEED, volume for
+# protocol and plain http (Audiobookshelf on the LAN streams, plorpos-9rf.1; no
+# TLS), and src/muse/dec.c's filter chain (atempo for SPEED, volume for
 # its 2 dB headroom - without it every track failed, plorpos-xpt.5). Cover art is
 # the attached picture's bytes, so no image decoder. Shared, to ship as
 # plorpOS/lib/ beside SDL with the LGPL's text (usr/lib/COPYING.LGPLv2.1),
@@ -139,9 +140,9 @@ build SDL2_ttf /src/SDL2_ttf-$TTF_VER -DSDL2TTF_VENDORED=ON -DSDL2TTF_HARFBUZZ=O
 cd /src/ffmpeg-$FF_VER
 ./configure --prefix=/usr --enable-cross-compile --arch=aarch64 --target-os=linux \
 	--cross-prefix=aarch64-linux-gnu- --enable-shared --disable-static \
-	--disable-programs --disable-doc --disable-autodetect --disable-network \
+	--disable-programs --disable-doc --disable-autodetect \
 	--disable-avdevice --disable-swscale --disable-postproc --disable-everything \
-	--enable-swresample --enable-protocol=file \
+	--enable-swresample --enable-protocol=file,http,tcp \
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \

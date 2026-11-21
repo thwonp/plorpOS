@@ -14,7 +14,8 @@
 #     through the vendor MI_AO library, in Muse and diatom, not through SDL.
 #   - armhf, glibc 2.28: the miyoo-toolchain image (mk/miyoo-toolchain.Dockerfile).
 #
-# FFmpeg as on the H700: LGPL only, --disable-everything plus what Muse plays.
+# FFmpeg as on the H700: LGPL only, --disable-everything plus what Muse plays
+# (and plain http for Audiobookshelf streams, plorpos-9rf.1).
 #
 # SQLite (public domain) for the settings database: src/db.c dlopens
 # libsqlite3.so.0, which every other device's firmware ships and the Flip's
@@ -109,9 +110,9 @@ cd /src/ffmpeg-$FF_VER
 ./configure --prefix=/usr --enable-cross-compile --arch=arm --cpu=cortex-a7 --target-os=linux \
 	--cross-prefix=arm-linux-gnueabihf- --extra-cflags="$ARCH_FLAGS" --enable-neon \
 	--enable-shared --disable-static \
-	--disable-programs --disable-doc --disable-autodetect --disable-network \
+	--disable-programs --disable-doc --disable-autodetect \
 	--disable-avdevice --disable-swscale --disable-postproc --disable-everything \
-	--enable-swresample --enable-protocol=file \
+	--enable-swresample --enable-protocol=file,http,tcp \
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \
