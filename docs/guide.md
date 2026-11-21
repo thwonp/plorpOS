@@ -394,9 +394,9 @@ Audiobookshelf).
 - **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book pauses
   and the device sleeps, even mid-book. Now Playing shows the minutes left
   ("Sleep 23m"). A game stops the countdown, and it starts over at its full
-  length when the game closes. With **Play Resets Sleep Timer** on (Playback
-  Settings), every play or pause starts it over too. It is not kept across
-  restarts.
+  length when the game closes. Every play or pause starts it over too, unless
+  **Play Resets Sleep Timer** (Playback Settings) is turned off. It is not
+  kept across restarts.
 - **Chapters**: an M4B's chapters, or a book's files. A plays from the start
   of the one you pick; the one already playing just carries on. This is the
   only way to change chapter or file in a book: L1/R1, a volume-key hold and

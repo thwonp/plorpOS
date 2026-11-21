@@ -1552,7 +1552,7 @@ static void sleep_timer_game(bool on)
 static void sleep_timer_on_state(mu_state st)
 {
 	if (g_sleep_at && (st == MU_PLAYING || st == MU_PAUSED) &&
-	    db_get_int(db_dev(), "muse.sleepreset", 0))
+	    db_get_int(db_dev(), "muse.sleepreset", 1))
 		sleep_timer_arm();
 }
 
@@ -9742,7 +9742,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	                      muse_hold() ? "On" : "Off", true };
 	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
 	rows[3] = (menu_row){ "Play Resets Sleep Timer",
-	                      db_get_int(db_dev(), "muse.sleepreset", 0) ? "On" : "Off", true };
+	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
 	return 4;
 }
 
@@ -9784,7 +9784,7 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 #endif
 	}
 	if (sel == 3 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
-		db_set_int(db_dev(), "muse.sleepreset", !db_get_int(db_dev(), "muse.sleepreset", 0));
+		db_set_int(db_dev(), "muse.sleepreset", !db_get_int(db_dev(), "muse.sleepreset", 1));
 	return MENU_STAY;
 }
 
