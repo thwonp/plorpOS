@@ -355,6 +355,11 @@ static void adopt(const char *line, const char *state)
 		g_now.index = g_now.count = 0;
 		if (!strncmp(path, g_root, rl) && path[rl] == '/')
 			snprintf(g_orphan, sizeof g_orphan, "%s", path + rl + 1);
+		else if (strstr(path, "://"))
+			/* A stream (an Audiobookshelf book's file): the launcher maps
+			 * it back to its library's path (abs_rel_of). Carries a token:
+			 * kept here, never logged. */
+			snprintf(g_orphan, sizeof g_orphan, "%s", path);
 		return;
 	}
 	if (i != muq_current(&g_order)) {
@@ -401,7 +406,9 @@ static void event(const char *line)
 		if (g_pending) play_current();
 	} else if (!strncmp(line, "STATE", 5)) {
 		field(line, "state", v, sizeof v);
-		if (g_restored) adopt(line, v);
+		/* A queue restored, or none at all (a book is never kept in the
+		 * file): what an outliving Muse plays is taken up (plorpos-9rf.5). */
+		if (g_restored || g_qn == 0) adopt(line, v);
 		/* The track that ended says "stopped" AFTER its END, and by then the
 		 * next one has already been asked for. Taken at its word, the queue
 		 * reads as stopped for the moment between two tracks - and a game
@@ -762,9 +769,16 @@ void musec_adopt(const char *const *paths, int n, int start, bool book, double s
 	queue_set(paths, n, start, 0, book, speed, artist, album);
 	/* The title too: the one on show is the restored queue's track's. */
 	t = muq_current(&g_order);
-	if (t >= 0 && t < g_qn)
-		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
-		              g_now.title, sizeof g_now.title);
+	if (t >= 0 && t < g_qn) {
+		static musec_remote r;   /* a server's file: its own title (plorpos-9rf.5) */
+
+		if (g_resolve && g_resolve(g_q[t], &r) && r.title[0])
+			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+		else
+			ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+			              g_now.title, sizeof g_now.title);
+		memset(r.url, 0, sizeof r.url);
+	}
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.index = g_order.pos;

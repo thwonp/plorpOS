@@ -264,6 +264,13 @@ int net_fetch(const char *url, const char *method, const char *const *headers, i
               const char *out_path, int connect_s, int timeout_s,
               const volatile int *cancel)
 {
+	return net_fetch_body(url, method, headers, nh, NULL, out_path, connect_s, timeout_s, cancel);
+}
+
+int net_fetch_body(const char *url, const char *method, const char *const *headers, int nh,
+                   const char *body, const char *out_path, int connect_s, int timeout_s,
+                   const volatile int *cancel)
+{
 	char cfg[128];
 	const char *bin = curl_bin();
 	int fd, pfd[2], i, st = -1, code = -1;
@@ -289,6 +296,7 @@ int net_fetch(const char *url, const char *method, const char *const *headers, i
 	if (g_ca[0]) { fprintf(f, "cacert = "); cfg_quote(f, g_ca); fputc('\n', f); }
 	fprintf(f, "user-agent = "); cfg_quote(f, NET_UA); fputc('\n', f);
 	for (i = 0; i < nh; i++) { fprintf(f, "header = "); cfg_quote(f, headers[i]); fputc('\n', f); }
+	if (body) { fprintf(f, "data-binary = "); cfg_quote(f, body); fputc('\n', f); }
 	fprintf(f, "url = "); cfg_quote(f, url); fputc('\n', f);
 	fclose(f);
 

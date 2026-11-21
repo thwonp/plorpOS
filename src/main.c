@@ -46,6 +46,7 @@
 #include "menu.h"
 #include "musec.h"
 #include "plex.h"
+#include "abs.h"
 #include "museart.h"
 #include "muselib.h"
 #include "playlist.h"
@@ -1240,18 +1241,46 @@ static void  year_fill(void);
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
 /* Muse's source (plorpos-1lw): the card's Music folder, or Plex - the library
- * g_muse holds. Kept per device as "muse.source"; Plex only when it is set up
+ * g_muse holds. Kept as part of "muse.src" (below); Plex only when it is set up
  * and its index is on the card, otherwise the card's. */
 static bool g_muse_plex;
 static bool g_plex_stale;    /* a sync wrote a new index: load it when idle */
 static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle */
-static bool muse_source_saved_plex(void)
-{
-	char s[16];
+/* Audiobookshelf (plorpos-9rf): the library g_muse holds, as Plex's above. */
+static bool g_muse_abs;
+static bool g_abs_stale;
 
-	db_get_str(db_dev(), "muse.source", s, sizeof s, "local");
-	return !strcmp(s, "plex");
+/* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
+ * A card from before it had Show (music or books) and Local/Plex: Plex wins,
+ * then books, read once and written as the new key. */
+static muse_src muse_src_saved(void)
+{
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+	char s[16];
+	int i;
+
+	db_get_str(db_dev(), "muse.src", s, sizeof s, "");
+	if (!s[0]) {
+		char src[16], show[16];
+
+		db_get_str(db_dev(), "muse.source", src, sizeof src, "local");
+		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
+		snprintf(s, sizeof s, "%s", !strcmp(src, "plex") ? "plex"
+		                          : !strcmp(show, "books") ? "books" : "music");
+		db_set_str(db_dev(), "muse.src", s);
+	}
+	for (i = 0; i < MSRC_COUNT; i++) if (!strcmp(s, K[i])) return (muse_src)i;
+	return MSRC_MUSIC;
 }
+
+static void muse_src_save(muse_src v)
+{
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+
+	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
+}
+
+static bool muse_source_saved_plex(void) { return muse_src_saved() == MSRC_PLEX; }
 
 /* Muse's favorites (plorpos-3yv.98): Y on an album marks it, and the
  * Favorites tab (plorpos-era.13) shows only the marked ones. A mark is the card's
@@ -1305,6 +1334,14 @@ static bool muse_books_shown(void)
 	return g_muse_books;
 }
 
+/* The Source the shelf really shows: a server's only once its index is in. */
+static muse_src muse_src_shown(void)
+{
+	if (g_muse_plex) return MSRC_PLEX;
+	if (g_muse_abs) return MSRC_ABS;
+	return muse_books_shown() ? MSRC_BOOKS : MSRC_MUSIC;
+}
+
 /* Where book `al`'s place is kept: the settings, under its folder. */
 static void book_key(int al, char *out, size_t n)
 {
@@ -1334,6 +1371,7 @@ static void book_finish(int al)
 	book_key(al, key, sizeof key);
 	db_set_str(db_dev(), key, "finished");
 	g_book_done[al] = true;
+	abs_book_finished(g_muse.tracks[g_muse.albums[al].first].path);
 	fprintf(stderr, "muse: finished %s\n", g_muse.albums[al].name);
 }
 
@@ -1347,6 +1385,22 @@ static int book_place(int al, double *at)
 	int i;
 
 	*at = 0;
+	/* An Audiobookshelf book's place moved somewhere else since this device
+	 * last sent or took one wins (plorpos-9rf.5). */
+	{
+		int idx = 0;
+		double sat = 0;
+
+		switch (abs_book_place(g_muse.tracks[b->first].path, &idx, &sat)) {
+		case 1:
+			book_write(al, g_muse.tracks[b->first + idx].path, sat);
+			*at = sat;
+			return idx;
+		case 2:
+			book_finish(al);
+			return 0;
+		}
+	}
 	book_key(al, key, sizeof key);
 	db_get_str(db_dev(), key, val, sizeof val, "");
 	if (!(tab = strchr(val, '\t'))) return 0;
@@ -1408,6 +1462,10 @@ static void muse_poll(void)
 	mn = musec_now();
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
+	/* A book's place to the server: the queue of a book is its files in
+	 * order, so the queue's index is the file's (plorpos-9rf.5). */
+	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
+	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
 	if (mn->state == MU_PLAYING) {
 		const char *next[10];
 		int k, n = plex_ahead();
@@ -1445,10 +1503,13 @@ static void muse_adopt_orphan(void)
 	const char *t = musec_orphan();
 	const mu_now *mn = musec_now();
 	const char **paths;
+	static char rel[LIB_PATH];
 	int al, i, start = 0;
 
 	if (!t[0] || g_walk_thread || g_muse.ntracks == 0) return;
 	al = ml_album_of(&g_muse, t);
+	/* An Audiobookshelf book's file, playing from its stream URL. */
+	if (al < 0 && abs_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
 	if (al < 0 || !g_muse.albums[al].book ||
 	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
 	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
@@ -2310,7 +2371,7 @@ static void muse_show(sysview *v, bool books)
 {
 	g_muse_books = books;
 	g_muse_artist = -1;
-	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
+	if (!g_muse_plex && !g_muse_abs) muse_src_save(books ? MSRC_BOOKS : MSRC_MUSIC);
 	/* On the Favorites tab, the new kind's favorites (none ends it again). */
 	g_muse_favs = g_muse_list_up && muse_tab() == MT_FAVORITES;
 	free_view_textures(v);
@@ -6676,8 +6737,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
-		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
-		u.muse_plex  = u.muse && g_muse_plex;
+		u.muse_src   = u.muse ? muse_src_shown() : MSRC_MUSIC;
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
@@ -9329,19 +9389,18 @@ static int menu_shelf_width(app *a)
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int both = ml_count(&g_muse, true) && ml_count(&g_muse, false);
-			int nn = sys_menu_muse_rows(muse_books_shown(), both, g_muse_plex, ids);
+			int nn = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), ids);
 
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
-				if (ids[k] == SMM_SHOW) show = k;
+				if (ids[k] == SMM_SOURCE) show = k;
 			}
-			/* The longer of Show's two values, so turning it over does not
-			 * change the menu's width under the cursor. */
+			/* The longest Source, so choosing another does not change the
+			 * menu's width under the cursor. */
 			if (show >= 0) {
 				int mw;
 
-				rows[show].value = "Audiobooks";
+				rows[show].value = sys_menu_src_label(MSRC_BOOKS);
 				mw = menu_measure(rows, n, heading);
 				if (mw > w) w = mw;
 			}
@@ -9591,6 +9650,8 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
  * talks to Plex is src/plex.c's, on its own threads; these only poll it. */
 
 static int  muse_pick_run(app *a, const char *heading, const char *const *labels, int n);
+static int  muse_pick_run_at(app *a, const char *heading, const char *const *labels, int n, int start);
+static bool muse_download_status(char *out, size_t n);
 static void muse_toast(const char *msg);
 static void muse_playlists_forget(void);
 
@@ -9604,7 +9665,7 @@ static void plex_say(app *a, const char *msg)
 
 /* `poll` behind a panel saying `msg()`, until it returns non-zero (that) or
  * B gives up (0). The work goes on either way: B only stops waiting. */
-static int plex_wait(app *a, const char *(*msg)(void), int (*poll)(void))
+static int src_wait(app *a, const char *title, const char *(*msg)(void), int (*poll)(void))
 {
 	ui_pace pace = {0};
 	int r = 0;
@@ -9621,11 +9682,16 @@ static int plex_wait(app *a, const char *(*msg)(void), int (*poll)(void))
 		if (menu_leaving(a)) break;
 		m = msg();
 		if (!screen_draw_due(a, &pace, fnv_str(2166136261u, m))) { SDL_Delay(IDLE_POLL_MS); continue; }
-		wait_panel(a, "Plex", m);
+		wait_panel(a, title, m);
 	}
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	return r;
+}
+
+static int plex_wait(app *a, const char *(*msg)(void), int (*poll)(void))
+{
+	return src_wait(a, "Plex", msg, poll);
 }
 
 static const char *plex_msg_servers(void)   { return "Finding your servers..."; }
@@ -9763,19 +9829,239 @@ static void muse_source_reload(app *a)
 	rescan_all(a);
 }
 
-/* Source in Muse's menu: Local <-> Plex. True when the library was rebuilt
- * (the menu goes, as after Rescan Folder). */
-static bool muse_source_flip(app *a)
+/* ---- Audiobookshelf (plorpos-9rf) -------------------------------------------- */
+
+static void muse_backdrop(app *a);
+static void abs_kb_backdrop(void *ctx) { muse_backdrop(ctx); }
+
+static const char *abs_msg_check(void) { return "Checking the server..."; }
+static const char *abs_msg_login(void) { return "Signing in..."; }
+static const char *abs_msg_sync(void)
 {
-	if (g_muse_plex) {
-		db_set_str(db_dev(), "muse.source", "local");
-	} else {
+	static char m[96];
+	int d, t;
+
+	abs_sync_state(&d, &t);
+	if (t > 0) snprintf(m, sizeof m, "Syncing %d of %d books...", d, t);
+	else snprintf(m, sizeof m, "Reading the library...");
+	return m;
+}
+static int abs_poll_auth(void)
+{
+	char why[96];
+
+	return abs_auth_poll(why, sizeof why);
+}
+static int abs_poll_sync(void)
+{
+	int st = abs_sync_state(NULL, NULL);
+
+	return st == 1 ? 0 : st == 0 ? 1 : -1;
+}
+
+static bool abs_sync_screen(app *a, bool force)
+{
+	int r;
+
+	if (!net_online()) { plex_say(a, "Audiobookshelf needs Wi-Fi"); return false; }
+	abs_sync_start(force);
+	r = src_wait(a, "Audiobookshelf", abs_msg_sync, abs_poll_sync);
+	if (r < 0) plex_say(a, "Audiobookshelf did not answer");
+	return r > 0;
+}
+
+/* Sign-in as the Android app has it: the address, checked to be an
+ * Audiobookshelf, then a username and a password. True when signed in. */
+static bool abs_setup(app *a)
+{
+	char addr[256], user[128], pass[256], why[96];
+	kb_result kr;
+	int r;
+
+	if (abs_signed_in()) return true;
+	if (!net_online()) { plex_say(a, "Audiobookshelf needs Wi-Fi"); return false; }
+	{
+		const char *sv = abs_server(), *sch = strstr(sv, "://");
+
+		snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : sv);   /* the last one, to edit */
+	}
+	for (;;) {
+		kr = kb_prompt(a->r, &a->in, "Server Address", addr, (int)sizeof addr, MUSE_ACCENT,
+		               abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { power_off(a); return false; }
+		if (kr != KB_ACCEPT || !addr[0]) return false;
+		abs_check_start(addr);
+		if ((r = src_wait(a, "Audiobookshelf", abs_msg_check, abs_poll_auth)) > 0) break;
+		if (r == 0) return false;
+		abs_auth_poll(why, sizeof why);
+		plex_say(a, why);
+	}
+	snprintf(user, sizeof user, "%s", abs_user());
+	for (;;) {
+		kr = kb_prompt(a->r, &a->in, "Username", user, (int)sizeof user, MUSE_ACCENT,
+		               abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { power_off(a); return false; }
+		if (kr != KB_ACCEPT || !user[0]) return false;
+		pass[0] = '\0';
+		kr = kb_prompt(a->r, &a->in, "Password", pass, (int)sizeof pass, MUSE_ACCENT,
+		               abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { memset(pass, 0, sizeof pass); power_off(a); return false; }
+		if (kr != KB_ACCEPT) { memset(pass, 0, sizeof pass); return false; }
+		abs_login_start(user, pass);
+		memset(pass, 0, sizeof pass);
+		if ((r = src_wait(a, "Audiobookshelf", abs_msg_login, abs_poll_auth)) > 0) return abs_signed_in();
+		if (r == 0) return false;
+		abs_auth_poll(why, sizeof why);
+		plex_say(a, why);
+	}
+}
+
+enum { AX_SERVER, AX_ACCOUNT, AX_LIBRARY, AX_CHECK, AX_SYNC, AX_SIGNOUT, AX_ROWS };
+typedef struct { bool rebuilt; char sync[48]; } abs_set_ui;
+
+static int abs_set_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	abs_set_ui *u = ctx;
+	bool in = abs_signed_in();
+	int d, t, st;
+
+	(void)max;
+	*heading = "Audiobookshelf Settings";
+	if (u->rebuilt) return 0;
+	st = abs_sync_state(&d, &t);
+	if (st == 1 && t > 0) snprintf(u->sync, sizeof u->sync, "%d of %d", d, t);
+	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
+	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
+	else u->sync[0] = '\0';
+	rows[AX_SERVER]  = (menu_row){ "Server", abs_server()[0] ? abs_server() : "none", false };
+	rows[AX_ACCOUNT] = (menu_row){ "Account", in ? abs_user() : "Sign In", !in };
+	rows[AX_LIBRARY] = (menu_row){ "Library", abs_library_name()[0] ? abs_library_name() : "none", false };
+	rows[AX_CHECK]   = (menu_row){ "Check for Updates", NULL, in && st != 1 };
+	rows[AX_SYNC]    = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, in && st != 1 };
+	rows[AX_SIGNOUT] = (menu_row){ "Sign Out", NULL, in };
+	return AX_ROWS;
+}
+
+static menu_result abs_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	abs_set_ui *u = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	switch (sel) {
+	case AX_ACCOUNT:
+		if (!abs_setup(a)) return MENU_STAY;
+		if (!abs_lib_cached() && !abs_sync_screen(a, false)) return MENU_STAY;
+		abs_sync_take();
+		if (muse_src_saved() != MSRC_ABS) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	case AX_CHECK:
+	case AX_SYNC:
+		if (!abs_sync_screen(a, sel == AX_SYNC)) return MENU_STAY;
+		if (!abs_sync_take()) { muse_toast("Library is up to date"); return MENU_STAY; }
+		muse_toast("Library updated");
+		if (!g_muse_abs) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	case AX_SIGNOUT: {
+		static const char *const YN[] = { "Sign Out", "Cancel" };
+
+		if (muse_pick_run(a, "Sign out of Audiobookshelf?", YN, 2) != 0) return MENU_STAY;
+		abs_sign_out();
+		muse_src_save(MSRC_BOOKS);
+		if (!g_muse_abs) return MENU_STAY;
+		muse_source_reload(a);
+		u->rebuilt = true;
+		return MENU_DONE;
+	}
+	}
+	return MENU_STAY;
+}
+
+static bool abs_settings_screen(app *a)
+{
+	abs_set_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         abs_set_build, abs_set_key, &u);
+	return u.rebuilt;
+}
+
+/* From the shelf's own loop, as plex_main_poll: a sync that wrote a new
+ * index, downloads that changed Audiobooks, and now and then the server's
+ * library and places. */
+static void abs_main_poll(app *a)
+{
+	static unsigned next_check;
+	unsigned now = plat_now_ms();
+
+	if (abs_sync_take()) g_abs_stale = true;
+	if (abs_download_take_changed()) g_local_stale = true;
+	if (g_walk_thread) return;
+	if (g_abs_stale && muse_src_saved() == MSRC_ABS) {
+		g_abs_stale = false;
+		fprintf(stderr, "abs: reading the library again\n");
+		muse_playlists_forget();
+		rescan_all(a);
+		ui_redraw_now();
+		return;
+	}
+	g_abs_stale = g_abs_stale && muse_src_saved() == MSRC_ABS;
+	if (g_muse_abs && (int)(now - next_check) >= 0 && net_online()) {
+		if (next_check) abs_sync_start(false);
+		abs_progress_refresh();
+		next_check = now + 60u * 60u * 1000u;            /* an hour */
+	}
+}
+
+/* musec's remote hooks, for both servers. */
+static bool muse_resolve(const char *rel, musec_remote *out)
+{
+	return plex_resolve(rel, out) || abs_resolve(rel, out);
+}
+static bool muse_owns(const char *daemon_path, const char *rel)
+{
+	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel);
+}
+static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
+
+/* Source in Muse's menu (plorpos-9rf.2): one of four, from a list. True when
+ * the library was rebuilt or the kind shown changed (the menu goes, as after
+ * Rescan Folder). */
+static bool muse_source_pick(app *a)
+{
+	const char *labels[MSRC_COUNT];
+	muse_src was = muse_src_saved(), to;
+	int k;
+
+	for (k = 0; k < MSRC_COUNT; k++) labels[k] = sys_menu_src_label((muse_src)k);
+	if ((k = muse_pick_run_at(a, "Source", labels, MSRC_COUNT, muse_src_shown())) < 0) return false;
+	to = (muse_src)k;
+	if (to == was && to == muse_src_shown()) return false;
+	switch (to) {
+	case MSRC_PLEX:
 		if (!plex_setup(a)) return false;
-		db_set_str(db_dev(), "muse.source", "plex");
+		muse_src_save(to);
 		/* The first time, the whole library: a minute or so. B stops
 		 * waiting; Muse switches by itself once it is in (plex_main_poll). */
 		if (!plex_lib_cached() && !plex_sync_screen(a, false)) return false;
 		plex_sync_take();
+		break;
+	case MSRC_ABS:
+		if (!abs_setup(a)) return false;
+		muse_src_save(to);
+		if (!abs_lib_cached() && !abs_sync_screen(a, false)) return false;
+		abs_sync_take();
+		break;
+	default:
+		muse_src_save(to);
+		/* The card's library is in already: only the kind shown changes. */
+		if (!g_muse_plex && !g_muse_abs) {
+			muse_show(&a->view[a->sys_cursor], to == MSRC_BOOKS);
+			return true;
+		}
 	}
 	muse_source_reload(a);
 	return true;
@@ -9938,7 +10224,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 
 		if (muse_pick_run(a, "Sign out of Plex?", YN, 2) != 0) return MENU_STAY;
 		plex_sign_out();
-		db_set_str(db_dev(), "muse.source", "local");
+		muse_src_save(MSRC_MUSIC);
 		if (!g_muse_plex) return MENU_STAY;
 		muse_source_reload(a);
 		u->rebuilt = true;
@@ -9971,7 +10257,8 @@ static void plex_main_poll(app *a)
 	if (plex_download_take_changed()) g_local_stale = true;
 	if (g_walk_thread) return;
 	if ((g_plex_stale && muse_source_saved_plex()) ||
-	    (g_local_stale && !g_muse_plex && !plex_download_status(NULL, 0))) {
+	    (g_local_stale && !g_muse_plex && !g_muse_abs && !plex_download_status(NULL, 0) &&
+	     !abs_download_status(NULL, 0))) {
 		g_plex_stale = g_local_stale = false;
 		fprintf(stderr, "plex: reading the library again\n");
 		muse_playlists_forget();
@@ -10483,25 +10770,19 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * Settings is the fork's own row (TortOS-28l), always last. */
 		if (is_muse(&a->sys.systems[a->sys_cursor])) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int n = sys_menu_muse_rows(muse_books_shown(),
-			                           ml_count(&g_muse, true) && ml_count(&g_muse, false),
-			                           g_muse_plex, ids);
+			int n = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), ids);
 			sm_muse_row id = sel >= 0 && sel < n ? ids[sel] : SMM_COUNT;
 
 			if (id == SMM_SORT) {
 				sel = SM_SORT;
-			} else if (id == SMM_SHOW) {
-				/* Two values, so left, right and A all turn it over. */
-				if (d || key == IN_ACCEPT)
-					muse_show(&a->view[a->sys_cursor], !muse_books_shown());
-				return MENU_STAY;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
 				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
-				if (id == SMM_SOURCE) return muse_source_flip(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -11870,10 +12151,14 @@ static bool cover_file(int al, char *out, size_t n)
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
 	snprintf(out, n, "%s.png", base);
 	if (file_nonempty(out)) { c->st = COV_PNG; return true; }
-	if (g_muse_plex) {
-		/* Plex's art, fetched to <base>.jpg; cover_answers hears it land. */
-		if (plex_cover_want(al, base)) { c->st = COV_ASKED; c->asked_ms = now; }
-		else c->st = COV_NONE;
+	if (g_muse_plex || g_muse_abs) {
+		/* The server's art, fetched to <base>.jpg; cover_answers hears it land. */
+		if (g_muse_plex ? plex_cover_want(al, base) : abs_cover_want(al, base)) {
+			c->st = COV_ASKED;
+			c->asked_ms = now;
+		} else {
+			c->st = COV_NONE;
+		}
 		return false;
 	}
 	if (musec_cover_ask(g_muse.tracks[g_muse.albums[al].first].path, base)) {
@@ -11935,9 +12220,9 @@ static bool cover_answers(void)
 	size_t fl;
 	int i;
 
-	while (plex_cover_take(base, sizeof base)) {
+	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base)) {
 		landed = true;
-		for (i = 0; g_cov && g_muse_plex && i < g_muse.nalbums; i++) {
+		for (i = 0; g_cov && (g_muse_plex || g_muse_abs) && i < g_muse.nalbums; i++) {
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
 		}
@@ -12009,7 +12294,7 @@ static void year_fill(void)
 	unsigned now = plat_now_ms();
 	int al, y, i;
 
-	if (!g_year || g_muse_plex) return;
+	if (!g_year || g_muse_plex || g_muse_abs) return;
 	if (musec_year_take(track, sizeof track, &y)) {
 		al = ml_album_of(&g_muse, track);
 		if (al >= 0 && g_year[al] < 0) {
@@ -12367,7 +12652,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	/* Where the track comes from, under the cover at its left edge (owner,
 	 * plorpos-1lw.10): the playing track's own source, not the one being
 	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
-	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex" : "Source: Local",
+	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex"
+	               : abs_is_path(musec_path()) ? "Source: Audiobookshelf" : "Source: Local",
 	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
@@ -12513,7 +12799,7 @@ static void np_next_line(char *next, size_t cap)
 	    musec_chapter_now() + 1 < musec_chapters())
 		chapter_label(musec_chapter_now() + 1, next, cap);
 	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()) &&
-	         !plex_title(nt, next, (size_t)cap))
+	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap))
 		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
 }
 
@@ -12710,6 +12996,7 @@ static struct { bool set, pl; char name[PL_NAME_MAX]; int tab, artist; } g_muse_
 static void muse_pl_dir(char *out, size_t n)
 {
 	if (g_muse_plex) { plex_pl_dir(out, n); return; }   /* the source's own */
+	if (g_muse_abs) { abs_pl_dir(out, n); return; }
 	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
 }
 
@@ -12778,13 +13065,19 @@ static menu_result muse_pick_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_DONE;
 }
 
-static int muse_pick_run(app *a, const char *heading, const char *const *labels, int n)
+/* `start`: the row the cursor opens on. */
+static int muse_pick_run_at(app *a, const char *heading, const char *const *labels, int n, int start)
 {
 	muse_pick p = { heading, labels, n, -1 };
 
-	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a), .start = start },
 	         muse_pick_build, muse_pick_key, &p);
 	return p.chosen;
+}
+
+static int muse_pick_run(app *a, const char *heading, const char *const *labels, int n)
+{
+	return muse_pick_run_at(a, heading, labels, n, 0);
 }
 
 static void muse_kb_backdrop(void *ctx)
@@ -12972,8 +13265,8 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	L.key = GL_KEY_TRACKS;
 	L.header = ts->album >= 0 ? muse_name_noyear(ts->head, g_year ? g_year[ts->album] : 0) : ts->head;
 	L.wide_header = true;
-	L.help = ts->pl ? MTL_HELP_PL : g_muse_plex && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
-	L.nhelp = ts->pl ? 4 : g_muse_plex && ts->album >= 0 ? 3 : 2;
+	L.help = ts->pl ? MTL_HELP_PL : (g_muse_plex || g_muse_abs) && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
+	L.nhelp = ts->pl ? 4 : (g_muse_plex || g_muse_abs) && ts->album >= 0 ? 3 : 2;
 	L.n = ts->n;
 	L.cur = sel;
 	L.accent = MUSE_ACCENT;
@@ -13002,7 +13295,7 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	}
 	if (muse_toast_now())
 		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
-	else if (g_muse_plex && plex_download_status(line + 12, sizeof line - 12)) {
+	else if (muse_download_status(line + 12, sizeof line - 12)) {
 		memcpy(line, "Downloading ", 12);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	} else if (ts->n > 0)
@@ -13040,6 +13333,42 @@ static void muse_tracks_under_draw(app *a, void *ctx)
 
 	muse_tracks_paint(a, u->ts, *u->sel, mn,
 	                  mn->state == MU_PLAYING || mn->state == MU_PAUSED, musec_path());
+}
+
+/* Audiobookshelf: download book `al`, or delete its copy (plorpos-9rf.6). */
+static void muse_abs_book_menu(app *a, int al)
+{
+	const char *labels[1];
+
+	if (abs_book_downloading(al)) {
+		labels[0] = "Cancel Downloads";
+		if (muse_pick_run(a, "Downloading", labels, 1) == 0) {
+			abs_download_cancel();
+			muse_toast("Download cancelled");
+		}
+		return;
+	}
+	if (abs_book_downloaded(al)) {
+		labels[0] = "Delete Download";
+		if (muse_pick_run(a, "On the card", labels, 1) == 0) {
+			abs_delete_book(al);
+			muse_toast("Download deleted");
+		}
+		return;
+	}
+	labels[0] = "Download Book";
+	if (muse_pick_run(a, "Not on the card", labels, 1) != 0) return;
+	if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return; }
+	abs_download_book(al);
+	muse_toast("Downloading");
+}
+
+/* A server's download under way, for the line under the cover. */
+static bool muse_download_status(char *out, size_t n)
+{
+	if (g_muse_plex) return plex_download_status(out, n);
+	if (g_muse_abs) return abs_download_status(out, n);
+	return false;
 }
 
 /* Plex: download album `al`, or delete its copy. */
@@ -13221,6 +13550,10 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			muse_plex_album_menu(a, ts->album);
 			continue;
 		}
+		if (g_muse_abs && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
+			muse_abs_book_menu(a, ts->album);
+			continue;
+		}
 		/* A playlist's own keys (owner): X takes the track out, L2 and R2
 		 * move it up and down a place, the cursor going with it. */
 		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
@@ -13389,6 +13722,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
 	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
@@ -13946,11 +14280,11 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	 * Plex download under way, looked at again twice a second while it runs. */
 	if (L->toast && *L->toast && L->nunder < 3)
 		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
-	else if (g_muse_plex && L->nunder < 3) {
+	else if ((g_muse_plex || g_muse_abs) && L->nunder < 3) {
 		char line[200];
 
 		memcpy(line, "Downloading ", 12);
-		if (plex_download_status(line + 12, sizeof line - 12)) {
+		if (muse_download_status(line + 12, sizeof line - 12)) {
 			gl_geom g;
 
 			gl_geometry(&g, L);
@@ -14171,6 +14505,11 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_plex && v->album &&
 		    !g_muse.albums[v->album[v->cursor]].book) {
 			muse_plex_album_menu(a, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_abs && v->album) {
+			muse_abs_book_menu(a, v->album[v->cursor]);
 			ui_redraw_now();
 			continue;
 		}
@@ -18429,7 +18768,8 @@ static int muse_walk(void *unused)
 	unsigned t0 = plat_now_ms();
 
 	(void)unused;
-	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
+	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib)
+	          : g_muse_abs ? abs_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
 	g_walk_ms = plat_now_ms() - t0;
 	SDL_AtomicSet(&g_walk_done, 1);
 	return 0;
@@ -18480,14 +18820,15 @@ static void muse_install(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	if (g_muse_plex) {
+	if (g_muse_plex || g_muse_abs) {
 		/* The queue kept from before was restored ahead of this library:
 		 * its track's title and length are known only now. */
 		musec_retitle();
-		/* Plex says every album's year: nothing for the daemon to read. */
+		/* The server says every album's year: nothing for the daemon to read. */
 		free(g_year);
 		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
-			for (i = 0; i < g_muse.nalbums; i++) g_year[i] = plex_album_year(i);
+			for (i = 0; i < g_muse.nalbums; i++)
+				g_year[i] = g_muse_plex ? plex_album_year(i) : abs_album_year(i);
 		g_year_asked = -1;
 		g_year_read = 0;
 	} else {
@@ -18524,6 +18865,7 @@ static void build_muse_shelf(app *a, bool bg)
 {
 	system_cfg *s;
 	int i;
+	muse_src src;
 
 	/* A boot walk still going when the card is read again is read again
 	 * with it: what it found is about to be replaced anyway. */
@@ -18546,10 +18888,14 @@ static void build_muse_shelf(app *a, bool bg)
 	np_forget();
 	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
 	muse_tidy_singles();
-	g_muse_plex = muse_source_saved_plex() && plex_lib_cached();
-	if (!g_muse_plex && muse_source_saved_plex())
+	src = muse_src_saved();
+	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
+	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
+	if (!g_muse_plex && src == MSRC_PLEX)
 		plex_sync_start(false);      /* set up, never synced: on its way */
-	if (!g_muse_plex) {
+	if (!g_muse_abs && src == MSRC_ABS)
+		abs_sync_start(false);
+	if (!g_muse_plex && !g_muse_abs) {
 		char dir[sizeof g_muse_root + 16];
 
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
@@ -18561,13 +18907,8 @@ static void build_muse_shelf(app *a, bool bg)
 			return;
 		}
 	}
-	{
-		char show[16];
-
-		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
-		muse_tabs_load();
-		g_muse_books = !strcmp(show, "books") && !g_muse_plex;
-	}
+	muse_tabs_load();
+	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS) && !g_muse_plex;
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
 	s = &a->sys.systems[i];
@@ -19286,7 +19627,7 @@ static const char *queue_title(void *ctx, int i)
 
 	(void)ctx;
 	if (!p) return "";
-	if (plex_title(p, out, sizeof buf[0])) return out;
+	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0])) return out;
 	slash = strrchr(p, '/');
 	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
 	return out;
@@ -20033,7 +20374,8 @@ int main(int argc, char *argv[])
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
-			musec_set_remote(plex_resolve, plex_owns, plex_stream_failed);
+			abs_init(P_CARD, P_SHARED);
+			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);
@@ -20348,6 +20690,7 @@ int main(int argc, char *argv[])
 		muse_poll();
 		muse_walk_poll(&a);
 		plex_main_poll(&a);
+		abs_main_poll(&a);
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,
