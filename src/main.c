@@ -13186,6 +13186,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	unsigned rgb = MUSE_ACCENT, wait = (unsigned)-1, phase;
 	SDL_Color acc = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
 	const char *state = mn->state == MU_PLAYING ? NULL
+	                  : musec_asked()           ? "Loading"     /* a stream opening (plorpos-7ni.18) */
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
 	int book = musec_is_book() ? ml_album_of(&g_muse, musec_track(mn->index)) : -1;
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
@@ -13222,11 +13223,17 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	y = UI_PORTRAIT ? cov.y + cov.h + NP_SRC_GAP + ui_font_line(UI_F_META) + 28 : NP_Y + 36;
 	/* Where the track comes from, under the cover at its left edge (owner,
 	 * plorpos-1lw.10): the playing track's own source, not the one being
-	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
-	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex"
-	               : abs_is_path(musec_path()) ? "Source: Audiobookshelf"
-	               : pod_is_path(musec_path()) ? "Source: Podcasts" : "Source: Local",
-	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
+	 * browsed - a Plex queue keeps playing when Source goes back to Local.
+	 * The queue's track, which stays while it opens or after it stops, where
+	 * musec_path is "" (plorpos-7ni.18). */
+	{
+		const char *src = musec_track(mn->index) ? musec_track(mn->index) : "";
+
+		ui_text(r, fs, plex_is_path(src) ? "Source: Plex"
+		               : abs_is_path(src) ? "Source: Audiobookshelf"
+		               : pod_is_path(src) ? "Source: Podcasts" : "Source: Local",
+		        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
+	}
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
 		 * count is the order being HEARD, so shuffled it still runs 1 to n.

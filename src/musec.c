@@ -971,6 +971,7 @@ void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
 void musec_on_state(void (*fn)(mu_state st)) { g_on_state = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
+bool musec_asked(void) { return g_asked; }
 
 void musec_sink(const char *device)
 {

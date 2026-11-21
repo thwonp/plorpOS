@@ -123,6 +123,9 @@ int         musec_chapter_now(void);
 /* True once each time a queue plays out to its end - the last track ended by
  * itself, not stopped or replaced. A book that does has been finished. */
 bool musec_take_ran_out(void);
+/* A PLAY or RESUME sent and not answered yet: a stream opening, which takes
+ * seconds (plorpos-7ni.18). */
+bool musec_asked(void);
 /* The last track's end was a stream cut short (Wi-Fi or its server went), not
  * the file's end: the daemon's END said cut=1 (plorpos-7ni.16). */
 bool musec_end_cut(void);
