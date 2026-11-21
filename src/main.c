@@ -10032,8 +10032,13 @@ static bool muse_owns(const char *daemon_path, const char *rel)
 	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel);
 }
 static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
-/* Play on a paused Audiobookshelf book: its place on the server first. */
-static bool muse_resume_hold(const char *rel) { return musec_is_book() && abs_resume_hold(rel); }
+/* Play on a paused Audiobookshelf book - streamed, or a downloaded copy
+ * under Local Audiobooks (its .abs names it) - asks its place on the server
+ * first. Not off Wi-Fi: no answer can come, and play would wait for it. */
+static bool muse_resume_hold(const char *rel)
+{
+	return musec_is_book() && net_online() && abs_resume_hold(rel);
+}
 
 /* Source in Muse's menu (plorpos-9rf.2): one of four, from a list. True when
  * the library was rebuilt or the kind shown changed (the menu goes, as after
