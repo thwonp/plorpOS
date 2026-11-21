@@ -379,7 +379,7 @@ Audiobookshelf).
 | | |
 |---|---|
 | **A** | pause, or play |
-| **L1/R1** | previous / next track, or chapter in a book that has them. More than three seconds in, L1 starts the track or chapter over |
+| **L1/R1** | previous / next track; More than three seconds in, L1 starts the track over. On a book they seek like Left/Right |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
 | **Y** | the play mode (music) |
 | **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
@@ -393,12 +393,17 @@ Audiobookshelf).
   shows on Now Playing.
 - **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book pauses
   and the device sleeps, even mid-book. Now Playing shows the minutes left
-  ("Sleep 23m"). It is not kept across restarts, and in a game it only pauses
-  the book.
+  ("Sleep 23m"). A game stops the countdown, and it starts over at its full
+  length when the game closes. With **Play Resets Sleep Timer** on (Playback
+  Settings), every play or pause starts it over too. It is not kept across
+  restarts.
 - **Chapters**: an M4B's chapters, or a book's files. A plays from the start
-  of the one you pick.
+  of the one you pick; the one already playing just carries on. This is the
+  only way to change chapter or file in a book: L1/R1, a volume-key hold and
+  a headset's next/previous all seek instead.
 - **Timeline**: every play and pause of the book, newest first, with the time
-  and where you were. A goes back to that spot.
+  and where you were - including those made with the screen off. A goes back
+  to that spot.
 
 **Y changes the play mode on Now Playing**, and only there: in order, then
 repeat all, then repeat one, then shuffle, and round again. Its mark sits
@@ -438,7 +443,7 @@ down. NextUI pauses the music to sleep; this is plorpOS's own.
 For a pocket, lock the buttons. On every device but the Miyoo Mini Flip that is **Sleep Button Lock** in
 Playback Settings (Off/On); while it is on and the music plays with the screen dark, the face
 and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
-Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
+Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track; on a book, a seek) and the
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
