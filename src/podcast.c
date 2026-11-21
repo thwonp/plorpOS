@@ -216,6 +216,30 @@ int pod_subscribe(const char *feed_url, const char *title, const char *image)
 	return r;
 }
 
+int pod_import_opml(const char *path, int *had)
+{
+	enum { MAX = 512 };
+	pf_outline *o;
+	size_t len;
+	char *b = slurp(path, &len);
+	int n, i, added = 0;
+
+	*had = 0;
+	if (!b) return -1;
+	if (!(o = malloc(sizeof *o * MAX))) { free(b); return -1; }
+	n = pf_opml(b, len, o, MAX);
+	free(b);
+	for (i = 0; i < n; i++) {
+		int r = pod_subscribe(o[i].url, o[i].title, "");
+
+		if (r > 0) added++;
+		else if (r == 0) (*had)++;
+	}
+	free(o);
+	if (n >= 0) fprintf(stderr, "pod: imported %s: %d added, %d already\n", path, added, *had);
+	return n < 0 ? -1 : added;
+}
+
 /* ---- jobs ------------------------------------------------------------------------------ */
 
 enum { J_SYNC, J_COVER };

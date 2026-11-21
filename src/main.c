@@ -404,8 +404,10 @@ static void muse_tabs_screen(app *a);
 static void muse_tabs_load(void);
 enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
+static bool g_muse_pod;
 static ml_order muse_sort_shown(int sort)
 {
+	if (g_muse_pod) return ML_BY_YEAR;      /* episodes: newest first (plorpos-7ni) */
 	return sort == ML_BY_ARTIST && muse_artist_filter() >= 0 ? ML_BY_ALBUM : (ml_order)sort;
 }
 static int  shelf_letter_jump(sysview *v, int dir);
@@ -1250,13 +1252,19 @@ static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle *
 /* Audiobookshelf (plorpos-9rf): the library g_muse holds, as Plex's above. */
 static bool g_muse_abs;
 static bool g_abs_stale;
+/* Podcasts (plorpos-7ni): the library g_muse holds, as the servers' above.
+ * g_pod_stamp: each episode's publish minute, the order its lists are in. */
+static bool g_muse_pod;
+static bool g_pod_stale;
+static int  g_pod_added;
+static int *g_pod_stamp;
 
 /* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
  * A card from before it had Show (music or books) and Local/Plex: Plex wins,
  * then books, read once and written as the new key. */
 static muse_src muse_src_saved(void)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
 	char s[16];
 	int i;
 
@@ -1276,7 +1284,7 @@ static muse_src muse_src_saved(void)
 
 static void muse_src_save(muse_src v)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
 
 	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
 }
@@ -1340,6 +1348,7 @@ static muse_src muse_src_shown(void)
 {
 	if (g_muse_plex) return MSRC_PLEX;
 	if (g_muse_abs) return MSRC_ABS;
+	if (g_muse_pod) return MSRC_PODCASTS;
 	return muse_books_shown() ? MSRC_BOOKS : MSRC_MUSIC;
 }
 
@@ -10139,6 +10148,180 @@ static bool abs_settings_screen(app *a)
 	return u.rebuilt;
 }
 
+/* ---- Podcasts (plorpos-7ni) --------------------------------------------------
+ *
+ * The source's settings: Check for Updates and Import OPML (an export from
+ * another player, put in <card>/Podcasts/; owner's "your call", 7ni.3). Feeds
+ * are fetched when Muse opens on Podcasts (at most every half hour) and on
+ * Check for Updates - never in the background otherwise (owner). */
+
+static const char *pod_msg_sync(void)
+{
+	static char m[96];
+	int d, t;
+
+	pod_sync_state(&d, &t);
+	if (t > 0) snprintf(m, sizeof m, "Fetching %d of %d shows...", d < t ? d + 1 : t, t);
+	else snprintf(m, sizeof m, "Fetching the feeds...");
+	return m;
+}
+
+static int pod_poll_sync(void)
+{
+	int st = pod_sync_state(NULL, NULL);
+
+	return st == 1 ? 0 : st == 0 ? 1 : -1;
+}
+
+/* Every feed fetched behind a panel: 1 done, 0 B (it goes on), -1 none answered. */
+static int pod_sync_screen(app *a)
+{
+	int r;
+
+	if (!net_online()) { plex_say(a, "Podcasts need Wi-Fi"); return -1; }
+	pod_sync_start();
+	r = src_wait(a, "Podcasts", pod_msg_sync, pod_poll_sync);
+	if (r < 0) plex_say(a, "No podcast feed answered");
+	return r;
+}
+
+#define POD_OPML_MAX 24
+
+/* The .opml files in <card>/Podcasts/, by name. */
+static int pod_opml_files(char names[][128], int max)
+{
+	char dir[CFG_STR * 2];
+	struct dirent *e;
+	DIR *d;
+	int n = 0;
+
+	snprintf(dir, sizeof dir, "%s/Podcasts", P_CARD);
+	if (!(d = opendir(dir))) return 0;
+	while ((e = readdir(d)) && n < max) {
+		size_t l = strlen(e->d_name);
+
+		if (e->d_name[0] == '.' || l < 6 || strcasecmp(e->d_name + l - 5, ".opml")) continue;
+		snprintf(names[n++], 128, "%s", e->d_name);
+	}
+	closedir(d);
+	return n;
+}
+
+enum { PDX_CHECK, PDX_IMPORT, PDX_ROWS };
+/* A row's word for a few seconds - "Up to date", "Added 16" - since a toast is
+ * a list's and is never seen over this menu (plorpos-i8d.7). */
+typedef struct { bool rebuilt; char check[48], import[48]; Uint32 check_until, import_until; } pod_set_ui;
+
+static int pod_set_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	pod_set_ui *u = ctx;
+	int d, t, st = pod_sync_state(&d, &t);
+	Uint32 now = SDL_GetTicks();
+
+	(void)max;
+	*heading = "Podcast Settings";
+	if (u->rebuilt) return 0;
+	if (st == 1 && t > 0) snprintf(u->check, sizeof u->check, "%d of %d", d, t), u->check_until = now + 1000;
+	rows[PDX_CHECK]  = (menu_row){ "Check for Updates", now < u->check_until ? u->check : NULL,
+	                              st != 1 && pod_show_count() > 0 };
+	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, true };
+	return PDX_ROWS;
+}
+
+/* The library read again when it is the one on the shelf. */
+static bool pod_reload(app *a, pod_set_ui *u)
+{
+	if (muse_src_saved() != MSRC_PODCASTS) return false;
+	muse_source_reload(a);
+	u->rebuilt = true;
+	return true;
+}
+
+static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	pod_set_ui *u = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	switch (sel) {
+	case PDX_CHECK: {
+		int added = 0;
+
+		if (pod_sync_screen(a) <= 0) return MENU_STAY;
+		if (!pod_sync_take(&added)) {
+			snprintf(u->check, sizeof u->check, "Up to date");
+		} else {
+			snprintf(u->check, sizeof u->check, added == 1 ? "1 new episode" : "%d new episodes", added);
+			if (pod_reload(a, u)) return MENU_DONE;
+		}
+		u->check_until = SDL_GetTicks() + 3000;
+		return MENU_STAY;
+	}
+	case PDX_IMPORT: {
+		char names[POD_OPML_MAX][128], path[4096];
+		const char *labels[POD_OPML_MAX];
+		int n = pod_opml_files(names, POD_OPML_MAX), k, added, had;
+
+		if (!n) { plex_say(a, "Put an .opml file in Podcasts on the card"); return MENU_STAY; }
+		for (k = 0; k < n; k++) labels[k] = names[k];
+		if ((k = n == 1 ? 0 : muse_pick_run(a, "Import OPML", labels, n)) < 0) return MENU_STAY;
+		snprintf(path, sizeof path, "%s/Podcasts/%s", P_CARD, names[k]);
+		if ((added = pod_import_opml(path, &had)) < 0) { plex_say(a, "That file is not OPML"); return MENU_STAY; }
+		if (had) snprintf(u->import, sizeof u->import, "Added %d, had %d", added, had);
+		else snprintf(u->import, sizeof u->import, "Added %d", added);
+		/* The new shows' episodes now, if there is a network to fetch them. */
+		if (added > 0 && net_online() && pod_sync_screen(a) > 0) pod_sync_take(NULL);
+		u->import_until = SDL_GetTicks() + 4000;     /* after the fetch, to be seen */
+		if (added > 0 && pod_reload(a, u)) return MENU_DONE;
+		return MENU_STAY;
+	}
+	}
+	return MENU_STAY;
+}
+
+static bool pod_settings_screen(app *a)
+{
+	pod_set_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         pod_set_build, pod_set_key, &u);
+	return u.rebuilt;
+}
+
+/* On the way into Muse on Podcasts: the feeds again, unless they were
+ * fetched in the last half hour. */
+static void pod_auto_sync(void)
+{
+	static unsigned last;
+	unsigned now = plat_now_ms();
+
+	if (!g_muse_pod || !net_online() || (last && now - last < 30u * 60u * 1000u)) return;
+	last = now ? now : 1;
+	pod_sync_start();
+}
+
+/* From the shelf's own loop: a sync that changed an index is read in when
+ * nothing else is being read. */
+static void pod_main_poll(app *a)
+{
+	int added = 0;
+
+	if (pod_sync_take(&added)) { g_pod_stale = true; g_pod_added += added; }
+	if (g_walk_thread || !g_pod_stale) return;
+	g_pod_stale = false;
+	if (muse_src_saved() != MSRC_PODCASTS) { g_pod_added = 0; return; }
+	fprintf(stderr, "pod: reading the library again\n");
+	muse_playlists_forget();
+	rescan_all(a);
+	if (g_pod_added > 0) {
+		char m[48];
+
+		snprintf(m, sizeof m, g_pod_added == 1 ? "1 new episode" : "%d new episodes", g_pod_added);
+		muse_toast(m);
+	}
+	g_pod_added = 0;
+	ui_redraw_now();
+}
+
 /* From the shelf's own loop, as plex_main_poll: a sync that wrote a new
  * index, downloads that changed Audiobooks, and now and then the server's
  * library and places. */
@@ -10212,10 +10395,17 @@ static bool muse_source_pick(app *a)
 		if (!abs_lib_cached() && !abs_sync_screen(a, false)) return false;
 		abs_sync_take();
 		break;
+	case MSRC_PODCASTS:
+		/* None yet: Podcast Settings first, to import some or find them. */
+		if (!pod_lib_cached()) pod_settings_screen(a);
+		if (!pod_lib_cached()) return false;
+		muse_src_save(to);
+		pod_sync_take(NULL);
+		break;
 	default:
 		muse_src_save(to);
 		/* The card's library is in already: only the kind shown changes. */
-		if (!g_muse_plex && !g_muse_abs) {
+		if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
 			muse_show(&a->view[a->sys_cursor], to == MSRC_BOOKS);
 			return true;
 		}
@@ -10941,6 +11131,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -12277,6 +12468,14 @@ static bool file_nonempty(const char *p)
  * an earlier visit - is found by looking. Otherwise the daemon is asked for the
  * one the music carries, and this answers false until cover_answers hears
  * back, a few milliseconds later. */
+/* Where album `al`'s cover is kept: beside its folder, or for an episode its
+ * show's (plorpos-7ni). */
+static void muse_cover_base(int al, char *out, size_t n)
+{
+	if (g_muse_pod) pod_cover_base(al, out, n);
+	else ml_cover_base(g_muse_root, &g_muse, al, out, n);
+}
+
 static bool cover_file(int al, char *out, size_t n)
 {
 	char base[LIB_PATH * 2];
@@ -12285,7 +12484,7 @@ static bool cover_file(int al, char *out, size_t n)
 
 	if (!g_cov || al < 0 || al >= g_muse.nalbums) return false;
 	c = &g_cov[al];
-	ml_cover_base(g_muse_root, &g_muse, al, base, sizeof base);
+	muse_cover_base(al, base, sizeof base);
 	if (!base[0]) return false;
 	/* Singles' is its own, the one put there for it or one put in its place,
 	 * never a song's: its songs have nothing to do with one another, and the
@@ -12309,9 +12508,10 @@ static bool cover_file(int al, char *out, size_t n)
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
 	snprintf(out, n, "%s.png", base);
 	if (file_nonempty(out)) { c->st = COV_PNG; return true; }
-	if (g_muse_plex || g_muse_abs) {
+	if (g_muse_plex || g_muse_abs || g_muse_pod) {
 		/* The server's art, fetched to <base>.jpg; cover_answers hears it land. */
-		if (g_muse_plex ? plex_cover_want(al, base) : abs_cover_want(al, base)) {
+		if (g_muse_plex ? plex_cover_want(al, base) : g_muse_abs ? abs_cover_want(al, base)
+		    : pod_cover_want(al, base)) {
 			c->st = COV_ASKED;
 			c->asked_ms = now;
 		} else {
@@ -12378,11 +12578,18 @@ static bool cover_answers(void)
 	size_t fl;
 	int i;
 
-	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base)) {
+	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base) ||
+	       pod_cover_take(base, sizeof base)) {
 		landed = true;
 		for (i = 0; g_cov && (g_muse_plex || g_muse_abs) && i < g_muse.nalbums; i++) {
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
+		}
+		/* A show's art is every one of its episodes': looked for again
+		 * (it lands as .jpg or .png). */
+		for (i = 0; g_cov && g_muse_pod && i < g_muse.nalbums; i++) {
+			pod_cover_base(i, b, sizeof b);
+			if (!strcmp(b, base)) g_cov[i].st = COV_UNKNOWN;
 		}
 	}
 	while (musec_cover_take(base, sizeof base, file, sizeof file)) {
@@ -12392,7 +12599,7 @@ static bool cover_answers(void)
 		for (i = 0; g_cov && i < g_muse.nalbums; i++) {
 			char pic[LIB_PATH * 2 + 8];
 
-			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
+			muse_cover_base(i, b, sizeof b);
 			if (strcmp(b, base)) continue;
 			/* Nothing in the files: a picture in the album's folder, which
 			 * is where a book's cover usually is, before the card. */
@@ -12811,7 +13018,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * plorpos-1lw.10): the playing track's own source, not the one being
 	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
 	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex"
-	               : abs_is_path(musec_path()) ? "Source: Audiobookshelf" : "Source: Local",
+	               : abs_is_path(musec_path()) ? "Source: Audiobookshelf"
+	               : pod_is_path(musec_path()) ? "Source: Podcasts" : "Source: Local",
 	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
@@ -14260,6 +14468,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
 	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
+	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
@@ -19297,7 +19506,7 @@ static void muse_order_view(sysview *v)
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, muse_sort_shown(v->sort), muse_books_shown(),
-	                               g_year, v->album);
+	                               g_muse_pod ? g_pod_stamp : g_year, v->album);
 	{
 		int ar = muse_artist_filter();
 
@@ -19595,7 +19804,8 @@ static int muse_walk(void *unused)
 
 	(void)unused;
 	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib)
-	          : g_muse_abs ? abs_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
+	          : g_muse_abs ? abs_lib_load(&g_walk_lib)
+	          : g_muse_pod ? pod_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
 	g_walk_ms = plat_now_ms() - t0;
 	SDL_AtomicSet(&g_walk_done, 1);
 	return 0;
@@ -19646,15 +19856,20 @@ static void muse_install(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	if (g_muse_plex || g_muse_abs) {
+	if (g_muse_plex || g_muse_abs || g_muse_pod) {
 		/* The queue kept from before was restored ahead of this library:
 		 * its track's title and length are known only now. */
 		musec_retitle();
-		/* The server says every album's year: nothing for the daemon to read. */
+		/* The server says every album's year: nothing for the daemon to read.
+		 * An episode has no year to show; its publish minute orders it. */
 		free(g_year);
 		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
 			for (i = 0; i < g_muse.nalbums; i++)
-				g_year[i] = g_muse_plex ? plex_album_year(i) : abs_album_year(i);
+				g_year[i] = g_muse_plex ? plex_album_year(i) : g_muse_abs ? abs_album_year(i) : 0;
+		free(g_pod_stamp);
+		g_pod_stamp = NULL;
+		if (g_muse_pod && (g_pod_stamp = malloc(sizeof *g_pod_stamp * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
+			for (i = 0; i < g_muse.nalbums; i++) g_pod_stamp[i] = pod_album_stamp(i);
 		g_year_asked = -1;
 		g_year_read = 0;
 	} else {
@@ -19717,11 +19932,12 @@ static void build_muse_shelf(app *a, bool bg)
 	src = muse_src_saved();
 	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
 	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
+	g_muse_pod = src == MSRC_PODCASTS && pod_lib_cached();
 	if (!g_muse_plex && src == MSRC_PLEX)
 		plex_sync_start(false);      /* set up, never synced: on its way */
 	if (!g_muse_abs && src == MSRC_ABS)
 		abs_sync_start(false);
-	if (!g_muse_plex && !g_muse_abs) {
+	if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
 		char dir[sizeof g_muse_root + 16];
 
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
@@ -19734,7 +19950,7 @@ static void build_muse_shelf(app *a, bool bg)
 		}
 	}
 	muse_tabs_load();
-	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS) && !g_muse_plex;
+	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_muse_plex;
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
 	s = &a->sys.systems[i];
@@ -21520,6 +21736,7 @@ int main(int argc, char *argv[])
 		muse_walk_poll(&a);
 		plex_main_poll(&a);
 		abs_main_poll(&a);
+		pod_main_poll(&a);
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,

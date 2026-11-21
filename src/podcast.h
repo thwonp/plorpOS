@@ -41,6 +41,11 @@ int pod_show_count(void);
  * there, -1 could not write. Its episodes come with the next sync. */
 int pod_subscribe(const char *feed_url, const char *title, const char *image);
 
+/* An OPML file (another player's export): every show in it subscribed to.
+ * Returns how many were added, -1 when it is not OPML; `had` the ones
+ * already subscribed. */
+int pod_import_opml(const char *path, int *had);
+
 /* ---- syncing ------------------------------------------------------------------------------ */
 
 /* Every show's feed fetched again, in the background. */

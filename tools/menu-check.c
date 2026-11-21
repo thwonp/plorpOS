@@ -589,6 +589,11 @@ static void system_menu(void)
 		ck(mn == 6 && !strcmp(val(&mrows[mn - 2]), "Audiobookshelf") &&
 		   !strcmp(mrows[mn - 1].label, "Audiobookshelf Settings"),
 		   "Audiobookshelf: its settings after Source");
+		m.muse_src = MSRC_PODCASTS;
+		mn = sys_menu_build(&m, mrows, &mb, &mhead);
+		ck(mn == 5 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[mn - 2]), "Podcasts") &&
+		   !strcmp(mrows[mn - 1].label, "Podcast Settings"),
+		   "Podcasts: Episodes, its settings after Source");
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
@@ -602,6 +607,10 @@ static void system_menu(void)
 			ck(sys_menu_muse_rows(true, MSRC_ABS, ids) == 6 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_SOURCE && ids[5] == SMM_ABS,
 			   "Audiobookshelf: no Rescan Folder, Audiobookshelf Settings after Source");
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, ids) == 5 && ids[0] == SMM_COUNT &&
+			   ids[1] == SMM_TABS && ids[2] == SMM_SETTINGS && ids[3] == SMM_SOURCE &&
+			   ids[4] == SMM_POD,
+			   "Podcasts: no Sort By or Rescan Folder, Podcast Settings after Source");
 		}
 	}
 }
