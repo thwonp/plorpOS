@@ -849,8 +849,13 @@ static void q_load(void)
 	fclose(f);
 }
 
+static unsigned g_q_gen;                 /* see pod_queue_gen */
+
+unsigned pod_queue_gen(void) { return g_q_gen; }
+
 static void q_save_locked(void)
 {
+	g_q_gen++;
 	char p[700], *b = malloc((size_t)g_nq * 33 + 1);
 	size_t len = 0;
 

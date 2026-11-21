@@ -15910,6 +15910,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
 	int synced = -1;                  /* the tab the albums view was filtered for */
+	unsigned qgen = pod_queue_gen();  /* the Queue the Queue tab was filtered for */
 	ui_pace pace = {0};
 
 	g_mls_asel = g_mls_psel = 0;
@@ -15975,6 +15976,12 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		/* A podcast download landed, or a copy went: Downloads and the rows. */
 		if (g_muse_pod && pod_download_take_changed())
 			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
+		/* The Queue changed under its tab: an episode played went to the top,
+		 * or one that ended left it (plorpos-7ni.12). */
+		if (queue && pod_queue_gen() != qgen) {
+			qgen = pod_queue_gen();
+			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
+		}
 		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
 		  : artists ? g_mar.n : lists ? (books ? BPL_N : g_npls) : 0;
