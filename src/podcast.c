@@ -757,6 +757,7 @@ bool pod_resolve(const char *rel, musec_remote *out)
 			if (!strcmp(g_subs[i].sid, g_tab.e[al].sid)) { cpy(out->artist, sizeof out->artist, g_subs[i].title); break; }
 	}
 	out->len = g_tab.e[al].dur;
+	out->names = true;
 	/* No TLS in the daemon: the copy first, asked for again on each poll;
 	 * a fetch that just failed is not asked for again at once. */
 	if (!POD_TLS && !g_tab.e[al].dl && !strncmp(g_tab.e[al].url, "https:", 6)) {

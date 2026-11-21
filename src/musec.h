@@ -78,6 +78,10 @@ typedef struct {
 	/* Not playable yet - a device whose FFmpeg cannot stream, fetching the
 	 * track first: the PLAY is asked for again on every poll until it is. */
 	bool wait;
+	/* title and artist are the source's own and the file's tags do not
+	 * replace them, nor give an album: a podcast's MP3 can carry the
+	 * network's legal notice as its artist (plorpos-7ni.19). */
+	bool names;
 } musec_remote;
 /* `failed`: the daemon could not open a remote track; true to have it tried
  * once more (the resolver will look for its server again) - else skipped. */

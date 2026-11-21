@@ -214,6 +214,7 @@ static void play_current(void);
 /* The resolver's word on what a remote track is, for when the daemon's
  * META has no rate in it. */
 static char g_codec_remote[32];
+static bool g_names_remote;          /* see musec_remote.names */
 
 static bool has_digit(const char *s)
 {
@@ -246,6 +247,7 @@ static void play_current(void)
 		bool remote = g_resolve && g_resolve(q, &r);
 
 		snprintf(g_codec_remote, sizeof g_codec_remote, "%s", remote ? r.codec : "");
+		g_names_remote = remote && r.names;
 		g_now.codec[0] = '\0';
 
 		if (remote && r.wait) {
@@ -285,10 +287,12 @@ static void play_current(void)
 		if (remote) snprintf(g_title_wait, sizeof g_title_wait, "%s", r.title);
 		else ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
 		                   g_title_wait, sizeof g_title_wait);
-		g_now.title[0] = '\0';
+		/* A source's own title is the right one already: no flash to wait out. */
+		if (g_names_remote) snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+		else g_now.title[0] = '\0';
 		snprintf(g_now.artist, sizeof g_now.artist, "%s",
 		         remote && r.artist[0] ? r.artist : g_artist);
-		snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+		snprintf(g_now.album, sizeof g_now.album, "%s", g_names_remote ? "" : g_album);
 		g_len_fixed = remote ? r.len : 0;
 		memset(r.url, 0, sizeof r.url);
 	}
@@ -386,6 +390,11 @@ static void adopt(const char *line, const char *state)
 			g_len_fixed = r.len;
 			if (g_now.len <= 0) g_now.len = r.len;
 			snprintf(g_codec_remote, sizeof g_codec_remote, "%s", r.codec);
+			g_names_remote = r.names;
+			if (r.names) {
+				snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+				g_now.album[0] = '\0';
+			}
 			if (!has_digit(g_now.codec) && r.codec[0])
 				snprintf(g_now.codec, sizeof g_now.codec, "%s", r.codec);
 			memset(r.url, 0, sizeof r.url);
@@ -452,12 +461,12 @@ static void event(const char *line)
 		 * in where it does not, which on this card is the artist almost
 		 * every time - the rips carry an album tag and no artist one. */
 		field(line, "title", v, sizeof v);
-		if (v[0]) snprintf(g_now.title, sizeof g_now.title, "%s", v);
+		if (v[0] && !g_names_remote) snprintf(g_now.title, sizeof g_now.title, "%s", v);
 		title_fallback();
 		field(line, "artist", v, sizeof v);
-		if (v[0]) snprintf(g_now.artist, sizeof g_now.artist, "%s", v);
+		if (v[0] && !g_names_remote) snprintf(g_now.artist, sizeof g_now.artist, "%s", v);
 		field(line, "album", v, sizeof v);
-		if (v[0]) snprintf(g_now.album, sizeof g_now.album, "%s", v);
+		if (v[0] && !g_names_remote) snprintf(g_now.album, sizeof g_now.album, "%s", v);
 		field(line, "len", v, sizeof v);
 		g_now.len = atof(v) > 0 ? atof(v) : g_len_fixed;
 		field(line, "codec", v, sizeof v);
