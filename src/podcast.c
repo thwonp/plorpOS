@@ -910,6 +910,30 @@ void pod_queue_add(int al)
 	UNLOCK();
 }
 
+void pod_queue_top(int al)
+{
+	char key[32];
+	int k;
+
+	LOCK();
+	if (al >= 0 && al < g_tab.n && q_find_locked(al) != 0) {
+		if ((k = q_find_locked(al)) >= 0) {
+			memmove(g_q + 1, g_q, sizeof g_q[0] * (size_t)k);
+		} else {
+			if (g_nq == g_cq) {
+				char (*m)[32] = realloc(g_q, sizeof *m * (size_t)(g_cq = g_cq ? g_cq * 2 : 32));
+				if (!m) { UNLOCK(); return; }
+				g_q = m;
+			}
+			memmove(g_q + 1, g_q, sizeof g_q[0] * (size_t)g_nq++);
+		}
+		snprintf(key, sizeof key, "%s/%s", g_tab.e[al].sid, g_tab.e[al].eid);
+		memcpy(g_q[0], key, sizeof key);
+		q_save_locked();
+	}
+	UNLOCK();
+}
+
 void pod_queue_remove(int al)
 {
 	int k;

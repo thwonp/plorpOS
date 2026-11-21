@@ -567,9 +567,9 @@ started, the time left, or Played.
 - **X on an episode**: Download (or Cancel, or Delete the copy), Mark Played
   or Unplayed, Add to Queue or Remove.
 - **Y** marks a favorite.
-- **Queue** is what plays next. When an episode ends, the first one in the
-  Queue starts; played episodes leave it, and when it is empty playback
-  stops. In the Queue, L1/R1 move an episode up or down.
+- **Queue** is what plays next. The episode you play goes to the top. When it
+  ends it leaves the Queue and the next one starts; when the Queue is empty,
+  playback stops. In the Queue, L1/R1 move an episode up or down.
 - **X on a show** unsubscribes. If you downloaded some of its episodes, you
   choose whether they go too.
 

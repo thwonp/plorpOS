@@ -4935,6 +4935,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 typedef struct {
 	int key;                 /* the fit cache's: a shelf index + 1, or GL_KEY_* */
 	const char *header;
+	const char *note;        /* dim, after the header on its line; NULL none */
 	int n, cur;
 	unsigned accent;
 	void *ctx;
@@ -5248,7 +5249,14 @@ static void gl_draw(app *a, const gl_list *L)
 	/* Header. Where you are in the list goes under the art. */
 	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf,
 	            L->wide_header ? gl_header_right() - GL_PAD : g.col_w);
-	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+	{
+		int hw = ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+		int nx = GL_PAD * 2 + hw, right = L->wide_header ? gl_header_right() : GL_PAD + g.col_w;
+
+		if (L->note && *L->note && nx + ui_text_width(fv, L->note) <= right)
+			ui_text(a->r, fv, L->note, nx,
+			        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), -1, UI_TEXT_DIM);
+	}
 	/* A passing word, on the header's line, clear of the battery's corner. */
 	if (L->toast && *L->toast && !L->wide_header)
 		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
@@ -14667,6 +14675,9 @@ static bool book_start(int al)
 	int i, start = book_place(al, &at);
 
 	if (!paths) return false;
+	/* The episode playing is the Queue's first: what plays next is under it
+	 * (owner, plorpos-7ni.12). */
+	if (pod_is_path(g_muse.tracks[b->first].path)) pod_queue_top(al);
 	for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
 	fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
 	muse_play(paths, b->n, start, at, true, book_speed(al),
@@ -15653,6 +15664,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->cur = v->cursor;
 	L->title = mal_title;
 	L->value = g_muse_pod ? mal_pod_value : NULL;
+	if (g_muse_pod && tab == MT_COVERFLOW && ar < 0 && L->n > 1) L->note = "L1/R1 reorder";
 	L->fav = mal_fav;
 	L->art = gl_game_art;
 	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."

@@ -118,6 +118,7 @@ int  pod_queue_album(int k);         /* the k-th one's album, -1 when gone from 
 int  pod_queue_pos(int al);          /* where album `al` is in it, -1 not there */
 void pod_queue_add(int al);          /* at the end, unless there already */
 void pod_queue_remove(int al);
+void pod_queue_top(int al);          /* first, moved there or added (owner: playing one does) */
 bool pod_queue_move(int al, int dir);/* a place up (-1) or down (+1); false at an end */
 
 /* ---- playing (plorpos-7ni.5) ------------------------------------------------------------- */
