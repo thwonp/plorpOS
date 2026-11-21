@@ -15684,7 +15684,7 @@ static void muse_pod_ep_menu(app *a, sysview *v, int al)
 		pod_download(al);
 		muse_toast("Downloading");
 		break;
-	case E_DLCANCEL: pod_download_cancel(al); muse_toast("Download cancelled"); break;
+	case E_DLCANCEL: muse_toast(pod_download_cancel(al) ? "Download cancelled" : "Already downloaded"); break;
 	case E_DLDEL:    muse_toast(pod_delete_download(al) ? "Download deleted" : "Could not delete"); break;
 	}
 	muse_refilter(v, al);

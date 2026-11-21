@@ -104,7 +104,8 @@ bool pod_downloaded(int al, char *rel, size_t n);
 
 int  pod_download_state(int al);     /* 0 none, 1 waiting, 2 downloading */
 void pod_download(int al);
-void pod_download_cancel(int al);
+/* False when there was nothing to stop: it had landed already. */
+bool pod_download_cancel(int al);
 bool pod_delete_download(int al);
 /* A line while downloads run: "45% of 60 MB, 2 more waiting", or "27 MB"
  * when the server gives no size. */

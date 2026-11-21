@@ -1067,6 +1067,7 @@ static char g_dl_part[800];
  * nothing on the card for a few lines read twice a second. */
 #define POD_DL_HDR "/tmp/plorpos-pod-dl.hdr"
 static volatile int g_dl_cancel, g_dl_changed;
+static int g_dl_landing;                 /* the one fetched is being moved into place */
 static pthread_cond_t g_dl_cv = PTHREAD_COND_INITIALIZER;
 
 /* A name a FAT card takes: no path or reserved characters, no trailing dot or
@@ -1132,7 +1133,12 @@ static bool dl_one(const char *key)
 	unlink(POD_DL_HDR);
 	code = net_fetch_hdr(url, g_dl_part, POD_DL_HDR, 15, &g_dl_cancel);
 	unlink(POD_DL_HDR);
-	if (code != 200) { unlink(g_dl_part); return false; }
+	/* A cancel that came as the last bytes did still wins: it was said.
+	 * Past here the copy is landing, and a cancel says it was too late. */
+	LOCK();
+	if (code != 200 || g_dl_cancel) { UNLOCK(); unlink(g_dl_part); return false; }
+	g_dl_landing = 1;
+	UNLOCK();
 	safe_name(show[0] ? show : sid, sshow, sizeof sshow);
 	safe_name(title, stitle, sizeof stitle);
 	t = (time_t)stamp;
@@ -1178,6 +1184,7 @@ static void *dl_main(void *arg)
 		if (!ok && !g_dl_cancel) { cpy(g_dl_failed, sizeof g_dl_failed, key); g_dl_failed_at = time(NULL); }
 		g_dl_key[0] = '\0';
 		g_dl_part[0] = '\0';
+		g_dl_landing = 0;
 		UNLOCK();
 		g_dl_changed = 1;
 	}
@@ -1223,21 +1230,24 @@ void pod_download(int al)
 	if (pod_ep_key(al, key, sizeof key)) dl_enqueue(key);
 }
 
-void pod_download_cancel(int al)
+bool pod_download_cancel(int al)
 {
 	char key[32];
+	bool hit = false;
 
-	if (!pod_ep_key(al, key, sizeof key)) return;
+	if (!pod_ep_key(al, key, sizeof key)) return false;
 	LOCK();
-	if (!strcmp(g_dl_key, key)) g_dl_cancel = 1;
+	if (!strcmp(g_dl_key, key) && !g_dl_landing) { g_dl_cancel = 1; hit = true; }
 	for (int i = 0; i < g_dl_n; i++)
 		if (!strcmp(g_dl_q[i], key)) {
 			memmove(g_dl_q + i, g_dl_q + i + 1, sizeof g_dl_q[0] * (size_t)(g_dl_n - i - 1));
 			g_dl_n--;
+			hit = true;
 			break;
 		}
 	UNLOCK();
 	g_dl_changed = 1;
+	return hit;
 }
 
 bool pod_delete_download(int al)
