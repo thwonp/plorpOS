@@ -68,6 +68,7 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <dirent.h>
+#include <limits.h>
 #include <errno.h>
 #include <ftw.h>
 #include <ctype.h>
@@ -403,6 +404,10 @@ static int  muse_tab(void);
 static void muse_tabs_screen(app *a);
 static void muse_tabs_load(void);
 enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
+/* On Podcasts (plorpos-7ni.4) the slots are Podcasts, New, Downloads, Queue
+ * and Favorites, and the three episode lists filter the view: the tab whose
+ * filter is on, or -1. */
+static int g_pod_view = -1;
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static bool g_muse_pod;
 static ml_order muse_sort_shown(int sort)
@@ -1393,6 +1398,7 @@ static void book_item_write(int al, const char *track, double at)
 
 /* A place is "<seconds>\t<file>", the file by its name rather than its number
  * so a file added to the folder later moves nothing, or "finished". */
+static void pod_at_forget(int al);
 static void book_write(int al, const char *track, double at)
 {
 	char key[LIB_PATH + 8], val[LIB_PATH + 32];
@@ -1402,6 +1408,7 @@ static void book_write(int al, const char *track, double at)
 	snprintf(val, sizeof val, "%.1f\t%s", at, file ? file + 1 : track);
 	db_set_str(db_dev(), key, val);
 	g_book_done[al] = false;
+	pod_at_forget(al);
 	book_item_write(al, track, at);
 }
 
@@ -4571,7 +4578,7 @@ static void draw_systems(app *a)
 		char al[32] = "", bk[32] = "";
 
 		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
-		if (books)  snprintf(bk, sizeof bk, "%d book%s", books, books == 1 ? "" : "s");
+		if (books)  snprintf(bk, sizeof bk, g_muse_pod ? "%d episode%s" : "%d book%s", books, books == 1 ? "" : "s");
 		snprintf(line, sizeof line, "%s%s%s", al, al[0] && bk[0] ? ", " : "", bk);
 	} else {
 		int gc = a->view[(int)(label - a->sys.systems)].list.count;
@@ -5420,7 +5427,8 @@ static void draw_games(app *a)
 	if (gl_active(a)) { draw_games_list(a); return; }
 	bool muse_tabs = g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor]);
 
-	if (muse_tabs && muse_tab() != MT_COVERFLOW) {
+	/* Podcasts' Queue sits in Coverflow's slot and is a list (plorpos-7ni.4). */
+	if (muse_tabs && (muse_tab() != MT_COVERFLOW || g_muse_pod)) {
 		gl_list L;
 
 		muse_list_describe(a, &a->view[a->sys_cursor], g_mls_asel, g_mls_psel, &L);
@@ -6877,7 +6885,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		 * over without inventing a flag day. */
 		u.muse       = is_muse(sc);
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
-		u.game_count = a->view[sys].list.count;
+		/* Podcasts: every episode, not the tab's list (plorpos-7ni.4). */
+		u.game_count = is_muse(sc) && g_muse_pod ? g_muse.nalbums : a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
@@ -14678,13 +14687,19 @@ static bool g_mt_on[MT_N] = { true, true, true, true, true };
  * the tab numbers in order, a '!' before one that is off ("0,1,4,!2,3"). One
  * order for music and books. A tab missing from it (newer than the setting)
  * goes on at the end; anything unreadable is the default. */
+/* Podcasts keeps its own (plorpos-7ni.4): its tabs are other lists. */
+static const char *muse_tabs_key(void) { return g_muse_pod ? "muse.podtabs" : "muse.tabs"; }
+
 static void muse_tabs_load(void)
 {
+	static const int MUSIC[MT_N] = { MT_ARTISTS, MT_ALBUMS, MT_FAVORITES, MT_PLAYLISTS, MT_COVERFLOW };
+	static const int PODS[MT_N]  = { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_FAVORITES, MT_COVERFLOW };
 	char buf[64], *p, *e;
 	int order[MT_N], n = 0, t, i;
 	bool on[MT_N], seen[MT_N] = { false };
 
-	db_get_str(db_dev(), "muse.tabs", buf, sizeof buf, "");
+	for (i = 0; i < MT_N; i++) { g_mt_order[i] = (g_muse_pod ? PODS : MUSIC)[i]; g_mt_on[i] = true; }
+	db_get_str(db_dev(), muse_tabs_key(), buf, sizeof buf, "");
 	if (!buf[0]) return;
 	for (p = buf; *p && n < MT_N; p = *e ? e + 1 : e) {
 		bool off = *p == '!';
@@ -14707,7 +14722,7 @@ static void muse_tabs_save(void)
 	for (i = 0; i < MT_N; i++)
 		len += snprintf(buf + len, sizeof buf - (size_t)len, "%s%s%d", i ? "," : "",
 		                g_mt_on[g_mt_order[i]] ? "" : "!", g_mt_order[i]);
-	db_set_str(db_dev(), "muse.tabs", buf);
+	db_set_str(db_dev(), muse_tabs_key(), buf);
 }
 
 static bool muse_tab_shown(int t)
@@ -14830,7 +14845,9 @@ static const char *muse_tab_name(int t)
 {
 	static const char *const MUSIC[MT_N] = { "Artists", "Albums", "Playlists", "Coverflow", "Favorites" };
 	static const char *const BOOKS[MT_N] = { "Authors", "Books", "Playlists", "Coverflow", "Favorites" };
+	static const char *const PODS[MT_N]  = { "Podcasts", "New", "Downloads", "Queue", "Favorites" };
 
+	if (g_muse_pod) return PODS[t];
 	return (muse_books_shown() ? BOOKS : MUSIC)[t];
 }
 
@@ -14942,9 +14959,19 @@ static void muse_tabs_screen(app *a)
 static void muse_favs_sync(sysview *v, int tab)
 {
 	bool want = tab == MT_FAVORITES;
+	int pv = g_muse_pod && (tab == MT_ALBUMS || tab == MT_PLAYLISTS || tab == MT_COVERFLOW) ? tab : -1;
 
-	if (g_muse_favs == want) return;
+	if (g_muse_favs == want && g_pod_view == pv) return;
+	/* Another podcast list opens on its top, its newest. */
+	if (g_muse_pod && g_pod_view != pv) {
+		g_muse_favs = want;
+		g_pod_view = pv;
+		v->cursor = 0;
+		muse_refilter(v, -1);
+		return;
+	}
 	g_muse_favs = want;
+	g_pod_view = pv;
 	muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
 }
 
@@ -15210,6 +15237,141 @@ static muse_exit muse_book_list(app *a, int which)
 static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
 
+/* ---- Podcasts: episode rows (plorpos-7ni.4) ---------------------------------- */
+
+/* A show's art on the Podcasts tab: its newest episode's card, the show's
+ * art, from the view's own textures - and the view's cursor follows, so
+ * priming and eviction keep it near. */
+static SDL_Texture *mar_pod_art(void *ctx, int i, int *w, int *h)
+{
+	app *a = ctx;
+	sysview *v = &a->view[a->sys_cursor];
+	const ml_artist *r = &g_muse.artists[g_mar.ix[i]];
+	int k = r->n > 0 ? muse_card_of(v, r->first) : -1;
+
+	if (k < 0) return NULL;
+	v->cursor = k;
+	return gl_game_art(ctx, k, w, h);
+}
+
+/* Seconds into episode `al` from its place, -1 none, -2 played. Per album,
+ * read once and forgotten when its place is written. */
+static int *g_pod_at;
+static unsigned g_pod_at_gen;
+
+static int pod_at(int al)
+{
+	char key[LIB_PATH + 8], val[LIB_PATH + 32];
+
+	if (g_pod_at_gen != g_muse_gen || !g_pod_at) {
+		free(g_pod_at);
+		if (!(g_pod_at = malloc(sizeof *g_pod_at * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1)))) return -1;
+		for (int i = 0; i < g_muse.nalbums; i++) g_pod_at[i] = INT_MIN;
+		g_pod_at_gen = g_muse_gen;
+	}
+	if (al < 0 || al >= g_muse.nalbums) return -1;
+	if (g_pod_at[al] == INT_MIN) {
+		book_key(al, key, sizeof key);
+		db_get_str(db_dev(), key, val, sizeof val, "");
+		g_pod_at[al] = !strcmp(val, "finished") ? -2 : strchr(val, '\t') ? (int)atof(val) : -1;
+	}
+	return g_pod_at[al];
+}
+
+static void pod_at_forget(int al)
+{
+	if (g_pod_at && g_pod_at_gen == g_muse_gen && al >= 0 && al < g_muse.nalbums) g_pod_at[al] = INT_MIN;
+}
+
+static void pod_span(int secs, char *out, size_t n)
+{
+	if (secs >= 3600) snprintf(out, n, "%dh %dm", secs / 3600, secs / 60 % 60);
+	else snprintf(out, n, "%dm", secs >= 60 ? secs / 60 : 1);
+}
+
+/* A row's end (owner's list is narrow): a dot and the length for one never
+ * started, how long is left, or Played. The date is under the art. */
+static const char *mal_pod_value(void *ctx, int i)
+{
+	static char ring[24][32];
+	static int k;
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = v->album ? v->album[i] : -1, at;
+	char *o = ring[k = (k + 1) % 24], span[24];
+	pod_ep e;
+
+	if (al < 0 || !pod_episode(al, &e)) return "";
+	at = g_book_done && g_book_done[al] ? -2 : pod_at(al);
+	if (at == -2) return "Played";
+	if (at > 0 && e.dur > at) { pod_span(e.dur - at, span, sizeof span); snprintf(o, 32, "%s left", span); return o; }
+	if (e.dur <= 0) return "\xE2\x80\xA2";
+	pod_span(e.dur, span, sizeof span);
+	snprintf(o, 32, "\xE2\x80\xA2 %s", span);
+	return o;
+}
+
+/* Under the art: the date in full, and the show on a list of every show's. */
+static void pod_under_line(int al, bool show, char *out, size_t n)
+{
+	char d[40] = "";
+	pod_ep e;
+
+	if (!pod_episode(al, &e)) { if (n) out[0] = '\0'; return; }
+	if (e.stamp > 0) {
+		time_t t = (time_t)e.stamp;
+		struct tm tm;
+
+		localtime_r(&t, &tm);
+		strftime(d, sizeof d, "%b %e, %Y", &tm);
+		for (char *c = d; *c; c++) if (c[0] == ' ' && c[1] == ' ') memmove(c, c + 1, strlen(c));
+	}
+	if (show) snprintf(out, n, "%s  \xC2\xB7  %s", d, g_muse.artists[muse_artist_of(al)].name);
+	else snprintf(out, n, "%s%s", d, pod_downloaded(al, NULL, 0) ? "  \xC2\xB7  Downloaded" : "");
+}
+
+/* Played by hand (X), or heard to 95%: finished, out of the Queue. */
+static void pod_mark_played(int al)
+{
+	book_finish(al);
+	pod_queue_remove(al);
+	pod_at_forget(al);
+}
+
+static void pod_mark_unplayed(int al)
+{
+	char key[LIB_PATH + 16];
+
+	book_key(al, key, sizeof key);
+	db_del(db_dev(), key);
+	tl_book_id(al, key + 9, sizeof key - 9);
+	memcpy(key, "bookdone.", 9);
+	db_del(db_dev(), key);
+	if (g_book_done) g_book_done[al] = false;
+	pod_at_forget(al);
+}
+
+/* X on an episode: Played or not, the Queue. Downloads come with 7ni.6. */
+static void muse_pod_ep_menu(app *a, sysview *v, int al)
+{
+	enum { E_PLAYED, E_UNPLAYED, E_QADD, E_QDEL };
+	const char *opts[6];
+	int act[6], n = 0, k;
+
+	if (g_book_done && g_book_done[al]) { opts[n] = "Mark Unplayed"; act[n++] = E_UNPLAYED; }
+	else { opts[n] = "Mark Played"; act[n++] = E_PLAYED; }
+	if (pod_queue_pos(al) >= 0) { opts[n] = "Remove from Queue"; act[n++] = E_QDEL; }
+	else { opts[n] = "Add to Queue"; act[n++] = E_QADD; }
+	if ((k = muse_pick_run(a, g_muse.albums[al].name, opts, n)) < 0) return;
+	switch (act[k]) {
+	case E_PLAYED:   pod_mark_played(al);   muse_toast("Marked played"); break;
+	case E_UNPLAYED: pod_mark_unplayed(al); muse_toast("Marked unplayed"); break;
+	case E_QADD:     pod_queue_add(al);     muse_toast("Added to Queue"); break;
+	case E_QDEL:     pod_queue_remove(al);  muse_toast("Removed from Queue"); break;
+	}
+	muse_refilter(v, al);
+}
+
 static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L)
 {
 	bool books = muse_books_shown();
@@ -15222,16 +15384,17 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->toast = muse_toast_now();
 	if (tab == MT_ARTISTS && ar < 0) {
 		L->key = GL_KEY_ARTISTS;
-		L->header = books ? "Authors" : "Artists";
+		L->header = g_muse_pod ? "Podcasts" : books ? "Authors" : "Artists";
 		L->n = g_mar.n;
 		L->cur = asel;
 		L->title = mar_title;
 		L->value = mar_value;
-		L->empty = "Nothing here";
+		L->empty = g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some." : "Nothing here";
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
+		if (g_muse_pod) L->art = mar_pod_art;
 		return;
 	}
-	if (tab == MT_PLAYLISTS && books) {
+	if (tab == MT_PLAYLISTS && books && !g_muse_pod) {
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
 		L->n = BPL_N;
@@ -15240,7 +15403,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
-	if (tab == MT_PLAYLISTS) {
+	if (tab == MT_PLAYLISTS && !g_muse_pod) {
 		muse_playlists_load();
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
@@ -15255,14 +15418,20 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	/* Albums: the view. */
 	L->key = a->sys_cursor + 1;
 	L->header = ar >= 0 ? g_muse.artists[ar].name
+	          : g_muse_pod ? muse_tab_name(tab)
 	          : tab == MT_FAVORITES ? (books ? "Favorite Books" : "Favorite Albums")
 	          : books ? "Books" : "Albums";
 	L->n = tab == MT_FAVORITES && !g_muse_favs ? 0 : v->list.count;
 	L->cur = v->cursor;
 	L->title = mal_title;
+	L->value = g_muse_pod ? mal_pod_value : NULL;
 	L->fav = mal_fav;
 	L->art = gl_game_art;
-	L->empty = tab != MT_FAVORITES ? "Nothing here"
+	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."
+	                       : tab == MT_PLAYLISTS ? "No downloads yet. X on an episode downloads it."
+	                       : tab == MT_COVERFLOW ? "The queue is empty. X on an episode adds it."
+	                       : tab == MT_ALBUMS ? "No new episodes" : "Nothing here")
+	         : tab != MT_FAVORITES ? "Nothing here"
 	         : books ? "No favorite books yet. Y on a book marks it."
 	         : "No favorite albums yet. Y on an album marks it.";
 	L->phase = title_phase(a);
@@ -15276,7 +15445,8 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		char line[160];
 
 		/* The year, and on a list of every artist's albums whose they are. */
-		if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
+		if (g_muse_pod) pod_under_line(al, ar < 0, line, sizeof line);
+		else if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
 		else if (y)    snprintf(line, sizeof line, "%d", y);
 		else           snprintf(line, sizeof line, "%s", who);
 		if (*line) {
@@ -15411,10 +15581,12 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	gl_scroll gs = { 0 };
 	while (!want_quit && a->running) {
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
-		bool cover = tab == MT_COVERFLOW, favs = tab == MT_FAVORITES;
-		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
+		bool cover = tab == MT_COVERFLOW && !g_muse_pod, favs = tab == MT_FAVORITES;
+		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled) ||
+		              (g_muse_pod && tab != MT_ARTISTS);
 		bool artists = tab == MT_ARTISTS && !drilled;
-		bool lists = tab == MT_PLAYLISTS;
+		bool lists = tab == MT_PLAYLISTS && !g_muse_pod;
+		bool queue = g_muse_pod && tab == MT_COVERFLOW;
 		bool books = muse_books_shown();     /* lists then are the made ones (i8d.4) */
 		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
@@ -15495,6 +15667,13 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
 			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
 		}
+		/* The Queue: L1 and R1 move the episode a place (L2/R2 are the tabs'). */
+		if (queue && n > 0 && (in_repeat(&a->in, IN_L1) || in_repeat(&a->in, IN_R1))) {
+			int al = v->album[v->cursor];
+
+			if (pod_queue_move(al, in_repeat(&a->in, IN_R1) ? +1 : -1)) muse_refilter(v, al);
+			continue;
+		}
 		muse_list_describe(a, v, g_mls_asel, g_mls_psel, &L);
 		if (n > 0 && !cover) {
 			int page = gl_rows(&L);
@@ -15504,10 +15683,13 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
 			if (in_repeat(&a->in, IN_L1))   *cur = gl_page_step(*cur, n, page, -1);
 			if (in_repeat(&a->in, IN_R1))   *cur = gl_page_step(*cur, n, page, +1);
+			/* Episodes are in date order: Left and Right page, as L1/R1. */
 			if (in_repeat(&a->in, IN_RIGHT) && !lists)
-				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
+				*cur = albums && g_muse_pod ? gl_page_step(*cur, n, page, +1)
+				     : albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
 			if (in_repeat(&a->in, IN_LEFT) && !lists)
-				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
+				*cur = albums && g_muse_pod ? gl_page_step(*cur, n, page, -1)
+				     : albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
 			gl_scroll_apply(&gs, cur, n);
 			if (albums) cf_reset(&v->cf, v->cursor);
 		}
@@ -15527,6 +15709,11 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_abs && v->album) {
 			muse_abs_book_menu(a, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_pod && v->album) {
+			muse_pod_ep_menu(a, v, v->album[v->cursor]);
 			ui_redraw_now();
 			continue;
 		}
@@ -15617,6 +15804,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			SDL_Delay(IDLE_POLL_MS);
 	}
 	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
+	if (g_pod_view >= 0 && v) { g_pod_view = -1; muse_refilter(v, -1); }
 	*vp = v;
 	g_muse_list_up = false;
 	plat_input_flush();
@@ -19532,6 +19720,30 @@ static void muse_order_view(sysview *v)
 		 * arrays are then as they were, so textures in hand still match. */
 		if (kept) v->list.count = kept;
 		else g_muse_favs = false;
+	}
+	/* Podcasts' New (not played), Downloads, and Queue in its own order. An
+	 * empty one stays empty: the tab says so (plorpos-7ni.4). */
+	if (g_muse_pod && g_pod_view >= 0) {
+		int kept = 0;
+
+		if (g_pod_view == MT_COVERFLOW) {
+			int q = pod_queue_count();
+
+			for (k = 0; k < q && kept < g_muse.nalbums; k++) {
+				int al = pod_queue_album(k);
+
+				if (al >= 0) v->album[kept++] = al;
+			}
+		} else {
+			for (k = 0; k < v->list.count; k++) {
+				int al = v->album[k];
+
+				if (g_pod_view == MT_ALBUMS ? !(g_book_done && g_book_done[al])
+				                            : pod_downloaded(al, NULL, 0))
+					v->album[kept++] = al;
+			}
+		}
+		v->list.count = kept;
 	}
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];

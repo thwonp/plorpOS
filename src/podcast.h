@@ -71,6 +71,23 @@ typedef struct {
 } pod_ep;
 bool pod_episode(int al, pod_ep *out);
 
+/* The show's id and the episode's ("<show>/<episode>"), for keys kept
+ * across syncs. False for an album not in the library. */
+bool pod_ep_key(int al, char *out, size_t n);
+/* The album an episode key is now, or -1. */
+int  pod_album_of_key(const char *key);
+/* Downloaded copy, card-relative, or false (plorpos-7ni.6). */
+bool pod_downloaded(int al, char *rel, size_t n);
+
+/* ---- Up Next (owner, plorpos-7ni.4): the Queue tab, kept as queue.tsv ---------------- */
+
+int  pod_queue_count(void);
+int  pod_queue_album(int k);         /* the k-th one's album, -1 when gone from the library */
+int  pod_queue_pos(int al);          /* where album `al` is in it, -1 not there */
+void pod_queue_add(int al);          /* at the end, unless there already */
+void pod_queue_remove(int al);
+bool pod_queue_move(int al, int dir);/* a place up (-1) or down (+1); false at an end */
+
 /* Where album `al`'s art is kept, without extension: its show's. */
 void pod_cover_base(int al, char *out, size_t n);
 bool pod_cover_want(int al, const char *base);

@@ -474,6 +474,7 @@ typedef struct {
 	long long stamp;
 	int dur, show;
 	char *url, *title;                   /* in the table's text block */
+	char *dl;                            /* the downloaded copy, card-relative; NULL none */
 } pd_ep;
 
 typedef struct {
@@ -488,6 +489,7 @@ static pd_table g_tab;                   /* the installed library's, under g_mu 
 
 static void tab_free(pd_table *t)
 {
+	for (int i = 0; i < t->n; i++) free(t->e[i].dl);
 	for (int i = 0; i < t->ntext; i++) free(t->text[i]);
 	free(t->text);
 	free(t->e);
@@ -497,6 +499,26 @@ static void tab_free(pd_table *t)
 }
 
 bool pod_lib_cached(void) { return pod_show_count() > 0; }
+
+/* A show's downloads (plorpos-7ni.6): "<episode id>\t<card-relative path>"
+ * lines in <show>/dl.tsv, onto its episodes [first, first + n). */
+static void dl_read(const char *sid, pd_table *t, int first, int n)
+{
+	char p[700], line[1400], *tab;
+	FILE *f;
+	int i;
+
+	snprintf(p, sizeof p, "%s/%s/dl.tsv", g_dir, sid);
+	if (!(f = fopen(p, "r"))) return;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\r\n")] = '\0';
+		if (!(tab = strchr(line, '\t'))) continue;
+		*tab++ = '\0';
+		for (i = first; i < first + n; i++)
+			if (!strcmp(t->e[i].eid, line)) { free(t->e[i].dl); t->e[i].dl = strdup(tab); break; }
+	}
+	fclose(f);
+}
 
 bool pod_is_path(const char *rel)
 {
@@ -575,6 +597,7 @@ bool pod_lib_load(ml_lib *out)
 			line = e ? e + 1 : NULL;
 		}
 		ar->n = t.n - ar->first;
+		dl_read(s->sid, &t, ar->first, ar->n);
 		t.nshows++;
 	}
 	free(ord);
@@ -633,13 +656,187 @@ bool pod_episode(int al, pod_ep *out)
 	return ok;
 }
 
+bool pod_ep_key(int al, char *out, size_t n)
+{
+	bool ok;
+
+	LOCK();
+	if ((ok = al >= 0 && al < g_tab.n)) snprintf(out, n, "%s/%s", g_tab.e[al].sid, g_tab.e[al].eid);
+	UNLOCK();
+	return ok;
+}
+
+/* Under g_mu. */
+static int album_of_key_locked(const char *key)
+{
+	const char *sl = strchr(key, '/');
+	int i;
+
+	if (!sl) return -1;
+	for (i = 0; i < g_tab.n; i++)
+		if (!strcmp(g_tab.e[i].eid, sl + 1) && !strncmp(g_tab.e[i].sid, key, (size_t)(sl - key)) &&
+		    g_tab.e[i].sid[sl - key] == '\0') return i;
+	return -1;
+}
+
+int pod_album_of_key(const char *key)
+{
+	int al;
+
+	LOCK(); al = album_of_key_locked(key); UNLOCK();
+	return al;
+}
+
+bool pod_downloaded(int al, char *rel, size_t n)
+{
+	bool ok;
+
+	LOCK();
+	ok = al >= 0 && al < g_tab.n && g_tab.e[al].dl;
+	if (ok && rel) snprintf(rel, n, "%s", g_tab.e[al].dl);
+	UNLOCK();
+	return ok;
+}
+
+/* ---- Up Next ---------------------------------------------------------------------------------- */
+
+static char (*g_q)[32];                  /* "<show>/<episode>", in order; under g_mu */
+static int g_nq, g_cq;
+
+static void q_path(char *out, size_t n) { snprintf(out, n, "%s/queue.tsv", g_dir); }
+
+static void q_load(void)
+{
+	char p[700], line[64];
+	FILE *f;
+
+	g_nq = 0;
+	q_path(p, sizeof p);
+	if (!(f = fopen(p, "r"))) return;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\r\n")] = '\0';
+		if (!strchr(line, '/')) continue;
+		if (g_nq == g_cq) {
+			char (*m)[32] = realloc(g_q, sizeof *m * (size_t)(g_cq = g_cq ? g_cq * 2 : 32));
+			if (!m) break;
+			g_q = m;
+		}
+		cpy(g_q[g_nq++], sizeof g_q[0], line);
+	}
+	fclose(f);
+}
+
+static void q_save_locked(void)
+{
+	char p[700], *b = malloc((size_t)g_nq * 33 + 1);
+	size_t len = 0;
+
+	if (!b) return;
+	for (int i = 0; i < g_nq; i++) len += (size_t)sprintf(b + len, "%s\n", g_q[i]);
+	mkdirs(g_dir);
+	q_path(p, sizeof p);
+	write_file(p, b, len);
+	free(b);
+}
+
+static int q_find_locked(int al)
+{
+	char key[32];
+
+	if (al < 0 || al >= g_tab.n) return -1;
+	snprintf(key, sizeof key, "%s/%s", g_tab.e[al].sid, g_tab.e[al].eid);
+	for (int i = 0; i < g_nq; i++) if (!strcmp(g_q[i], key)) return i;
+	return -1;
+}
+
+int pod_queue_count(void)
+{
+	int n;
+
+	LOCK(); n = g_nq; UNLOCK();
+	return n;
+}
+
+int pod_queue_album(int k)
+{
+	int al;
+
+	LOCK(); al = k >= 0 && k < g_nq ? album_of_key_locked(g_q[k]) : -1; UNLOCK();
+	return al;
+}
+
+int pod_queue_pos(int al)
+{
+	int k;
+
+	LOCK(); k = q_find_locked(al); UNLOCK();
+	return k;
+}
+
+void pod_queue_add(int al)
+{
+	LOCK();
+	if (al >= 0 && al < g_tab.n && q_find_locked(al) < 0) {
+		if (g_nq == g_cq) {
+			char (*m)[32] = realloc(g_q, sizeof *m * (size_t)(g_cq = g_cq ? g_cq * 2 : 32));
+			if (!m) { UNLOCK(); return; }
+			g_q = m;
+		}
+		snprintf(g_q[g_nq++], sizeof g_q[0], "%s/%s", g_tab.e[al].sid, g_tab.e[al].eid);
+		q_save_locked();
+	}
+	UNLOCK();
+}
+
+void pod_queue_remove(int al)
+{
+	int k;
+
+	LOCK();
+	if ((k = q_find_locked(al)) >= 0) {
+		memmove(g_q + k, g_q + k + 1, sizeof g_q[0] * (size_t)(g_nq - k - 1));
+		g_nq--;
+		q_save_locked();
+	}
+	UNLOCK();
+}
+
+bool pod_queue_move(int al, int dir)
+{
+	int k, j;
+	bool moved = false;
+
+	LOCK();
+	if ((k = q_find_locked(al)) >= 0 && (j = k + (dir < 0 ? -1 : 1)) >= 0 && j < g_nq) {
+		char t[32];
+
+		memcpy(t, g_q[k], sizeof t);
+		memcpy(g_q[k], g_q[j], sizeof t);
+		memcpy(g_q[j], t, sizeof t);
+		q_save_locked();
+		moved = true;
+	}
+	UNLOCK();
+	return moved;
+}
+
 /* ---- covers ---------------------------------------------------------------------------------- */
 
 static char g_landed[LANDED][700];
 static int g_nlanded;
-/* Asked for or given up on this session: one fetch per show's art. */
-static char (*g_asked)[700];
+/* One fetch per show's art a session: on its way (0), or given up (-1).
+ * Every episode of the show asks; all of them hear "asked" while it is on
+ * its way, so none is drawn without art meanwhile. */
+typedef struct { char base[700]; int st; } pd_asked;
+static pd_asked *g_asked;
 static int g_nasked, g_casked;
+
+static void asked_set(const char *base, int st)
+{
+	LOCK();
+	for (int i = 0; i < g_nasked; i++) if (!strcmp(g_asked[i].base, base)) g_asked[i].st = st;
+	UNLOCK();
+}
 
 void pod_cover_base(int al, char *out, size_t n)
 {
@@ -660,11 +857,11 @@ static void do_cover(job *j)
 	snprintf(d, sizeof d, "%s", j->b);
 	if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
 	code = net_fetch(j->a, "GET", NULL, 0, part, 10, 60, NULL);
-	if (code != 200) { unlink(part); fprintf(stderr, "pod: art HTTP %d\n", code); return; }
+	if (code != 200) { unlink(part); asked_set(j->b, -1); fprintf(stderr, "pod: art HTTP %d\n", code); return; }
 	if (g_shrink) g_shrink(part);        /* in place; PNG when it shrank */
 	if ((f = fopen(part, "rb"))) { if (fread(m, 1, 4, f) != 4) m[0] = 0; fclose(f); }
 	snprintf(dest, sizeof dest, "%s.%s", j->b, m[0] == 0x89 && m[1] == 'P' ? "png" : "jpg");
-	if (rename(part, dest) != 0) { unlink(part); return; }
+	if (rename(part, dest) != 0) { unlink(part); asked_set(j->b, -1); return; }
 	LOCK();
 	if (g_nlanded < LANDED) snprintf(g_landed[g_nlanded++], sizeof g_landed[0], "%s", j->b);
 	UNLOCK();
@@ -682,12 +879,18 @@ bool pod_cover_want(int al, const char *base)
 		for (i = 0; i < g_nsubs; i++)
 			if (!strcmp(g_subs[i].sid, g_tab.e[al].sid)) { cpy(url, sizeof url, g_subs[i].image); break; }
 	}
-	for (i = 0; i < g_nasked && url[0]; i++) if (!strcmp(g_asked[i], base)) url[0] = '\0';
+	for (i = 0; i < g_nasked && url[0]; i++)
+		if (!strcmp(g_asked[i].base, base)) {
+			bool on_way = g_asked[i].st == 0;
+
+			UNLOCK();
+			return on_way;
+		}
 	if (url[0] && g_nasked == g_casked) {
-		char (*m)[700] = realloc(g_asked, sizeof *m * (size_t)(g_casked = g_casked ? g_casked * 2 : 32));
+		pd_asked *m = realloc(g_asked, sizeof *m * (size_t)(g_casked = g_casked ? g_casked * 2 : 32));
 		if (m) g_asked = m; else url[0] = '\0';
 	}
-	if (url[0]) cpy(g_asked[g_nasked++], sizeof g_asked[0], base);
+	if (url[0]) { cpy(g_asked[g_nasked].base, sizeof g_asked[0].base, base); g_asked[g_nasked++].st = 0; }
 	UNLOCK();
 	if (!url[0] || !(j = calloc(1, sizeof *j))) return false;
 	j->kind = J_COVER;
@@ -743,6 +946,7 @@ void pod_init(const char *card, const char *shared, void (*shrink)(const char *p
 	g_shrink = shrink;
 	LOCK();
 	subs_load();
+	q_load();
 	UNLOCK();
 	if (pthread_create(&th, NULL, api_main, NULL) == 0) pthread_detach(th);
 }
