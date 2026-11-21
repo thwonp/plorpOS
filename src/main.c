@@ -3448,6 +3448,17 @@ static void aout_apply(bool force)
 
 #define VOL_SKIP_HOLD_MS 500
 
+/* Next or previous - on a book, ten seconds on or back instead: a book's
+ * chapters and files change only under More > Chapters (owner, i8d.9). */
+static void muse_skip(int dir)
+{
+	if (musec_is_book()) musec_seek_by(dir * 10.0);
+	else if (dir > 0)    musec_next();
+	else                 musec_prev();
+}
+
+static double seek_step(const in_state *in, in_button b);
+
 /* What the volume keys asked of Muse during a game - a hold while it plays is
  * the next or previous track, both keys together are pause/play - carried out
  * on the game tick, from Diatom's SKIP line or plat_run's own key reads
@@ -3455,8 +3466,8 @@ static void aout_apply(bool force)
 static void music_keys(void)
 {
 	switch (plat_musickey_take()) {
-	case MUSICKEY_NEXT:   musec_next();   break;
-	case MUSICKEY_PREV:   musec_prev();   break;
+	case MUSICKEY_NEXT:   muse_skip(+1);  break;
+	case MUSICKEY_PREV:   muse_skip(-1);  break;
 	case MUSICKEY_TOGGLE: musec_toggle(); break;
 	}
 }
@@ -3506,11 +3517,14 @@ static void vol_keys(in_state *st)
 			armed[k] = musec_playing();
 		} else if (!armed[k]) {
 			if (in_repeat(st, b)) plat_volume_nudge(dir);
-		} else if (st->down[b] && st->down_since[b] != skipped[k] &&
-		           now - st->down_since[b] >= VOL_SKIP_HOLD_MS) {
+		} else if (st->down[b] && now - st->down_since[b] >= VOL_SKIP_HOLD_MS &&
+		           (musec_is_book() ? in_repeat(st, b) : st->down_since[b] != skipped[k])) {
+			/* On a book the hold seeks, and goes on seeking as a held
+			 * Left/Right does (i8d.9); on music it skips once. */
 			skipped[k] = st->down_since[b];
-			if (moved[k]) plat_volume_nudge(-dir);
-			if (k) musec_prev(); else musec_next();
+			if (moved[k]) { plat_volume_nudge(-dir); moved[k] = false; }
+			if (musec_is_book()) musec_seek_by(dir * seek_step(st, b));
+			else if (k) musec_prev(); else musec_next();
 		}
 	}
 }
@@ -12855,11 +12869,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	}
 
 	np_help(r, fs, musec_is_book()
-	        ? (musec_chapters() > 1
-	           ? (state ? "A: play    L1/R1: chapter    Left/Right: seek    X: more"
-	                    : "A: pause    L1/R1: chapter    Left/Right: seek    X: more")
-	           : (state ? "A: play    L1/R1: file    Left/Right: seek    X: more"
-	                    : "A: pause    L1/R1: file    Left/Right: seek    X: more"))
+	        ? (state ? "A: play    L1/R1, Left/Right: seek    X: more"
+	                 : "A: pause    L1/R1, Left/Right: seek    X: more")
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"));
 	draw_battery(r);
@@ -13340,8 +13351,13 @@ static muse_exit muse_now_screen(app *a)
 			memset(&drawn, 0, sizeof drawn);     /* the menu drew over it */
 			continue;
 		}
-		if (in_repeat(&a->in, IN_L1))       musec_prev();
-		if (in_repeat(&a->in, IN_R1))       musec_next();
+		/* On a book the shoulders seek too (i8d.9). */
+		if (in_repeat(&a->in, IN_L1)) {
+			if (musec_is_book()) musec_seek_by(-seek_step(&a->in, IN_L1)); else musec_prev();
+		}
+		if (in_repeat(&a->in, IN_R1)) {
+			if (musec_is_book()) musec_seek_by(+seek_step(&a->in, IN_R1)); else musec_next();
+		}
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
 		vol_keys(&a->in);
@@ -13975,8 +13991,8 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
 		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
-		if (in_repeat(&a->in, IN_L1))       musec_prev();
-		if (in_repeat(&a->in, IN_R1))       musec_next();
+		if (in_repeat(&a->in, IN_L1))       muse_skip(-1);
+		if (in_repeat(&a->in, IN_R1))       muse_skip(+1);
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
@@ -16466,8 +16482,8 @@ static dark_end music_dark(app *a, unsigned *waited)
 			/* Now Playing's bindings - see muse_now_screen. */
 			if (b == IN_ACCEPT)     musec_toggle();
 			else if (b == IN_Y)     muse_cycle_mode();
-			else if (b == IN_L1)    musec_prev();
-			else if (b == IN_R1)    musec_next();
+			else if (b == IN_L1)    muse_skip(-1);
+			else if (b == IN_R1)    muse_skip(+1);
 			else if (b == IN_LEFT)  musec_seek_by(-10);
 			else if (b == IN_RIGHT) musec_seek_by(+10);
 			if (wake) { end = DARK_WOKE; break; }

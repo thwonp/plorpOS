@@ -602,8 +602,9 @@ static void headset_keys(void)
 			fprintf(stderr, "muse: headset %s\n", act);
 			if (!strcmp(act, "toggle"))     musec_toggle();
 			else if (!strcmp(act, "pause")) { if (g_now.state == MU_PLAYING) sendf("PAUSE"); }
-			else if (!strcmp(act, "next"))  musec_next();
-			else if (!strcmp(act, "prev"))  musec_prev();
+			/* A book's chapters change only under More > Chapters (i8d.9). */
+			else if (!strcmp(act, "next"))  { if (g_book) musec_seek_by(+10); else musec_next(); }
+			else if (!strcmp(act, "prev"))  { if (g_book) musec_seek_by(-10); else musec_prev(); }
 		}
 	}
 	if (f) fclose(f);
