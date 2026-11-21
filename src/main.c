@@ -408,6 +408,7 @@ enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
  * and Favorites, and the three episode lists filter the view: the tab whose
  * filter is on, or -1. */
 static int g_pod_view = -1;
+#define POD_NEW_MAX 100
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
 static bool g_muse_pod;
 static ml_order muse_sort_shown(int sort)
@@ -19967,7 +19968,9 @@ static void muse_order_view(sysview *v)
 		else g_muse_favs = false;
 	}
 	/* Podcasts' New (not played), Downloads, and Queue in its own order. An
-	 * empty one stays empty: the tab says so (plorpos-7ni.4). */
+	 * empty one stays empty: the tab says so (plorpos-7ni.4). New is the
+	 * newest POD_NEW_MAX: an OPML import leaves thousands unplayed (owner,
+	 * plorpos-7ni.11). */
 	if (g_muse_pod && g_pod_view >= 0) {
 		int kept = 0;
 
@@ -19980,7 +19983,7 @@ static void muse_order_view(sysview *v)
 				if (al >= 0) v->album[kept++] = al;
 			}
 		} else {
-			for (k = 0; k < v->list.count; k++) {
+			for (k = 0; k < v->list.count && !(g_pod_view == MT_ALBUMS && kept >= POD_NEW_MAX); k++) {
 				int al = v->album[k];
 
 				if (g_pod_view == MT_ALBUMS ? !(g_book_done && g_book_done[al])

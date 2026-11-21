@@ -556,7 +556,7 @@ hour) and when you choose **Check for Updates**. Nothing is fetched in the
 background.
 
 The tabs are **Podcasts** (your shows; A shows a show's episodes, newest
-first), **New** (everything you have not played), **Downloads**, **Favorites**
+first), **New** (the 100 newest you have not played), **Downloads**, **Favorites**
 and **Queue**. A row shows a dot and the length for an episode you have not
 started, the time left, or Played.
 
