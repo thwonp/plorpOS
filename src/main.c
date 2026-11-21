@@ -4163,8 +4163,10 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
-/* Playback Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
-static const int MUSE_SCREEN_OFF[] = { 5, 10, 15, 30, 60, 0 };
+/* Playback Settings' Screen Off, in seconds; 0 is Never, -1 Follow Sleep -
+ * the system's Auto Sleep, or Auto Off with sleep off - the default
+ * (plorpos-i8d.3; 10 s before). See idle_due. */
+static const int MUSE_SCREEN_OFF[] = { -1, 5, 10, 15, 30, 60, 0 };
 #define MUSE_SCREEN_OFF_COUNT \
 	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
 
@@ -4183,8 +4185,12 @@ static bool idle_due(app *a)
 	 * and Sleep Poweroff is no idle clock. */
 	secs = a->auto_off;
 #else
-	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
-	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
+	{
+		int so = db_get_int(db_dev(), "muse.screenoff", -1);
+
+		secs = musec_playing() && so >= 0 ? so
+		     : a->auto_off ? a->auto_off : a->auto_poweroff;
+	}
 #endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
 	a->idle.seconds = secs;
@@ -9609,15 +9615,15 @@ typedef struct {
  * which reads it - and how long music plays untouched before the screen goes
  * off - see idle_due. */
 static const char *const MUSE_SCREEN_OFF_LABEL[] =
-	{ "5s", "10s", "15s", "30s", "1m", "Never" };
+	{ "Follow Sleep", "5s", "10s", "15s", "30s", "1m", "Never" };
 
 static int muse_screen_off_at(void)
 {
-	int k, v = db_get_int(db_dev(), "muse.screenoff", 10);
+	int k, v = db_get_int(db_dev(), "muse.screenoff", -1);
 
 	for (k = 0; k < MUSE_SCREEN_OFF_COUNT; k++)
 		if (MUSE_SCREEN_OFF[k] == v) return k;
-	return 1;                             /* 10s, should it be off-ladder */
+	return 0;                             /* Follow Sleep, should it be off-ladder */
 }
 
 /* The software Sleep Button Lock. The GKD keeps its own (plat_hold_switch,
