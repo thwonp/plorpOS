@@ -43,6 +43,9 @@ bool js_str(jsv v, char *out, size_t n);
  * "absent" from "zero" when that matters. */
 long js_int(jsv v);
 
+/* A number with its fraction (Audiobookshelf's seconds and timestamps). */
+double js_num(jsv v);
+
 bool js_is_true(jsv v);
 
 #endif

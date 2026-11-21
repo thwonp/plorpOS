@@ -280,14 +280,15 @@ Muse plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse, has the album count, Show, Sort By, Album Art (below), Tab Settings,
-Rescan Folder for music copied on while the device was running, Playback
-Settings (not on the Miyoo Mini Flip), and, from the next release, Source: the
-card's music, or [Plex](#plex).
+Muse, has the album count, Sort By, Album Art (below), Tab Settings, Rescan
+Folder for music copied on while the device was running, Playback Settings
+(not on the Miyoo Mini Flip), and Source.
 
-**Show** switches the shelf between music and audiobooks, and is there only
-when the card has both. Muse opens on whichever you left it on, except that
-SELECT with a book playing lands on the books, on that book.
+**Source** picks what the shelf holds: Local Music, Local Audiobooks,
+[Plex Music](#plex) or [Audiobookshelf](#audiobookshelf). (Before the next
+release this was two rows, Show and Source.) Muse opens on whichever you left
+it on, except that SELECT with a book playing lands on the books, on that
+book.
 
 **Sort By** puts the shelf in order by artist, the way the folders are, by
 album title, two of the same title going in their artists' order, or by year,
@@ -295,8 +296,8 @@ newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
 Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
-**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites** and
-**Coverflow**, and no playlists),
+**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites**,
+**Playlists** and **Coverflow**),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
 round from the last to the first, and Muse opens on the tab you left it on.
 **Tab Settings** in Muse's MENU lists the tabs in order with On or Off: A (or
@@ -317,7 +318,12 @@ tab besides Playlists stays on.
   one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
   every tab. In a playlist, X removes the track under the cursor, and L2 and R2
-  move it up and down a place.
+  move it up and down a place. On audiobooks it holds three lists Muse makes
+  itself: **Recent Books** (the ten books you played last and have not
+  finished), **Finished Books** (every finished book, newest first) and
+  **Random Books** (twelve books, different each time you open it). On Audiobookshelf they
+  include what you listened to elsewhere, such as on your phone. A on a book
+  plays it; these lists can't be edited.
 - **Coverflow** is the shelf of album covers, the way a console's opens onto
   its games: left and right move, up and down jump from one initial to the
   next, L1 and R1 a window of covers. Y favorites as on Albums. Leaving an
@@ -358,27 +364,46 @@ with a folder per book, or a book's folder on its own. A book is one M4B or a
 folder of files, which play in name order. A on a book goes straight to Now
 Playing and carries on where you left it: its place is kept every thirty
 seconds while it plays, whenever it pauses or moves to the next file, and when
-the device turns off. B from there is the book's files, and A on one starts it
-from its beginning. A book played to its end says Finished under its cover,
-and A on it starts it over. Books always play in order, so Y does nothing on
-their Now Playing, and on books Sort By is by author or by title and there is
-no Album Art. A book's cover is the one its files carry, or the picture in its
+the device turns off. B from there goes back to the list you picked the book
+from. A book played to its end says Finished under its cover,
+and A on it starts it over. Books always play in order, and on books Sort By
+is by author or by title and there is no Album Art. A book's cover is the one its files carry, or the picture in its
 folder: one named cover or folder, or the only one there.
 
 With something playing or paused, SELECT goes straight to **Now Playing**: the
 cover, the track, where in it you are, and what comes next. From the next
 release it also shows the format in the cover's corner (such as FLAC 16/44.1
-or OPUS 128) and where the track comes from (Source: Local or Plex).
+or OPUS 128) and where the track comes from (Source: Local, Plex or
+Audiobookshelf).
 
 | | |
 |---|---|
 | **A** | pause, or play |
-| **L1/R1** | previous / next track, or chapter in a book that has them. More than three seconds in, L1 starts the track or chapter over |
+| **L1/R1** | previous / next track; More than three seconds in, L1 starts the track over. On a book they seek like Left/Right |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
-| **Y** | the play mode for music; the speed for a book, 1x to 2x and 0.75x, kept for each book |
-| **B** | the album's tracks |
+| **Y** | the play mode (music) |
+| **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
+| **B** | the album's tracks; for a book, the list it was picked from |
 | **MENU** | Muse's menu |
 | **SELECT** | close Muse |
+
+**More** (X on a book's Now Playing):
+
+- **Speed**: 0.8x to 2x in steps of 0.1, kept for each book. Any speed but 1x
+  shows on Now Playing.
+- **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book pauses
+  and the device sleeps, even mid-book. Now Playing shows the minutes left
+  ("Sleep 23m"). A game stops the countdown, and it starts over at its full
+  length when the game closes. Every play or pause starts it over too, unless
+  **Play Resets Sleep Timer** (Playback Settings) is turned off. It is not
+  kept across restarts.
+- **Chapters**: an M4B's chapters, or a book's files. A plays from the start
+  of the one you pick; the one already playing just carries on. This is the
+  only way to change chapter or file in a book: L1/R1, a volume-key hold and
+  a headset's next/previous all seek instead.
+- **Timeline**: every play and pause of the book, newest first, with the time
+  and where you were - including those made with the screen off. A goes back
+  to that spot.
 
 **Y changes the play mode on Now Playing**, and only there: in order, then
 repeat all, then repeat one, then shuffle, and round again. Its mark sits
@@ -400,8 +425,9 @@ d-pad's sides do what they do on Now Playing.
 
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
-plays, how soon the screen goes off is **Screen Off** in Playback Settings (5s to
-1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
+plays, how soon the screen goes off is **Screen Off** in Playback Settings:
+**Follow Sleep** (the default) uses Auto Sleep's time, or Auto Off's when sleep
+is off; or pick 5s to 1m, or Never.
 
 In the dark the volume keys change the volume and a headset's buttons work,
 both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
@@ -417,7 +443,7 @@ down. NextUI pauses the music to sleep; this is plorpOS's own.
 For a pocket, lock the buttons. On every device but the Miyoo Mini Flip that is **Sleep Button Lock** in
 Playback Settings (Off/On); while it is on and the music plays with the screen dark, the face
 and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
-Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
+Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track; on a book, a seek) and the
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
@@ -487,6 +513,29 @@ changes; a song cut off by that ends, and the next one plays.
 
 Plex sees what Muse plays and counts a play at 90%, as Plexamp does. The
 sign-in is kept on the card in `.userdata/shared/plex/`.
+
+### Audiobookshelf
+
+*Coming in the next release.*
+
+Muse can play the books on an Audiobookshelf server on your home network.
+Set **Source** to Audiobookshelf. The first time, type the server's address
+(such as `192.168.0.2:13378`), then your username and password. Muse reads
+the library once (about 10 seconds for 700 books) and keeps it on the card.
+Books stream on every device; they need Wi-Fi and the server on the same
+network.
+
+- **Your place follows you.** Opening a book picks up where you left it,
+  here or in the Audiobookshelf app, whichever was later. While a book plays,
+  Muse sends its place every 15 seconds and when you pause, and marks it
+  finished at the end.
+- **X on a book** downloads it, or deletes the copy. Downloads go in
+  `Audiobooks/<author>/<title>/`, so they show under Local Audiobooks too,
+  and still send their place to the server.
+- **Audiobookshelf Settings** has Check for Updates (only what changed),
+  Resync Library (everything) and Sign Out. Muse checks every hour by itself.
+
+The sign-in is kept on the card in `.userdata/shared/abs/`.
 
 ## The shelf
 

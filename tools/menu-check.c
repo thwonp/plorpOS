@@ -564,38 +564,44 @@ static void system_menu(void)
 			ck(strcmp(mrows[k].label, "Display Mode") != 0, "no Display Mode");
 		}
 
-		/* Music and books on one card: Show, between the count and the
-		 * order, and on books no Album Art and the orders a book goes by. */
+		/* Source (plorpos-9rf.2): four of them, Show is gone. On books
+		 * no Album Art and the orders a book goes by. */
 		m.sort = NULL;
 		m.wifi = WIFI_CONNECTED;
-		m.muse_both = true;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == SM_MUSE_ROWS - 1, "eight rows with both kinds (Plex Settings only on Plex)");
-		ck(!strcmp(mrows[1].label, "Show") && mrows[1].live &&
-		   !strcmp(val(&mrows[1]), "Music"), "Show, on music");
-		ck(!strcmp(mrows[2].label, "Sort By") && !strcmp(mrows[3].label, "Album Art"),
-		   "Sort By and Album Art after it");
+		for (k = 0; k < mn; k++) ck(strcmp(mrows[k].label, "Show") != 0, "no Show row");
+		ck(!strcmp(mrows[mn - 1].label, "Source") && !strcmp(val(&mrows[mn - 1]), "Local Music"),
+		   "Source last, Local Music");
 		m.muse_books = true;
+		m.muse_src = MSRC_BOOKS;
 		m.game_count = 2;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 7, "seven rows on books");
+		ck(mn == 6, "six rows on books");
 		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
 		   "how many books");
-		ck(!strcmp(val(&mrows[1]), "Audiobooks"), "Show, on books");
-		ck(!strcmp(val(&mrows[2]), "Author"), "by author when nothing says otherwise");
+		ck(!strcmp(val(&mrows[1]), "Author"), "by author when nothing says otherwise");
+		ck(!strcmp(val(&mrows[mn - 1]), "Local Audiobooks"), "Source, on books");
 		for (k = 0; k < mn; k++)
 			ck(strcmp(mrows[k].label, "Album Art") != 0,
 			   "no Album Art on books: MusicBrainz knows records");
+		m.muse_src = MSRC_ABS;
+		mn = sys_menu_build(&m, mrows, &mb, &mhead);
+		ck(mn == 6 && !strcmp(val(&mrows[mn - 2]), "Audiobookshelf") &&
+		   !strcmp(mrows[mn - 1].label, "Audiobookshelf Settings"),
+		   "Audiobookshelf: its settings after Source");
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, false, false, ids) == 6 && ids[1] == SMM_SORT &&
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, ids) == 6 && ids[1] == SMM_SORT &&
 			   ids[2] == SMM_TABS && ids[3] == SMM_RESCAN && ids[4] == SMM_SETTINGS &&
 			   ids[5] == SMM_SOURCE,
 			   "books alone: the count, Sort By, Tab Settings, Rescan Folder, Playback Settings and Source");
-			ck(sys_menu_muse_rows(false, false, true, ids) == 6 && ids[2] == SMM_TABS &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, ids) == 6 && ids[2] == SMM_TABS &&
 			   ids[3] == SMM_SETTINGS && ids[4] == SMM_SOURCE && ids[5] == SMM_PLEX,
 			   "Plex: no Album Art or Rescan Folder, Plex Settings after Source");
+			ck(sys_menu_muse_rows(true, MSRC_ABS, ids) == 6 && ids[3] == SMM_SETTINGS &&
+			   ids[4] == SMM_SOURCE && ids[5] == SMM_ABS,
+			   "Audiobookshelf: no Rescan Folder, Audiobookshelf Settings after Source");
 		}
 	}
 }

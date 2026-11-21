@@ -141,6 +141,13 @@ const mu_now *musec_now(void);
 /* Play heard position i of the queue (musec_track's i, mu_now.index's
  * count) from its start - the shuffle's order kept (plorpos-rgds.18.3.4). */
 void musec_jump(int i);
+/* A book's file i from `at` seconds into it - a seek when that file is the one
+ * playing (More > Chapters and Timeline, plorpos-i8d.1). */
+void musec_jump_at(int i, double at);
+/* Called when the daemon says the state changed (playing, paused, stopped) -
+ * from musec_poll, so wherever Muse is polled, the dark included (the book
+ * Timeline, plorpos-i8d.5). */
+void musec_on_state(void (*fn)(mu_state st));
 
 /* The queued track, relative to the music root, or "" - so a list can mark
  * the row that is playing without comparing titles, which tags can change. */
@@ -177,6 +184,11 @@ const char *musec_sink_now(void);
 /* Called just before a PLAY or RESUME is sent, so the launcher can move the
  * headset to Muse first. */
 void musec_on_before_heard(void (*fn)(void));
+/* Asked before a paused queue resumes: true holds the RESUME (it shows as
+ * playing) until musec_resume_release - with a file and seconds to play from
+ * instead, or index -1 to resume where it is (plorpos-9rf.9). */
+void musec_on_resume(bool (*hold)(const char *rel));
+void musec_resume_release(int index, double at);
 /* Called when Muse's real output becomes a DAC or a headset it was not on a
  * moment ago - including coming back from a fall-back to the speaker - before
  * the next play. The launcher caps the level there (plorpos-7wu.6). */

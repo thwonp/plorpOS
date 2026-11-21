@@ -64,6 +64,11 @@ long net_get_buf(const char *url, const net_field *f, int n, char *out,
 int net_fetch(const char *url, const char *method, const char *const *headers, int nh,
               const char *out_path, int connect_s, int timeout_s,
               const volatile int *cancel);
+/* The same with a request body (a JSON login, say): it goes in the 0600 config
+ * as well, never argv, since it can hold a password. */
+int net_fetch_body(const char *url, const char *method, const char *const *headers, int nh,
+                   const char *body, const char *out_path, int connect_s, int timeout_s,
+                   const volatile int *cancel);
 
 /* The same request, started and left to run. Nothing waits for it.
  *

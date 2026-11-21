@@ -230,6 +230,14 @@ long js_int(jsv v)
 	return strtol(p, NULL, 10);
 }
 
+double js_num(jsv v)
+{
+	const char *p = skip_ws(v.b, v.e);
+
+	if (p < v.e && *p == '"') p++;
+	return strtod(p, NULL);
+}
+
 bool js_is_true(jsv v)
 {
 	const char *p = skip_ws(v.b, v.e);

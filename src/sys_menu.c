@@ -20,21 +20,31 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
  * cannot be used teaches nobody why. */
 #define NEEDS_WIFI(on) ((on) ? NULL : "needs Wi-Fi")
 
-int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out)
+const char *sys_menu_src_label(muse_src s)
 {
+	static const char *const L[MSRC_COUNT] = {
+		"Local Music", "Local Audiobooks", "Plex Music", "Audiobookshelf"
+	};
+
+	return s >= 0 && s < MSRC_COUNT ? L[s] : L[0];
+}
+
+int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out)
+{
+	bool remote = src == MSRC_PLEX || src == MSRC_ABS;
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
-	if (both) out[n++] = SMM_SHOW;
 	out[n++] = SMM_SORT;
-	if (!books && !plex) out[n++] = SMM_ART;
+	if (!books && !remote) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
-	if (!plex) out[n++] = SMM_RESCAN;   /* Plex's Resync Library is in Plex Settings (1lw.17) */
+	if (!remote) out[n++] = SMM_RESCAN;   /* a server's Resync Library is in its settings (1lw.17) */
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
 	out[n++] = SMM_SOURCE;
-	if (plex) out[n++] = SMM_PLEX;
+	if (src == MSRC_PLEX) out[n++] = SMM_PLEX;
+	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	return n;
 }
 
@@ -56,17 +66,13 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		}
 		if (u->muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, u->muse_plex, ids);
+			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_src, ids);
 
 			for (k = 0; k < n; k++)
 				switch (ids[k]) {
 				case SMM_COUNT:
 					out[k] = (menu_row){ u->muse_books ? "Books" : "Albums",
 					                     b->a, false };
-					break;
-				case SMM_SHOW:
-					out[k] = (menu_row){ "Show",
-					                     u->muse_books ? "Audiobooks" : "Music", true };
 					break;
 				case SMM_SORT:
 					/* The artist list has one order, so the row says it and
@@ -83,10 +89,13 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					out[k] = (menu_row){ "Rescan Folder", NULL, true };
 					break;
 				case SMM_SOURCE:
-					out[k] = (menu_row){ "Source", u->muse_plex ? "Plex" : "Local", true };
+					out[k] = (menu_row){ "Source", sys_menu_src_label(u->muse_src), true };
 					break;
 				case SMM_PLEX:
 					out[k] = (menu_row){ "Plex Settings", NULL, true };
+					break;
+				case SMM_ABS:
+					out[k] = (menu_row){ "Audiobookshelf Settings", NULL, true };
 					break;
 				case SMM_TABS:
 					out[k] = (menu_row){ "Tab Settings", NULL, true };

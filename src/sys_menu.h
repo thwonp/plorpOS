@@ -126,29 +126,29 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * plorpos-9jo - the shelf itself shows the count). */
 #define SM_FAV_ROWS 1
 
-/* What Muse's shelf menu is: how many albums, Show - music or audiobooks,
- * the two kinds its one shelf holds - Sort By - by artist or by album, its own
+/* What Muse's shelf menu is: how many albums - Sort By - by artist or by album, its own
  * two orders, where a console's shelf has four - Album Art to fetch covers for
  * the albums that have none or only a small one, and Rescan Folder for music
  * copied onto the card while the Brick was on - and Playback Settings, Muse's own
- * options (TortOS-28l). Muse has no core, no ROM folder and no display mode. Album order was Eric's, 2026-09-19; Show, 2026-09-27.
+ * options (TortOS-28l). Muse has no core, no ROM folder and no display mode. Album order was Eric's, 2026-09-19.
  *
  * On books the count is Books, Sort By is by author or title, and Album Art is
- * not there: MusicBrainz knows records. Show is there only when the card has
- * both kinds, since with one there is nothing to choose between. So the rows
- * move, and which one is where is sys_menu_muse_rows's to say. */
-typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
-               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX } sm_muse_row;
-#define SM_MUSE_ROWS 9
-/* Source (plorpos-1lw): Local, the card's Music folder, or Plex. On Plex,
- * Album Art and Rescan Folder go (Plex has the art; Resync Library is in Plex
- * Settings), and Plex Settings follows Source. */
+ * not there: MusicBrainz knows records. So the rows move, and which one is where is sys_menu_muse_rows's to say. */
+typedef enum { SMM_COUNT, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
+               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX, SMM_ABS } sm_muse_row;
+#define SM_MUSE_ROWS 8
+/* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
+ * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan
+ * Folder goes (Resync Library is in the source's own settings, which follow
+ * Source), and Album Art is music on the card only. */
+typedef enum { MSRC_MUSIC, MSRC_BOOKS, MSRC_PLEX, MSRC_ABS, MSRC_COUNT } muse_src;
+const char *sys_menu_src_label(muse_src s);
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
-/* Muse's rows in order, for the kind its shelf shows and whether the card has
- * both. Returns how many. The build and the key handler both ask this, so the
+/* Muse's rows in order, for the kind its shelf shows and its Source. Returns
+ * how many. The build and the key handler both ask this, so the
  * two cannot disagree about what row 2 is. */
-int sys_menu_muse_rows(bool books, bool both, bool plex, sm_muse_row *out);
+int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out);
 
 #define MENU_MAX_ROWS 17
 
@@ -186,8 +186,7 @@ typedef struct {
 	bool fav;                /* and that shelf is Favorites; see SM_FAV_ROWS */
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
-	bool muse_both;          /* and the card has both kinds */
-	bool muse_plex;          /* and its source is Plex (plorpos-1lw) */
+	muse_src muse_src;       /* and the Source chosen (plorpos-9rf.2) */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */

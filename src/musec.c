@@ -75,6 +75,10 @@ static char     g_sink_said[128];   /* what it last reported, "" not yet */
 static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
+/* A resume the launcher holds until it has asked a server where the book is
+ * (plorpos-9rf.9): shown as playing, sent once musec_resume_release says. */
+static bool   (*g_resume_hold)(const char *rel);
+static bool     g_held;
 static bool     g_restored;         /* the queue came from the card and has not played */
 static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
 /* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
@@ -90,6 +94,7 @@ static bool     g_probed;           /* the one look for a Muse already running *
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
 static void   (*g_on_arrive)(const char *sink);
+static void   (*g_on_state)(mu_state st);
 /* A named sink that fell back to the codec is asked for again, twice, 2.5 s
  * apart: the usual cause is the game still letting go of a DAC (Busy), and
  * the sound then sat on the speaker for good (plorpos-7wu.6). */
@@ -355,6 +360,11 @@ static void adopt(const char *line, const char *state)
 		g_now.index = g_now.count = 0;
 		if (!strncmp(path, g_root, rl) && path[rl] == '/')
 			snprintf(g_orphan, sizeof g_orphan, "%s", path + rl + 1);
+		else if (strstr(path, "://"))
+			/* A stream (an Audiobookshelf book's file): the launcher maps
+			 * it back to its library's path (abs_rel_of). Carries a token:
+			 * kept here, never logged. */
+			snprintf(g_orphan, sizeof g_orphan, "%s", path);
 		return;
 	}
 	if (i != muq_current(&g_order)) {
@@ -401,7 +411,9 @@ static void event(const char *line)
 		if (g_pending) play_current();
 	} else if (!strncmp(line, "STATE", 5)) {
 		field(line, "state", v, sizeof v);
-		if (g_restored) adopt(line, v);
+		/* A queue restored, or none at all (a book is never kept in the
+		 * file): what an outliving Muse plays is taken up (plorpos-9rf.5). */
+		if (g_restored || g_qn == 0) adopt(line, v);
 		/* The track that ended says "stopped" AFTER its END, and by then the
 		 * next one has already been asked for. Taken at its word, the queue
 		 * reads as stopped for the moment between two tracks - and a game
@@ -590,15 +602,16 @@ static void headset_keys(void)
 			fprintf(stderr, "muse: headset %s\n", act);
 			if (!strcmp(act, "toggle"))     musec_toggle();
 			else if (!strcmp(act, "pause")) { if (g_now.state == MU_PLAYING) sendf("PAUSE"); }
-			else if (!strcmp(act, "next"))  musec_next();
-			else if (!strcmp(act, "prev"))  musec_prev();
+			/* A book's chapters change only under More > Chapters (i8d.9). */
+			else if (!strcmp(act, "next"))  { if (g_book) musec_seek_by(+10); else musec_next(); }
+			else if (!strcmp(act, "prev"))  { if (g_book) musec_seek_by(-10); else musec_prev(); }
 		}
 	}
 	if (f) fclose(f);
 	primed = true;
 }
 
-void musec_poll(void)
+static void poll_body(void)
 {
 	ssize_t got;
 
@@ -651,6 +664,19 @@ void musec_poll(void)
 			g_have -= used;
 		}
 		if (g_have >= sizeof g_in - 1) g_have = 0;
+	}
+}
+
+/* The state, as last told to musec_on_state: compared after every poll, so a
+ * change musec made itself (a PLAY, a toggle) counts as well as the daemon's. */
+static mu_state g_state_told = MU_OFF;
+
+void musec_poll(void)
+{
+	poll_body();
+	if (g_now.state != g_state_told) {
+		g_state_told = g_now.state;
+		if (g_on_state) g_on_state(g_state_told);
 	}
 }
 
@@ -762,9 +788,16 @@ void musec_adopt(const char *const *paths, int n, int start, bool book, double s
 	queue_set(paths, n, start, 0, book, speed, artist, album);
 	/* The title too: the one on show is the restored queue's track's. */
 	t = muq_current(&g_order);
-	if (t >= 0 && t < g_qn)
-		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
-		              g_now.title, sizeof g_now.title);
+	if (t >= 0 && t < g_qn) {
+		static musec_remote r;   /* a server's file: its own title (plorpos-9rf.5) */
+
+		if (g_resolve && g_resolve(g_q[t], &r) && r.title[0])
+			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+		else
+			ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+			              g_now.title, sizeof g_now.title);
+		memset(r.url, 0, sizeof r.url);
+	}
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.index = g_order.pos;
@@ -889,13 +922,23 @@ void musec_toggle(void)
 	bool recent = g_pause_sent && (int)(plat_now_ms() - g_pause_sent) < 1500;
 	bool playing = g_asked || (g_now.state == MU_PLAYING && !recent);
 
+	if (g_held) {                        /* pressed again while held: stays paused */
+		g_held = g_asked = false;
+		return;
+	}
 	if (playing) {
 		g_asked = false;
 		g_pause_sent = plat_now_ms() | 1;
 		sendf("PAUSE");
 	} else if (g_now.state == MU_PAUSED || recent) {
+		int t = muq_current(&g_order);
+
 		g_asked = true;
 		g_pause_sent = 0;
+		if (g_now.state == MU_PAUSED && g_resume_hold && t >= 0 && t < g_qn && g_resume_hold(g_q[t])) {
+			g_held = true;
+			return;
+		}
 		if (g_before_heard) g_before_heard();   /* see play_current */
 		sendf("RESUME");
 	}
@@ -903,7 +946,23 @@ void musec_toggle(void)
 }
 
 void musec_on_before_heard(void (*fn)(void)) { g_before_heard = fn; }
+void musec_on_resume(bool (*hold)(const char *rel)) { g_resume_hold = hold; }
+
+void musec_resume_release(int index, double at)
+{
+	if (!g_held) return;
+	g_held = false;
+	if (index < 0 || index >= g_qn || !g_order.order) {
+		if (g_before_heard) g_before_heard();
+		sendf("RESUME");
+		return;
+	}
+	g_order.pos = index;                 /* a book: in order, so position is file */
+	g_start_at = at > 0 ? at : 0;
+	play_current();
+}
 void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
+void musec_on_state(void (*fn)(mu_state st)) { g_on_state = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 
@@ -988,6 +1047,16 @@ void musec_seek_by(double delta)
 	if (t < 0) t = 0;
 	if (g_now.len > 0 && t > g_now.len - 1) t = g_now.len - 1;
 	seek_to(t);
+}
+
+void musec_jump_at(int i, double at)
+{
+	if (i < 0 || i >= g_qn || !g_order.order) return;
+	if (at < 0) at = 0;
+	if (i == g_order.pos && g_now.state == MU_PLAYING) { seek_to(at); return; }
+	g_order.pos = i;
+	g_start_at = at;
+	play_current();
 }
 
 void musec_stop(void)
