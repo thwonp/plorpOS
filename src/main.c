@@ -5343,7 +5343,7 @@ static void gl_draw(app *a, const gl_list *L)
 		}
 		if (now)
 			draw_play(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2), (float)hrad,
-			          now == 2 ? UI_TEXT_DIM : i == cur ? UI_TEXT : ac);
+			          i == cur ? UI_TEXT : now == 2 ? UI_TEXT_DIM : ac);
 		if (fav)
 			draw_heart(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0)), (float)(y + g.row_h / 2),
 			           (float)hrad, i == cur ? UI_TEXT : ac);
