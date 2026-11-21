@@ -4982,6 +4982,7 @@ typedef struct {
 	unsigned phase;          /* the focused title's marquee clock */
 	const char *empty;       /* said when there are no rows */
 	const char *toast;       /* a passing word ("Added to Road Trip"), or NULL */
+	int bar;                 /* 1-1000: a progress bar under the art's lines; 0 none */
 	/* Help along the bottom of a list without tabs: button, label pairs. */
 	const char *const *help;
 	int nhelp;
@@ -5361,6 +5362,15 @@ static void gl_draw(app *a, const gl_list *L)
 		for (i = 0; i < L->nunder; i++, y += fl)
 			ui_text(a->r, fv, L->under[i], cx, y, 0,
 			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
+		if (L->bar > 0) {
+			SDL_Rect track = { g.pane_x + g.pane_w / 6, y + GL_PAD / 4, g.pane_w * 2 / 3, 4 };
+			SDL_Rect done = track;
+
+			done.w = track.w * (L->bar > 1000 ? 1000 : L->bar) / 1000;
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			ui_round_rect(a->r, &track, 2, ui_fade(UI_TEXT_DIM, 0.35f));
+			if (done.w > 0) ui_round_rect(a->r, &done, 2, ac);
+		}
 	}
 	if (L->ntabs > 0) gl_draw_footer(a, L);
 	else if (L->nhelp > 0) {
@@ -15758,6 +15768,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 
 			gl_geometry(&g, L);
 			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+			if (g_muse_pod) L->bar = pod_download_permille() + 1;   /* 0: size unknown */
 			ui_redraw_at(SDL_GetTicks() + 500);
 		}
 	}

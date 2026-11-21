@@ -1063,6 +1063,9 @@ static char g_dl_q[DL_Q][32];            /* "<show>/<episode>" waiting, under g_
 static int g_dl_n;
 static char g_dl_key[32];                /* the one being fetched */
 static char g_dl_part[800];
+/* The download's response headers, for its size (plorpos-7ni.14). In RAM:
+ * nothing on the card for a few lines read twice a second. */
+#define POD_DL_HDR "/tmp/plorpos-pod-dl.hdr"
 static volatile int g_dl_cancel, g_dl_changed;
 static pthread_cond_t g_dl_cv = PTHREAD_COND_INITIALIZER;
 
@@ -1126,7 +1129,9 @@ static bool dl_one(const char *key)
 	snprintf(stage, sizeof stage, "%.500s/Podcasts/.dl", g_card);
 	mkdirs(stage);
 	snprintf(g_dl_part, sizeof g_dl_part, "%.600s/%.15s%.7s.part", stage, eid, ext);
-	code = net_fetch(url, "GET", NULL, 0, g_dl_part, 15, 0, &g_dl_cancel);
+	unlink(POD_DL_HDR);
+	code = net_fetch_hdr(url, g_dl_part, POD_DL_HDR, 15, &g_dl_cancel);
+	unlink(POD_DL_HDR);
 	if (code != 200) { unlink(g_dl_part); return false; }
 	safe_name(show[0] ? show : sid, sshow, sizeof sshow);
 	safe_name(title, stitle, sizeof stitle);
@@ -1256,25 +1261,63 @@ bool pod_delete_download(int al)
 	return ok;
 }
 
-bool pod_download_status(char *out, size_t n)
+/* The answer's size: the last block's Content-Length, since every redirect
+ * writes a block of its own first. 0 while it is not known, or when the
+ * server gives none. */
+static long long dl_total(void)
+{
+	FILE *f = fopen(POD_DL_HDR, "r");
+	char line[256];
+	long long len = 0;
+
+	if (!f) return 0;
+	while (fgets(line, sizeof line, f)) {
+		if (!strncasecmp(line, "HTTP/", 5)) len = 0;
+		else if (!strncasecmp(line, "content-length:", 15)) len = atoll(line + 15);
+	}
+	fclose(f);
+	return len;
+}
+
+/* How far the one downloading is: done and total bytes; false when none. A
+ * total of 0 is unknown - and so is one under 1 MB, which is a redirect's
+ * block with the answer's not in yet, not an episode. */
+static bool dl_progress(long long *done, long long *total, int *waiting)
 {
 	char part[800];
-	int waiting;
 	struct stat st;
 
 	LOCK();
-	waiting = g_dl_n;
+	*waiting = g_dl_n;
 	cpy(part, sizeof part, g_dl_part);
 	UNLOCK();
 	if (!part[0]) return false;
-	if (!out) return true;
-	{
-		double mb = stat(part, &st) == 0 ? st.st_size / 1048576.0 : 0;
-
-		if (waiting) snprintf(out, n, "%.0f MB, %d more waiting", mb, waiting);
-		else snprintf(out, n, "%.0f MB", mb);
-	}
+	*done = stat(part, &st) == 0 ? st.st_size : 0;
+	*total = dl_total();
+	if (*total < 1048576 || *done > *total) *total = 0;
 	return true;
+}
+
+bool pod_download_status(char *out, size_t n)
+{
+	long long done, total;
+	int waiting, k;
+
+	if (!dl_progress(&done, &total, &waiting)) return false;
+	if (!out) return true;
+	if (total) k = snprintf(out, n, "%d%% of %.0f MB", (int)(done * 100 / total), total / 1048576.0);
+	else k = snprintf(out, n, "%.0f MB", done / 1048576.0);
+	if (waiting && k > 0 && (size_t)k < n) snprintf(out + k, n - (size_t)k, ", %d more waiting", waiting);
+	return true;
+}
+
+int pod_download_permille(void)
+{
+	long long done, total;
+	int waiting;
+
+	if (!dl_progress(&done, &total, &waiting) || !total) return -1;
+	return (int)(done * 1000 / total);
 }
 
 bool pod_download_take_changed(void)

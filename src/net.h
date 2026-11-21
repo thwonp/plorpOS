@@ -69,6 +69,11 @@ int net_fetch(const char *url, const char *method, const char *const *headers, i
 int net_fetch_body(const char *url, const char *method, const char *const *headers, int nh,
                    const char *body, const char *out_path, int connect_s, int timeout_s,
                    const volatile int *cancel);
+/* A plain GET whose response headers go to `hdr_path` as they arrive, every
+ * redirect's block then the answer's: a download's size is known before its
+ * body is in (plorpos-7ni.14). */
+int net_fetch_hdr(const char *url, const char *out_path, const char *hdr_path,
+                  int connect_s, const volatile int *cancel);
 
 /* The same request, started and left to run. Nothing waits for it.
  *

@@ -106,8 +106,11 @@ int  pod_download_state(int al);     /* 0 none, 1 waiting, 2 downloading */
 void pod_download(int al);
 void pod_download_cancel(int al);
 bool pod_delete_download(int al);
-/* A line while downloads run: "1 of 3, 45%". */
+/* A line while downloads run: "45% of 60 MB, 2 more waiting", or "27 MB"
+ * when the server gives no size. */
 bool pod_download_status(char *out, size_t n);
+/* The one downloading, 0-1000; -1 none or its size unknown (plorpos-7ni.14). */
+int  pod_download_permille(void);
 /* True once after a download landed or a copy went. */
 bool pod_download_take_changed(void);
 

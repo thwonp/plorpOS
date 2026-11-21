@@ -267,9 +267,26 @@ int net_fetch(const char *url, const char *method, const char *const *headers, i
 	return net_fetch_body(url, method, headers, nh, NULL, out_path, connect_s, timeout_s, cancel);
 }
 
+static int fetch(const char *url, const char *method, const char *const *headers, int nh,
+                 const char *body, const char *out_path, const char *hdr_path,
+                 int connect_s, int timeout_s, const volatile int *cancel);
+
 int net_fetch_body(const char *url, const char *method, const char *const *headers, int nh,
                    const char *body, const char *out_path, int connect_s, int timeout_s,
                    const volatile int *cancel)
+{
+	return fetch(url, method, headers, nh, body, out_path, NULL, connect_s, timeout_s, cancel);
+}
+
+int net_fetch_hdr(const char *url, const char *out_path, const char *hdr_path,
+                  int connect_s, const volatile int *cancel)
+{
+	return fetch(url, "GET", NULL, 0, NULL, out_path, hdr_path, connect_s, 0, cancel);
+}
+
+static int fetch(const char *url, const char *method, const char *const *headers, int nh,
+                 const char *body, const char *out_path, const char *hdr_path,
+                 int connect_s, int timeout_s, const volatile int *cancel)
 {
 	char cfg[128];
 	const char *bin = curl_bin();
@@ -287,6 +304,7 @@ int net_fetch_body(const char *url, const char *method, const char *const *heade
 	fprintf(f, "silent\nfail\nlocation\n");
 	fprintf(f, "write-out = "); cfg_quote(f, "%{http_code}"); fputc('\n', f);
 	fprintf(f, "output = "); cfg_quote(f, out_path); fputc('\n', f);
+	if (hdr_path) { fprintf(f, "dump-header = "); cfg_quote(f, hdr_path); fputc('\n', f); }
 	if (connect_s > 0) fprintf(f, "connect-timeout = %d\n", connect_s);
 	if (timeout_s > 0) fprintf(f, "max-time = %d\n", timeout_s);
 	/* A stalled transfer gives up rather than holding its worker forever:
