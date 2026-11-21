@@ -1402,7 +1402,7 @@ static void book_finish(int al)
 	book_key(al, key, sizeof key);
 	db_set_str(db_dev(), key, "finished");
 	if (book_item_key(al, key, sizeof key)) db_set_str(db_dev(), key, "finished");
-	/* When, for the Playlists tab's Completed (plorpos-i8d.4). */
+	/* When, for the Playlists tab's Finished Books (plorpos-i8d.4). */
 	tl_book_id(al, key + 9, sizeof key - 9);
 	memcpy(key, "bookdone.", 9);
 	db_set_int(db_dev(), key, (int)time(NULL));
@@ -13103,7 +13103,7 @@ static void tl_note(int al, int index, double at, bool play)
 	long sz;
 
 	tl_book_id(al, id, sizeof id);
-	/* When it was last played or paused, for Continue Listening (i8d.4). */
+	/* When it was last played or paused, for Recent Books (i8d.4). */
 	{
 		char key[LIB_PATH + 16];
 
@@ -14699,15 +14699,15 @@ static void muse_favs_sync(sysview *v, int tab)
  *
  * The Playlists tab on the audiobook sources holds three lists made from what
  * the device - and for a server book, the server - knows, read-only:
- * Continue Listening (the ten books last played and not finished, newest
- * first), Completed (every finished one, newest first) and Random (five,
- * new ones each time it opens). "Played" is booklast.<book>, written with the
+ * Recent Books (the ten books last played and not finished, newest first),
+ * Finished Books (every finished one, newest first) and Random Books (twelve,
+ * new ones each time it opens; names and twelve the owner's, i8d.10). "Played" is booklast.<book>, written with the
  * timeline's play and pause; "finished" bookdone.<book>, with book_finish.
  * A book played before those were kept still counts, after the dated ones. */
 enum { BPL_CONTINUE, BPL_COMPLETED, BPL_RANDOM, BPL_N };
-static const char *const BPL_NAME[BPL_N] = { "Continue Listening", "Completed", "Random" };
+static const char *const BPL_NAME[BPL_N] = { "Recent Books", "Finished Books", "Random Books" };
 #define BPL_CONTINUE_MAX 10
-#define BPL_RANDOM_N     5
+#define BPL_RANDOM_N     12
 
 static const char *bpl_title(void *ctx, int i) { (void)ctx; return BPL_NAME[i]; }
 

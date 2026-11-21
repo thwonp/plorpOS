@@ -319,9 +319,9 @@ tab besides Playlists stays on.
   (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
   every tab. In a playlist, X removes the track under the cursor, and L2 and R2
   move it up and down a place. On audiobooks it holds three lists Muse makes
-  itself: **Continue Listening** (the ten books you played last and have not
-  finished), **Completed** (every finished book, newest first) and **Random**
-  (five books, different each time you open it). On Audiobookshelf they
+  itself: **Recent Books** (the ten books you played last and have not
+  finished), **Finished Books** (every finished book, newest first) and
+  **Random Books** (twelve books, different each time you open it). On Audiobookshelf they
   include what you listened to elsewhere, such as on your phone. A on a book
   plays it; these lists can't be edited.
 - **Coverflow** is the shelf of album covers, the way a console's opens onto
