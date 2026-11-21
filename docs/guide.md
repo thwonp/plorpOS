@@ -296,8 +296,8 @@ newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
 Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
-**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites** and
-**Coverflow**, and no playlists),
+**Coverflow** (on audiobooks **Authors**, **Books**, **Favorites**,
+**Playlists** and **Coverflow**),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
 round from the last to the first, and Muse opens on the tab you left it on.
 **Tab Settings** in Muse's MENU lists the tabs in order with On or Off: A (or
@@ -318,7 +318,12 @@ tab besides Playlists stays on.
   one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
   every tab. In a playlist, X removes the track under the cursor, and L2 and R2
-  move it up and down a place.
+  move it up and down a place. On audiobooks it holds three lists Muse makes
+  itself: **Continue Listening** (the ten books you played last and have not
+  finished), **Completed** (every finished book, newest first) and **Random**
+  (five books, different each time you open it). On Audiobookshelf they
+  include what you listened to elsewhere, such as on your phone. A on a book
+  plays it; these lists can't be edited.
 - **Coverflow** is the shelf of album covers, the way a console's opens onto
   its games: left and right move, up and down jump from one initial to the
   next, L1 and R1 a window of covers. Y favorites as on Albums. Leaving an
@@ -359,11 +364,10 @@ with a folder per book, or a book's folder on its own. A book is one M4B or a
 folder of files, which play in name order. A on a book goes straight to Now
 Playing and carries on where you left it: its place is kept every thirty
 seconds while it plays, whenever it pauses or moves to the next file, and when
-the device turns off. B from there is the book's files, and A on one starts it
-from its beginning. A book played to its end says Finished under its cover,
-and A on it starts it over. Books always play in order, so Y does nothing on
-their Now Playing, and on books Sort By is by author or by title and there is
-no Album Art. A book's cover is the one its files carry, or the picture in its
+the device turns off. B from there goes back to the list you picked the book
+from. A book played to its end says Finished under its cover,
+and A on it starts it over. Books always play in order, and on books Sort By
+is by author or by title and there is no Album Art. A book's cover is the one its files carry, or the picture in its
 folder: one named cover or folder, or the only one there.
 
 With something playing or paused, SELECT goes straight to **Now Playing**: the
@@ -377,10 +381,24 @@ Audiobookshelf).
 | **A** | pause, or play |
 | **L1/R1** | previous / next track, or chapter in a book that has them. More than three seconds in, L1 starts the track or chapter over |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
-| **Y** | the play mode for music; the speed for a book, 1x to 2x and 0.75x, kept for each book |
-| **B** | the album's tracks |
+| **Y** | the play mode (music) |
+| **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
+| **B** | the album's tracks; for a book, the list it was picked from |
 | **MENU** | Muse's menu |
 | **SELECT** | close Muse |
+
+**More** (X on a book's Now Playing):
+
+- **Speed**: 0.8x to 2x in steps of 0.1, kept for each book. Any speed but 1x
+  shows on Now Playing.
+- **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book pauses
+  and the device sleeps, even mid-book. Now Playing shows the minutes left
+  ("Sleep 23m"). It is not kept across restarts, and in a game it only pauses
+  the book.
+- **Chapters**: an M4B's chapters, or a book's files. A plays from the start
+  of the one you pick.
+- **Timeline**: every play and pause of the book, newest first, with the time
+  and where you were. A goes back to that spot.
 
 **Y changes the play mode on Now Playing**, and only there: in order, then
 repeat all, then repeat one, then shuffle, and round again. Its mark sits
@@ -402,8 +420,9 @@ d-pad's sides do what they do on Now Playing.
 
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
-plays, how soon the screen goes off is **Screen Off** in Playback Settings (5s to
-1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
+plays, how soon the screen goes off is **Screen Off** in Playback Settings:
+**Follow Sleep** (the default) uses Auto Sleep's time, or Auto Off's when sleep
+is off; or pick 5s to 1m, or Never.
 
 In the dark the volume keys change the volume and a headset's buttons work,
 both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
