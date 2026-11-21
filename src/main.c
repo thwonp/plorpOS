@@ -1487,6 +1487,17 @@ static int book_place(int al, double *at)
  * and for a new queue about to replace this one. */
 static struct { int al, index; mu_state st; double at; } g_bk = { -1, -1, MU_OFF, 0 };
 
+/* The episode in the player, playing or paused, or -1: the book book_keep
+ * keeps, so nothing is looked up again for its row's icon (plorpos-7ni.13). */
+static int pod_row_now_al(void)
+{
+	const mu_now *mn = musec_now();
+
+	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return -1;
+	return g_bk.al >= 0 && g_bk.al < g_muse.nalbums &&
+	       pod_is_path(g_muse.tracks[g_muse.albums[g_bk.al].first].path) ? g_bk.al : -1;
+}
+
 /* Podcasts (plorpos-7ni.5): heard to 95% is played (owner); an episode that
  * ran out plays the first one in the Queue next, or nothing (owner: an empty
  * Queue stops). The next is started from muse_poll, after book_keep. */
@@ -1647,6 +1658,13 @@ static void muse_poll(void)
 	}
 	muse_adopt_orphan();
 	book_keep(false);
+	if (g_muse_pod) {
+		/* Its row's play icon follows the player (plorpos-7ni.13). */
+		static int was = -1;
+		int now = pod_row_now_al() >= 0 ? pod_row_now_al() * 4 + (int)mn->state : -1;
+
+		if (now != was) { was = now; ui_redraw_now(); }
+	}
 	if (g_pod_next >= 0) {
 		int al = g_pod_next;
 
@@ -4173,6 +4191,18 @@ static void draw_heart(SDL_Renderer *r, float cx, float cy, float rad,
 	SDL_RenderGeometry(r, NULL, v, HEART_N + 1, idx, HEART_N * 3);
 }
 
+/* A play triangle, pointing right, in the heart's seat and of its size. */
+static void draw_play(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color col)
+{
+	SDL_Vertex v[3] = {
+		{ { cx - rad * 0.7f, cy - rad * 0.9f }, col, { 0, 0 } },
+		{ { cx - rad * 0.7f, cy + rad * 0.9f }, col, { 0, 0 } },
+		{ { cx + rad * 0.9f, cy },              col, { 0, 0 } },
+	};
+
+	SDL_RenderGeometry(r, NULL, v, 3, NULL, 0);
+}
+
 /* A filled circle, as a fan from its center like draw_heart. */
 #define ORB_N 40
 
@@ -4942,6 +4972,7 @@ typedef struct {
 	const char *(*title)(void *ctx, int i);
 	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
 	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
+	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
 	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
 	int nunder;              /* lines under the art; the last one dim */
@@ -5278,7 +5309,8 @@ static void gl_draw(app *a, const gl_list *L)
 		int ty = y + (g.row_h - mline) / 2;
 		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
 		bool fav = L->fav && L->fav(L->ctx, i);
-		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
+		int now = L->now ? L->now(L->ctx, i) : 0;
+		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0);  /* icons, then a gap */
 		int tw = g.col_w - (tx - GL_PAD);
 
 		if (i == cur) {
@@ -5288,8 +5320,11 @@ static void gl_draw(app *a, const gl_list *L)
 			hc.a = 210;
 			ui_round_rect(a->r, &row, g.row_h / 4, hc);
 		}
+		if (now)
+			draw_play(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2), (float)hrad,
+			          now == 2 ? UI_TEXT_DIM : i == cur ? UI_TEXT : ac);
 		if (fav)
-			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
+			draw_heart(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0)), (float)(y + g.row_h / 2),
 			           (float)hrad, i == cur ? UI_TEXT : ac);
 		if (val && *val) {
 			int vw = ui_text_width(fv, val);
@@ -14986,6 +15021,16 @@ static const char *mal_title(void *ctx, int i)
 	return v->list.items[i].title;
 }
 
+static int mal_pod_now(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = pod_row_now_al();
+
+	if (al < 0 || !v->album || v->album[i] != al) return 0;
+	return musec_now()->state == MU_PLAYING ? 1 : 2;
+}
+
 static bool mal_fav(void *ctx, int i)
 {
 	app *a = ctx;
@@ -15665,6 +15710,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->title = mal_title;
 	L->value = g_muse_pod ? mal_pod_value : NULL;
 	if (g_muse_pod && tab == MT_COVERFLOW && ar < 0 && L->n > 1) L->note = "L1/R1 reorder";
+	if (g_muse_pod) L->now = mal_pod_now;
 	L->fav = mal_fav;
 	L->art = gl_game_art;
 	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."
