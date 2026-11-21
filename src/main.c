@@ -1498,13 +1498,19 @@ static char g_queue_file[CFG_STR * 2];
 
 static void muse_adopt_orphan(void);
 static void tl_on_state(mu_state st);
+static void sleep_timer_on_state(mu_state st);
+static void muse_on_state(mu_state st) { tl_on_state(st); sleep_timer_on_state(st); }
 
 /* More > Sleep Timer (plorpos-i8d.1). When it runs out the book is paused -
  * its place kept to the second, and sent - and the device sleeps, whatever is
  * left in the queue. Counted where Muse is polled - every screen, through a
  * game - and in the dark (music_dark), so it runs wherever the book is heard.
- * In a game it only pauses: the game is not put to sleep under the player. */
+ * A game stops it, and it starts over at its full length when the game
+ * closes (owner, i8d.6). */
 static unsigned g_sleep_at;        /* plat_now_ms when it runs out; 0 off */
+static int g_sleep_min;            /* its length, for a game's restart and a play's */
+static bool g_sleep_held;          /* armed, and stopped while a game runs */
+static bool g_sleep_in_game;
 static unsigned g_sleep_fired;     /* when it ran out, for power_check; 0 none */
 
 /* Seconds left, 0 when off. */
@@ -1512,25 +1518,55 @@ static int sleep_timer_left(void)
 {
 	int ms;
 
+	if (g_sleep_held) return g_sleep_min * 60;
 	if (!g_sleep_at) return 0;
 	ms = (int)(g_sleep_at - plat_now_ms());
 	return ms > 0 ? (ms + 999) / 1000 : 1;
 }
 
+static void sleep_timer_arm(void)
+{
+	g_sleep_at = g_sleep_min > 0 ? (plat_now_ms() + (unsigned)g_sleep_min * 60000u) | 1u : 0;
+}
+
 static void sleep_timer_set(int minutes)
 {
-	g_sleep_at = minutes > 0 ? (plat_now_ms() + (unsigned)minutes * 60000u) | 1u : 0;
+	g_sleep_min = minutes > 0 ? minutes : 0;
+	g_sleep_held = g_sleep_in_game && g_sleep_min > 0;
+	if (g_sleep_held) g_sleep_at = 0;
+	else sleep_timer_arm();
 	fprintf(stderr, "muse: sleep timer %s%d min\n", minutes > 0 ? "" : "off, ", minutes);
+}
+
+/* A game launched (on) or closed: the countdown stops, and starts over at
+ * its full length when the game is done (owner, i8d.6). */
+static void sleep_timer_game(bool on)
+{
+	g_sleep_in_game = on;
+	if (on && g_sleep_at) { g_sleep_at = 0; g_sleep_held = true; }
+	if (!on && g_sleep_held) { g_sleep_held = false; sleep_timer_arm(); }
+}
+
+/* Playback Settings' Play Resets Sleep Timer (i8d.6): a play or a pause
+ * starts the countdown over. */
+static void sleep_timer_on_state(mu_state st)
+{
+	if (g_sleep_at && (st == MU_PLAYING || st == MU_PAUSED) &&
+	    db_get_int(db_dev(), "muse.sleepreset", 0))
+		sleep_timer_arm();
 }
 
 static void sleep_timer_tick(void)
 {
 	if (!g_sleep_at || (int)(plat_now_ms() - g_sleep_at) < 0) return;
 	g_sleep_at = 0;
-	g_sleep_fired = plat_now_ms() | 1u;
+	g_sleep_min = 0;
+	/* Not now | 1, which can be a ms ahead: an unsigned 'since' then wraps. */
+	g_sleep_fired = plat_now_ms() ? plat_now_ms() : 1u;
 	if (musec_playing()) musec_pause();
 	fprintf(stderr, "muse: sleep timer ran out\n");
 }
+
 
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
  * Everything that polls Muse comes through here. */
@@ -9704,7 +9740,10 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 #endif
 	rows[2] = (menu_row){ "Sleep Button Lock",
 	                      muse_hold() ? "On" : "Off", true };
-	return 3;
+	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
+	rows[3] = (menu_row){ "Play Resets Sleep Timer",
+	                      db_get_int(db_dev(), "muse.sleepreset", 0) ? "On" : "Off", true };
+	return 4;
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -9744,6 +9783,8 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.lock", soft_lock);
 #endif
 	}
+	if (sel == 3 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
+		db_set_int(db_dev(), "muse.sleepreset", !db_get_int(db_dev(), "muse.sleepreset", 0));
 	return MENU_STAY;
 }
 
@@ -17431,6 +17472,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 {
 	int rc;
 
+	sleep_timer_game(true);
 	anim_launch(a, 190);
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
 	/* Under sway the child needs no display of its own, so the launcher's
@@ -17440,6 +17482,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	plat_window_show(false);
 
 	rc = plat_run(argv, child_env, P_ROOT, on_menu, on_tick, a);
+	sleep_timer_game(false);
 
 	plat_window_show(true);
 	if (!plat_input_init()) { a->running = false; return rc; }
@@ -17450,6 +17493,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 	plat_video_quit();
 
 	rc = plat_run(argv, child_env, P_ROOT, on_menu, on_tick, a);
+	sleep_timer_game(false);
 
 	if (!plat_video_init() || !plat_input_init()) { a->running = false; return rc; }
 	a->r = plat_renderer();
@@ -18423,6 +18467,7 @@ static void launch_one(app *a)
 			 * RUN to RUNNING, so there is nothing to animate over anyway; the
 			 * shelf simply holds until the game's first frame replaces it. */
 			a->game_on = true;
+			sleep_timer_game(true);
 			for (;;) {
 				r = plat_resident_wait();
 				/* A tap mid-game: Diatom paused for it (platform.c), and
@@ -18447,6 +18492,7 @@ static void launch_one(app *a)
 				break;
 			}
 			a->game_on = false;
+			sleep_timer_game(false);
 			resident = (r == RES_EXIT);
 
 			/* The Auto card's picture, written ONLY here - at the same moment
@@ -21156,7 +21202,7 @@ int main(int argc, char *argv[])
 			abs_init(P_CARD, P_SHARED);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_on_resume(muse_resume_hold);
-			musec_on_state(tl_on_state);        /* the book Timeline (i8d.5) */
+			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);
