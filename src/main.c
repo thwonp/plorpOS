@@ -5382,14 +5382,15 @@ static void gl_draw(app *a, const gl_list *L)
 		for (i = 0; i < L->nunder; i++, y += fl)
 			ui_text(a->r, fv, L->under[i], cx, y, 0,
 			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
-		if (L->bar > 0) {
-			SDL_Rect track = { g.pane_x + g.pane_w / 6, y + GL_PAD / 4, g.pane_w * 2 / 3, 4 };
+		/* Along the art's foot: the lines under it can reach the footer. */
+		if (L->bar > 0 && art.w > 0) {
+			SDL_Rect track = { art.x, art.y + art.h - 6, art.w, 6 };
 			SDL_Rect done = track;
 
 			done.w = track.w * (L->bar > 1000 ? 1000 : L->bar) / 1000;
 			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
-			ui_round_rect(a->r, &track, 2, ui_fade(UI_TEXT_DIM, 0.35f));
-			if (done.w > 0) ui_round_rect(a->r, &done, 2, ac);
+			ui_round_rect(a->r, &track, 0, (SDL_Color){ 0, 0, 0, 170 });
+			if (done.w > 0) ui_round_rect(a->r, &done, 0, ac);
 		}
 	}
 	if (L->ntabs > 0) gl_draw_footer(a, L);
