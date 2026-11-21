@@ -1505,6 +1505,7 @@ static void pod_mark_played(int al);
 static int pod_up_next(int done);
 static bool book_start(int al);
 static void muse_toast(const char *msg);
+static void pod_len_note(int al, double len);
 static int g_pod_next = -1;
 
 static void book_keep(bool now)
@@ -1536,6 +1537,7 @@ static void book_keep(bool now)
 	}
 	if (ran_out) { book_finish(al); g_bk.al = -1; return; }
 	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return;
+	if (pod_is_path(track)) pod_len_note(al, mn->len);
 	if (mn->len > 0 && mn->at >= 0.95 * mn->len && pod_is_path(track)) {
 		/* Played; its place is not kept past here, or it would be
 		 * in progress again. */
@@ -15498,6 +15500,56 @@ static SDL_Texture *mar_pod_art(void *ctx, int i, int *w, int *h)
 static int *g_pod_at;
 static unsigned g_pod_at_gen;
 
+/* An episode's length: the file's, once the player has said it and it is 30 s
+ * or more from the feed's - ads put in as it is served make it longer, and
+ * "left" read 11 minutes short (owner, plorpos-7ni.20) - else the feed's; 0
+ * unknown. The file's is kept per episode, "pod.len.<show>/<episode>". */
+static int *g_pod_len;
+static unsigned g_pod_len_gen;
+
+static bool pod_len_key(int al, char *key, size_t n)
+{
+	char k[40];
+
+	if (!pod_ep_key(al, k, sizeof k)) return false;
+	snprintf(key, n, "pod.len.%s", k);
+	return true;
+}
+
+static int pod_len(int al)
+{
+	char key[64], val[24];
+	pod_ep e;
+
+	if (g_pod_len_gen != g_muse_gen || !g_pod_len) {
+		free(g_pod_len);
+		if (!(g_pod_len = malloc(sizeof *g_pod_len * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1)))) return 0;
+		for (int i = 0; i < g_muse.nalbums; i++) g_pod_len[i] = INT_MIN;
+		g_pod_len_gen = g_muse_gen;
+	}
+	if (al < 0 || al >= g_muse.nalbums) return 0;
+	if (g_pod_len[al] == INT_MIN) {
+		g_pod_len[al] = 0;
+		if (pod_len_key(al, key, sizeof key) && db_get_str(db_dev(), key, val, sizeof val, ""))
+			g_pod_len[al] = atoi(val);
+	}
+	if (g_pod_len[al] > 0) return g_pod_len[al];
+	return pod_episode(al, &e) ? e.dur : 0;
+}
+
+static void pod_len_note(int al, double len)
+{
+	char key[64], val[24];
+	int l = (int)(len + 0.5);
+	pod_ep e;
+
+	if (l <= 0 || pod_len(al) == l || !pod_episode(al, &e) || abs(l - e.dur) < 30) return;
+	if (!pod_len_key(al, key, sizeof key)) return;
+	snprintf(val, sizeof val, "%d", l);
+	db_set_str(db_dev(), key, val);
+	g_pod_len[al] = l;
+}
+
 static int pod_at(int al)
 {
 	char key[LIB_PATH + 8], val[LIB_PATH + 32];
@@ -15547,6 +15599,7 @@ static const char *mal_pod_value(void *ctx, int i)
 	}
 	at = g_book_done && g_book_done[al] ? -2 : pod_at(al);
 	if (at == -2) return "Played";
+	e.dur = pod_len(al);
 	if (at > 0 && e.dur > at) { pod_span(e.dur - at, span, sizeof span); snprintf(o, 32, "%s left", span); return o; }
 	if (e.dur <= 0) return "\xE2\x80\xA2";
 	pod_span(e.dur, span, sizeof span);
