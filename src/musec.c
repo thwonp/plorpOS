@@ -94,6 +94,7 @@ static bool     g_probed;           /* the one look for a Muse already running *
 static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
 static void   (*g_on_arrive)(const char *sink);
+static void   (*g_on_state)(mu_state st);
 /* A named sink that fell back to the codec is asked for again, twice, 2.5 s
  * apart: the usual cause is the game still letting go of a DAC (Busy), and
  * the sound then sat on the speaker for good (plorpos-7wu.6). */
@@ -609,7 +610,7 @@ static void headset_keys(void)
 	primed = true;
 }
 
-void musec_poll(void)
+static void poll_body(void)
 {
 	ssize_t got;
 
@@ -662,6 +663,19 @@ void musec_poll(void)
 			g_have -= used;
 		}
 		if (g_have >= sizeof g_in - 1) g_have = 0;
+	}
+}
+
+/* The state, as last told to musec_on_state: compared after every poll, so a
+ * change musec made itself (a PLAY, a toggle) counts as well as the daemon's. */
+static mu_state g_state_told = MU_OFF;
+
+void musec_poll(void)
+{
+	poll_body();
+	if (g_now.state != g_state_told) {
+		g_state_told = g_now.state;
+		if (g_on_state) g_on_state(g_state_told);
 	}
 }
 
@@ -947,6 +961,7 @@ void musec_resume_release(int index, double at)
 	play_current();
 }
 void musec_on_arrive(void (*fn)(const char *sink)) { g_on_arrive = fn; }
+void musec_on_state(void (*fn)(mu_state st)) { g_on_state = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 

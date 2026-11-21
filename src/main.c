@@ -1497,7 +1497,7 @@ static void book_keep(bool now)
 static char g_queue_file[CFG_STR * 2];
 
 static void muse_adopt_orphan(void);
-static void tl_watch(void);
+static void tl_on_state(mu_state st);
 
 /* More > Sleep Timer (plorpos-i8d.1). When it runs out the book is paused -
  * its place kept to the second, and sent - and the device sleeps, whatever is
@@ -1562,7 +1562,6 @@ static void muse_poll(void)
 	}
 	muse_adopt_orphan();
 	book_keep(false);
-	tl_watch();
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
 
@@ -13103,27 +13102,30 @@ static void tl_note(int al, int index, double at, bool play)
 	if (sz > TL_FILE_MAX) tl_compact(path);
 }
 
-/* From muse_poll: a book that starts playing or pauses. Not what was already
- * so when the launcher came up, and not the moments between two files. */
-static void tl_watch(void)
+/* musec_on_state: a book that starts playing or pauses, as the daemon says
+ * it - wherever that was pressed: Now Playing, the dark, a headset, the
+ * volume chord. It was watched from muse_poll, which the dark does not call,
+ * so a pause and play there went unseen (plorpos-i8d.5). Not what was
+ * already so when the launcher came up, and not the moments between two
+ * files (musec never reports those). */
+static void tl_on_state(mu_state st)
 {
 	static char last_dir[LIB_PATH];
-	static char last_kind;              /* 0 until the first look */
+	static char last_kind;              /* P, S, or 0 for anything else */
+	static bool told;                   /* the first report is the boot's */
 	const mu_now *mn = musec_now();
-	const char *t, *slash;
-	char kind, dir[LIB_PATH];
+	const char *t = musec_is_book() ? musec_track(mn->index) : NULL, *slash;
+	char kind = !t ? 0 : st == MU_PLAYING ? 'P' : st == MU_PAUSED ? 'S' : 0, dir[LIB_PATH] = "";
 	int al;
 
-	if (!musec_is_book() || g_walk_thread || g_muse.ntracks == 0) return;
-	if (mn->state == MU_PLAYING) kind = 'P';
-	else if (mn->state == MU_PAUSED) kind = 'S';
-	else return;
-	t = musec_track(mn->index);
-	if (!t || (al = ml_album_of(&g_muse, t)) < 0 || !g_muse.albums[al].book) return;
-	slash = strrchr(t, '/');
-	snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - t) : 0, t);
-	if (last_kind && (kind != last_kind || strcmp(dir, last_dir)))
+	if (t) {
+		slash = strrchr(t, '/');
+		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - t) : 0, t);
+	}
+	if (told && kind && (kind != last_kind || strcmp(dir, last_dir)) && !g_walk_thread &&
+	    (al = ml_album_of(&g_muse, t)) >= 0 && g_muse.albums[al].book)
 		tl_note(al, mn->index, mn->at, kind == 'P');
+	told = true;
 	last_kind = kind;
 	snprintf(last_dir, sizeof last_dir, "%s", dir);
 }
@@ -13190,13 +13192,14 @@ static bool np_timeline(app *a)
 		tl_where(al, ev[i].index, ev[i].at, where, sizeof where);
 		snprintf(rows.title[i], sizeof rows.title[i], "%s  %s", ev[i].kind == 'P' ? "Play" : "Pause", where);
 		if (tm) {
-			/* "Nov 21 4:31 AM", as the save slots write it. */
+			/* "Nov 21 4:31:05 AM", as the save slots write it: to the
+			 * second, or a minute's events all read alike. */
 			char mon[8];
 			int h12 = tm->tm_hour % 12;
 
 			strftime(mon, sizeof mon, "%b", tm);
-			snprintf(rows.value[i], sizeof rows.value[i], "%s %d %d:%02d %s", mon, tm->tm_mday,
-			         h12 ? h12 : 12, tm->tm_min, tm->tm_hour < 12 ? "AM" : "PM");
+			snprintf(rows.value[i], sizeof rows.value[i], "%s %d %d:%02d:%02d %s", mon, tm->tm_mday,
+			         h12 ? h12 : 12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM");
 		}
 	}
 	k = muse_long_pick(a, "Timeline", &rows, n, 0);
@@ -16420,8 +16423,11 @@ static dark_end music_dark(app *a, unsigned *waited)
 		pwr_action pa;
 		unsigned now;
 
-		musec_poll();
-		sleep_timer_tick();          /* paused here, it suspends after the grace */
+		/* All of Muse's poll, not only the daemon's: a book's place kept and
+		 * sent, the server's place asked on a play (9rf.9 waited for the
+		 * wake), the Timeline (i8d.5) and the sleep timer - paused here, it
+		 * suspends after the grace. */
+		muse_poll();
 		/* Routed in the dark too, as Muse's own screens route: a headset
 		 * that drops and comes back with the screen off took the song to
 		 * the speaker and left it there until a wake (2026-10-06). */
@@ -21125,6 +21131,7 @@ int main(int argc, char *argv[])
 			abs_init(P_CARD, P_SHARED);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_on_resume(muse_resume_hold);
+			musec_on_state(tl_on_state);        /* the book Timeline (i8d.5) */
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
 			musec_on_arrive(muse_arrived);

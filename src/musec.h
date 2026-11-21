@@ -144,6 +144,10 @@ void musec_jump(int i);
 /* A book's file i from `at` seconds into it - a seek when that file is the one
  * playing (More > Chapters and Timeline, plorpos-i8d.1). */
 void musec_jump_at(int i, double at);
+/* Called when the daemon says the state changed (playing, paused, stopped) -
+ * from musec_poll, so wherever Muse is polled, the dark included (the book
+ * Timeline, plorpos-i8d.5). */
+void musec_on_state(void (*fn)(mu_state st));
 
 /* The queued track, relative to the music root, or "" - so a list can mark
  * the row that is playing without comparing titles, which tags can change. */
