@@ -14,8 +14,9 @@
 #     through the vendor MI_AO library, in Muse and diatom, not through SDL.
 #   - armhf, glibc 2.28: the miyoo-toolchain image (mk/miyoo-toolchain.Dockerfile).
 #
-# FFmpeg as on the H700: LGPL only, --disable-everything plus what Muse plays
-# (and plain http for Audiobookshelf streams, plorpos-9rf.1).
+# FFmpeg as on the H700: LGPL 3, --disable-everything plus what Muse plays
+# (plain http for Audiobookshelf streams, plorpos-9rf.1; https through a
+# static Mbed TLS for podcast episodes, plorpos-7ni.1).
 #
 # SQLite (public domain) for the settings database: src/db.c dlopens
 # libsqlite3.so.0, which every other device's firmware ships and the Flip's
@@ -38,6 +39,9 @@ TTF_VER=2.20.2
 TTF_SHA=9dc71ed93487521b107a2c4a9ca6bf43fb62f6bddd5c26b055e6b91418a22053
 FF_VER=6.1
 FF_SHA=938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316
+# https for podcast streams (plorpos-7ni.1); the pin mk/build-curl-zero40.sh uses
+MBED_VER=3.6.2
+MBED_SHA=8b54fb9bcf4d5a7078028e0520acddefb7900b3e66fec7f7175bb5b7d85ccdca
 SQ_VER=3460100
 SQ_SHA=67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071
 
@@ -58,6 +62,8 @@ fetch SDL2_image-$IMG_VER.tar.gz "$IMG_SHA" \
 fetch SDL2_ttf-$TTF_VER.tar.gz "$TTF_SHA" \
 	"https://github.com/libsdl-org/SDL_ttf/releases/download/release-$TTF_VER/SDL2_ttf-$TTF_VER.tar.gz"
 fetch ffmpeg-$FF_VER.tar.gz "$FF_SHA" "https://ffmpeg.org/releases/ffmpeg-$FF_VER.tar.gz"
+fetch mbedtls-$MBED_VER.tar.bz2 "$MBED_SHA" \
+	"https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$MBED_VER/mbedtls-$MBED_VER.tar.bz2"
 fetch sqlite-autoconf-$SQ_VER.tar.gz "$SQ_SHA" "https://www.sqlite.org/2024/sqlite-autoconf-$SQ_VER.tar.gz"
 
 SRC=$DL/src
@@ -67,6 +73,13 @@ for t in SDL2-$SDL_VER SDL2_image-$IMG_VER SDL2_ttf-$TTF_VER ffmpeg-$FF_VER sqli
 	tar -xzf "$DL/$t.tar.gz" -C "$SRC"
 done
 
+# The images have no bzip2: unpack here. TLS 1.3 off - FFmpeg 6.1 never calls
+# psa_crypto_init(), which Mbed TLS 3.6 needs for a 1.3 handshake; every
+# podcast host speaks 1.2.
+tar -xjf "$DL/mbedtls-$MBED_VER.tar.bz2" -C "$SRC"
+MC=$SRC/mbedtls-$MBED_VER/include/mbedtls/mbedtls_config.h
+sed -i 's|^#define MBEDTLS_SSL_PROTO_TLS1_3$|/* & (off: plorpOS) */|' "$MC"
+grep -q "^#define MBEDTLS_SSL_PROTO_TLS1_3$" "$MC" && { echo "!! TLS 1.3 still on" >&2; exit 1; }
 ARCH_FLAGS="-marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
 docker run --rm -i -v "$SRC:/src:z" -v "$OUT:/out:z" miyoo-toolchain sh -s << EOF
 set -e
@@ -106,13 +119,17 @@ build SDL2_image /src/SDL2_image-$IMG_VER -DSDL2IMAGE_BACKEND_STB=ON -DSDL2IMAGE
 	-DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF -DSDL2IMAGE_JPG=ON -DSDL2IMAGE_PNG=ON
 build SDL2_ttf /src/SDL2_ttf-$TTF_VER -DSDL2TTF_VENDORED=ON -DSDL2TTF_HARFBUZZ=OFF \
 	-DSDL2TTF_SAMPLES=OFF -DBUILD_SHARED_LIBS=ON
+build mbedtls /src/mbedtls-$MBED_VER -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF -DGEN_FILES=OFF \
+	-DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 cd /src/ffmpeg-$FF_VER
 ./configure --prefix=/usr --enable-cross-compile --arch=arm --cpu=cortex-a7 --target-os=linux \
 	--cross-prefix=arm-linux-gnueabihf- --extra-cflags="$ARCH_FLAGS" --enable-neon \
 	--enable-shared --disable-static \
 	--disable-programs --disable-doc --disable-autodetect \
+	--enable-version3 --enable-mbedtls --pkg-config=false \
+	--extra-cflags=-I/out/usr/include --extra-ldflags=-L/out/usr/lib \
 	--disable-avdevice --disable-swscale --disable-postproc --disable-everything \
-	--enable-swresample --enable-protocol=file,http,tcp \
+	--enable-swresample --enable-protocol=file,http,https,tcp,tls \
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \
@@ -120,7 +137,8 @@ cd /src/ffmpeg-$FF_VER
 	make -j\$(nproc) >> /tmp/ffmpeg.log 2>&1 &&
 	make install DESTDIR=/out >> /tmp/ffmpeg.log 2>&1 ||
 		{ tail -30 /tmp/ffmpeg.log; echo "!! ffmpeg failed" >&2; exit 1; }
-grep -q "^License: LGPL" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-only" >&2; exit 1; }
+grep -q "^License: LGPL version 3" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-3.0-only" >&2; exit 1; }
+grep -q "^#define CONFIG_HTTPS_PROTOCOL 1" config_components.h || { echo "!! ffmpeg has no https" >&2; exit 1; }
 echo "  built  ffmpeg $FF_VER (\$(grep ^License: /tmp/ffmpeg.log))"
 cd /src/sqlite-autoconf-$SQ_VER
 CFLAGS="-O2 $ARCH_FLAGS" ./configure --host=arm-linux-gnueabihf --prefix=/usr \
@@ -138,5 +156,8 @@ for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
 	fi
 done
 EOF
-cp "$SRC/ffmpeg-$FF_VER/COPYING.LGPLv2.1" "$OUT/usr/lib/"
+# FFmpeg is LGPL 3 with Mbed TLS (Apache-2.0) inside libavformat: both texts
+# ship beside the libraries, the LGPL 3 with the GPL 3 it builds on.
+cp "$SRC/ffmpeg-$FF_VER/COPYING.LGPLv3" "$SRC/ffmpeg-$FF_VER/COPYING.GPLv3" "$OUT/usr/lib/"
+cp "$SRC/mbedtls-$MBED_VER/LICENSE" "$OUT/usr/lib/LICENSE.mbedtls"
 echo "sysroot ready: $OUT"

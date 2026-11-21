@@ -81,7 +81,8 @@ case $MODE in muse|all)
 	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l" > /dev/null
 	done
-	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/plorpOS/lib/" > /dev/null
+	for t in COPYING.LGPLv3 COPYING.GPLv3 LICENSE.mbedtls; do adb push "$LIB/$t" "$CARD/plorpOS/lib/" > /dev/null; done
+	adb shell "rm -f $CARD/plorpOS/lib/COPYING.LGPLv2.1"   # FFmpeg is LGPL 3 now (7ni.1)
 	for f in muse musectl btplayer pico8sdl.so; do
 		adb push "$ROOT/build/h700/$f" "$CARD/plorpOS/$f.new" > /dev/null
 		adb shell "chmod +x $CARD/plorpOS/$f.new && mv -f $CARD/plorpOS/$f.new $CARD/plorpOS/$f"

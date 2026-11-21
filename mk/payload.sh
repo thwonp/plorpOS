@@ -133,7 +133,7 @@ elif [ "$PLATFORM" = zero40 ]; then
 		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
 			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
 	done
-	cp "$L/COPYING.LGPLv2.1" "$P/lib/"
+	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
@@ -165,7 +165,7 @@ elif [ "$PLATFORM" = h700 ]; then
 		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
 			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
 	done
-	cp "$L/COPYING.LGPLv2.1" "$P/lib/"
+	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 	cp "$ROOT/docs/install-h700.md" "$OUT/INSTALL.md"
 else
 	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app"
