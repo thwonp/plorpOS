@@ -1265,6 +1265,19 @@ static bool g_pod_stale;
 static int  g_pod_added;
 static int *g_pod_stamp;
 
+/* No Plex on the Miyoo Flip (owner, 2026-11-21): a big library does not fit
+ * its 103 MB next to the launcher - 47k tracks got it OOM-killed
+ * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music. */
+static bool muse_src_offered(muse_src v)
+{
+#ifdef PLATFORM_MIYOO
+	return v != MSRC_PLEX;
+#else
+	(void)v;
+	return true;
+#endif
+}
+
 /* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
  * A card from before it had Show (music or books) and Local/Plex: Plex wins,
  * then books, read once and written as the new key. */
@@ -1284,7 +1297,8 @@ static muse_src muse_src_saved(void)
 		                          : !strcmp(show, "books") ? "books" : "music");
 		db_set_str(db_dev(), "muse.src", s);
 	}
-	for (i = 0; i < MSRC_COUNT; i++) if (!strcmp(s, K[i])) return (muse_src)i;
+	for (i = 0; i < MSRC_COUNT; i++)
+		if (!strcmp(s, K[i])) return muse_src_offered((muse_src)i) ? (muse_src)i : MSRC_MUSIC;
 	return MSRC_MUSIC;
 }
 
@@ -10584,12 +10598,17 @@ static bool muse_resume_hold(const char *rel)
 static bool muse_source_pick(app *a)
 {
 	const char *labels[MSRC_COUNT];
-	muse_src was = muse_src_saved(), to;
-	int k;
+	muse_src was = muse_src_saved(), to, map[MSRC_COUNT];
+	int k, n = 0, at = 0;
 
-	for (k = 0; k < MSRC_COUNT; k++) labels[k] = sys_menu_src_label((muse_src)k);
-	if ((k = muse_pick_run_at(a, "Source", labels, MSRC_COUNT, muse_src_shown())) < 0) return false;
-	to = (muse_src)k;
+	for (k = 0; k < MSRC_COUNT; k++) {
+		if (!muse_src_offered((muse_src)k)) continue;
+		if ((muse_src)k == muse_src_shown()) at = n;
+		map[n] = (muse_src)k;
+		labels[n++] = sys_menu_src_label((muse_src)k);
+	}
+	if ((k = muse_pick_run_at(a, "Source", labels, n, at)) < 0) return false;
+	to = map[k];
 	if (to == was && to == muse_src_shown()) return false;
 	switch (to) {
 	case MSRC_PLEX:

@@ -472,7 +472,8 @@ library takes a while: seven albums took a minute on the Brick.
 
 *Coming in the next release; not in v1.9.x.*
 
-Muse can play a Plex music library instead of the card's. Set **Source** to
+Muse can play a Plex music library instead of the card's (not on the Miyoo
+Mini Flip: a big library doesn't fit in its memory). Set **Source** to
 Plex in Muse's MENU. The first time it asks you to sign in: open
 plex.tv/link on a phone or computer and enter the code on the screen. Then
 pick the server and the music library. Muse reads the whole library once
@@ -482,9 +483,9 @@ second screen work as they do for the card's music.
 
 - **Streaming** plays at the quality in **Plex Settings**: Original, or an
   Opus transcode at 96 to 320 kbps (128 by default; transcoding needs Plex
-  Pass). The H700 devices and the Miyoo Flip can't stream, so they download
-  each track first, and the next one while it plays; a track takes a couple
-  of seconds to start.
+  Pass). Away from home the Brick can't stream, so it downloads each track
+  first, and the next one while it plays; a track takes a few seconds to
+  start.
 - **X on an album** (in any album list, Coverflow, or its track list)
   downloads it, or deletes the copy. Progress shows under the cover. While
   it downloads, X offers **Cancel Download**, which stops it and removes
