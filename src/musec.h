@@ -78,6 +78,10 @@ typedef struct {
 	/* Not playable yet - a device whose FFmpeg cannot stream, fetching the
 	 * track first: the PLAY is asked for again on every poll until it is. */
 	bool wait;
+	/* title and artist are the source's own and the file's tags do not
+	 * replace them, nor give an album: a podcast's MP3 can carry the
+	 * network's legal notice as its artist (plorpos-7ni.19). */
+	bool names;
 } musec_remote;
 /* `failed`: the daemon could not open a remote track; true to have it tried
  * once more (the resolver will look for its server again) - else skipped. */
@@ -123,6 +127,12 @@ int         musec_chapter_now(void);
 /* True once each time a queue plays out to its end - the last track ended by
  * itself, not stopped or replaced. A book that does has been finished. */
 bool musec_take_ran_out(void);
+/* A PLAY or RESUME sent and not answered yet: a stream opening, which takes
+ * seconds (plorpos-7ni.18). */
+bool musec_asked(void);
+/* The last track's end was a stream cut short (Wi-Fi or its server went), not
+ * the file's end: the daemon's END said cut=1 (plorpos-7ni.16). */
+bool musec_end_cut(void);
 
 void musec_toggle(void);       /* pause or resume */
 /* Pause only, never resume - and if Muse is not "playing" right now (it may be

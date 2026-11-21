@@ -135,21 +135,31 @@ SHA-256 pins are in the script, as is every configure option):
 | SDL2 (`libSDL2-2.0.so.0`) | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib (the patch too) |
 | SDL2_image (`libSDL2_image-2.0.so.0`) | 2.6.3, stb_image backend | zlib; stb_image public domain / MIT |
 | SDL2_ttf (`libSDL2_ttf-2.0.so.0`) | 2.20.2, vendored FreeType | zlib; FreeType under the FreeType License (FTL) |
-| FFmpeg (`libavformat.so.60`, `libavcodec.so.60`, `libavfilter.so.9`, `libswresample.so.4`, `libavutil.so.58`) | 6.1, unmodified | LGPL 2.1 or later |
+| FFmpeg (`libavformat.so.60`, `libavcodec.so.60`, `libavfilter.so.9`, `libswresample.so.4`, `libavutil.so.58`) | 6.1, unmodified | LGPL 3 or later |
+| Mbed TLS, statically inside `libavformat.so.60` (https for podcasts) | 3.6.2, TLS 1.3 switched off in its config | Apache-2.0 (dual-licensed Apache-2.0 OR GPL-2.0-or-later; used under Apache-2.0) |
 
-FFmpeg is built LGPL-only - no `--enable-gpl`, no `--enable-nonfree`, and the
-build fails unless configure reports "License: LGPL version 2.1 or later" -
-with only the demuxers, decoders, parsers and filters Muse uses. It is linked
-dynamically, so any of the five libraries can be replaced with another build
-of the same sonames. The corresponding source is the unmodified release
-tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
-`938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`), and the
-script above rebuilds the shipped libraries from it. The LGPL's text ships on
-the card beside them as `plorpOS/lib/COPYING.LGPLv2.1`.
+FFmpeg is built with `--enable-version3 --enable-mbedtls` and nothing GPL or
+nonfree - the build fails unless configure reports "License: LGPL version 3 or
+later" - with only the demuxers, decoders, parsers and filters Muse uses, and
+the file, http, https and tls protocols (podcast episodes stream over https,
+plorpos-7ni.1). LGPL 3 applies to this component only; plorpOS stays MIT. It
+is linked dynamically, so any of the five libraries can be replaced with
+another build of the same sonames. The corresponding source is the unmodified
+release tarballs, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
+`938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`) and
+https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.2/mbedtls-3.6.2.tar.bz2
+(SHA-256 `8b54fb9bcf4d5a7078028e0520acddefb7900b3e66fec7f7175bb5b7d85ccdca`),
+and the script above rebuilds the shipped libraries from them. The licence
+texts ship on the card beside them in `plorpOS/lib/`: `COPYING.LGPLv3`,
+`COPYING.GPLv3` (which the LGPL 3 builds on) and `LICENSE.mbedtls`.
 
 The MagicX Zero 40's card carries the same five FFmpeg libraries, copied from
-this build, in its own `plorpOS/lib/` with the LGPL's text: oakMOSS has no
-FFmpeg for Muse either. Its SDL2 is oakMOSS's own.
+this build, in its own `plorpOS/lib/` with the same licence texts: oakMOSS has
+no FFmpeg for Muse either. Its SDL2 is oakMOSS's own.
+
+The Miyoo Mini Flip's card carries the same FFmpeg 6.1 and Mbed TLS 3.6.2,
+built the same way for 32-bit ARM by `mk/fetch-miyoo-sysroot.sh`, with the
+same three licence texts in its `plorpOS/lib/`.
 
 ### Ports on the Brick (`plorpOS/brick/portmaster/`)
 

@@ -26,14 +26,17 @@
 #
 # FFmpeg for Muse (plorpos-7ny.10): BaseOS has none, and the Brick links its
 # firmware's 6.1. Built here from the same 6.1 tarball and hash as
-# mk/fetch-sysroot.sh, LGPL only (no --enable-gpl, no nonfree), with
+# mk/fetch-sysroot.sh, LGPL 3 (no --enable-gpl, no nonfree; version 3 for
+# Mbed TLS, owner's call for this component only, plorpos-7ni.1), with
 # --disable-everything and then exactly what Muse plays: the formats
 # src/muselib.c lists (mp3, m4a/m4b, aac, flac, ogg/oga, opus, wav), the file
-# protocol and plain http (Audiobookshelf on the LAN streams, plorpos-9rf.1; no
-# TLS), and src/muse/dec.c's filter chain (atempo for SPEED, volume for
+# protocol, plain http (Audiobookshelf on the LAN streams, plorpos-9rf.1) and
+# https (podcast episodes, plorpos-7ni.1: Mbed TLS linked statically into
+# libavformat, so no extra library ships), and src/muse/dec.c's filter chain (atempo for SPEED, volume for
 # its 2 dB headroom - without it every track failed, plorpos-xpt.5). Cover art is
 # the attached picture's bytes, so no image decoder. Shared, to ship as
-# plorpOS/lib/ beside SDL with the LGPL's text (usr/lib/COPYING.LGPLv2.1),
+# plorpOS/lib/ beside SDL with the licence texts (usr/lib/COPYING.LGPLv3,
+# COPYING.GPLv3, LICENSE.mbedtls),
 # which keeps its relinking terms simple; see THIRD-PARTY-LICENSES.md.
 #
 # ALSA's headers and import library come from Debian bullseye - the snapshot
@@ -47,7 +50,7 @@
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-$ROOT/sysroot-h700}
-DL=/tmp/tortos-h700-sysroot-dl
+DL=${DL:-/tmp/tortos-h700-sysroot-dl}   # outside any git tree: the SDL patch is git-applied
 
 SDL_VER=2.30.8
 SDL_SHA=380c295ea76b9bd72d90075793971c8bcb232ba0a69a9b14da4ae8f603350058
@@ -61,6 +64,9 @@ ALSA_SHA=8fabd77256593c42e2ad1578f938b56d0a5ed19aa61c6c72c890fd761fd129a8
 ALSA_DEV_SHA=5acd1f3cd1aa11aeeb9dcd2467e8142ced0bdf112b813d134e63baebf342ee29
 FF_VER=6.1
 FF_SHA=938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316
+# https for podcast streams (plorpos-7ni.1); the pin mk/build-curl-zero40.sh uses
+MBED_VER=3.6.2
+MBED_SHA=8b54fb9bcf4d5a7078028e0520acddefb7900b3e66fec7f7175bb5b7d85ccdca
 
 for t in docker curl git ar tar; do
 	command -v $t > /dev/null || { echo "need $t" >&2; exit 1; }
@@ -79,6 +85,8 @@ fetch SDL2_image-$IMG_VER.tar.gz "$IMG_SHA" \
 fetch SDL2_ttf-$TTF_VER.tar.gz "$TTF_SHA" \
 	"https://github.com/libsdl-org/SDL_ttf/releases/download/release-$TTF_VER/SDL2_ttf-$TTF_VER.tar.gz"
 fetch ffmpeg-$FF_VER.tar.gz "$FF_SHA" "https://ffmpeg.org/releases/ffmpeg-$FF_VER.tar.gz"
+fetch mbedtls-$MBED_VER.tar.bz2 "$MBED_SHA" \
+	"https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$MBED_VER/mbedtls-$MBED_VER.tar.bz2"
 fetch libasound2.deb "$ALSA_SHA" "$SNAP/libasound2_${ALSA_VER}_arm64.deb"
 fetch libasound2-dev.deb "$ALSA_DEV_SHA" "$SNAP/libasound2-dev_${ALSA_VER}_arm64.deb"
 
@@ -90,6 +98,13 @@ for t in SDL2-$SDL_VER SDL2_image-$IMG_VER SDL2_ttf-$TTF_VER; do
 	tar -xzf "$DL/$t.tar.gz" -C "$SRC"
 done
 tar -xzf "$DL/ffmpeg-$FF_VER.tar.gz" -C "$SRC"
+# The images have no bzip2: unpack here. TLS 1.3 off - FFmpeg 6.1 never calls
+# psa_crypto_init(), which Mbed TLS 3.6 needs for a 1.3 handshake; every
+# podcast host speaks 1.2.
+tar -xjf "$DL/mbedtls-$MBED_VER.tar.bz2" -C "$SRC"
+MC=$SRC/mbedtls-$MBED_VER/include/mbedtls/mbedtls_config.h
+sed -i 's|^#define MBEDTLS_SSL_PROTO_TLS1_3$|/* & (off: plorpOS) */|' "$MC"
+grep -q "^#define MBEDTLS_SSL_PROTO_TLS1_3$" "$MC" && { echo "!! TLS 1.3 still on" >&2; exit 1; }
 git -C "$SRC/SDL2-$SDL_VER" apply "$ROOT/mk/patches/sdl2-h700.patch"
 
 # ALSA: headers and the import library, out of the two .debs.
@@ -137,12 +152,16 @@ build SDL2_image /src/SDL2_image-$IMG_VER -DSDL2IMAGE_BACKEND_STB=ON -DSDL2IMAGE
 	-DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF -DSDL2IMAGE_JPG=ON -DSDL2IMAGE_PNG=ON
 build SDL2_ttf /src/SDL2_ttf-$TTF_VER -DSDL2TTF_VENDORED=ON -DSDL2TTF_HARFBUZZ=OFF \
 	-DSDL2TTF_SAMPLES=OFF -DBUILD_SHARED_LIBS=ON
+build mbedtls /src/mbedtls-$MBED_VER -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF -DGEN_FILES=OFF \
+	-DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 cd /src/ffmpeg-$FF_VER
 ./configure --prefix=/usr --enable-cross-compile --arch=aarch64 --target-os=linux \
 	--cross-prefix=aarch64-linux-gnu- --enable-shared --disable-static \
 	--disable-programs --disable-doc --disable-autodetect \
+	--enable-version3 --enable-mbedtls --pkg-config=false \
+	--extra-cflags=-I/out/usr/include --extra-ldflags=-L/out/usr/lib \
 	--disable-avdevice --disable-swscale --disable-postproc --disable-everything \
-	--enable-swresample --enable-protocol=file,http,tcp \
+	--enable-swresample --enable-protocol=file,http,https,tcp,tls \
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \
@@ -150,7 +169,8 @@ cd /src/ffmpeg-$FF_VER
 	make -j\$(nproc) >> /tmp/ffmpeg.log 2>&1 &&
 	make install DESTDIR=/out >> /tmp/ffmpeg.log 2>&1 ||
 		{ tail -30 /tmp/ffmpeg.log; echo "!! ffmpeg failed" >&2; exit 1; }
-grep -q "^License: LGPL" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-only" >&2; exit 1; }
+grep -q "^License: LGPL version 3" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-3.0-only" >&2; exit 1; }
+grep -q "^#define CONFIG_HTTPS_PROTOCOL 1" config_components.h || { echo "!! ffmpeg has no https" >&2; exit 1; }
 echo "  built  ffmpeg $FF_VER (\$(grep ^License: /tmp/ffmpeg.log))"
 for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
          libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
@@ -168,5 +188,8 @@ for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
 		exit 1
 	fi
 done
-cp "$SRC/ffmpeg-$FF_VER/COPYING.LGPLv2.1" "$OUT/usr/lib/"
+# FFmpeg is LGPL 3 with Mbed TLS (Apache-2.0) inside libavformat: both texts
+# ship beside the libraries, the LGPL 3 with the GPL 3 it builds on.
+cp "$SRC/ffmpeg-$FF_VER/COPYING.LGPLv3" "$SRC/ffmpeg-$FF_VER/COPYING.GPLv3" "$OUT/usr/lib/"
+cp "$SRC/mbedtls-$MBED_VER/LICENSE" "$OUT/usr/lib/LICENSE.mbedtls"
 echo "sysroot ready: $OUT"

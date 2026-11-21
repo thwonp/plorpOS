@@ -11,8 +11,10 @@
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
+#include <libavutil/audio_fifo.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
+#include <libavutil/opt.h>
 
 /* The resampler, and the only part of this chain anyone would hear go wrong.
  *
@@ -54,6 +56,8 @@ struct dec {
 	double           base;       /* file seconds at the first frame kept */
 	int              base_set;
 	int64_t          given;      /* frames handed over since `base` */
+	AVAudioFifo     *held;       /* the last chain's tail, after a speed change */
+	int              cut;        /* the end came from a read that failed */
 };
 
 static int build_graph(dec *d, char *err, size_t errn)
@@ -114,11 +118,41 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 		 * read fails, the track ends, and the launcher finds the server
 		 * again for the next (plorpos-1lw.19). Files are not affected. */
 		AVDictionary *o = NULL;
+		char *to = NULL;
 		int e;
 
+		/* Where an https stream's redirects end, opened rather than the URL
+		 * given: FFmpeg's seek goes back to the URL it was given and walks
+		 * every redirect again, since a podcast's tracking hops (302s, no
+		 * Expires) are never cached - 4 hops, 1.6-1.9 s a seek on the 34xxsp
+		 * against 0.3 s to the end of them (plorpos-7ni.10). One connection
+		 * more on opening. Plain http (Plex, Audiobookshelf on the LAN) is
+		 * opened once, as it was. */
+		if (!strncmp(path, "https://", 8)) {
+			AVIOContext *pb = NULL;
+			uint8_t *loc = NULL;
+
+			av_dict_set(&o, "rw_timeout", "10000000", 0);
+			if (avio_open2(&pb, path, AVIO_FLAG_READ, NULL, &o) >= 0) {
+				if (av_opt_get(pb, "location", AV_OPT_SEARCH_CHILDREN, &loc) >= 0 && loc &&
+				    strcmp((char *)loc, path) && strstr((char *)loc, "://"))
+					to = strdup((char *)loc);
+				av_free(loc);
+				avio_closep(&pb);
+			}
+			av_dict_free(&o);
+		}
 		if (strstr(path, "://")) av_dict_set(&o, "rw_timeout", "10000000", 0);
-		e = avformat_open_input(&d->fmt, path, NULL, &o);
+		e = avformat_open_input(&d->fmt, to ? to : path, NULL, &o);
+		if (e < 0 && to) e = avformat_open_input(&d->fmt, path, NULL, &o);   /* as given, then */
+		free(to);
 		av_dict_free(&o);
+		/* An https stream's MP3 seeks to the byte its time is at, rather than
+		 * reading forward from the last frame it indexed - the whole way, over
+		 * Wi-Fi, which was most of a seek's 2-7 s (plorpos-7ni.10). Exact for
+		 * CBR, which a podcast's MP3 nearly always is; a VBR one lands near.
+		 * Files on the card, and http on the LAN, keep the exact seek. */
+		if (e >= 0 && !strncmp(path, "https://", 8)) d->fmt->flags |= AVFMT_FLAG_FAST_SEEK;
 
 		if (e < 0) {
 			char why[64];
@@ -194,6 +228,7 @@ static int feed(dec *d)
 		/* The decoder wants a packet. */
 		r = av_read_frame(d->fmt, d->pkt);
 		if (r < 0) {
+			if (r != AVERROR_EOF) d->cut = 1;
 			avcodec_send_packet(d->cc, NULL);      /* flush, then drain above */
 			continue;
 		}
@@ -221,6 +256,12 @@ int dec_read(dec *d, int16_t *buf, int max)
 				av_frame_unref(d->out);
 				d->out_have = 0;
 			}
+			continue;
+		}
+		if (d->held && av_audio_fifo_size(d->held) > 0) {
+			void *p = buf + (size_t)got * DEC_CHANNELS;
+
+			got += av_audio_fifo_read(d->held, &p, max - got);
 			continue;
 		}
 		{
@@ -345,6 +386,64 @@ const char *dec_chapter_title(const dec *d, int i)
 	return e ? e->value : "";
 }
 
+int dec_seek(dec *d, double at)
+{
+	char err[64];
+
+	if (!d || !d->fmt) return 0;
+	if (at < 0) at = 0;
+	if (av_seek_frame(d->fmt, -1, (int64_t)(at * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD) < 0)
+		return 0;
+	avcodec_flush_buffers(d->cc);
+	av_frame_unref(d->in);
+	av_frame_unref(d->out);
+	d->out_have = d->out_off = 0;
+	if (d->held) av_audio_fifo_reset(d->held);
+	avfilter_graph_free(&d->g);
+	if (!build_graph(d, err, sizeof err)) return 0;
+	d->fed_eof = 0;
+	d->cut = 0;
+	d->at = at;
+	d->base_set = 0;
+	d->given = 0;
+	return 1;
+}
+
+int dec_cut(const dec *d)
+{
+	return d && d->cut;
+}
+
+int dec_speed(dec *d, double speed)
+{
+	char err[64];
+	double was = d ? d->speed : 1;
+	int64_t left;
+
+	if (!d || !d->g || speed < 0.1) return 0;
+	if (!d->held && !(d->held = av_audio_fifo_alloc(AV_SAMPLE_FMT_S16, DEC_CHANNELS, 8192)))
+		return 0;
+	/* The old chain told it has everything, so atempo hands over what it was
+	 * still holding; that plays, at the old speed, before the new chain's. */
+	if (!d->fed_eof && av_buffersrc_add_frame(d->src, NULL) < 0) return 0;
+	while (av_buffersink_get_frame(d->sink, d->in) >= 0) {
+		av_audio_fifo_write(d->held, (void **)d->in->data, d->in->nb_samples);
+		av_frame_unref(d->in);
+	}
+	avfilter_graph_free(&d->g);
+	d->speed = speed;
+	if (!build_graph(d, err, sizeof err)) return 0;
+	if (d->fed_eof && av_buffersrc_add_frame(d->src, NULL) < 0) return 0;   /* nothing more comes */
+	/* dec_pos counts frames at the speed they were made at: the ones not yet
+	 * handed over were made at the old one. */
+	left = av_audio_fifo_size(d->held) + (d->out_have ? d->out->nb_samples - d->out_off : 0);
+	if (d->base_set) {
+		d->base += ((double)(d->given + left) * was - (double)left * speed) / DEC_RATE;
+		d->given = 0;
+	}
+	return 1;
+}
+
 void dec_close(dec *d)
 {
 	if (!d) return;
@@ -352,6 +451,7 @@ void dec_close(dec *d)
 	av_frame_free(&d->out);
 	av_packet_free(&d->pkt);
 	avfilter_graph_free(&d->g);
+	if (d->held) av_audio_fifo_free(d->held);
 	avcodec_free_context(&d->cc);
 	avformat_close_input(&d->fmt);
 	free(d);

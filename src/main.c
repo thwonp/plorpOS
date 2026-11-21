@@ -30,6 +30,7 @@
 #include "platform.h"
 #include "texload.h"
 #include "artshrink.h"
+#include "podcast.h"
 #include "artscrape.h"
 #include "favorites.h"
 #include "recent.h"
@@ -67,6 +68,7 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <dirent.h>
+#include <limits.h>
 #include <errno.h>
 #include <ftw.h>
 #include <ctype.h>
@@ -402,9 +404,16 @@ static int  muse_tab(void);
 static void muse_tabs_screen(app *a);
 static void muse_tabs_load(void);
 enum { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_COVERFLOW, MT_FAVORITES, MT_N };
+/* On Podcasts (plorpos-7ni.4) the slots are Podcasts, New, Downloads, Queue
+ * and Favorites, and the three episode lists filter the view: the tab whose
+ * filter is on, or -1. */
+static int g_pod_view = -1;
+#define POD_NEW_MAX 100
 /* The order a Muse shelf shows: under one artist, Artist order is Album. */
+static bool g_muse_pod;
 static ml_order muse_sort_shown(int sort)
 {
+	if (g_muse_pod) return ML_BY_YEAR;      /* episodes: newest first (plorpos-7ni) */
 	return sort == ML_BY_ARTIST && muse_artist_filter() >= 0 ? ML_BY_ALBUM : (ml_order)sort;
 }
 static int  shelf_letter_jump(sysview *v, int dir);
@@ -1249,13 +1258,32 @@ static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle *
 /* Audiobookshelf (plorpos-9rf): the library g_muse holds, as Plex's above. */
 static bool g_muse_abs;
 static bool g_abs_stale;
+/* Podcasts (plorpos-7ni): the library g_muse holds, as the servers' above.
+ * g_pod_stamp: each episode's publish minute, the order its lists are in. */
+static bool g_muse_pod;
+static bool g_pod_stale;
+static int  g_pod_added;
+static int *g_pod_stamp;
+
+/* No Plex on the Miyoo Flip (owner, 2026-11-21): a big library does not fit
+ * its 103 MB next to the launcher - 47k tracks got it OOM-killed
+ * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music. */
+static bool muse_src_offered(muse_src v)
+{
+#ifdef PLATFORM_MIYOO
+	return v != MSRC_PLEX;
+#else
+	(void)v;
+	return true;
+#endif
+}
 
 /* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
  * A card from before it had Show (music or books) and Local/Plex: Plex wins,
  * then books, read once and written as the new key. */
 static muse_src muse_src_saved(void)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
 	char s[16];
 	int i;
 
@@ -1269,13 +1297,14 @@ static muse_src muse_src_saved(void)
 		                          : !strcmp(show, "books") ? "books" : "music");
 		db_set_str(db_dev(), "muse.src", s);
 	}
-	for (i = 0; i < MSRC_COUNT; i++) if (!strcmp(s, K[i])) return (muse_src)i;
+	for (i = 0; i < MSRC_COUNT; i++)
+		if (!strcmp(s, K[i])) return muse_src_offered((muse_src)i) ? (muse_src)i : MSRC_MUSIC;
 	return MSRC_MUSIC;
 }
 
 static void muse_src_save(muse_src v)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
 
 	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
 }
@@ -1339,6 +1368,7 @@ static muse_src muse_src_shown(void)
 {
 	if (g_muse_plex) return MSRC_PLEX;
 	if (g_muse_abs) return MSRC_ABS;
+	if (g_muse_pod) return MSRC_PODCASTS;
 	return muse_books_shown() ? MSRC_BOOKS : MSRC_MUSIC;
 }
 
@@ -1383,6 +1413,7 @@ static void book_item_write(int al, const char *track, double at)
 
 /* A place is "<seconds>\t<file>", the file by its name rather than its number
  * so a file added to the folder later moves nothing, or "finished". */
+static void pod_at_forget(int al);
 static void book_write(int al, const char *track, double at)
 {
 	char key[LIB_PATH + 8], val[LIB_PATH + 32];
@@ -1392,6 +1423,7 @@ static void book_write(int al, const char *track, double at)
 	snprintf(val, sizeof val, "%.1f\t%s", at, file ? file + 1 : track);
 	db_set_str(db_dev(), key, val);
 	g_book_done[al] = false;
+	pod_at_forget(al);
 	book_item_write(al, track, at);
 }
 
@@ -1469,6 +1501,29 @@ static int book_place(int al, double *at)
  * and for a new queue about to replace this one. */
 static struct { int al, index; mu_state st; double at; } g_bk = { -1, -1, MU_OFF, 0 };
 
+/* The episode in the player, playing or paused, or -1: the book book_keep
+ * keeps, so nothing is looked up again for its row's icon (plorpos-7ni.13). */
+static int pod_row_now_al(void)
+{
+	const mu_now *mn = musec_now();
+
+	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return -1;
+	return g_bk.al >= 0 && g_bk.al < g_muse.nalbums &&
+	       pod_is_path(g_muse.tracks[g_muse.albums[g_bk.al].first].path) ? g_bk.al : -1;
+}
+
+/* Podcasts (plorpos-7ni.5): heard to 95% is played (owner); an episode that
+ * ran out plays the first one in the Queue next, or nothing (owner: an empty
+ * Queue stops). The next is started from muse_poll, after book_keep. */
+static void pod_mark_played(int al);
+static bool pod_in_player(int al);
+static void pod_autodel_played(int al);
+static int pod_up_next(int done);
+static bool book_start(int al);
+static void muse_toast(const char *msg);
+static void pod_len_note(int al, double len);
+static int g_pod_next = -1;
+
 static void book_keep(bool now)
 {
 	const mu_now *mn = musec_now();
@@ -1480,8 +1535,32 @@ static void book_keep(bool now)
 	track = musec_track(mn->index);
 	al = ml_album_of(&g_muse, track);
 	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
+	if (ran_out && pod_is_path(track) && musec_end_cut() && !g_book_done[al]) {
+		/* The stream stopped short - Wi-Fi or the server went: not heard, so
+		 * not played, and nothing starts after it. A plays on from here
+		 * (plorpos-7ni.16). */
+		book_write(al, track, mn->at);
+		muse_toast("Stream lost. Your place is kept.");
+		g_bk.al = -1;
+		return;
+	}
+	if (ran_out && pod_is_path(track)) {
+		if (!g_book_done[al]) pod_mark_played(al);   /* not already at 95% */
+		pod_autodel_played(al);                      /* the player is done with it */
+		pod_queue_remove(al);
+		g_pod_next = pod_up_next(al);
+		g_bk.al = -1;
+		return;
+	}
 	if (ran_out) { book_finish(al); g_bk.al = -1; return; }
 	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return;
+	if (pod_is_path(track)) pod_len_note(al, mn->len);
+	if (mn->len > 0 && mn->at >= 0.95 * mn->len && pod_is_path(track)) {
+		/* Played; its place is not kept past here, or it would be
+		 * in progress again. */
+		if (!g_book_done[al]) pod_mark_played(al);   /* book_finish says so in the log */
+		return;
+	}
 	if (now || al != g_bk.al || mn->index != g_bk.index || mn->state != g_bk.st ||
 	    fabs(mn->at - g_bk.at) >= 30) {
 		book_write(al, track, mn->at);
@@ -1598,6 +1677,19 @@ static void muse_poll(void)
 	}
 	muse_adopt_orphan();
 	book_keep(false);
+	if (g_muse_pod) {
+		/* Its row's play icon follows the player (plorpos-7ni.13). */
+		static int was = -1;
+		int now = pod_row_now_al() >= 0 ? pod_row_now_al() * 4 + (int)mn->state : -1;
+
+		if (now != was) { was = now; ui_redraw_now(); }
+	}
+	if (g_pod_next >= 0) {
+		int al = g_pod_next;
+
+		g_pod_next = -1;
+		book_start(al);
+	}
 	if (g_queue_file[0]) musec_queue_keep(g_queue_file);
 }
 
@@ -1633,6 +1725,8 @@ static void muse_adopt_orphan(void)
 	al = ml_album_of(&g_muse, t);
 	/* An Audiobookshelf book's file, playing from its stream URL. */
 	if (al < 0 && abs_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
+	/* A podcast episode, streamed or from its download (plorpos-7ni.5). */
+	if (al < 0 && pod_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
 	if (al < 0 || !g_muse.albums[al].book ||
 	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
 	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
@@ -4116,6 +4210,18 @@ static void draw_heart(SDL_Renderer *r, float cx, float cy, float rad,
 	SDL_RenderGeometry(r, NULL, v, HEART_N + 1, idx, HEART_N * 3);
 }
 
+/* A play triangle, pointing right, in the heart's seat and of its size. */
+static void draw_play(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color col)
+{
+	SDL_Vertex v[3] = {
+		{ { cx - rad * 0.7f, cy - rad * 0.9f }, col, { 0, 0 } },
+		{ { cx - rad * 0.7f, cy + rad * 0.9f }, col, { 0, 0 } },
+		{ { cx + rad * 0.9f, cy },              col, { 0, 0 } },
+	};
+
+	SDL_RenderGeometry(r, NULL, v, 3, NULL, 0);
+}
+
 /* A filled circle, as a fan from its center like draw_heart. */
 #define ORB_N 40
 
@@ -4561,7 +4667,7 @@ static void draw_systems(app *a)
 		char al[32] = "", bk[32] = "";
 
 		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
-		if (books)  snprintf(bk, sizeof bk, "%d book%s", books, books == 1 ? "" : "s");
+		if (books)  snprintf(bk, sizeof bk, g_muse_pod ? "%d episode%s" : "%d book%s", books, books == 1 ? "" : "s");
 		snprintf(line, sizeof line, "%s%s%s", al, al[0] && bk[0] ? ", " : "", bk);
 	} else {
 		int gc = a->view[(int)(label - a->sys.systems)].list.count;
@@ -4878,12 +4984,14 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 typedef struct {
 	int key;                 /* the fit cache's: a shelf index + 1, or GL_KEY_* */
 	const char *header;
+	const char *note;        /* dim, after the header on its line; NULL none */
 	int n, cur;
 	unsigned accent;
 	void *ctx;
 	const char *(*title)(void *ctx, int i);
 	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
 	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
+	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
 	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
 	int nunder;              /* lines under the art; the last one dim */
@@ -4893,6 +5001,7 @@ typedef struct {
 	unsigned phase;          /* the focused title's marquee clock */
 	const char *empty;       /* said when there are no rows */
 	const char *toast;       /* a passing word ("Added to Road Trip"), or NULL */
+	int bar;                 /* 1-1000: a progress bar under the art's lines; 0 none */
 	/* Help along the bottom of a list without tabs: button, label pairs. */
 	const char *const *help;
 	int nhelp;
@@ -5175,6 +5284,30 @@ static void gl_draw_footer(app *a, const gl_list *L)
 	}
 }
 
+/* A passing word ("Marked played"), over the screen in the list's font, low
+ * and centered above the footer: the header's corner and the lines under the
+ * art were too small to notice (owner, plorpos-7ni.15). */
+static const char *muse_toast_now(void);
+
+static void toast_draw(app *a, const char *msg, unsigned accent)
+{
+	TTF_Font *f = ui_font(UI_F_LIST);
+	SDL_Color ac = { (Uint8)(accent >> 16), (Uint8)(accent >> 8), (Uint8)accent, 255 };
+	char buf[160];
+	int line = ui_font_line(UI_F_LIST), w, h = line + GL_PAD;
+	SDL_Rect box, in;
+
+	ui_fit_text(f, msg, buf, sizeof buf, TORTOS_SCREEN_W - GL_PAD * 6);
+	w = ui_text_width(f, buf) + GL_PAD * 2;
+	box = (SDL_Rect){ (TORTOS_SCREEN_W - w) / 2,
+	                  TORTOS_SCREEN_H - ui_font_line(UI_F_META) - GL_PAD * 3 - h, w, h };
+	in = (SDL_Rect){ box.x + 2, box.y + 2, box.w - 4, box.h - 4 };
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	ui_round_rect(a->r, &box, h / 2, ac);
+	ui_round_rect(a->r, &in, h / 2 - 2, (SDL_Color){ 16, 18, 24, 240 });
+	ui_text(a->r, f, buf, TORTOS_SCREEN_W / 2, box.y + (h - line) / 2, 0, UI_TEXT);
+}
+
 static void gl_draw(app *a, const gl_list *L)
 {
 	TTF_Font *fm = ui_font(UI_F_LIST), *fv = ui_font(UI_F_META);
@@ -5191,11 +5324,14 @@ static void gl_draw(app *a, const gl_list *L)
 	/* Header. Where you are in the list goes under the art. */
 	ui_fit_text(ui_font(UI_F_TITLE), L->header ? L->header : "", buf, sizeof buf,
 	            L->wide_header ? gl_header_right() - GL_PAD : g.col_w);
-	ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
-	/* A passing word, on the header's line, clear of the battery's corner. */
-	if (L->toast && *L->toast && !L->wide_header)
-		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
-		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), 1, ac);
+	{
+		int hw = ui_text(a->r, ui_font(UI_F_TITLE), buf, GL_PAD, GL_PAD, -1, UI_TEXT);
+		int nx = GL_PAD * 2 + hw, right = L->wide_header ? gl_header_right() : GL_PAD + g.col_w;
+
+		if (L->note && *L->note && nx + ui_text_width(fv, L->note) <= right)
+			ui_text(a->r, fv, L->note, nx,
+			        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), -1, UI_TEXT_DIM);
+	}
 
 	/* The column. The cursor rides the middle row once the list is long
 	 * enough to scroll, so there is always as much ahead as behind. Titles
@@ -5213,7 +5349,8 @@ static void gl_draw(app *a, const gl_list *L)
 		int ty = y + (g.row_h - mline) / 2;
 		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
 		bool fav = L->fav && L->fav(L->ctx, i);
-		int tx = GL_PAD + (fav ? hrad * 3 : 0);  /* heart, then its gap */
+		int now = L->now ? L->now(L->ctx, i) : 0;
+		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0);  /* icons, then a gap */
 		int tw = g.col_w - (tx - GL_PAD);
 
 		if (i == cur) {
@@ -5223,8 +5360,11 @@ static void gl_draw(app *a, const gl_list *L)
 			hc.a = 210;
 			ui_round_rect(a->r, &row, g.row_h / 4, hc);
 		}
+		if (now)
+			draw_play(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2), (float)hrad,
+			          i == cur ? UI_TEXT : now == 2 ? UI_TEXT_DIM : ac);
 		if (fav)
-			draw_heart(a->r, (float)(GL_PAD + hrad), (float)(y + g.row_h / 2),
+			draw_heart(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0)), (float)(y + g.row_h / 2),
 			           (float)hrad, i == cur ? UI_TEXT : ac);
 		if (val && *val) {
 			int vw = ui_text_width(fv, val);
@@ -5261,6 +5401,16 @@ static void gl_draw(app *a, const gl_list *L)
 		for (i = 0; i < L->nunder; i++, y += fl)
 			ui_text(a->r, fv, L->under[i], cx, y, 0,
 			        i == L->nunder - 1 ? UI_TEXT_DIM : UI_TEXT_SOFT);
+		/* Along the art's foot: the lines under it can reach the footer. */
+		if (L->bar > 0 && art.w > 0) {
+			SDL_Rect track = { art.x, art.y + art.h - 6, art.w, 6 };
+			SDL_Rect done = track;
+
+			done.w = track.w * (L->bar > 1000 ? 1000 : L->bar) / 1000;
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			ui_round_rect(a->r, &track, 0, (SDL_Color){ 0, 0, 0, 170 });
+			if (done.w > 0) ui_round_rect(a->r, &done, 0, ac);
+		}
 	}
 	if (L->ntabs > 0) gl_draw_footer(a, L);
 	else if (L->nhelp > 0) {
@@ -5273,6 +5423,7 @@ static void gl_draw(app *a, const gl_list *L)
 			x += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
 		}
 	}
+	if (L->toast && *L->toast) toast_draw(a, L->toast, L->accent);
 }
 
 /* ---- Gamelist Layout: a game shelf as a list (plorpos-gwf) ---- */
@@ -5410,7 +5561,8 @@ static void draw_games(app *a)
 	if (gl_active(a)) { draw_games_list(a); return; }
 	bool muse_tabs = g_muse_list_up && is_muse(&a->sys.systems[a->sys_cursor]);
 
-	if (muse_tabs && muse_tab() != MT_COVERFLOW) {
+	/* Podcasts' Queue sits in Coverflow's slot and is a list (plorpos-7ni.4). */
+	if (muse_tabs && (muse_tab() != MT_COVERFLOW || g_muse_pod)) {
 		gl_list L;
 
 		muse_list_describe(a, &a->view[a->sys_cursor], g_mls_asel, g_mls_psel, &L);
@@ -5706,6 +5858,9 @@ static void render(app *a)
 #endif
 	draw_shelf(a);
 	draw_chrome(a->r);
+	/* Muse as a coverflow says its passing words too (plorpos-7ni.15). */
+	if (a->sys.count > 0 && is_muse(&a->sys.systems[a->sys_cursor]) && muse_toast_now())
+		toast_draw(a, muse_toast_now(), MUSE_ACCENT);
 	plat_present(a->r);
 #if defined(PLATFORM_MIYOO)
 	/* The move ended on a half-size frame: draw the sharp one now, or the
@@ -6867,7 +7022,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		 * over without inventing a flag day. */
 		u.muse       = is_muse(sc);
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
-		u.game_count = a->view[sys].list.count;
+		/* Podcasts: every episode, not the tab's list (plorpos-7ni.4). */
+		u.game_count = is_muse(sc) && g_muse_pod ? g_muse.nalbums : a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
@@ -10138,6 +10294,259 @@ static bool abs_settings_screen(app *a)
 	return u.rebuilt;
 }
 
+/* ---- Podcasts (plorpos-7ni) --------------------------------------------------
+ *
+ * The source's settings: Check for Updates and Import OPML (an export from
+ * another player, put in <card>/Podcasts/; owner's "your call", 7ni.3). Feeds
+ * are fetched when Muse opens on Podcasts (at most every half hour) and on
+ * Check for Updates - never in the background otherwise (owner). */
+
+static const char *pod_msg_sync(void)
+{
+	static char m[96];
+	int d, t;
+
+	pod_sync_state(&d, &t);
+	if (t > 0) snprintf(m, sizeof m, "Fetching %d of %d shows...", d < t ? d + 1 : t, t);
+	else snprintf(m, sizeof m, "Fetching the feeds...");
+	return m;
+}
+
+static int pod_poll_sync(void)
+{
+	int st = pod_sync_state(NULL, NULL);
+
+	return st == 1 ? 0 : st == 0 ? 1 : -1;
+}
+
+/* Every feed fetched behind a panel: 1 done, 0 B (it goes on), -1 none answered. */
+static int pod_sync_screen(app *a)
+{
+	int r;
+
+	if (!net_online()) { plex_say(a, "Podcasts need Wi-Fi"); return -1; }
+	pod_sync_start();
+	r = src_wait(a, "Podcasts", pod_msg_sync, pod_poll_sync);
+	if (r < 0) plex_say(a, "No podcast feed answered");
+	return r;
+}
+
+#define POD_OPML_MAX 24
+
+/* The .opml files in <card>/Podcasts/, by name. */
+static int pod_opml_files(char names[][128], int max)
+{
+	char dir[CFG_STR * 2];
+	struct dirent *e;
+	DIR *d;
+	int n = 0;
+
+	snprintf(dir, sizeof dir, "%s/Podcasts", P_CARD);
+	if (!(d = opendir(dir))) return 0;
+	while ((e = readdir(d)) && n < max) {
+		size_t l = strlen(e->d_name);
+
+		if (e->d_name[0] == '.' || l < 6 || strcasecmp(e->d_name + l - 5, ".opml")) continue;
+		snprintf(names[n++], 128, "%s", e->d_name);
+	}
+	closedir(d);
+	return n;
+}
+
+/* Auto-Delete (plorpos-7ni.6): see pod_mark_played and pod_autodel_day. */
+enum { POD_AUTODEL_OFF, POD_AUTODEL_PLAYED, POD_AUTODEL_DAY, POD_AUTODEL_N };
+static const char *const POD_AUTODEL[POD_AUTODEL_N] = { "Off", "When Played", "24h After Played" };
+
+static int pod_autodel(void)
+{
+	int v = db_get_int(db_dev(), "pod.autodel", POD_AUTODEL_OFF);
+
+	return v >= 0 && v < POD_AUTODEL_N ? v : POD_AUTODEL_OFF;
+}
+
+static void pod_autodel_day(void);
+
+enum { PDX_CHECK, PDX_SEARCH, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
+/* The search's results, in Muse's long list (defined with it). */
+static int pod_pick_hits(app *a, const char *header, char (*title)[128], char (*value)[48], int n);
+/* A row's word for a few seconds - "Up to date", "Added 16" - since a toast is
+ * a list's and is never seen over this menu (plorpos-i8d.7). */
+typedef struct {
+	bool rebuilt;
+	char check[48], import[48], search[48];
+	Uint32 check_until, import_until, search_until;
+} pod_set_ui;
+
+static int pod_set_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	pod_set_ui *u = ctx;
+	int d, t, st = pod_sync_state(&d, &t);
+	Uint32 now = SDL_GetTicks();
+
+	(void)max;
+	*heading = "Podcast Settings";
+	if (u->rebuilt) return 0;
+	if (st == 1 && t > 0) snprintf(u->check, sizeof u->check, "%d of %d", d, t), u->check_until = now + 1000;
+	rows[PDX_CHECK]  = (menu_row){ "Check for Updates", now < u->check_until ? u->check : NULL,
+	                              st != 1 && pod_show_count() > 0 };
+	rows[PDX_SEARCH] = (menu_row){ "Search Podcasts", now < u->search_until ? u->search : NULL, true };
+	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, true };
+	rows[PDX_AUTODEL] = (menu_row){ "Auto-Delete", POD_AUTODEL[pod_autodel()], true };
+	return PDX_ROWS;
+}
+
+static const char *pod_msg_search(void) { return "Searching..."; }
+static int pod_poll_search(void) { return pod_search_poll(); }
+
+/* Search Podcasts (plorpos-7ni.7): a word or two on the keyboard, Apple's
+ * podcast directory asked, and A on a result subscribes to it and fetches.
+ * True when a show was added. */
+static bool pod_search_screen(app *a, pod_set_ui *u)
+{
+	static char term[128];
+	char (*title)[128] = NULL, (*value)[48] = NULL;
+	pod_hit *h = NULL;
+	kb_result kr;
+	int n, k, i;
+	bool added = false;
+
+	if (!net_online()) { plex_say(a, "Search needs Wi-Fi"); return false; }
+	kr = kb_prompt(a->r, &a->in, "Search Podcasts", term, (int)sizeof term, MUSE_ACCENT,
+	               abs_kb_backdrop, power_due_ctx, a);
+	if (kr == KB_POWER) { power_off(a); return false; }
+	if (kr != KB_ACCEPT || !term[0]) return false;
+	pod_search_start(term);
+	if (src_wait(a, "Podcasts", pod_msg_search, pod_poll_search) <= 0) {
+		if (pod_search_poll() < 0) plex_say(a, "The search did not answer");
+		return false;
+	}
+	if (!(h = calloc(25, sizeof *h)) || !(title = calloc(25, sizeof *title)) ||
+	    !(value = calloc(25, sizeof *value))) goto out;
+	if (!(n = pod_search_results(h, 25))) { plex_say(a, "No podcasts found"); goto out; }
+	for (i = 0; i < n; i++) {
+		snprintf(title[i], sizeof title[i], "%s", h[i].title);
+		snprintf(value[i], sizeof value[i], "%s", pod_subscribed(h[i].feed) ? "Subscribed" : h[i].author);
+	}
+	if ((k = pod_pick_hits(a, term, title, value, n)) < 0) goto out;
+	if (pod_subscribed(h[k].feed)) { plex_say(a, "Already subscribed"); goto out; }
+	if (pod_subscribe(h[k].feed, h[k].title, h[k].image) <= 0) { plex_say(a, "Could not subscribe"); goto out; }
+	snprintf(u->search, sizeof u->search, "Added %.36s", h[k].title);
+	if (pod_sync_screen(a) > 0) pod_sync_take(NULL);
+	u->search_until = SDL_GetTicks() + 4000;
+	added = true;
+out:
+	free(h);
+	free(title);
+	free(value);
+	return added;
+}
+
+/* The library read again when it is the one on the shelf. */
+static bool pod_reload(app *a, pod_set_ui *u)
+{
+	if (muse_src_saved() != MSRC_PODCASTS) return false;
+	muse_source_reload(a);
+	u->rebuilt = true;
+	return true;
+}
+
+static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	pod_set_ui *u = ctx;
+
+	if (sel == PDX_AUTODEL && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
+		int v = pod_autodel();
+
+		v = key == IN_LEFT ? (v > 0 ? v - 1 : 0)
+		  : key == IN_RIGHT ? (v < POD_AUTODEL_N - 1 ? v + 1 : v) : (v + 1) % POD_AUTODEL_N;
+		db_set_int(db_dev(), "pod.autodel", v);
+		return MENU_STAY;
+	}
+	if (key != IN_ACCEPT) return MENU_STAY;
+	switch (sel) {
+	case PDX_CHECK: {
+		int added = 0;
+
+		pod_autodel_day();
+		if (pod_sync_screen(a) <= 0) return MENU_STAY;
+		if (!pod_sync_take(&added)) {
+			snprintf(u->check, sizeof u->check, "Up to date");
+		} else {
+			snprintf(u->check, sizeof u->check, added == 1 ? "1 new episode" : "%d new episodes", added);
+			if (pod_reload(a, u)) return MENU_DONE;
+		}
+		u->check_until = SDL_GetTicks() + 3000;
+		return MENU_STAY;
+	}
+	case PDX_SEARCH:
+		if (pod_search_screen(a, u) && pod_reload(a, u)) return MENU_DONE;
+		return MENU_STAY;
+	case PDX_IMPORT: {
+		char names[POD_OPML_MAX][128], path[4096];
+		const char *labels[POD_OPML_MAX];
+		int n = pod_opml_files(names, POD_OPML_MAX), k, added, had;
+
+		if (!n) { plex_say(a, "Put an .opml file in Podcasts on the card"); return MENU_STAY; }
+		for (k = 0; k < n; k++) labels[k] = names[k];
+		if ((k = n == 1 ? 0 : muse_pick_run(a, "Import OPML", labels, n)) < 0) return MENU_STAY;
+		snprintf(path, sizeof path, "%s/Podcasts/%s", P_CARD, names[k]);
+		if ((added = pod_import_opml(path, &had)) < 0) { plex_say(a, "That file is not OPML"); return MENU_STAY; }
+		if (had) snprintf(u->import, sizeof u->import, "Added %d, had %d", added, had);
+		else snprintf(u->import, sizeof u->import, "Added %d", added);
+		/* The new shows' episodes now, if there is a network to fetch them. */
+		if (added > 0 && net_online() && pod_sync_screen(a) > 0) pod_sync_take(NULL);
+		u->import_until = SDL_GetTicks() + 4000;     /* after the fetch, to be seen */
+		if (added > 0 && pod_reload(a, u)) return MENU_DONE;
+		return MENU_STAY;
+	}
+	}
+	return MENU_STAY;
+}
+
+static bool pod_settings_screen(app *a)
+{
+	pod_set_ui u = { 0 };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         pod_set_build, pod_set_key, &u);
+	return u.rebuilt;
+}
+
+/* On the way into Muse on Podcasts: the feeds again, unless they were
+ * fetched in the last half hour. */
+static void pod_auto_sync(void)
+{
+	static unsigned last;
+	unsigned now = plat_now_ms();
+
+	if (!g_muse_pod || !net_online() || (last && now - last < 30u * 60u * 1000u)) return;
+	last = now ? now : 1;
+	pod_sync_start();
+}
+
+/* From the shelf's own loop: a sync that changed an index is read in when
+ * nothing else is being read. */
+static void pod_main_poll(app *a)
+{
+	int added = 0;
+
+	if (pod_sync_take(&added)) { g_pod_stale = true; g_pod_added += added; }
+	if (g_walk_thread || !g_pod_stale) return;
+	g_pod_stale = false;
+	if (muse_src_saved() != MSRC_PODCASTS) { g_pod_added = 0; return; }
+	fprintf(stderr, "pod: reading the library again\n");
+	muse_playlists_forget();
+	rescan_all(a);
+	if (g_pod_added > 0) {
+		char m[48];
+
+		snprintf(m, sizeof m, g_pod_added == 1 ? "1 new episode" : "%d new episodes", g_pod_added);
+		muse_toast(m);
+	}
+	g_pod_added = 0;
+	ui_redraw_now();
+}
+
 /* From the shelf's own loop, as plex_main_poll: a sync that wrote a new
  * index, downloads that changed Audiobooks, and now and then the server's
  * library and places. */
@@ -10168,11 +10577,11 @@ static void abs_main_poll(app *a)
 /* musec's remote hooks, for both servers. */
 static bool muse_resolve(const char *rel, musec_remote *out)
 {
-	return plex_resolve(rel, out) || abs_resolve(rel, out);
+	return plex_resolve(rel, out) || abs_resolve(rel, out) || pod_resolve(rel, out);
 }
 static bool muse_owns(const char *daemon_path, const char *rel)
 {
-	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel);
+	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel) || pod_owns(daemon_path, rel);
 }
 static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
 /* Play on a paused Audiobookshelf book - streamed, or a downloaded copy
@@ -10189,12 +10598,17 @@ static bool muse_resume_hold(const char *rel)
 static bool muse_source_pick(app *a)
 {
 	const char *labels[MSRC_COUNT];
-	muse_src was = muse_src_saved(), to;
-	int k;
+	muse_src was = muse_src_saved(), to, map[MSRC_COUNT];
+	int k, n = 0, at = 0;
 
-	for (k = 0; k < MSRC_COUNT; k++) labels[k] = sys_menu_src_label((muse_src)k);
-	if ((k = muse_pick_run_at(a, "Source", labels, MSRC_COUNT, muse_src_shown())) < 0) return false;
-	to = (muse_src)k;
+	for (k = 0; k < MSRC_COUNT; k++) {
+		if (!muse_src_offered((muse_src)k)) continue;
+		if ((muse_src)k == muse_src_shown()) at = n;
+		map[n] = (muse_src)k;
+		labels[n++] = sys_menu_src_label((muse_src)k);
+	}
+	if ((k = muse_pick_run_at(a, "Source", labels, n, at)) < 0) return false;
+	to = map[k];
 	if (to == was && to == muse_src_shown()) return false;
 	switch (to) {
 	case MSRC_PLEX:
@@ -10211,10 +10625,17 @@ static bool muse_source_pick(app *a)
 		if (!abs_lib_cached() && !abs_sync_screen(a, false)) return false;
 		abs_sync_take();
 		break;
+	case MSRC_PODCASTS:
+		/* None yet: Podcast Settings first, to import some or find them. */
+		if (!pod_lib_cached()) pod_settings_screen(a);
+		if (!pod_lib_cached()) return false;
+		muse_src_save(to);
+		pod_sync_take(NULL);
+		break;
 	default:
 		muse_src_save(to);
 		/* The card's library is in already: only the kind shown changes. */
-		if (!g_muse_plex && !g_muse_abs) {
+		if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
 			muse_show(&a->view[a->sys_cursor], to == MSRC_BOOKS);
 			return true;
 		}
@@ -10940,6 +11361,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -12276,6 +12698,14 @@ static bool file_nonempty(const char *p)
  * an earlier visit - is found by looking. Otherwise the daemon is asked for the
  * one the music carries, and this answers false until cover_answers hears
  * back, a few milliseconds later. */
+/* Where album `al`'s cover is kept: beside its folder, or for an episode its
+ * show's (plorpos-7ni). */
+static void muse_cover_base(int al, char *out, size_t n)
+{
+	if (g_muse_pod) pod_cover_base(al, out, n);
+	else ml_cover_base(g_muse_root, &g_muse, al, out, n);
+}
+
 static bool cover_file(int al, char *out, size_t n)
 {
 	char base[LIB_PATH * 2];
@@ -12284,7 +12714,7 @@ static bool cover_file(int al, char *out, size_t n)
 
 	if (!g_cov || al < 0 || al >= g_muse.nalbums) return false;
 	c = &g_cov[al];
-	ml_cover_base(g_muse_root, &g_muse, al, base, sizeof base);
+	muse_cover_base(al, base, sizeof base);
 	if (!base[0]) return false;
 	/* Singles' is its own, the one put there for it or one put in its place,
 	 * never a song's: its songs have nothing to do with one another, and the
@@ -12308,9 +12738,10 @@ static bool cover_file(int al, char *out, size_t n)
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
 	snprintf(out, n, "%s.png", base);
 	if (file_nonempty(out)) { c->st = COV_PNG; return true; }
-	if (g_muse_plex || g_muse_abs) {
+	if (g_muse_plex || g_muse_abs || g_muse_pod) {
 		/* The server's art, fetched to <base>.jpg; cover_answers hears it land. */
-		if (g_muse_plex ? plex_cover_want(al, base) : abs_cover_want(al, base)) {
+		if (g_muse_plex ? plex_cover_want(al, base) : g_muse_abs ? abs_cover_want(al, base)
+		    : pod_cover_want(al, base)) {
 			c->st = COV_ASKED;
 			c->asked_ms = now;
 		} else {
@@ -12377,11 +12808,18 @@ static bool cover_answers(void)
 	size_t fl;
 	int i;
 
-	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base)) {
+	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base) ||
+	       pod_cover_take(base, sizeof base)) {
 		landed = true;
 		for (i = 0; g_cov && (g_muse_plex || g_muse_abs) && i < g_muse.nalbums; i++) {
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
+		}
+		/* A show's art is every one of its episodes': looked for again
+		 * (it lands as .jpg or .png). */
+		for (i = 0; g_cov && g_muse_pod && i < g_muse.nalbums; i++) {
+			pod_cover_base(i, b, sizeof b);
+			if (!strcmp(b, base)) g_cov[i].st = COV_UNKNOWN;
 		}
 	}
 	while (musec_cover_take(base, sizeof base, file, sizeof file)) {
@@ -12391,7 +12829,7 @@ static bool cover_answers(void)
 		for (i = 0; g_cov && i < g_muse.nalbums; i++) {
 			char pic[LIB_PATH * 2 + 8];
 
-			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
+			muse_cover_base(i, b, sizeof b);
 			if (strcmp(b, base)) continue;
 			/* Nothing in the files: a picture in the album's folder, which
 			 * is where a book's cover usually is, before the card. */
@@ -12772,6 +13210,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	unsigned rgb = MUSE_ACCENT, wait = (unsigned)-1, phase;
 	SDL_Color acc = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
 	const char *state = mn->state == MU_PLAYING ? NULL
+	                  : musec_asked()           ? "Loading"     /* a stream opening (plorpos-7ni.18) */
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
 	int book = musec_is_book() ? ml_album_of(&g_muse, musec_track(mn->index)) : -1;
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
@@ -12808,10 +13247,17 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	y = UI_PORTRAIT ? cov.y + cov.h + NP_SRC_GAP + ui_font_line(UI_F_META) + 28 : NP_Y + 36;
 	/* Where the track comes from, under the cover at its left edge (owner,
 	 * plorpos-1lw.10): the playing track's own source, not the one being
-	 * browsed - a Plex queue keeps playing when Source goes back to Local. */
-	ui_text(r, fs, plex_is_path(musec_path()) ? "Source: Plex"
-	               : abs_is_path(musec_path()) ? "Source: Audiobookshelf" : "Source: Local",
-	        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
+	 * browsed - a Plex queue keeps playing when Source goes back to Local.
+	 * The queue's track, which stays while it opens or after it stops, where
+	 * musec_path is "" (plorpos-7ni.18). */
+	{
+		const char *src = musec_track(mn->index) ? musec_track(mn->index) : "";
+
+		ui_text(r, fs, plex_is_path(src) ? "Source: Plex"
+		               : abs_is_path(src) ? "Source: Audiobookshelf"
+		               : pod_is_path(src) ? "Source: Podcasts" : "Source: Local",
+		        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
+	}
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
 		 * count is the order being HEARD, so shuffled it still runs 1 to n.
@@ -12959,7 +13405,8 @@ static void np_next_line(char *next, size_t cap)
 	    musec_chapter_now() + 1 < musec_chapters())
 		chapter_label(musec_chapter_now() + 1, next, cap);
 	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()) &&
-	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap))
+	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap) &&
+	         !pod_title(nt, next, (size_t)cap))
 		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
 }
 
@@ -12984,10 +13431,11 @@ typedef struct { char (*title)[128]; char (*value)[48]; } lp_rows;
 
 static const char *lp_title(void *ctx, int i) { return ((lp_rows *)ctx)->title[i]; }
 static const char *lp_value(void *ctx, int i) { return ((lp_rows *)ctx)->value[i]; }
-static const char *const LP_HELP[] = { "A", "Play", "B", "Back" };
 
-static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int start)
+/* `verb`: what A does, for the help line ("Play", "Subscribe"). */
+static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int start, const char *verb)
 {
+	const char *const help[] = { "A", verb, "B", "Back" };
 	ui_pace pace = {0};
 	gl_scroll gs = {0};
 	gl_list L;
@@ -13013,7 +13461,7 @@ static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int 
 		L.ctx = rows;
 		L.title = lp_title;
 		L.value = lp_value;
-		L.help = LP_HELP;
+		L.help = help;
 		L.nhelp = 2;
 		L.empty = "Nothing yet";
 		gl_geometry(&g, &L);
@@ -13042,6 +13490,13 @@ static int muse_long_pick(app *a, const char *header, lp_rows *rows, int n, int 
 	return chosen;
 }
 
+static int pod_pick_hits(app *a, const char *header, char (*title)[128], char (*value)[48], int n)
+{
+	lp_rows rows = { title, value };
+
+	return muse_long_pick(a, header, &rows, n, 0, "Subscribe");
+}
+
 /* More > Chapters: the m4b's chapters when the file has them (as L1/R1 go),
  * else the book's files. A plays from the start of the one chosen. */
 static bool np_chapters(app *a)
@@ -13060,14 +13515,15 @@ static bool np_chapters(app *a)
 			const char *t = musec_track(i);
 
 			if (!t || (!abs_title(t, rows.title[i], sizeof rows.title[i]) &&
-			           !plex_title(t, rows.title[i], sizeof rows.title[i])))
+			           !plex_title(t, rows.title[i], sizeof rows.title[i]) &&
+			           !pod_title(t, rows.title[i], sizeof rows.title[i])))
 				ml_track_name(t && strrchr(t, '/') ? strrchr(t, '/') + 1 : t ? t : "",
 				              rows.title[i], sizeof rows.title[i]);
 		}
 		if (i == cur) snprintf(rows.value[i], sizeof rows.value[i], "%s",
 		                       mn->state == MU_PAUSED ? "paused" : "playing");
 	}
-	k = muse_long_pick(a, "Chapters", &rows, n, cur);
+	k = muse_long_pick(a, "Chapters", &rows, n, cur, "Play");
 	free(rows.title);
 	free(rows.value);
 	if (k < 0) return false;
@@ -13263,7 +13719,7 @@ static bool np_timeline(app *a)
 			         h12 ? h12 : 12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM");
 		}
 	}
-	k = muse_long_pick(a, "Timeline", &rows, n, 0);
+	k = muse_long_pick(a, "Timeline", &rows, n, 0, "Play");
 	free(rows.title);
 	free(rows.value);
 	if (k < 0 || ev[k].index >= mn->count) return false;
@@ -13833,9 +14289,8 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 		         mn->title, t0, t1);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	}
-	if (muse_toast_now())
-		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
-	else if (muse_download_status(line + 12, sizeof line - 12)) {
+	L.toast = muse_toast_now();
+	if (muse_download_status(line + 12, sizeof line - 12)) {
 		memcpy(line, "Downloading ", 12);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	} else if (ts->n > 0)
@@ -13908,6 +14363,7 @@ static bool muse_download_status(char *out, size_t n)
 {
 	if (g_muse_plex) return plex_download_status(out, n);
 	if (g_muse_abs) return abs_download_status(out, n);
+	if (g_muse_pod) return pod_download_status(out, n);
 	return false;
 }
 
@@ -14259,6 +14715,8 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
 	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
+	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
+	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */
 	g_muse_sw = false;
 	/* Asked for before the boot walk is done: say so at once, and open as
 	 * soon as it is in, unless B says never mind (plorpos-18j). */
@@ -14308,24 +14766,32 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
  * the list it was picked from - its files are under More > Chapters
  * (plorpos-i8d.2). The beginning for a book never started or finished;
  * nothing new for the book already playing or paused, which A only opens. */
+/* Book `al` from its place. False out of memory. */
+static bool book_start(int al)
+{
+	const ml_album *b = &g_muse.albums[al];
+	const char **paths = calloc((size_t)b->n, sizeof *paths);
+	double at;
+	int i, start = book_place(al, &at);
+
+	if (!paths) return false;
+	/* The episode playing is the Queue's first: what plays next is under it
+	 * (owner, plorpos-7ni.12). */
+	if (pod_is_path(g_muse.tracks[b->first].path)) pod_queue_top(al);
+	for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
+	fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
+	muse_play(paths, b->n, start, at, true, book_speed(al),
+	          g_muse.artists[muse_artist_of(al)].name, b->name);
+	free(paths);
+	return true;
+}
+
 static muse_exit muse_book(app *a, int al)
 {
 	const mu_now *mn = musec_now();
 	bool loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 
-	if (!loaded || muse_playing_album(NULL) != al) {
-		const ml_album *b = &g_muse.albums[al];
-		const char **paths = calloc((size_t)b->n, sizeof *paths);
-		double at;
-		int i, start = book_place(al, &at);
-
-		if (!paths) return MUSE_BACK;
-		for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
-		fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
-		muse_play(paths, b->n, start, at, true, book_speed(al),
-		          g_muse.artists[muse_artist_of(al)].name, b->name);
-		free(paths);
-	}
+	if ((!loaded || muse_playing_album(NULL) != al) && !book_start(al)) return MUSE_BACK;
 	muse_from_note(NULL);           /* SELECT's B comes back here too */
 	return muse_now_screen(a);
 }
@@ -14349,6 +14815,12 @@ static sysview *muse_shelf_refind(app *a)
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
+	/* An empty podcast list (Downloads, Queue) is the tab's, not Muse's:
+	 * the whole view again, and the tab filters it once more (7ni.6). */
+	if (muse >= 0 && g_pod_view >= 0 && a->view[muse].list.count <= 0) {
+		g_pod_view = -1;
+		muse_order_view(&a->view[muse]);
+	}
 	if (muse < 0 || a->view[muse].list.count <= 0) return NULL;
 	a->sys_cursor = muse;
 	a->screen = SCREEN_GAMES;
@@ -14468,13 +14940,19 @@ static bool g_mt_on[MT_N] = { true, true, true, true, true };
  * the tab numbers in order, a '!' before one that is off ("0,1,4,!2,3"). One
  * order for music and books. A tab missing from it (newer than the setting)
  * goes on at the end; anything unreadable is the default. */
+/* Podcasts keeps its own (plorpos-7ni.4): its tabs are other lists. */
+static const char *muse_tabs_key(void) { return g_muse_pod ? "muse.podtabs" : "muse.tabs"; }
+
 static void muse_tabs_load(void)
 {
+	static const int MUSIC[MT_N] = { MT_ARTISTS, MT_ALBUMS, MT_FAVORITES, MT_PLAYLISTS, MT_COVERFLOW };
+	static const int PODS[MT_N]  = { MT_ARTISTS, MT_ALBUMS, MT_PLAYLISTS, MT_FAVORITES, MT_COVERFLOW };
 	char buf[64], *p, *e;
 	int order[MT_N], n = 0, t, i;
 	bool on[MT_N], seen[MT_N] = { false };
 
-	db_get_str(db_dev(), "muse.tabs", buf, sizeof buf, "");
+	for (i = 0; i < MT_N; i++) { g_mt_order[i] = (g_muse_pod ? PODS : MUSIC)[i]; g_mt_on[i] = true; }
+	db_get_str(db_dev(), muse_tabs_key(), buf, sizeof buf, "");
 	if (!buf[0]) return;
 	for (p = buf; *p && n < MT_N; p = *e ? e + 1 : e) {
 		bool off = *p == '!';
@@ -14497,7 +14975,7 @@ static void muse_tabs_save(void)
 	for (i = 0; i < MT_N; i++)
 		len += snprintf(buf + len, sizeof buf - (size_t)len, "%s%s%d", i ? "," : "",
 		                g_mt_on[g_mt_order[i]] ? "" : "!", g_mt_order[i]);
-	db_set_str(db_dev(), "muse.tabs", buf);
+	db_set_str(db_dev(), muse_tabs_key(), buf);
 }
 
 static bool muse_tab_shown(int t)
@@ -14608,6 +15086,16 @@ static const char *mal_title(void *ctx, int i)
 	return v->list.items[i].title;
 }
 
+static int mal_pod_now(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = pod_row_now_al();
+
+	if (al < 0 || !v->album || v->album[i] != al) return 0;
+	return musec_now()->state == MU_PLAYING ? 1 : 2;
+}
+
 static bool mal_fav(void *ctx, int i)
 {
 	app *a = ctx;
@@ -14620,7 +15108,9 @@ static const char *muse_tab_name(int t)
 {
 	static const char *const MUSIC[MT_N] = { "Artists", "Albums", "Playlists", "Coverflow", "Favorites" };
 	static const char *const BOOKS[MT_N] = { "Authors", "Books", "Playlists", "Coverflow", "Favorites" };
+	static const char *const PODS[MT_N]  = { "Podcasts", "New", "Downloads", "Queue", "Favorites" };
 
+	if (g_muse_pod) return PODS[t];
 	return (muse_books_shown() ? BOOKS : MUSIC)[t];
 }
 
@@ -14732,9 +15222,19 @@ static void muse_tabs_screen(app *a)
 static void muse_favs_sync(sysview *v, int tab)
 {
 	bool want = tab == MT_FAVORITES;
+	int pv = g_muse_pod && (tab == MT_ALBUMS || tab == MT_PLAYLISTS || tab == MT_COVERFLOW) ? tab : -1;
 
-	if (g_muse_favs == want) return;
+	if (g_muse_favs == want && g_pod_view == pv) return;
+	/* Another podcast list opens on its top, its newest. */
+	if (g_muse_pod && g_pod_view != pv) {
+		g_muse_favs = want;
+		g_pod_view = pv;
+		v->cursor = 0;
+		muse_refilter(v, -1);
+		return;
+	}
 	g_muse_favs = want;
+	g_pod_view = pv;
 	muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
 }
 
@@ -15000,6 +15500,299 @@ static muse_exit muse_book_list(app *a, int which)
 static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
 
+/* ---- Podcasts: episode rows (plorpos-7ni.4) ---------------------------------- */
+
+/* A show's art on the Podcasts tab: its newest episode's card, the show's
+ * art, from the view's own textures - and the view's cursor follows, so
+ * priming and eviction keep it near. */
+static SDL_Texture *mar_pod_art(void *ctx, int i, int *w, int *h)
+{
+	app *a = ctx;
+	sysview *v = &a->view[a->sys_cursor];
+	const ml_artist *r = &g_muse.artists[g_mar.ix[i]];
+	int k = r->n > 0 ? muse_card_of(v, r->first) : -1;
+
+	if (k < 0) return NULL;
+	v->cursor = k;
+	return gl_game_art(ctx, k, w, h);
+}
+
+/* Seconds into episode `al` from its place, -1 none, -2 played. Per album,
+ * read once and forgotten when its place is written. */
+static int *g_pod_at;
+static unsigned g_pod_at_gen;
+
+/* An episode's length: the file's, once the player has said it and it is 30 s
+ * or more from the feed's - ads put in as it is served make it longer, and
+ * "left" read 11 minutes short (owner, plorpos-7ni.20) - else the feed's; 0
+ * unknown. The file's is kept per episode, "pod.len.<show>/<episode>". */
+static int *g_pod_len;
+static unsigned g_pod_len_gen;
+
+static bool pod_len_key(int al, char *key, size_t n)
+{
+	char k[40];
+
+	if (!pod_ep_key(al, k, sizeof k)) return false;
+	snprintf(key, n, "pod.len.%s", k);
+	return true;
+}
+
+static int pod_len(int al)
+{
+	char key[64], val[24];
+	pod_ep e;
+
+	if (g_pod_len_gen != g_muse_gen || !g_pod_len) {
+		free(g_pod_len);
+		if (!(g_pod_len = malloc(sizeof *g_pod_len * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1)))) return 0;
+		for (int i = 0; i < g_muse.nalbums; i++) g_pod_len[i] = INT_MIN;
+		g_pod_len_gen = g_muse_gen;
+	}
+	if (al < 0 || al >= g_muse.nalbums) return 0;
+	if (g_pod_len[al] == INT_MIN) {
+		g_pod_len[al] = 0;
+		if (pod_len_key(al, key, sizeof key) && db_get_str(db_dev(), key, val, sizeof val, ""))
+			g_pod_len[al] = atoi(val);
+	}
+	if (g_pod_len[al] > 0) return g_pod_len[al];
+	return pod_episode(al, &e) ? e.dur : 0;
+}
+
+static void pod_len_note(int al, double len)
+{
+	char key[64], val[24];
+	int l = (int)(len + 0.5);
+	pod_ep e;
+
+	if (l <= 0 || pod_len(al) == l || !pod_episode(al, &e) || abs(l - e.dur) < 30) return;
+	if (!pod_len_key(al, key, sizeof key)) return;
+	snprintf(val, sizeof val, "%d", l);
+	db_set_str(db_dev(), key, val);
+	g_pod_len[al] = l;
+}
+
+static int pod_at(int al)
+{
+	char key[LIB_PATH + 8], val[LIB_PATH + 32];
+
+	if (g_pod_at_gen != g_muse_gen || !g_pod_at) {
+		free(g_pod_at);
+		if (!(g_pod_at = malloc(sizeof *g_pod_at * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1)))) return -1;
+		for (int i = 0; i < g_muse.nalbums; i++) g_pod_at[i] = INT_MIN;
+		g_pod_at_gen = g_muse_gen;
+	}
+	if (al < 0 || al >= g_muse.nalbums) return -1;
+	if (g_pod_at[al] == INT_MIN) {
+		book_key(al, key, sizeof key);
+		db_get_str(db_dev(), key, val, sizeof val, "");
+		g_pod_at[al] = !strcmp(val, "finished") ? -2 : strchr(val, '\t') ? (int)atof(val) : -1;
+	}
+	return g_pod_at[al];
+}
+
+static void pod_at_forget(int al)
+{
+	if (g_pod_at && g_pod_at_gen == g_muse_gen && al >= 0 && al < g_muse.nalbums) g_pod_at[al] = INT_MIN;
+}
+
+static void pod_span(int secs, char *out, size_t n)
+{
+	if (secs >= 3600) snprintf(out, n, "%dh %dm", secs / 3600, secs / 60 % 60);
+	else snprintf(out, n, "%dm", secs >= 60 ? secs / 60 : 1);
+}
+
+/* A row's end (owner's list is narrow): a dot and the length for one never
+ * started, how long is left, or Played. The date is under the art. */
+static const char *mal_pod_value(void *ctx, int i)
+{
+	static char ring[24][32];
+	static int k;
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+	int al = v->album ? v->album[i] : -1, at;
+	char *o = ring[k = (k + 1) % 24], span[24];
+	pod_ep e;
+
+	if (al < 0 || !pod_episode(al, &e)) return "";
+	switch (pod_download_state(al)) {
+	case 1: return "Waiting";
+	case 2: return "Downloading";
+	}
+	at = g_book_done && g_book_done[al] ? -2 : pod_at(al);
+	if (at == -2) return "Played";
+	e.dur = pod_len(al);
+	if (at > 0 && e.dur > at) { pod_span(e.dur - at, span, sizeof span); snprintf(o, 32, "%s left", span); return o; }
+	if (e.dur <= 0) return "\xE2\x80\xA2";
+	pod_span(e.dur, span, sizeof span);
+	snprintf(o, 32, "\xE2\x80\xA2 %s", span);
+	return o;
+}
+
+/* Under the art: the date in full, and the show on a list of every show's. */
+static void pod_under_line(int al, bool show, char *out, size_t n)
+{
+	char d[40] = "";
+	pod_ep e;
+
+	if (!pod_episode(al, &e)) { if (n) out[0] = '\0'; return; }
+	if (e.stamp > 0) {
+		time_t t = (time_t)e.stamp;
+		struct tm tm;
+
+		localtime_r(&t, &tm);
+		strftime(d, sizeof d, "%b %e, %Y", &tm);
+		for (char *c = d; *c; c++) if (c[0] == ' ' && c[1] == ' ') memmove(c, c + 1, strlen(c));
+	}
+	if (show) snprintf(out, n, "%s  \xC2\xB7  %s", d, g_muse.artists[muse_artist_of(al)].name);
+	else snprintf(out, n, "%s%s", d, pod_downloaded(al, NULL, 0) ? "  \xC2\xB7  Downloaded" : "");
+}
+
+/* Auto-Delete (plorpos-7ni.6, owner): a downloaded episode's copy goes when
+ * it is played, or a day after - checked when Muse opens and on Check for
+ * Updates, never on a timer. A favorite's copy is never deleted by itself. */
+static bool pod_fav(int al)
+{
+	char dir[LIB_PATH];
+
+	muse_album_dir(al, dir, sizeof dir);
+	return muse_fav_is(dir);
+}
+
+/* The played copies Auto-Delete wants gone: a day old, or under When Played
+ * one left past 95% while it played (pod_mark_played kept it). Never the
+ * episode in the player. */
+static void pod_autodel_day(void)
+{
+	char key[LIB_PATH + 16];
+	long long now = (long long)time(NULL), done;
+	int al, gone = 0, mode = pod_autodel();
+
+	if (!g_muse_pod || !g_book_done || mode == POD_AUTODEL_OFF) return;
+	for (al = 0; al < g_muse.nalbums; al++) {
+		if (!g_book_done[al] || pod_in_player(al) || !pod_downloaded(al, NULL, 0) || pod_fav(al)) continue;
+		if (mode == POD_AUTODEL_PLAYED) { gone += pod_delete_download(al); continue; }
+		tl_book_id(al, key + 9, sizeof key - 9);
+		memcpy(key, "bookdone.", 9);
+		done = db_get_int(db_dev(), key, 0);
+		if (done > 0 && now - done >= 24 * 3600 && pod_delete_download(al)) gone++;
+	}
+	if (gone) fprintf(stderr, "pod: auto-deleted %d played downloads\n", gone);
+}
+
+/* Episode al is the one in the player, playing or paused: read from the
+ * player itself, since g_bk.al is not set yet on book_keep's first look. */
+static bool pod_in_player(int al)
+{
+	const mu_now *mn = musec_now();
+
+	return (mn->state == MU_PLAYING || mn->state == MU_PAUSED) && musec_is_book() &&
+	       ml_album_of(&g_muse, musec_track(mn->index)) == al;
+}
+
+/* Under Auto-Delete When Played, episode al's copy gone (a favorite stays). */
+static void pod_autodel_played(int al)
+{
+	if (pod_autodel() == POD_AUTODEL_PLAYED && pod_downloaded(al, NULL, 0) && !pod_fav(al))
+		pod_delete_download(al);
+}
+
+/* Played by hand (X), or heard to 95%: finished, out of the Queue, and its
+ * copy gone if Auto-Delete says so - but never from under the player, which
+ * cut the last 5% and started Up Next (plorpos-7ni.21): the playing one's copy
+ * goes when it ends (book_keep), or at the next sweep (pod_autodel_day). */
+static void pod_mark_played(int al)
+{
+	book_finish(al);
+	pod_queue_remove(al);
+	pod_at_forget(al);
+	if (!pod_in_player(al)) pod_autodel_played(al);
+}
+
+/* After episode `done`: the first one in the Queue that is not it, or -1. */
+static int pod_up_next(int done)
+{
+	int q = pod_queue_count();
+
+	for (int k = 0; k < q; k++) {
+		int al = pod_queue_album(k);
+
+		if (al >= 0 && al != done) return al;
+	}
+	return -1;
+}
+
+static void pod_mark_unplayed(int al)
+{
+	char key[LIB_PATH + 16];
+
+	book_key(al, key, sizeof key);
+	db_del(db_dev(), key);
+	tl_book_id(al, key + 9, sizeof key - 9);
+	memcpy(key, "bookdone.", 9);
+	db_del(db_dev(), key);
+	if (g_book_done) g_book_done[al] = false;
+	pod_at_forget(al);
+}
+
+/* X on a show: Unsubscribe, asked first; a show with downloaded episodes
+ * asks whether they go too (owner). True when the library was read again. */
+static bool muse_pod_unsubscribe(app *a, int ar)
+{
+	static const char *const ONE[] = { "Unsubscribe" };
+	static const char *const COPIES[] = { "Keep Downloads", "Delete Downloads" };
+	const ml_artist *r = &g_muse.artists[ar];
+	char msg[200];
+	int i, dl = 0, k;
+	bool copies = false;
+
+	if (muse_pick_run(a, r->name, ONE, 1) != 0) return false;
+	for (i = r->first; i < r->first + r->n; i++) dl += pod_downloaded(i, NULL, 0);
+	if (dl) {
+		snprintf(msg, sizeof msg, "%d downloaded episode%s", dl, dl == 1 ? "" : "s");
+		if ((k = muse_pick_run(a, msg, COPIES, 2)) < 0) return false;
+		copies = k == 1;
+	} else {
+		snprintf(msg, sizeof msg, "Unsubscribe from %s?", r->name);
+		if (!confirm_panel(a, "Unsubscribe", msg, "Unsubscribe")) return false;
+	}
+	if (!pod_unsubscribe(ar, copies)) return false;
+	muse_source_reload(a);
+	return true;
+}
+
+/* X on an episode: its download, Played or not, the Queue. */
+static void muse_pod_ep_menu(app *a, sysview *v, int al)
+{
+	enum { E_PLAYED, E_UNPLAYED, E_QADD, E_QDEL, E_DL, E_DLCANCEL, E_DLDEL };
+	const char *opts[6];
+	int act[6], n = 0, k;
+
+	if (pod_download_state(al)) { opts[n] = "Cancel Download"; act[n++] = E_DLCANCEL; }
+	else if (pod_downloaded(al, NULL, 0)) { opts[n] = "Delete Download"; act[n++] = E_DLDEL; }
+	else { opts[n] = "Download"; act[n++] = E_DL; }
+
+	if (g_book_done && g_book_done[al]) { opts[n] = "Mark Unplayed"; act[n++] = E_UNPLAYED; }
+	else { opts[n] = "Mark Played"; act[n++] = E_PLAYED; }
+	if (pod_queue_pos(al) >= 0) { opts[n] = "Remove from Queue"; act[n++] = E_QDEL; }
+	else { opts[n] = "Add to Queue"; act[n++] = E_QADD; }
+	if ((k = muse_pick_run(a, g_muse.albums[al].name, opts, n)) < 0) return;
+	switch (act[k]) {
+	case E_PLAYED:   pod_mark_played(al);   muse_toast("Marked played"); break;
+	case E_UNPLAYED: pod_mark_unplayed(al); muse_toast("Marked unplayed"); break;
+	case E_QADD:     pod_queue_add(al);     muse_toast("Added to Queue"); break;
+	case E_QDEL:     pod_queue_remove(al);  muse_toast("Removed from Queue"); break;
+	case E_DL:
+		if (!net_online()) { plex_say(a, "Downloads need Wi-Fi"); break; }
+		pod_download(al);
+		muse_toast("Downloading");
+		break;
+	case E_DLCANCEL: muse_toast(pod_download_cancel(al) ? "Download cancelled" : "Already downloaded"); break;
+	case E_DLDEL:    muse_toast(pod_delete_download(al) ? "Download deleted" : "Could not delete"); break;
+	}
+	muse_refilter(v, al);
+}
+
 static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *L)
 {
 	bool books = muse_books_shown();
@@ -15012,16 +15805,17 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->toast = muse_toast_now();
 	if (tab == MT_ARTISTS && ar < 0) {
 		L->key = GL_KEY_ARTISTS;
-		L->header = books ? "Authors" : "Artists";
+		L->header = g_muse_pod ? "Podcasts" : books ? "Authors" : "Artists";
 		L->n = g_mar.n;
 		L->cur = asel;
 		L->title = mar_title;
 		L->value = mar_value;
-		L->empty = "Nothing here";
+		L->empty = g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some." : "Nothing here";
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
+		if (g_muse_pod) L->art = mar_pod_art;
 		return;
 	}
-	if (tab == MT_PLAYLISTS && books) {
+	if (tab == MT_PLAYLISTS && books && !g_muse_pod) {
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
 		L->n = BPL_N;
@@ -15030,7 +15824,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
-	if (tab == MT_PLAYLISTS) {
+	if (tab == MT_PLAYLISTS && !g_muse_pod) {
 		muse_playlists_load();
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
@@ -15045,14 +15839,22 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	/* Albums: the view. */
 	L->key = a->sys_cursor + 1;
 	L->header = ar >= 0 ? g_muse.artists[ar].name
+	          : g_muse_pod ? muse_tab_name(tab)
 	          : tab == MT_FAVORITES ? (books ? "Favorite Books" : "Favorite Albums")
 	          : books ? "Books" : "Albums";
 	L->n = tab == MT_FAVORITES && !g_muse_favs ? 0 : v->list.count;
 	L->cur = v->cursor;
 	L->title = mal_title;
+	L->value = g_muse_pod ? mal_pod_value : NULL;
+	if (g_muse_pod && tab == MT_COVERFLOW && ar < 0 && L->n > 1) L->note = "L1/R1 reorder";
+	if (g_muse_pod) L->now = mal_pod_now;
 	L->fav = mal_fav;
 	L->art = gl_game_art;
-	L->empty = tab != MT_FAVORITES ? "Nothing here"
+	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."
+	                       : tab == MT_PLAYLISTS ? "No downloads yet. X on an episode downloads it."
+	                       : tab == MT_COVERFLOW ? "The queue is empty. X on an episode adds it."
+	                       : tab == MT_ALBUMS ? "No new episodes" : "Nothing here")
+	         : tab != MT_FAVORITES ? "Nothing here"
 	         : books ? "No favorite books yet. Y on a book marks it."
 	         : "No favorite albums yet. Y on an album marks it.";
 	L->phase = title_phase(a);
@@ -15066,7 +15868,8 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		char line[160];
 
 		/* The year, and on a list of every artist's albums whose they are. */
-		if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
+		if (g_muse_pod) pod_under_line(al, ar < 0, line, sizeof line);
+		else if (y && *who) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, who);
 		else if (y)    snprintf(line, sizeof line, "%d", y);
 		else           snprintf(line, sizeof line, "%s", who);
 		if (*line) {
@@ -15081,9 +15884,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	}
 	/* The header is wide, so a passing word goes under the cover - or a
 	 * Plex download under way, looked at again twice a second while it runs. */
-	if (L->toast && *L->toast && L->nunder < 3)
-		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
-	else if ((g_muse_plex || g_muse_abs) && L->nunder < 3) {
+	if ((g_muse_plex || g_muse_abs || g_muse_pod) && L->nunder < 3) {
 		char line[200];
 
 		memcpy(line, "Downloading ", 12);
@@ -15092,6 +15893,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 
 			gl_geometry(&g, L);
 			ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g.pane_w);
+			if (g_muse_pod) L->bar = pod_download_permille() + 1;   /* 0: size unknown */
 			ui_redraw_at(SDL_GetTicks() + 500);
 		}
 	}
@@ -15151,6 +15953,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
 	int synced = -1;                  /* the tab the albums view was filtered for */
+	unsigned qgen = pod_queue_gen();  /* the Queue the Queue tab was filtered for */
 	ui_pace pace = {0};
 
 	g_mls_asel = g_mls_psel = 0;
@@ -15201,16 +16004,27 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	gl_scroll gs = { 0 };
 	while (!want_quit && a->running) {
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
-		bool cover = tab == MT_COVERFLOW, favs = tab == MT_FAVORITES;
-		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled);
+		bool cover = tab == MT_COVERFLOW && !g_muse_pod, favs = tab == MT_FAVORITES;
+		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled) ||
+		              (g_muse_pod && tab != MT_ARTISTS);
 		bool artists = tab == MT_ARTISTS && !drilled;
-		bool lists = tab == MT_PLAYLISTS;
+		bool lists = tab == MT_PLAYLISTS && !g_muse_pod;
+		bool queue = g_muse_pod && tab == MT_COVERFLOW;
 		bool books = muse_books_shown();     /* lists then are the made ones (i8d.4) */
 		int n, *cur = albums ? &v->cursor : lists ? &g_mls_psel : &g_mls_asel;
 		gl_list L;
 		unsigned ft0, ft1;
 
 		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
+		/* A podcast download landed, or a copy went: Downloads and the rows. */
+		if (g_muse_pod && pod_download_take_changed())
+			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
+		/* The Queue changed under its tab: an episode played went to the top,
+		 * or one that ended left it (plorpos-7ni.12). */
+		if (queue && pod_queue_gen() != qgen) {
+			qgen = pod_queue_gen();
+			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
+		}
 		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
 		  : artists ? g_mar.n : lists ? (books ? BPL_N : g_npls) : 0;
@@ -15285,6 +16099,13 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (in_repeat(&a->in, IN_R1)) v->cursor = (v->cursor + CF_WINDOW) % n;
 			cf_set_cursor_dir(&v->cf, v->cursor, n, dir);
 		}
+		/* The Queue: L1 and R1 move the episode a place (L2/R2 are the tabs'). */
+		if (queue && n > 0 && (in_repeat(&a->in, IN_L1) || in_repeat(&a->in, IN_R1))) {
+			int al = v->album[v->cursor];
+
+			if (pod_queue_move(al, in_repeat(&a->in, IN_R1) ? +1 : -1)) muse_refilter(v, al);
+			continue;
+		}
 		muse_list_describe(a, v, g_mls_asel, g_mls_psel, &L);
 		if (n > 0 && !cover) {
 			int page = gl_rows(&L);
@@ -15294,10 +16115,13 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (in_repeat(&a->in, IN_DOWN)) *cur = (*cur + 1) % n;
 			if (in_repeat(&a->in, IN_L1))   *cur = gl_page_step(*cur, n, page, -1);
 			if (in_repeat(&a->in, IN_R1))   *cur = gl_page_step(*cur, n, page, +1);
+			/* Episodes are in date order: Left and Right page, as L1/R1. */
 			if (in_repeat(&a->in, IN_RIGHT) && !lists)
-				*cur = albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
+				*cur = albums && g_muse_pod ? gl_page_step(*cur, n, page, +1)
+				     : albums ? shelf_letter_jump(v, +1) : muse_artist_jump(*cur, +1);
 			if (in_repeat(&a->in, IN_LEFT) && !lists)
-				*cur = albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
+				*cur = albums && g_muse_pod ? gl_page_step(*cur, n, page, -1)
+				     : albums ? shelf_letter_jump(v, -1) : muse_artist_jump(*cur, -1);
 			gl_scroll_apply(&gs, cur, n);
 			if (albums) cf_reset(&v->cf, v->cursor);
 		}
@@ -15317,6 +16141,22 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_abs && v->album) {
 			muse_abs_book_menu(a, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_pod && v->album) {
+			muse_pod_ep_menu(a, v, v->album[v->cursor]);
+			ui_redraw_now();
+			continue;
+		}
+		/* X on a show: Unsubscribe (plorpos-7ni.7). */
+		if (a->in.pressed[IN_X] && artists && n > 0 && g_muse_pod) {
+			if (muse_pod_unsubscribe(a, g_mar.ix[g_mls_asel])) {
+				if (!(v = muse_shelf_refind(a))) break;
+				synced = -1;
+				muse_artists_build();
+				if (g_mls_asel >= g_mar.n) g_mls_asel = g_mar.n > 0 ? g_mar.n - 1 : 0;
+			}
 			ui_redraw_now();
 			continue;
 		}
@@ -15407,6 +16247,11 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			SDL_Delay(IDLE_POLL_MS);
 	}
 	if (muse_artist_filter() >= 0 && v) muse_set_filter(v, -1, -1);
+	if (g_pod_view >= 0) {
+		g_pod_view = -1;
+		for (int i = 0; i < a->sys.count; i++)
+			if (is_muse(&a->sys.systems[i])) { muse_refilter(&a->view[i], -1); break; }
+	}
 	*vp = v;
 	g_muse_list_up = false;
 	plat_input_flush();
@@ -19296,7 +20141,7 @@ static void muse_order_view(sysview *v)
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, muse_sort_shown(v->sort), muse_books_shown(),
-	                               g_year, v->album);
+	                               g_muse_pod ? g_pod_stamp : g_year, v->album);
 	{
 		int ar = muse_artist_filter();
 
@@ -19322,6 +20167,32 @@ static void muse_order_view(sysview *v)
 		 * arrays are then as they were, so textures in hand still match. */
 		if (kept) v->list.count = kept;
 		else g_muse_favs = false;
+	}
+	/* Podcasts' New (not played), Downloads, and Queue in its own order. An
+	 * empty one stays empty: the tab says so (plorpos-7ni.4). New is the
+	 * newest POD_NEW_MAX: an OPML import leaves thousands unplayed (owner,
+	 * plorpos-7ni.11). */
+	if (g_muse_pod && g_pod_view >= 0) {
+		int kept = 0;
+
+		if (g_pod_view == MT_COVERFLOW) {
+			int q = pod_queue_count();
+
+			for (k = 0; k < q && kept < g_muse.nalbums; k++) {
+				int al = pod_queue_album(k);
+
+				if (al >= 0) v->album[kept++] = al;
+			}
+		} else {
+			for (k = 0; k < v->list.count && !(g_pod_view == MT_ALBUMS && kept >= POD_NEW_MAX); k++) {
+				int al = v->album[k];
+
+				if (g_pod_view == MT_ALBUMS ? !(g_book_done && g_book_done[al])
+				                            : pod_downloaded(al, NULL, 0) || pod_download_state(al))
+					v->album[kept++] = al;
+			}
+		}
+		v->list.count = kept;
 	}
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
@@ -19594,7 +20465,8 @@ static int muse_walk(void *unused)
 
 	(void)unused;
 	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib)
-	          : g_muse_abs ? abs_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
+	          : g_muse_abs ? abs_lib_load(&g_walk_lib)
+	          : g_muse_pod ? pod_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
 	g_walk_ms = plat_now_ms() - t0;
 	SDL_AtomicSet(&g_walk_done, 1);
 	return 0;
@@ -19645,15 +20517,20 @@ static void muse_install(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	if (g_muse_plex || g_muse_abs) {
+	if (g_muse_plex || g_muse_abs || g_muse_pod) {
 		/* The queue kept from before was restored ahead of this library:
 		 * its track's title and length are known only now. */
 		musec_retitle();
-		/* The server says every album's year: nothing for the daemon to read. */
+		/* The server says every album's year: nothing for the daemon to read.
+		 * An episode has no year to show; its publish minute orders it. */
 		free(g_year);
 		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
 			for (i = 0; i < g_muse.nalbums; i++)
-				g_year[i] = g_muse_plex ? plex_album_year(i) : abs_album_year(i);
+				g_year[i] = g_muse_plex ? plex_album_year(i) : g_muse_abs ? abs_album_year(i) : 0;
+		free(g_pod_stamp);
+		g_pod_stamp = NULL;
+		if (g_muse_pod && (g_pod_stamp = malloc(sizeof *g_pod_stamp * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
+			for (i = 0; i < g_muse.nalbums; i++) g_pod_stamp[i] = pod_album_stamp(i);
 		g_year_asked = -1;
 		g_year_read = 0;
 	} else {
@@ -19716,11 +20593,12 @@ static void build_muse_shelf(app *a, bool bg)
 	src = muse_src_saved();
 	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
 	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
+	g_muse_pod = src == MSRC_PODCASTS && pod_lib_cached();
 	if (!g_muse_plex && src == MSRC_PLEX)
 		plex_sync_start(false);      /* set up, never synced: on its way */
 	if (!g_muse_abs && src == MSRC_ABS)
 		abs_sync_start(false);
-	if (!g_muse_plex && !g_muse_abs) {
+	if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
 		char dir[sizeof g_muse_root + 16];
 
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
@@ -19733,7 +20611,7 @@ static void build_muse_shelf(app *a, bool bg)
 		}
 	}
 	muse_tabs_load();
-	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS) && !g_muse_plex;
+	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_muse_plex;
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
 	s = &a->sys.systems[i];
@@ -20452,7 +21330,8 @@ static const char *queue_title(void *ctx, int i)
 
 	(void)ctx;
 	if (!p) return "";
-	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0])) return out;
+	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0]) ||
+	    pod_title(p, out, sizeof buf[0])) return out;
 	slash = strrchr(p, '/');
 	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
 	return out;
@@ -21200,6 +22079,7 @@ int main(int argc, char *argv[])
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
 			abs_init(P_CARD, P_SHARED);
+			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_on_resume(muse_resume_hold);
 			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */
@@ -21518,6 +22398,7 @@ int main(int argc, char *argv[])
 		muse_walk_poll(&a);
 		plex_main_poll(&a);
 		abs_main_poll(&a);
+		pod_main_poll(&a);
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,

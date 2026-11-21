@@ -119,6 +119,7 @@ stage_all() {
 	         libsqlite3.so.0; do
 		cp "$(readlink -f "$LIB/$l")" "$S/lib/$l"
 	done
+	cp "$LIB/COPYING.LGPLv3" "$LIB/COPYING.GPLv3" "$LIB/LICENSE.mbedtls" "$S/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 	# Everything else every device ships, less the cores: an empty stand-in
 	# per core satisfies plorpos_files, and cores/ is left off the card.
 	F=$B/stub-cores; rm -rf "$F"; mkdir -p "$F"
@@ -156,7 +157,8 @@ cfg)    flip_cfg "$S/systems.cfg" ;;
 cores)  flip_cfg "$B/systems.cfg.cores"; stage_cores "$B/systems.cfg.cores" "$S/cores" ;;
 libs)   mkdir -p "$S/lib"; for l in "$LIB"/libSDL2-2.0.so.0 "$LIB"/libSDL2_image-2.0.so.0 "$LIB"/libSDL2_ttf-2.0.so.0 \
 	        "$LIB"/libavformat.so.60 "$LIB"/libavcodec.so.60 "$LIB"/libavfilter.so.9 "$LIB"/libswresample.so.4 \
-	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done ;;
+	        "$LIB"/libavutil.so.58 "$LIB"/libsqlite3.so.0; do cp "$(readlink -f "$l")" "$S/lib/$(basename "$l")"; done
+	        cp "$LIB/COPYING.LGPLv3" "$LIB/COPYING.GPLv3" "$LIB/LICENSE.mbedtls" "$S/lib/" ;;
 all)    stage_all ;;
 package) stage_all; stage_package ;;
 cards)  mkdir -p "$S/cards"; cp -R "$ROOT/res/cards/." "$S/cards/"; rm -rf "$S/cards/src"; flip_cards "$S" ;;

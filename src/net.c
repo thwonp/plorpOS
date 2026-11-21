@@ -177,7 +177,7 @@ static int run_curl(const char *cfg, int out_fd)
 		return -1;
 	}
 
-	pid = fork();
+	pid = vfork();      /* not fork: see fetch() */
 	if (pid < 0) return -1;
 	if (pid == 0) {
 		char *argv[4];
@@ -267,9 +267,26 @@ int net_fetch(const char *url, const char *method, const char *const *headers, i
 	return net_fetch_body(url, method, headers, nh, NULL, out_path, connect_s, timeout_s, cancel);
 }
 
+static int fetch(const char *url, const char *method, const char *const *headers, int nh,
+                 const char *body, const char *out_path, const char *hdr_path,
+                 int connect_s, int timeout_s, const volatile int *cancel);
+
 int net_fetch_body(const char *url, const char *method, const char *const *headers, int nh,
                    const char *body, const char *out_path, int connect_s, int timeout_s,
                    const volatile int *cancel)
+{
+	return fetch(url, method, headers, nh, body, out_path, NULL, connect_s, timeout_s, cancel);
+}
+
+int net_fetch_hdr(const char *url, const char *out_path, const char *hdr_path,
+                  int connect_s, const volatile int *cancel)
+{
+	return fetch(url, "GET", NULL, 0, NULL, out_path, hdr_path, connect_s, 0, cancel);
+}
+
+static int fetch(const char *url, const char *method, const char *const *headers, int nh,
+                 const char *body, const char *out_path, const char *hdr_path,
+                 int connect_s, int timeout_s, const volatile int *cancel)
 {
 	char cfg[128];
 	const char *bin = curl_bin();
@@ -287,6 +304,7 @@ int net_fetch_body(const char *url, const char *method, const char *const *heade
 	fprintf(f, "silent\nfail\nlocation\n");
 	fprintf(f, "write-out = "); cfg_quote(f, "%{http_code}"); fputc('\n', f);
 	fprintf(f, "output = "); cfg_quote(f, out_path); fputc('\n', f);
+	if (hdr_path) { fprintf(f, "dump-header = "); cfg_quote(f, hdr_path); fputc('\n', f); }
 	if (connect_s > 0) fprintf(f, "connect-timeout = %d\n", connect_s);
 	if (timeout_s > 0) fprintf(f, "max-time = %d\n", timeout_s);
 	/* A stalled transfer gives up rather than holding its worker forever:
@@ -301,7 +319,12 @@ int net_fetch_body(const char *url, const char *method, const char *const *heade
 	fclose(f);
 
 	if (pipe(pfd) != 0) { unlink(cfg); return -1; }
-	pid = fork();
+	/* vfork, not fork: the child borrows this process's memory until the
+	 * exec. A fork has to fit a copy of all of it in what is free, and on the
+	 * Flip (128 MB, overcommit by guess) a launcher holding the Plex library
+	 * is too big for that - every fetch failed with -1 at once
+	 * (plorpos-1lw.26). The child below only makes system calls. */
+	pid = vfork();
 	if (pid < 0) { close(pfd[0]); close(pfd[1]); unlink(cfg); return -1; }
 	if (pid == 0) {
 		char *argv[] = { (char *)bin, (char *)"-K", cfg, NULL };
@@ -354,6 +377,7 @@ bool net_post_async(const net_field *f, int n, const char *path, int timeout_s)
 {
 	const char *bin = curl_bin();
 	int fd;
+	pid_t pid;
 
 	if (g_async > 0 && net_async_poll() == 0) return false;
 	if (!bin) return false;
@@ -366,9 +390,9 @@ bool net_post_async(const net_field *f, int n, const char *path, int timeout_s)
 	if (fd < 0) { unlink(g_async_cfg); return false; }
 
 	g_async_t0 = now_ms();
-	g_async = fork();
-	if (g_async < 0) { close(fd); unlink(g_async_cfg); g_async = -1; return false; }
-	if (g_async == 0) {
+	pid = vfork();      /* not fork: see fetch() */
+	if (pid < 0) { close(fd); unlink(g_async_cfg); g_async = -1; return false; }
+	if (pid == 0) {
 		char *argv[4];
 		int devnull = open("/dev/null", O_RDONLY);
 
@@ -381,6 +405,7 @@ bool net_post_async(const net_field *f, int n, const char *path, int timeout_s)
 		execv(bin, argv);
 		_exit(127);
 	}
+	g_async = pid;
 	close(fd);
 	return true;
 }
@@ -413,6 +438,7 @@ bool net_get_async(const char *url, const char *path, int timeout_s)
 {
 	const char *bin = curl_bin();
 	int fd;
+	pid_t pid;
 
 	/* A slot left set by a caller that walked away is cleared here rather
 	 * than refused forever.
@@ -446,8 +472,8 @@ bool net_get_async(const char *url, const char *path, int timeout_s)
 	if (fd < 0) { unlink(g_async_cfg); g_async_dest[0] = '\0'; return false; }
 
 	g_async_t0 = now_ms();
-	g_async = fork();
-	if (g_async < 0) {
+	pid = vfork();      /* not fork: see fetch() */
+	if (pid < 0) {
 		close(fd);
 		unlink(g_async_cfg);
 		unlink(g_async_part);
@@ -455,7 +481,7 @@ bool net_get_async(const char *url, const char *path, int timeout_s)
 		g_async_dest[0] = '\0';
 		return false;
 	}
-	if (g_async == 0) {
+	if (pid == 0) {
 		char *argv[4];
 		int devnull = open("/dev/null", O_RDONLY);
 
@@ -468,6 +494,7 @@ bool net_get_async(const char *url, const char *path, int timeout_s)
 		execv(bin, argv);
 		_exit(127);
 	}
+	g_async = pid;
 	close(fd);
 	return true;
 }

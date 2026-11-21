@@ -1073,11 +1073,17 @@ bool plat_spawn_detached(char *const argv[], const char *const envkv[],
 	if (getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY)
 		top = rl.rlim_cur < 65536 ? (int)rl.rlim_cur : 65536;
 
+	/* vfork, both times, not fork: a vfork child borrows this process's
+	 * memory until its exec or _exit, where a fork has to fit a copy of all
+	 * of it in what is free. On the Flip (128 MB, overcommit by guess) a
+	 * launcher holding the Plex library is too big for that, and Muse never
+	 * started (plorpos-1lw.26). Neither child does anything but system calls
+	 * before it execs or exits. */
 	if (!env) return false;
-	pid = fork();
+	pid = vfork();
 	if (pid < 0) { free(env); return false; }
 	if (pid == 0) {
-		if (fork() == 0) {
+		if (vfork() == 0) {
 			setsid();
 			for (fd = 3; fd < top; fd++) close(fd);
 			if (workdir) { if (chdir(workdir) != 0) { /* still try */ } }

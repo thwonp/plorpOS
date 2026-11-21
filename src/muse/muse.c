@@ -29,7 +29,9 @@
  *                                              codec: "FLAC 16/44.1", "MP3 320"
  *        CHAPTER i= at= title=                 one per chapter, after META
  *        POS     at= len=                      about once a second while playing
- *        END     path=                         the file ran out by itself
+ *        END     path=  [cut=1]                the file ran out by itself;
+ *                                              cut: a read failed first (a
+ *                                              stream that lost its server)
  *        SINK    device=                       the one in use, after each SINK
  *                                              and on STATUS; "default" when a
  *                                              device would not open
@@ -86,6 +88,7 @@ static struct {
 	double ch_at[256];
 	char   ch_title[256][96];
 	int    ev_meta, ev_end, ev_state, ev_sink;   /* for the main thread to announce */
+	int    end_cut;                   /* the END was a read that failed */
 	char   ev_err[160];
 	char   sink[128];                 /* g_dev, for the main thread to report */
 } S = { .mu = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER,
@@ -160,7 +163,8 @@ static void fail(const char *why)
 }
 
 /* Open S.path at `at`, replacing whatever is open. Called with the lock held;
- * opening is a few milliseconds and nothing else is waiting on it. */
+ * a file opens in a few milliseconds and nothing else is waiting on it; a
+ * stream takes seconds, which is what reseek is for. */
 static int reopen(double at)
 {
 	char err[160];
@@ -171,6 +175,16 @@ static int reopen(double at)
 	S.len = dec_len(g_dec);
 	S.heard = at;
 	return 1;
+}
+
+/* To `at` in what is open: the decoder's own seek, which for a stream is one
+ * ranged request where reopen follows every redirect and reads the header
+ * again - 2-5 s to sound over Wi-Fi (owner, plorpos-7ni.10). reopen when it
+ * cannot, as for a server that has since let the connection go. */
+static int reseek(double at)
+{
+	if (g_dec && dec_seek(g_dec, at)) { S.heard = at; return 1; }
+	return reopen(at);
 }
 
 static void snapshot(void)
@@ -234,18 +248,22 @@ static void handle(const qcmd *q)
 		break;
 	case C_RESUME:
 		if (S.state != ST_PAUSED) break;
-		if (reopen(S.heard)) { S.state = ST_PLAYING; S.ev_state = 1; wake(); }
+		if (reseek(S.heard)) { S.state = ST_PLAYING; S.ev_state = 1; wake(); }
 		break;
 	case C_SEEK:
 		if (S.state == ST_STOPPED) break;
 		pcm_drop();
-		if (!reopen(q->at)) break;
+		if (!reseek(q->at)) break;
 		wake();
 		break;
 	case C_SPEED:
 		if (q->speed < 0.5 || q->speed > 2.0) break;
 		S.speed = q->speed;
 		if (S.state == ST_STOPPED) break;
+		/* On from where the decoder is, with what is queued played out at the
+		 * old speed - nothing is dropped or read again, so nothing goes quiet
+		 * (plorpos-7ni.10). */
+		if (g_dec && dec_speed(g_dec, S.speed)) break;
 		pcm_drop();
 		reopen(S.heard);
 		break;
@@ -299,7 +317,7 @@ static void handle(const qcmd *q)
 		snprintf(S.sink, sizeof S.sink, "%s", g_dev);
 		S.ev_sink = 1;
 		wake();
-		if (S.state == ST_PLAYING) reopen(S.heard);
+		if (S.state == ST_PLAYING) reseek(S.heard);
 		break;
 	}
 	case C_STOP:
@@ -414,7 +432,7 @@ static void *player(void *arg)
 			pcm_open(g_dev);
 			snprintf(S.sink, sizeof S.sink, "%s", g_dev);
 			S.ev_sink = 1;
-			reopen(S.heard);
+			reseek(S.heard);
 			S.state = ST_PAUSED;
 			S.ev_state = 1;
 			wake();
@@ -430,6 +448,7 @@ static void *player(void *arg)
 		if (n == 0) {
 			/* The end of the file. What is queued plays out on its own; the
 			 * launcher hears END and decides what comes next. */
+			S.end_cut = dec_cut(g_dec);
 			dec_close(g_dec);
 			g_dec = NULL;
 			S.state = ST_STOPPED;
@@ -521,7 +540,8 @@ static void announce(int fd, int all)
 		send_line(fd, "ERROR\twhy=%s", clean(S.ev_err, a, sizeof a));
 		say("error: %s", S.ev_err);
 	}
-	if (S.ev_end) send_line(fd, "END\tpath=%s", clean(S.path, a, sizeof a));
+	if (S.ev_end) send_line(fd, "END\tpath=%s%s", clean(S.path, a, sizeof a),
+	                        S.end_cut ? "\tcut=1" : "");
 	if (S.ev_state || all)
 		send_line(fd, "STATE\tstate=%s\tpath=%s", st_name(S.state),
 		          clean(S.path, a, sizeof a));

@@ -23,7 +23,7 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
 const char *sys_menu_src_label(muse_src s)
 {
 	static const char *const L[MSRC_COUNT] = {
-		"Local Music", "Local Audiobooks", "Plex Music", "Audiobookshelf"
+		"Local Music", "Local Audiobooks", "Plex Music", "Audiobookshelf", "Podcasts"
 	};
 
 	return s >= 0 && s < MSRC_COUNT ? L[s] : L[0];
@@ -31,11 +31,11 @@ const char *sys_menu_src_label(muse_src s)
 
 int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out)
 {
-	bool remote = src == MSRC_PLEX || src == MSRC_ABS;
+	bool remote = src == MSRC_PLEX || src == MSRC_ABS || src == MSRC_PODCASTS;
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
-	out[n++] = SMM_SORT;
+	if (src != MSRC_PODCASTS) out[n++] = SMM_SORT;   /* episodes: newest first, always */
 	if (!books && !remote) out[n++] = SMM_ART;
 	out[n++] = SMM_TABS;
 	if (!remote) out[n++] = SMM_RESCAN;   /* a server's Resync Library is in its settings (1lw.17) */
@@ -45,6 +45,7 @@ int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out)
 	out[n++] = SMM_SOURCE;
 	if (src == MSRC_PLEX) out[n++] = SMM_PLEX;
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
+	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
 	return n;
 }
 
@@ -71,7 +72,8 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 			for (k = 0; k < n; k++)
 				switch (ids[k]) {
 				case SMM_COUNT:
-					out[k] = (menu_row){ u->muse_books ? "Books" : "Albums",
+					out[k] = (menu_row){ u->muse_src == MSRC_PODCASTS ? "Episodes"
+					                     : u->muse_books ? "Books" : "Albums",
 					                     b->a, false };
 					break;
 				case SMM_SORT:
@@ -96,6 +98,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_ABS:
 					out[k] = (menu_row){ "Audiobookshelf Settings", NULL, true };
+					break;
+				case SMM_POD:
+					out[k] = (menu_row){ "Podcast Settings", NULL, true };
 					break;
 				case SMM_TABS:
 					out[k] = (menu_row){ "Tab Settings", NULL, true };

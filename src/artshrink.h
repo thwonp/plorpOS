@@ -10,6 +10,10 @@
  * Never upscales. */
 void art_shrink(const char *path);
 
+/* The same, done on the caller's thread before it returns - for a worker
+ * that fetched the picture and must not hand it on before it is small. */
+void art_shrink_now(const char *path);
+
 /* Finish the cover in hand, drop any still queued, and stop the thread.
  *
  * Before IMG_Quit, because the thread is in IMG_Load and IMG_SavePNG. A no-op if
