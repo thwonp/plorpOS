@@ -86,6 +86,11 @@ void abs_progress_refresh(void);
  * device knows, 1 with the file's index and the seconds into it, 2 when the
  * server says it is finished; 0 to keep the device's own. */
 int  abs_book_place(const char *track, int *index, double *at);
+/* One place per server book, whichever copy plays (plorpos-9rf.10): the item
+ * `track` belongs to, and seconds into the whole book <-> file + seconds. */
+bool abs_item(const char *track, char *id, size_t n);
+bool abs_book_secs(const char *id, int index, double at, double *secs);
+bool abs_book_file(const char *id, double secs, int *index, double *at);
 /* What plays, each poll: file `index` of the book `track` is in, `at` into it.
  * state 1 playing, 2 paused, 0 stopped. Sent every 15 s and on every change. */
 void abs_tick(const char *track, int index, double at, int state);

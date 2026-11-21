@@ -1295,6 +1295,35 @@ int abs_book_place(const char *track, int *index, double *at)
 	return r;
 }
 
+bool abs_item(const char *track, char *id, size_t n) { return item_of(track, id, n); }
+
+bool abs_book_secs(const char *id, int index, double at, double *secs)
+{
+	double dur;
+	bool ok;
+
+	tab_ensure();
+	LOCK();
+	ok = book_time(id, index, at, secs, &dur);
+	UNLOCK();
+	return ok;
+}
+
+bool abs_book_file(const char *id, double secs, int *index, double *at)
+{
+	int b, k;
+
+	tab_ensure();
+	LOCK();
+	if ((b = tab_find(&g_tab, id)) < 0) { UNLOCK(); return false; }
+	for (k = 0; k < g_tab.b[b].n - 1 && secs >= g_tab.f[g_tab.b[b].first + k].dur; k++)
+		secs -= g_tab.f[g_tab.b[b].first + k].dur;
+	UNLOCK();
+	*index = k;
+	*at = secs < 0 ? 0 : secs;
+	return true;
+}
+
 /* ---- play on a paused book (plorpos-9rf.9) -------------------------------------------- */
 
 #define RESUME_WAIT_MS 1500

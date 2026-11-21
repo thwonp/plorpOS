@@ -1351,6 +1351,34 @@ static void book_key(int al, char *out, size_t n)
 	snprintf(out, n, "book.%.*s", slash ? (int)(slash - p) : 0, p);
 }
 
+/* A book that is also on the Audiobookshelf server keeps one more place,
+ * "absplace.<item>" in seconds into the whole book, written from whichever
+ * copy plays - streamed or downloaded - so opening the other copy starts
+ * where this device last was, not at that folder's own older place
+ * (plorpos-9rf.10). */
+static bool book_item_key(int al, char *key, size_t n)
+{
+	char id[64];
+
+	if (!abs_item(g_muse.tracks[g_muse.albums[al].first].path, id, sizeof id)) return false;
+	snprintf(key, n, "absplace.%s", id);
+	return true;
+}
+
+static void book_item_write(int al, const char *track, double at)
+{
+	const ml_album *b = &g_muse.albums[al];
+	char key[96], val[32];
+	double secs;
+	int i;
+
+	if (!book_item_key(al, key, sizeof key)) return;
+	for (i = 0; i < b->n && strcmp(g_muse.tracks[b->first + i].path, track); i++) {}
+	if (i == b->n || !abs_book_secs(key + 9, i, at, &secs)) return;
+	snprintf(val, sizeof val, "%.1f", secs);
+	db_set_str(db_dev(), key, val);
+}
+
 /* A place is "<seconds>\t<file>", the file by its name rather than its number
  * so a file added to the folder later moves nothing, or "finished". */
 static void book_write(int al, const char *track, double at)
@@ -1362,6 +1390,7 @@ static void book_write(int al, const char *track, double at)
 	snprintf(val, sizeof val, "%.1f\t%s", at, file ? file + 1 : track);
 	db_set_str(db_dev(), key, val);
 	g_book_done[al] = false;
+	book_item_write(al, track, at);
 }
 
 static void book_finish(int al)
@@ -1370,6 +1399,7 @@ static void book_finish(int al)
 
 	book_key(al, key, sizeof key);
 	db_set_str(db_dev(), key, "finished");
+	if (book_item_key(al, key, sizeof key)) db_set_str(db_dev(), key, "finished");
 	g_book_done[al] = true;
 	abs_book_finished(g_muse.tracks[g_muse.albums[al].first].path);
 	fprintf(stderr, "muse: finished %s\n", g_muse.albums[al].name);
@@ -1399,6 +1429,16 @@ static int book_place(int al, double *at)
 		case 2:
 			book_finish(al);
 			return 0;
+		}
+		/* The server's place is this device's own: the item's place, from
+		 * whichever copy last played. */
+		if (book_item_key(al, key, sizeof key)) {
+			db_get_str(db_dev(), key, val, sizeof val, "");
+			if (!strcmp(val, "finished")) return 0;
+			if (val[0] && abs_book_file(key + 9, atof(val), &idx, &sat) && idx < b->n) {
+				*at = sat;
+				return idx;
+			}
 		}
 	}
 	book_key(al, key, sizeof key);
