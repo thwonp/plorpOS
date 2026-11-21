@@ -5265,6 +5265,30 @@ static void gl_draw_footer(app *a, const gl_list *L)
 	}
 }
 
+/* A passing word ("Marked played"), over the screen in the list's font, low
+ * and centered above the footer: the header's corner and the lines under the
+ * art were too small to notice (owner, plorpos-7ni.15). */
+static const char *muse_toast_now(void);
+
+static void toast_draw(app *a, const char *msg, unsigned accent)
+{
+	TTF_Font *f = ui_font(UI_F_LIST);
+	SDL_Color ac = { (Uint8)(accent >> 16), (Uint8)(accent >> 8), (Uint8)accent, 255 };
+	char buf[160];
+	int line = ui_font_line(UI_F_LIST), w, h = line + GL_PAD;
+	SDL_Rect box, in;
+
+	ui_fit_text(f, msg, buf, sizeof buf, TORTOS_SCREEN_W - GL_PAD * 6);
+	w = ui_text_width(f, buf) + GL_PAD * 2;
+	box = (SDL_Rect){ (TORTOS_SCREEN_W - w) / 2,
+	                  TORTOS_SCREEN_H - ui_font_line(UI_F_META) - GL_PAD * 3 - h, w, h };
+	in = (SDL_Rect){ box.x + 2, box.y + 2, box.w - 4, box.h - 4 };
+	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+	ui_round_rect(a->r, &box, h / 2, ac);
+	ui_round_rect(a->r, &in, h / 2 - 2, (SDL_Color){ 16, 18, 24, 240 });
+	ui_text(a->r, f, buf, TORTOS_SCREEN_W / 2, box.y + (h - line) / 2, 0, UI_TEXT);
+}
+
 static void gl_draw(app *a, const gl_list *L)
 {
 	TTF_Font *fm = ui_font(UI_F_LIST), *fv = ui_font(UI_F_META);
@@ -5289,10 +5313,6 @@ static void gl_draw(app *a, const gl_list *L)
 			ui_text(a->r, fv, L->note, nx,
 			        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), -1, UI_TEXT_DIM);
 	}
-	/* A passing word, on the header's line, clear of the battery's corner. */
-	if (L->toast && *L->toast && !L->wide_header)
-		ui_text(a->r, fv, L->toast, TORTOS_SCREEN_W - GL_PAD * 4,
-		        GL_PAD + ui_font_line(UI_F_TITLE) - ui_font_line(UI_F_META), 1, ac);
 
 	/* The column. The cursor rides the middle row once the list is long
 	 * enough to scroll, so there is always as much ahead as behind. Titles
@@ -5383,6 +5403,7 @@ static void gl_draw(app *a, const gl_list *L)
 			x += ui_hint_width(L->help[2 * i], L->help[2 * i + 1]);
 		}
 	}
+	if (L->toast && *L->toast) toast_draw(a, L->toast, L->accent);
 }
 
 /* ---- Gamelist Layout: a game shelf as a list (plorpos-gwf) ---- */
@@ -5817,6 +5838,9 @@ static void render(app *a)
 #endif
 	draw_shelf(a);
 	draw_chrome(a->r);
+	/* Muse as a coverflow says its passing words too (plorpos-7ni.15). */
+	if (a->sys.count > 0 && is_muse(&a->sys.systems[a->sys_cursor]) && muse_toast_now())
+		toast_draw(a, muse_toast_now(), MUSE_ACCENT);
 	plat_present(a->r);
 #if defined(PLATFORM_MIYOO)
 	/* The move ended on a half-size frame: draw the sharp one now, or the
@@ -14233,9 +14257,8 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 		         mn->title, t0, t1);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	}
-	if (muse_toast_now())
-		ui_fit_text(ui_font(UI_F_META), g_muse_toast, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
-	else if (muse_download_status(line + 12, sizeof line - 12)) {
+	L.toast = muse_toast_now();
+	if (muse_download_status(line + 12, sizeof line - 12)) {
 		memcpy(line, "Downloading ", 12);
 		ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
 	} else if (ts->n > 0)
@@ -15757,9 +15780,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	}
 	/* The header is wide, so a passing word goes under the cover - or a
 	 * Plex download under way, looked at again twice a second while it runs. */
-	if (L->toast && *L->toast && L->nunder < 3)
-		snprintf(L->under[L->nunder++], sizeof L->under[0], "%s", L->toast);
-	else if ((g_muse_plex || g_muse_abs || g_muse_pod) && L->nunder < 3) {
+	if ((g_muse_plex || g_muse_abs || g_muse_pod) && L->nunder < 3) {
 		char line[200];
 
 		memcpy(line, "Downloading ", 12);
