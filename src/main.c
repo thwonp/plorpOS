@@ -13015,6 +13015,11 @@ static bool np_chapters(app *a)
 	free(rows.title);
 	free(rows.value);
 	if (k < 0) return false;
+	/* The one playing goes on where it is, paused or not (owner, i8d.8). */
+	if (k == cur) {
+		if (mn->state == MU_PAUSED) musec_toggle();
+		return true;
+	}
 	if (nch > 1) musec_jump_at(mn->index, musec_chapter_at(k));
 	else         musec_jump_at(k, 0);
 	return true;
