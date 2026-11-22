@@ -21726,6 +21726,11 @@ static void build_muse_shelf(app *a, bool bg)
 	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
 	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
 	g_muse_pod = src == MSRC_PODCASTS && pod_lib_cached();
+	/* The playlists are the Source's (muse_pl_dir), and which Source is in
+	 * has just been decided: a list read before this - behind the
+	 * "Loading..." panel of a Source change - was the last Source's, shown
+	 * under the new one where A could not read it (plorpos-5eq.20). */
+	muse_playlists_forget();
 	if (!g_muse_plex && src == MSRC_PLEX)
 		plex_sync_start(false);      /* set up, never synced: on its way */
 	if (!g_muse_abs && src == MSRC_ABS)
