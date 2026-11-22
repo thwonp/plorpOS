@@ -293,6 +293,8 @@ typedef struct job {
 	char a[700], b[700];
 	double cur, dur;
 	bool fin;
+	bool again;              /* J_PUSH sent again (plorpos-ps8.15) */
+	long long known;         /* ...and the server's lastUpdate this device knew then */
 	struct job *next;
 } job;
 
@@ -1179,6 +1181,48 @@ static void pull_progress(void)
 	UNLOCK();
 }
 
+/* Places the server did not take - offline, a downloaded book played with
+ * no Wi-Fi or no server: sent again once it answers (plorpos-ps8.15). One
+ * per book, the latest; lost with the launcher, as the next play sends one. */
+#define UNSENT 16
+static struct { char id[64]; double cur, dur; bool fin, now; long long known; } g_unsent[UNSENT];
+static int g_nunsent;
+
+/* Book `id` out of the unsent list (sent, or a newer place on its way). Locked. */
+static void unsent_drop(const char *id)
+{
+	for (int i = 0; i < g_nunsent; i++)
+		if (!strcmp(g_unsent[i].id, id)) { g_unsent[i] = g_unsent[--g_nunsent]; return; }
+}
+
+static void unsent_keep(const job *j)
+{
+	size_t il = strlen(j->a);
+
+	LOCK();
+	unsent_drop(j->a);
+	if (g_nunsent < UNSENT && il < sizeof g_unsent[0].id) {
+		memcpy(g_unsent[g_nunsent].id, j->a, il + 1);
+		g_unsent[g_nunsent].cur = j->cur;
+		g_unsent[g_nunsent].dur = j->dur;
+		g_unsent[g_nunsent].fin = j->fin;
+		g_unsent[g_nunsent].now = j->b[0] == 'n';
+		/* What the server said last, as far as this device knows: a
+		 * lastUpdate past it later means another device wrote - no clocks
+		 * compared, the device's may be off. */
+		if (j->again) {
+			g_unsent[g_nunsent].known = j->known;
+		} else {
+			ab_prog *pr = prog_find(j->a);
+			long long seen = seen_get(j->a);
+
+			g_unsent[g_nunsent].known = pr && pr->last > seen ? pr->last : seen;
+		}
+		g_nunsent++;
+	}
+	UNLOCK();
+}
+
 static void do_push(job *j)
 {
 	char path[160], json[200], *body;
@@ -1186,9 +1230,27 @@ static void do_push(job *j)
 	double p = j->dur > 0 ? j->cur / j->dur : 0;
 
 	snprintf(path, sizeof path, "/api/me/progress/%.100s", j->a);
+	/* Sent again later: not over a place another device has made since. */
+	if (j->again) {
+		int code = req("GET", path, NULL, &body, &len, 10);
+
+		if (code == 200) {
+			long long last = (long long)jnum(js_root(body, len), "lastUpdate");
+
+			free(body);
+			if (last > j->known) {
+				fprintf(stderr, "abs: a newer place on the server, this one not sent\n");
+				return;
+			}
+		} else if (code != 404) {               /* 404: none there yet */
+			unsent_keep(j);
+			return;
+		}
+	}
 	snprintf(json, sizeof json, "{\"currentTime\":%.2f,\"duration\":%.2f,\"progress\":%.5f,\"isFinished\":%s}",
 	         j->cur, j->dur, p > 1 ? 1 : p, j->fin ? "true" : "false");
-	if (req("PATCH", path, json, NULL, NULL, 10) != 200) return;
+	if (req("PATCH", path, json, NULL, NULL, 10) != 200) { unsent_keep(j); return; }
+	if (j->again) fprintf(stderr, "abs: a place kept offline was sent\n");
 	/* The PATCH answers "OK": its lastUpdate is read back, to know it as ours. */
 	if (req("GET", path, NULL, &body, &len, 10) != 200) return;
 	{
@@ -1219,12 +1281,43 @@ static void queue_push(const char *id, double cur, double dur, bool fin, bool no
 			UNLOCK();
 			return;
 		}
+	unsent_drop(id);                           /* this place is newer */
 	UNLOCK();
 	if (!(j = job_new(J_PUSH))) return;
 	snprintf(j->a, sizeof j->a, "%s", id);
 	j->cur = cur; j->dur = dur; j->fin = fin;
 	if (now) j->b[0] = 'n';
 	push(j, false);
+}
+
+void abs_unsent_retry(void)
+{
+	static unsigned last;
+	unsigned now = now_ms();
+
+	LOCK();
+	if (!g_nunsent || (last && now - last < 30000u)) { UNLOCK(); return; }
+	last = now;
+	UNLOCK();
+	if (!net_online()) return;
+	LOCK();
+	while (g_nunsent) {
+		job *j = job_new(J_PUSH);
+
+		g_nunsent--;
+		if (!j) continue;
+		snprintf(j->a, sizeof j->a, "%s", g_unsent[g_nunsent].id);
+		j->cur = g_unsent[g_nunsent].cur;
+		j->dur = g_unsent[g_nunsent].dur;
+		j->fin = g_unsent[g_nunsent].fin;
+		j->again = true;
+		j->known = g_unsent[g_nunsent].known;
+		if (g_unsent[g_nunsent].now) j->b[0] = 'n';
+		UNLOCK();
+		push(j, false);
+		LOCK();
+	}
+	UNLOCK();
 }
 
 void abs_progress_refresh(void)
