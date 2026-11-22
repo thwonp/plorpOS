@@ -215,6 +215,7 @@ static void play_current(void);
  * META has no rate in it. */
 static char g_codec_remote[32];
 static bool g_names_remote;          /* see musec_remote.names */
+static bool g_play_remote;           /* the last PLAY was a remote track's */
 
 static bool has_digit(const char *s)
 {
@@ -275,6 +276,7 @@ static void play_current(void)
 		 * rather than on the speaker for however long the route takes. The
 		 * daemon runs its commands in order, so a SINK sent now lands first. */
 		g_asked = true;
+		g_play_remote = remote;
 		if (g_before_heard) g_before_heard();
 		/* Only the queue's first PLAY starts part way: every track after it
 		 * is one the queue moved on to, from its beginning. */
@@ -981,6 +983,7 @@ void musec_on_state(void (*fn)(mu_state st)) { g_on_state = fn; }
 
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 bool musec_asked(void) { return g_asked; }
+bool musec_asked_stream(void) { return g_asked && g_play_remote; }
 
 void musec_sink(const char *device)
 {
