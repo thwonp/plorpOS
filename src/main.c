@@ -11653,16 +11653,13 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 #endif
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 #if defined(PLATFORM_ROTATE)
-	/* Rotate (Closed) / Rotate (Open) (plorpos-5eq.1): left/right steps, A
-	 * goes round. */
+	/* Rotate (Closed) / Rotate (Open) (plorpos-5eq.1): left/right and A go
+	 * round (owner). */
 	if ((sel == ST_SW_CLOSED || sel == ST_SW_OPEN) && (d || key == IN_ACCEPT)) {
 		const char *k = sel == ST_SW_CLOSED ? "swivel.closed" : "swivel.open";
 		int n = sel == ST_SW_CLOSED ? SWC_COUNT : SWO_COUNT;
-		int v = db_get_int(db_dev(), k, 0) + (d ? d : 1);
+		int v = ((db_get_int(db_dev(), k, 0) + (d ? d : 1)) % n + n) % n;
 
-		if (!d) v %= n;
-		if (v < 0) v = 0;
-		if (v >= n) v = n - 1;
 		db_set_int(db_dev(), k, v);
 		swivel_apply();
 		return MENU_STAY;

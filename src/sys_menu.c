@@ -255,8 +255,8 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	{
 		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping
 		 * unit, so there is no "nothing" for it (plorpos-5eq.1). */
-		static const char *const closed[] = { "nothing", "sleep", "muse+ now playing" };
-		static const char *const open[] = { "wake only", "main shelf", "recents", "resume game" };
+		static const char *const closed[] = { "nothing", "sleep", "open Muse+" };
+		static const char *const open[] = { "wake only", "main shelf", "recents", "resume last game" };
 
 		out[ST_SW_CLOSED] = (menu_row){ "Rotate (Closed)", closed[u->sw_closed % 3u], true };
 		out[ST_SW_OPEN]   = (menu_row){ "Rotate (Open)",   open[u->sw_open % 4u], true };
