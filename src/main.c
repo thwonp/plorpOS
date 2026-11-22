@@ -1388,6 +1388,7 @@ static void book_key(int al, char *out, size_t n)
  * where this device last was, not at that folder's own older place
  * (plorpos-9rf.10). */
 static void tl_book_id(int al, char *out, size_t n);
+static void tl_note(int al, int index, double at, char kind);
 
 static bool book_item_key(int al, char *key, size_t n)
 {
@@ -1463,6 +1464,7 @@ static int book_place(int al, double *at)
 		switch (abs_book_place(g_muse.tracks[b->first].path, &idx, &sat)) {
 		case 1:
 			book_write(al, g_muse.tracks[b->first + idx].path, sat);
+			tl_note(al, idx, sat, 'Y');
 			*at = sat;
 			return idx;
 		case 2:
@@ -1669,7 +1671,12 @@ static void muse_poll(void)
 		int idx;
 		double at;
 
-		if (abs_resume_poll(&idx, &at) > 0) musec_resume_release(idx, at);
+		if (abs_resume_poll(&idx, &at) > 0) {
+			int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
+
+			if (idx >= 0 && al >= 0) tl_note(al, idx, at, 'Y');   /* the server's place */
+			musec_resume_release(idx, at);
+		}
 	}
 	if (mn->state == MU_PLAYING) {
 		const char *next[10];
@@ -13620,7 +13627,9 @@ static void tl_compact(const char *path)
 	free(ln);
 }
 
-static void tl_note(int al, int index, double at, bool play)
+/* Book `al`'s event `kind` - P play, S pause, Y a sync: the server's newer
+ * place taken (owner, plorpos-ps8.5) - at file `index`, `at` seconds. */
+static void tl_note(int al, int index, double at, char kind)
 {
 	char path[CFG_STR * 2 + 32], id[LIB_PATH];
 	FILE *f;
@@ -13628,7 +13637,7 @@ static void tl_note(int al, int index, double at, bool play)
 
 	tl_book_id(al, id, sizeof id);
 	/* When it was last played or paused, for Recent Books (i8d.4). */
-	{
+	if (kind != 'Y') {
 		char key[LIB_PATH + 16];
 
 		snprintf(key, sizeof key, "booklast.%s", id);
@@ -13636,7 +13645,7 @@ static void tl_note(int al, int index, double at, bool play)
 	}
 	tl_path(path, sizeof path);
 	if (!(f = fopen(path, "a"))) return;
-	fprintf(f, "%s\t%lld\t%d\t%.1f\t%c\n", id, (long long)time(NULL), index, at, play ? 'P' : 'S');
+	fprintf(f, "%s\t%lld\t%d\t%.1f\t%c\n", id, (long long)time(NULL), index, at, kind);
 	sz = ftell(f);
 	fclose(f);
 	if (sz > TL_FILE_MAX) tl_compact(path);
@@ -13664,7 +13673,7 @@ static void tl_on_state(mu_state st)
 	}
 	if (told && kind && (kind != last_kind || strcmp(dir, last_dir)) && !g_walk_thread &&
 	    (al = ml_album_of(&g_muse, t)) >= 0 && g_muse.albums[al].book)
-		tl_note(al, mn->index, mn->at, kind == 'P');
+		tl_note(al, mn->index, mn->at, kind);
 	told = true;
 	last_kind = kind;
 	snprintf(last_dir, sizeof last_dir, "%s", dir);
@@ -13718,7 +13727,6 @@ static bool np_timeline(app *a)
 	int al = ml_album_of(&g_muse, musec_track(mn->index)), n, i, k;
 	tl_ev ev[TL_KEEP];
 	lp_rows rows;
-	char where[48];
 
 	if (al < 0) return false;
 	n = tl_load(al, ev, TL_KEEP);
@@ -13729,8 +13737,10 @@ static bool np_timeline(app *a)
 		time_t w = (time_t)ev[i].when;
 		struct tm *tm = localtime(&w);
 
-		tl_where(al, ev[i].index, ev[i].at, where, sizeof where);
-		snprintf(rows.title[i], sizeof rows.title[i], "%s  %s", ev[i].kind == 'P' ? "Play" : "Pause", where);
+		const char *what = ev[i].kind == 'P' ? "Play" : ev[i].kind == 'Y' ? "Sync" : "Pause";
+
+		/* "<when>  <what>", the place on the right (owner, plorpos-ps8.5). */
+		tl_where(al, ev[i].index, ev[i].at, rows.value[i], sizeof rows.value[i]);
 		if (tm) {
 			/* "Nov 21 4:31:05 AM", as the save slots write it: to the
 			 * second, or a minute's events all read alike. */
@@ -13738,8 +13748,10 @@ static bool np_timeline(app *a)
 			int h12 = tm->tm_hour % 12;
 
 			strftime(mon, sizeof mon, "%b", tm);
-			snprintf(rows.value[i], sizeof rows.value[i], "%s %d %d:%02d:%02d %s", mon, tm->tm_mday,
-			         h12 ? h12 : 12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM");
+			snprintf(rows.title[i], sizeof rows.title[i], "%s %d %d:%02d:%02d %s  %s", mon, tm->tm_mday,
+			         h12 ? h12 : 12, tm->tm_min, tm->tm_sec, tm->tm_hour < 12 ? "AM" : "PM", what);
+		} else {
+			snprintf(rows.title[i], sizeof rows.title[i], "%s", what);
 		}
 	}
 	k = muse_long_pick(a, "Timeline", &rows, n, 0, "Play");
