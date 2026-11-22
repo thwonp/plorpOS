@@ -53,6 +53,17 @@ case $WHAT in elf|all)
 	# it outlives the launcher - so a new one takes effect when that daemon is
 	# stopped.
 	$A push "$ROOT/build/muse"              "$P/" > /dev/null
+	# Its FFmpeg with TLS, the H700's build (plorpos-5eq.2; mk/payload.sh).
+	# Pushed aside and renamed: a running Muse has the old ones mapped.
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		f=$(readlink -f "$ROOT/sysroot-h700/usr/lib/$l")
+		[ -f "$f" ] || { echo "no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+		$A push "$f" "$P/lib/$l.new" > /dev/null
+		$A shell "mv -f $P/lib/$l.new $P/lib/$l"
+	done
+	for t in COPYING.LGPLv3 COPYING.GPLv3 LICENSE.mbedtls; do
+		$A push "$ROOT/sysroot-h700/usr/lib/$t" "$P/lib/" > /dev/null
+	done
 	$A push "$ROOT/build/musectl"           "$P/" > /dev/null
 	$A push "$ROOT/build/btplayer"          "$P/" > /dev/null
 	$A push "$ROOT/build/pico8sdl.so"       "$P/" > /dev/null

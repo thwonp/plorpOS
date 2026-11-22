@@ -127,11 +127,22 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 # src/muse/. Linked against the device's own FFmpeg 6.1 (mk/fetch-sysroot.sh
 # puts the libraries and the matching headers in the sysroot); ALSA is reached
 # with dlopen, so it needs no header and no -lasound.
+#
+# On the Brick it RUNS on the H700's build of the same 6.1, shipped in
+# plorpOS/lib (mk/payload.sh): the firmware's has no TLS, and a podcast's
+# https episode had to be downloaded before it played (plorpos-5eq.2). Found
+# by an rpath beside muse - not LD_LIBRARY_PATH, which would hand the lean
+# build to every port that wants the firmware's - and DT_RPATH (not RUNPATH),
+# so the libraries find each other there too. The Zero 40 has the same five
+# on its LD_LIBRARY_PATH (sd/zero40/launch.sh).
+ifeq ($(PLATFORM),brick)
+MUSE_LDFLAGS := -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/lib'
+endif
 MUSE_SRC := $(wildcard src/muse/*.c)
 $(BUILD)/muse: $(MUSE_SRC) $(wildcard src/muse/*.h)
 	mkdir -p $(BUILD)
 	$(CC) -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
-	      -D_GNU_SOURCE $(MUSE_DEFS) -I$(SYSROOT)/usr/include $(LDFLAGS) -o $@ $(MUSE_SRC) \
+	      -D_GNU_SOURCE $(MUSE_DEFS) -I$(SYSROOT)/usr/include $(LDFLAGS) $(MUSE_LDFLAGS) -o $@ $(MUSE_SRC) \
 	      -lavformat -lavcodec -lavfilter -lswresample -lavutil -lpthread -ldl
 
 # Talks to Muse by hand over ssh; the device's BusyBox nc has no -U.

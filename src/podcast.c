@@ -30,16 +30,10 @@ bool pod_download_take_failed(void)
 
 #define LANDED 32
 
-/* What the daemon's FFmpeg opens (plex.c's table): https on every port since
- * plorpos-7ni.1 - the H700, Flip and Zero 40 builds carry Mbed TLS now - but
- * the Brick, whose firmware FFmpeg has http alone. There an https episode is
- * downloaded first, as any download, and plays from the copy (7ni.8). */
-#if defined(PLATFORM_H700) || defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40) || \
-    defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS)
-#define POD_TLS 1
-#else
-#define POD_TLS 0
-#endif
+/* The daemon's FFmpeg opens https on every port: the H700, Flip and Zero 40
+ * builds carry Mbed TLS (plorpos-7ni.1), and the Brick runs the H700's build
+ * since plorpos-5eq.2 - so an episode streams everywhere, and nothing is
+ * downloaded first. */
 
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_cv = PTHREAD_COND_INITIALIZER;
@@ -744,14 +738,11 @@ static void source_locked(int al, char *out, size_t n)
 	else snprintf(out, n, "%s", g_tab.e[al].url);
 }
 
-static char g_dl_failed[32];             /* the last download that failed, and when */
-static time_t g_dl_failed_at;
 static void dl_enqueue(const char *key);
 
 bool pod_resolve(const char *rel, musec_remote *out)
 {
 	int al;
-	char fetch[32] = "";
 
 	if (!pod_is_path(rel)) return false;
 	memset(out, 0, sizeof *out);
@@ -769,21 +760,7 @@ bool pod_resolve(const char *rel, musec_remote *out)
 	}
 	out->len = g_tab.e[al].dur;
 	out->names = true;
-	/* No TLS in the daemon: the copy first, asked for again on each poll;
-	 * a fetch that just failed is not asked for again at once. */
-	if (!POD_TLS && !g_tab.e[al].dl && !strncmp(g_tab.e[al].url, "https:", 6)) {
-		char key[32];
-
-		snprintf(key, sizeof key, "%s/%s", g_tab.e[al].sid, g_tab.e[al].eid);
-		if (!strcmp(key, g_dl_failed) && time(NULL) - g_dl_failed_at < 30) {
-			snprintf(out->url, sizeof out->url, "pod:unavailable");
-		} else {
-			out->wait = true;
-			cpy(fetch, sizeof fetch, key);
-		}
-	}
 	UNLOCK();
-	if (fetch[0]) dl_enqueue(fetch);         /* by key: the table may change meanwhile */
 	return true;
 }
 
@@ -1218,7 +1195,6 @@ static void *dl_main(void *arg)
 		fprintf(stderr, "pod: download %s %s\n", key, ok ? "done" : g_dl_cancel ? "cancelled" : "failed");
 		if (!ok && !g_dl_cancel) g_dl_fail_note = 1;
 		LOCK();
-		if (!ok && !g_dl_cancel) { cpy(g_dl_failed, sizeof g_dl_failed, key); g_dl_failed_at = time(NULL); }
 		g_dl_key[0] = '\0';
 		g_dl_part[0] = '\0';
 		g_dl_landing = 0;
