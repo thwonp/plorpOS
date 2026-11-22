@@ -1514,9 +1514,39 @@ static void cache_trim(void)
 	}
 }
 
+/* `.part` files under dir, `depth` folders down: what a download cut off by
+ * a power-off or a kill left (plorpos-ps8.14). Called only by the thread
+ * that writes there, before its first job, so none is being written. */
+static int sweep_parts(const char *dir, int depth)
+{
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	char p[1200];
+	int n = 0;
+	size_t l;
+
+	if (!d) return 0;
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+		l = strlen(e->d_name);
+		if (l > 5 && !strcmp(e->d_name + l - 5, ".part")) n += unlink(p) == 0;
+		else if (depth > 0 && (e->d_type == DT_DIR || e->d_type == DT_UNKNOWN)) n += sweep_parts(p, depth - 1);
+	}
+	closedir(d);
+	return n;
+}
+
 static void *cache_main(void *arg)
 {
 	(void)arg;
+	{
+		char c[700];
+		int n;
+
+		snprintf(c, sizeof c, "%s/cache", g_dir);
+		if ((n = sweep_parts(c, 0))) fprintf(stderr, "plex: removed %d unfinished pre-fetch files\n", n);
+	}
 	for (;;) {
 		char base[256], dest[1100], partk[320];
 		px_track t;
@@ -1575,6 +1605,13 @@ static void cache_want(int key, bool now)
 static void *dl_main(void *arg)
 {
 	(void)arg;
+	{
+		char m[700];
+		int n;
+
+		snprintf(m, sizeof m, "%s/Music/" ML_PLEX, g_card);
+		if ((n = sweep_parts(m, 2))) fprintf(stderr, "plex: removed %d unfinished downloads\n", n);
+	}
 	for (;;) {
 		dl_item it;
 
