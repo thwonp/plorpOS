@@ -310,6 +310,49 @@ int ui_font_cap(TTF_Font *f)
 	return ui_font_ascent(f);
 }
 
+/* What the font can draw of s (plorpos-5eq.17): a character it has no glyph
+ * for - an emoji in a Plex playlist's name - is left out, not drawn as a box.
+ * s itself when nothing is missing, which is nearly always: plain ASCII is
+ * never looked up. Otherwise one of four buffers, good until four more calls. */
+static const char *text_clean(TTF_Font *f, const char *s)
+{
+	static char buf[4][512];
+	static int turn;
+	const unsigned char *p = (const unsigned char *)s;
+	char *out = NULL;
+	size_t o = 0;
+
+	if (!f || !s) return s;
+	while (*p) {
+		unsigned cp = *p;
+		int n = 1, k;
+		bool ok = true;
+
+		if (cp >= 0x80) {
+			n = cp >= 0xF0 ? 4 : cp >= 0xE0 ? 3 : cp >= 0xC0 ? 2 : 1;
+			cp &= n == 4 ? 0x07 : n == 3 ? 0x0F : n == 2 ? 0x1F : 0x7F;
+			for (k = 1; k < n; k++) {
+				if ((p[k] & 0xC0) != 0x80) { n = k; cp = 0xFFFD; break; }
+				cp = (cp << 6) | (p[k] & 0x3F);
+			}
+			ok = cp < 0x10000 && TTF_GlyphIsProvided(f, (Uint16)cp);
+		}
+		if (!ok && !out) {
+			out = buf[turn++ & 3];
+			o = (size_t)(p - (const unsigned char *)s);
+			if (o > sizeof buf[0] - 1) o = sizeof buf[0] - 1;
+			memcpy(out, s, o);
+		} else if (ok && out && o + (size_t)n < sizeof buf[0]) {
+			memcpy(out + o, p, (size_t)n);
+			o += (size_t)n;
+		}
+		p += n;
+	}
+	if (!out) return s;
+	out[o] = '\0';
+	return out;
+}
+
 static struct text_entry *text_get(SDL_Renderer *r, TTF_Font *f, const char *s,
                                   SDL_Color col)
 {
@@ -331,7 +374,7 @@ fill:
 	if (rc->text[oldest].tex) SDL_DestroyTexture(rc->text[oldest].tex);
 	memset(&rc->text[oldest], 0, sizeof rc->text[oldest]);
 	{
-		SDL_Surface *surf = TTF_RenderUTF8_Blended(f, s, col);
+		SDL_Surface *surf = TTF_RenderUTF8_Blended(f, text_clean(f, s), col);
 		if (!surf) return NULL;
 		rc->text[oldest].tex = SDL_CreateTextureFromSurface(r, surf);
 		if (rc->text[oldest].tex && ts != 1.0f)
@@ -378,7 +421,7 @@ int ui_text(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
 int ui_text_width(TTF_Font *f, const char *s)
 {
 	int w = 0;
-	if (f && s) TTF_SizeUTF8(f, s, &w, NULL);
+	if (f && s) TTF_SizeUTF8(f, text_clean(f, s), &w, NULL);
 	return units_up(w);
 }
 
@@ -461,7 +504,7 @@ static size_t tab_run(const char *s, char *out, size_t n)
 static int run_px(TTF_Font *f, const char *run)
 {
 	int w = 0;
-	TTF_SizeUTF8(f, run, &w, NULL);
+	TTF_SizeUTF8(f, text_clean(f, run), &w, NULL);
 	return w;
 }
 

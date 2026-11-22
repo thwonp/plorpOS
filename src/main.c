@@ -16290,7 +16290,40 @@ static muse_exit muse_book_list(app *a, int which)
 	return how;
 }
 
-static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
+/* A heart emoji in a playlist's name (Plex's "\xe2\x9d\xa4\xef\xb8\x8f Tracks"): the row
+ * wears the heart Favorites draws, and what the font cannot draw is left out
+ * by ui_text (plorpos-5eq.17). U+2661, 2665, 2763, 2764, 1F493-1F49F, 1F5A4,
+ * 1F90D, 1F90E, 1F9E1, 1FA75-1FA77. */
+static const char *pl_heart_at(const char *s)
+{
+	const unsigned char *p = (const unsigned char *)s;
+
+	for (; *p; p++) {
+		if (p[0] == 0xE2 && ((p[1] == 0x99 && (p[2] == 0xA1 || p[2] == 0xA5)) ||
+		                     (p[1] == 0x9D && (p[2] == 0xA3 || p[2] == 0xA4)))) return (const char *)p;
+		if (p[0] == 0xF0 && p[1] == 0x9F && p[2] && p[3] &&
+		    ((p[2] == 0x92 && p[3] >= 0x93 && p[3] <= 0x9F) || (p[2] == 0x96 && p[3] == 0xA4) ||
+		     (p[2] == 0xA4 && (p[3] == 0x8D || p[3] == 0x8E)) || (p[2] == 0xA7 && p[3] == 0xA1) ||
+		     (p[2] == 0xA9 && p[3] >= 0xB5 && p[3] <= 0xB7))) return (const char *)p;
+	}
+	return NULL;
+}
+
+/* The name as the row shows it: past a heart it opens with, and the space
+ * after it. */
+static const char *mpl_title(void *ctx, int i)
+{
+	const char *s = g_pls[i].name, *h = pl_heart_at(s);
+
+	(void)ctx;
+	if (h == s) {
+		s += (unsigned char)*s >= 0xF0 ? 4 : 3;
+		if (!strncmp(s, "\xef\xb8\x8f", 3)) s += 3;   /* the emoji selector */
+		while (*s == ' ') s++;
+	}
+	return s;
+}
+static bool mpl_fav(void *ctx, int i) { (void)ctx; return pl_heart_at(g_pls[i].name) != NULL; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
 static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_muse_plex && plex_pl_downloaded(g_pls[i].name); }
 
@@ -16626,6 +16659,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->cur = psel;
 		L->title = mpl_title;
 		L->value = mpl_value;
+		L->fav = mpl_fav;
 		L->dl = mpl_dl;
 		L->empty = "No playlists yet. Y on a track adds one.";
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
