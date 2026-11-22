@@ -817,18 +817,23 @@ void musec_adopt(const char *const *paths, int n, int start, bool book, double s
 	queue_set(paths, n, start, 0, book, speed, artist, album);
 	/* The title too: the one on show is the restored queue's track's. */
 	t = muq_current(&g_order);
+	g_names_remote = false;
 	if (t >= 0 && t < g_qn) {
 		static musec_remote r;   /* a server's file: its own title (plorpos-9rf.5) */
+		bool remote = g_resolve && g_resolve(g_q[t], &r);
 
-		if (g_resolve && g_resolve(g_q[t], &r) && r.title[0])
+		if (remote && r.title[0])
 			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
 		else
 			ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
 			              g_now.title, sizeof g_now.title);
+		/* A source that names its own tracks (an episode: title, then show)
+		 * has no album line, as when it is played (plorpos-ps8.11). */
+		g_names_remote = remote && r.names;
 		memset(r.url, 0, sizeof r.url);
 	}
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
-	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+	snprintf(g_now.album, sizeof g_now.album, "%s", g_names_remote ? "" : g_album);
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
 }
