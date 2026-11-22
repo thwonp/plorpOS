@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #include "net.h"
 #include "podfeed.h"
@@ -1173,6 +1174,25 @@ static bool dl_one(const char *key)
 static void *dl_main(void *arg)
 {
 	(void)arg;
+	/* Podcasts/.dl holds only what is on its way: anything there now was
+	 * cut off by a power-off or a kill (plorpos-ps8.14). */
+	{
+		char root[600], p[900];
+		DIR *d;
+		struct dirent *e;
+		int n = 0;
+
+		snprintf(root, sizeof root, "%.500s/Podcasts/.dl", g_card);
+		if ((d = opendir(root))) {
+			while ((e = readdir(d)))
+				if (e->d_name[0] != '.') {
+					snprintf(p, sizeof p, "%s/%s", root, e->d_name);
+					n += unlink(p) == 0;
+				}
+			closedir(d);
+		}
+		if (n) fprintf(stderr, "pod: removed %d unfinished downloads\n", n);
+	}
 	for (;;) {
 		char key[32];
 		bool ok;

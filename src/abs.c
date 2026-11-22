@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #include "net.h"
 #include "rajson.h"
@@ -1699,9 +1700,32 @@ static bool dl_one(const char *id)
 	return true;
 }
 
+/* Staging folders a download cut off by a power-off or a kill left - whole
+ * books' worth, sometimes (plorpos-ps8.14). Before the first job: none is
+ * being written. */
+static void sweep_stage(void)
+{
+	char root[600], p[900];
+	DIR *d;
+	struct dirent *e;
+	int n = 0;
+
+	snprintf(root, sizeof root, "%s/Audiobooks/.abs-dl", g_card);
+	if (!(d = opendir(root))) return;
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.') continue;
+		snprintf(p, sizeof p, "%s/%s", root, e->d_name);
+		rm_tree(p);
+		n++;
+	}
+	closedir(d);
+	if (n) fprintf(stderr, "abs: removed %d unfinished downloads\n", n);
+}
+
 static void *dl_main(void *arg)
 {
 	(void)arg;
+	sweep_stage();
 	for (;;) {
 		char id[64];
 		bool ok;
