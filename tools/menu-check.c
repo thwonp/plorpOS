@@ -597,20 +597,27 @@ static void system_menu(void)
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, ids) == 6 && ids[1] == SMM_SORT &&
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 6 && ids[1] == SMM_SORT &&
 			   ids[2] == SMM_TABS && ids[3] == SMM_RESCAN && ids[4] == SMM_SETTINGS &&
 			   ids[5] == SMM_SOURCE,
 			   "books alone: the count, Sort By, Tab Settings, Rescan Folder, Playback Settings and Source");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, ids) == 6 && ids[2] == SMM_TABS &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 6 && ids[2] == SMM_TABS &&
 			   ids[3] == SMM_SETTINGS && ids[4] == SMM_SOURCE && ids[5] == SMM_PLEX,
 			   "Plex: no Album Art or Rescan Folder, Plex Settings after Source");
-			ck(sys_menu_muse_rows(true, MSRC_ABS, ids) == 6 && ids[3] == SMM_SETTINGS &&
+			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 6 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_SOURCE && ids[5] == SMM_ABS,
 			   "Audiobookshelf: no Rescan Folder, Audiobookshelf Settings after Source");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, ids) == 5 && ids[0] == SMM_COUNT &&
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 5 && ids[0] == SMM_COUNT &&
 			   ids[1] == SMM_TABS && ids[2] == SMM_SETTINGS && ids[3] == SMM_SOURCE &&
 			   ids[4] == SMM_POD,
 			   "Podcasts: no Sort By or Rescan Folder, Podcast Settings after Source");
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_PLEX &&
+			   ids[6] == SMM_DLQ,
+			   "Plex downloading: Download Queue right after Plex Settings (ps8.8)");
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 6 && ids[5] == SMM_DLQ,
+			   "Podcasts downloading: Download Queue after Podcast Settings");
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 6,
+			   "a card's own books: no Download Queue, whatever is said");
 		}
 	}
 }

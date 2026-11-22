@@ -135,7 +135,7 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * On books the count is Books, Sort By is by author or title, and Album Art is
  * not there: MusicBrainz knows records. So the rows move, and which one is where is sys_menu_muse_rows's to say. */
 typedef enum { SMM_COUNT, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
-               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX, SMM_ABS, SMM_POD } sm_muse_row;
+               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
  * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan
@@ -150,7 +150,9 @@ const char *sys_menu_src_label(muse_src s);
 /* Muse's rows in order, for the kind its shelf shows and its Source. Returns
  * how many. The build and the key handler both ask this, so the
  * two cannot disagree about what row 2 is. */
-int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out);
+/* `dlq`: the source has downloads on their way, so Download Queue follows its
+ * settings row (owner, plorpos-ps8.8). */
+int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out);
 
 #define MENU_MAX_ROWS 17
 
@@ -189,6 +191,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	muse_src muse_src;       /* and the Source chosen (plorpos-9rf.2) */
+	const char *muse_dlq;    /* its downloads on their way ("3 albums"), NULL none */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
