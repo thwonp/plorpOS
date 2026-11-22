@@ -609,8 +609,7 @@ Downloads go in `Podcasts/<show>/` and play without Wi-Fi. A downloaded
 episode has a ↓ mark, and while episodes download, **Download Queue** shows
 in Muse's menu under Podcast Settings (X on one cancels it).
 **Auto-Delete** in Podcast Settings removes a download when it is played, or
-a day after; favorites are never deleted. On the Brick an episode is
-downloaded before it plays (its player cannot stream from secure sites).
+a day after; favorites are never deleted.
 
 ## The shelf
 

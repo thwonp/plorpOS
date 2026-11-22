@@ -180,6 +180,16 @@ else
 	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
 	mkdir -p "$P/pico8"
 	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS (the shim says why)
+	# Muse's FFmpeg with TLS (plorpos-5eq.2): the firmware's has none, so a
+	# podcast's https episode could not stream. The H700's own build, as on
+	# the Zero 40; muse finds it by its rpath (mk/cross.mk).
+	mkdir -p "$P/lib"
+	L=$ROOT/sysroot-h700/usr/lib
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
+			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	done
+	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS
 	cp "$ROOT/sd/tortos/launch.sh" "$P/"
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # sourced by launch.sh, run by the launcher
 	cp "$ROOT/sd/tortos/radio.sh" "$P/"   # sourced by launch.sh AND by plat_sleep()

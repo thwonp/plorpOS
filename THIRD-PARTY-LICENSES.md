@@ -157,6 +157,9 @@ The MagicX Zero 40's card carries the same five FFmpeg libraries, copied from
 this build, in its own `plorpOS/lib/` with the same licence texts: oakMOSS has
 no FFmpeg for Muse either. Its SDL2 is oakMOSS's own.
 
+The TrimUI Brick's card carries them too, the same way: the firmware's own
+FFmpeg has no TLS, and Muse needs it to stream podcast episodes.
+
 The Miyoo Mini Flip's card carries the same FFmpeg 6.1 and Mbed TLS 3.6.2,
 built the same way for 32-bit ARM by `mk/fetch-miyoo-sysroot.sh`, with the
 same three licence texts in its `plorpOS/lib/`.
