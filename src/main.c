@@ -13218,8 +13218,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * mark two colors a screen apart; Eric's call, 2026-09-19. */
 	unsigned rgb = MUSE_ACCENT, wait = (unsigned)-1, phase;
 	SDL_Color acc = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
-	const char *state = mn->state == MU_PLAYING ? NULL
-	                  : musec_asked()           ? "Loading"     /* a stream opening (plorpos-7ni.18) */
+	/* A stream opening (plorpos-7ni.18), also over the track it replaces,
+	 * which says "playing" until then (ps8.2). */
+	const char *state = musec_asked_stream()    ? "Loading"
+	                  : mn->state == MU_PLAYING ? NULL
+	                  : musec_asked()           ? "Loading"
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
 	int book = musec_is_book() ? ml_album_of(&g_muse, musec_track(mn->index)) : -1;
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
