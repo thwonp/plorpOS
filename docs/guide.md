@@ -507,7 +507,10 @@ second screen work as they do for the card's music.
 
 - **Streaming** plays at the quality in **Plex Settings**: Original, or an
   Opus transcode at 96 to 320 kbps (128 by default; transcoding needs Plex
-  Pass). Away from home the Brick can't stream, so it downloads each track
+  Pass). On a server with no Plex Pass, Muse says so once, shows it beside
+  the server's name in Plex Settings, and plays and downloads the original
+  files; if the server's owner has turned downloads off for your account,
+  a download says so instead of starting. Away from home the Brick can't stream, so it downloads each track
   first, and the next one while it plays; a track takes a few seconds to
   start.
 - **X on an album** (in any album list, Coverflow, or its track list)
