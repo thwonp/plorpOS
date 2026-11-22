@@ -14656,7 +14656,7 @@ static bool muse_name_prompt(app *a, const char *title, char *buf, int cap)
 	}
 }
 
-/* Y on a track (era.6): a playlist to add it to, a new one first. */
+/* X on a music track (era.6; it was Y, 5eq.18): a playlist to add it to, a new one first. */
 /* Where track `path` is in a playlist, or -1. */
 static int muse_pl_find(const char *dir, const char *name, const char *path)
 {
@@ -14808,11 +14808,21 @@ static const char *muse_name_noyear(const char *name, int year)
 	return name;
 }
 
+/* Music, the card's or Plex's: X is the track's menu - Add to Playlist, with
+ * the album's download on Plex and Remove from Playlist in a playlist (owner,
+ * plorpos-5eq.18; Add to Playlist was Y). Books and Audiobookshelf keep Y. */
 static const char *const MTL_HELP[] = { "A", "Play", "Y", "Add to Playlist" };
-static const char *const MTL_HELP_PL[] = { "A", "Play", "Y", "Add to Playlist", "X", "Remove",
-                                            "L2/R2", "Move" };
+static const char *const MTL_HELP_MUSIC[] = { "A", "Play", "X", "Add to Playlist" };
+static const char *const MTL_HELP_PL[] = { "A", "Play", "X", "Options", "L2/R2", "Move" };
+static const char *const MTL_HELP_PLEXM[] = { "A", "Play", "X", "Options" };
 /* An album from Plex: X downloads it or deletes the copy (plorpos-1lw). */
 static const char *const MTL_HELP_PLEX[] = { "A", "Play", "Y", "Add to Playlist", "X", "Download" };
+
+/* A music track list: not a book's, a show's or Audiobookshelf's. */
+static bool mtl_music(const muse_tset *ts)
+{
+	return !g_muse_pod && !g_muse_abs && !(ts->album >= 0 && g_muse.albums[ts->album].book);
+}
 
 static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
                               const mu_now *mn, bool loaded, const char *playing)
@@ -14830,8 +14840,11 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	L.key = GL_KEY_TRACKS;
 	L.header = ts->album >= 0 ? muse_name_noyear(ts->head, g_year ? g_year[ts->album] : 0) : ts->head;
 	L.wide_header = true;
-	L.help = ts->pl ? MTL_HELP_PL : (g_muse_plex || g_muse_abs) && ts->album >= 0 ? MTL_HELP_PLEX : MTL_HELP;
-	L.nhelp = ts->pl ? 4 : (g_muse_plex || g_muse_abs) && ts->album >= 0 ? 3 : 2;
+	if (ts->pl) { L.help = MTL_HELP_PL; L.nhelp = 3; }
+	else if (g_muse_plex && ts->album >= 0) { L.help = MTL_HELP_PLEXM; L.nhelp = 2; }
+	else if (g_muse_abs && ts->album >= 0) { L.help = MTL_HELP_PLEX; L.nhelp = 3; }
+	else if (mtl_music(ts)) { L.help = MTL_HELP_MUSIC; L.nhelp = 2; }
+	else { L.help = MTL_HELP; L.nhelp = 2; }
 	L.n = ts->n;
 	L.cur = sel;
 	L.accent = MUSE_ACCENT;
@@ -14944,26 +14957,31 @@ static bool muse_download_status(char *out, size_t n)
 }
 
 /* Plex: download album `al`, or delete its copy. */
-static void muse_plex_album_menu(app *a, int al)
+/* trk: the track under the cursor in the album's track list, whose Add to
+ * Playlist leads the menu (plorpos-5eq.18); -1 on an album in a list. */
+static void muse_plex_album_menu(app *a, int al, int trk)
 {
-	const char *labels[3];
+	const char *labels[4];
 	int k, n = 0, have = plex_album_downloaded(al), of = g_muse.albums[al].n, dl = -1, del = -1;
+	int add = -1, stop = -1;
 	char head[96];
 
 	snprintf(head, sizeof head, "%d of %d downloaded", have, of);
+	if (trk >= 0) { add = n; labels[n++] = "Add to Playlist"; }
 	if (plex_album_downloading(al)) {
-		labels[0] = "Cancel Download";
-		if (muse_pick_run(a, head, labels, 1) == 0) {
-			plex_download_cancel_album(al);
-			muse_toast("Download cancelled");
-		}
-		return;
+		stop = n; labels[n++] = "Cancel Download";
+	} else {
+		if (have < of) { dl = n; labels[n++] = have ? "Download the Rest" : "Download Album"; }
+		if (have > 0)  { del = n; labels[n++] = "Delete Download"; }
 	}
-	if (have < of) { dl = n; labels[n++] = have ? "Download the Rest" : "Download Album"; }
-	if (have > 0)  { del = n; labels[n++] = "Delete Download"; }
 	k = muse_pick_run(a, head, labels, n);
 	if (k < 0) return;
-	if (k == dl) {
+	if (k == add) {
+		muse_add_to_playlist(a, trk);
+	} else if (k == stop) {
+		plex_download_cancel_album(al);
+		muse_toast("Download cancelled");
+	} else if (k == dl) {
 		if (!net_online()) { muse_toast("Device is offline"); return; }
 		if (plex_allow_sync() == 0) { muse_toast(PLEX_NO_SYNC); return; }
 		plex_download_album(al);
@@ -15108,14 +15126,25 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
 		}
+		/* Add to Playlist: Y on a book or Audiobookshelf; on music it is in
+		 * X's menu (plorpos-5eq.18). The Rotate's long press, a Y, keeps it. */
+#ifdef PLATFORM_ROTATE
 		if (a->in.pressed[IN_Y] && items > 0) {
+#else
+		if (a->in.pressed[IN_Y] && items > 0 && !mtl_music(ts)) {
+#endif
 			muse_add_to_playlist(a, ts->trk[sel]);
 			continue;
 		}
-		/* Plex: X on an album downloads it, or deletes the copy (the pak's
-		 * Y on an album; Y is Add to Playlist here). */
+		/* Plex: X in an album is the track's Add to Playlist and the album's
+		 * download, or the copy's deletion. */
 		if (g_muse_plex && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
-			muse_plex_album_menu(a, ts->album);
+			muse_plex_album_menu(a, ts->album, items > 0 ? ts->trk[sel] : -1);
+			continue;
+		}
+		/* The card's music, outside a playlist: X is Add to Playlist. */
+		if (!ts->pl && mtl_music(ts) && items > 0 && a->in.pressed[IN_X]) {
+			muse_add_to_playlist(a, ts->trk[sel]);
 			continue;
 		}
 		if (!g_muse_pod && !ts->pl && ts->album >= 0 && g_muse.albums[ts->album].book &&
@@ -15123,16 +15152,17 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			muse_book_menu(a, ts->album);
 			continue;
 		}
-		/* A playlist's own keys (owner): X takes the track out, L2 and R2
+		/* A playlist's own keys (owner): X is the track's menu - Add to
+		 * Playlist under the cursor, Remove from Playlist below it, so a
+		 * slip of X removes nothing (plorpos-5eq.8, .18) - and L2 and R2
 		 * move it up and down a place, the cursor going with it. */
 		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
-			static const char *const yn[] = { "Yes", "No" };
+			static const char *const opts[] = { "Add to Playlist", "Remove from Playlist" };
 			char d[CFG_STR * 2 + 32];
+			int k = muse_pick_run(a, g_muse.tracks[ts->trk[sel]].name, opts, 2);
 
-			/* Asked first, Yes under the cursor: A A takes it out, B or No
-			 * leaves it (owner, plorpos-5eq.8). */
-			if (!muse_pl_editable(ts->pl) ||
-			    muse_pick_run(a, "Remove from Playlist?", yn, 2) != 0) {
+			if (k == 0) muse_add_to_playlist(a, ts->trk[sel]);
+			if (k != 1 || !muse_pl_editable(ts->pl)) {
 				ui_redraw_now();
 				continue;
 			}
@@ -16661,7 +16691,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->value = mpl_value;
 		L->fav = mpl_fav;
 		L->dl = mpl_dl;
-		L->empty = "No playlists yet. Y on a track adds one.";
+		L->empty = "No playlists yet. X on a track adds one.";
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -16972,7 +17002,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		 * album view - not only inside its track list (plorpos-1lw.12). */
 		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_plex && v->album &&
 		    !g_muse.albums[v->album[v->cursor]].book) {
-			muse_plex_album_menu(a, v->album[v->cursor]);
+			muse_plex_album_menu(a, v->album[v->cursor], -1);
 			ui_redraw_now();
 			continue;
 		}
