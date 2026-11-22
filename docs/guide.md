@@ -510,9 +510,7 @@ second screen work as they do for the card's music.
   Pass). On a server with no Plex Pass, Muse+ says so once, shows it beside
   the server's name in Plex Settings, and plays and downloads the original
   files; if the server's owner has turned downloads off for your account,
-  a download says so instead of starting. Away from home the Brick can't stream, so it downloads each track
-  first, and the next one while it plays; a track takes a few seconds to
-  start.
+  a download says so instead of starting.
 - **X on an album** (in any album list, Coverflow, or its track list)
   downloads it, or deletes the copy. Progress shows under the cover. While
   it downloads, X offers **Cancel Download**, which stops it and removes
