@@ -1525,6 +1525,7 @@ static void pod_autodel_played(int al);
 static int pod_up_next(int done);
 static bool book_start(int al);
 static void muse_toast(const char *msg);
+static const char *muse_toast_now(void);
 static void pod_len_note(int al, double len);
 static int g_pod_next = -1;
 
@@ -1546,7 +1547,8 @@ static void book_keep(bool now)
 		 * (plorpos-7ni.16; an Audiobookshelf book too, any file, 9rf.13). */
 		book_write(al, track, mn->at);
 		musec_start_at(mn->at);         /* and A starts there, not at 0:00 (ps8.13) */
-		muse_toast("Stream lost. Your place is kept.");
+		/* Unless muse_poll has just said why (offline, or no server). */
+		if (!muse_toast_now()) muse_toast("Stream lost. Your place is kept.");
 		g_bk.al = -1;
 		return;
 	}
@@ -1682,6 +1684,15 @@ static void muse_poll(void)
 	musec_poll();
 	sleep_timer_tick();
 	mn = musec_now();
+	/* A stream not tried for want of a network, or one whose server did not
+	 * answer; a download that failed, the same two ways (plorpos-5eq.13). */
+	{
+		int nf = musec_take_net_fail();
+
+		if (plex_download_take_failed() | abs_download_take_failed() | pod_download_take_failed())
+			if (!nf) nf = net_online() ? 2 : 1;
+		if (nf) muse_toast(nf == 1 ? "Device is offline" : "Could not reach the server");
+	}
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
 	/* A book's place to the server: the queue of a book is its files in
@@ -10935,7 +10946,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_FAVS:
-		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }
+		if (!net_online()) { muse_toast("Device is offline"); return MENU_STAY; }
 		plex_sync_favorites();
 		muse_toast("Downloading Plex favorites");
 		return MENU_STAY;
@@ -13971,6 +13982,7 @@ static void np_more(app *a)
 
 static muse_exit muse_now_screen(app *a)
 {
+	bool toasted = false;
 	struct {
 		mu_state st;
 		int at, len, index, count, mode, chapter, speed, sleep;
@@ -14072,9 +14084,14 @@ static muse_exit muse_now_screen(app *a)
 			touched = a->in.pressed[b] || a->in.down[b];
 		now = plat_now_ms();
 
-		if (touched || memcmp(&shown, &drawn, sizeof shown) || (int)(now - due) >= 0) {
+		if (touched || memcmp(&shown, &drawn, sizeof shown) || (int)(now - due) >= 0 ||
+		    (muse_toast_now() != NULL) != toasted) {
 			unsigned wait = np_draw(a, mn, next, shown.lock);
 			Uint32 osd;
+
+			/* Why a stream did not start, here too (plorpos-5eq.13). */
+			toasted = muse_toast_now() != NULL;
+			if (toasted) { toast_draw(a, muse_toast_now(), MUSE_ACCENT); if (wait > 100) wait = 100; }
 
 			/* Asked after the draw, which is what retires a line whose
 			 * time is up - asked before, it names a moment already past. */
@@ -14537,7 +14554,7 @@ static void muse_abs_book_menu(app *a, int al)
 	}
 	labels[0] = "Download Book";
 	if (muse_pick_run(a, "Not on the card", labels, 1) != 0) return;
-	if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return; }
+	if (!net_online()) { muse_toast("Device is offline"); return; }
 	abs_download_book(al);
 	muse_toast("Downloading");
 }
@@ -14572,7 +14589,7 @@ static void muse_plex_album_menu(app *a, int al)
 	k = muse_pick_run(a, head, labels, n);
 	if (k < 0) return;
 	if (k == dl) {
-		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return; }
+		if (!net_online()) { muse_toast("Device is offline"); return; }
 		plex_download_album(al);
 		muse_toast("Downloading");
 	} else if (k == del) {
@@ -16087,7 +16104,7 @@ static void muse_pod_ep_menu(app *a, sysview *v, int al)
 	case E_QADD:     pod_queue_add(al);     muse_toast("Added to Queue"); break;
 	case E_QDEL:     pod_queue_remove(al);  muse_toast("Removed from Queue"); break;
 	case E_DL:
-		if (!net_online()) { plex_say(a, "Downloads need Wi-Fi"); break; }
+		if (!net_online()) { muse_toast("Device is offline"); break; }
 		pod_download(al);
 		muse_toast("Downloading");
 		break;
@@ -22486,6 +22503,7 @@ int main(int argc, char *argv[])
 			abs_init(P_CARD, P_SHARED);
 			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
+			musec_set_online(net_online);
 			musec_on_resume(muse_resume_hold);
 			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */
 			musec_on_before_heard(aout_before_muse);

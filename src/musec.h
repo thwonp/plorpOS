@@ -88,6 +88,12 @@ typedef struct {
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
                       bool (*owns)(const char *daemon_path, const char *rel),
                       bool (*failed)(const char *rel));
+/* `online`: whether the device has a network at all. With it, a remote track
+ * asked for off the network is not tried. */
+void musec_set_online(bool (*online)(void));
+/* Once: 1 a remote track was not played for want of a network, 2 its server
+ * could not be reached; 0 neither. */
+int musec_take_net_fail(void);
 /* The queue's track resolved again for what it shows: a queue restored at
  * start comes before the library its resolver reads, and shows no title. */
 void musec_retitle(void);

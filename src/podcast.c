@@ -18,6 +18,16 @@
 #include "podfeed.h"
 #include "rajson.h"
 
+/* A download failed (not cancelled): once, for a toast (plorpos-5eq.13). */
+static volatile int g_dl_fail_note;
+bool pod_download_take_failed(void)
+{
+	bool r = g_dl_fail_note != 0;
+
+	g_dl_fail_note = 0;
+	return r;
+}
+
 #define LANDED 32
 
 /* What the daemon's FFmpeg opens (plex.c's table): https on every port since
@@ -1206,6 +1216,7 @@ static void *dl_main(void *arg)
 		UNLOCK();
 		ok = dl_one(key);
 		fprintf(stderr, "pod: download %s %s\n", key, ok ? "done" : g_dl_cancel ? "cancelled" : "failed");
+		if (!ok && !g_dl_cancel) g_dl_fail_note = 1;
 		LOCK();
 		if (!ok && !g_dl_cancel) { cpy(g_dl_failed, sizeof g_dl_failed, key); g_dl_failed_at = time(NULL); }
 		g_dl_key[0] = '\0';

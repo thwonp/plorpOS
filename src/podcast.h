@@ -146,4 +146,7 @@ void pod_cover_base(int al, char *out, size_t n);
 bool pod_cover_want(int al, const char *base);
 bool pod_cover_take(char *base, size_t n);
 
+/* True once after a download failed (not cancelled). */
+bool pod_download_take_failed(void);
+
 #endif

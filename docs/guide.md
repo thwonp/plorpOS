@@ -469,6 +469,11 @@ asked about again; one it could not find is asked about on every run, since a
 cover may be added later. MusicBrainz takes a request a second, so a large
 library takes a while: seven albums took a minute on the Brick.
 
+Off Wi-Fi, a stream or a download from Plex, Audiobookshelf or Podcasts is
+not tried: Muse says **Device is offline**. On Wi-Fi with the server not
+answering it says **Could not reach the server**. Either way nothing is
+skipped and a book's place stays where it was.
+
 ### Plex
 
 *Coming in the next release; not in v1.9.x.*
