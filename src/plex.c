@@ -1929,6 +1929,8 @@ bool plex_cover_want(int al, const char *base)
 
 void plex_cover_bump(const char *base) { coverq_bump(g_cq, base); }
 
+bool plex_covers_idle(void) { return coverq_idle(g_cq); }
+
 bool plex_cover_take(char *base, size_t n) { return coverq_take(g_cq, base, n); }
 
 bool plex_resolve(const char *rel, musec_remote *out)

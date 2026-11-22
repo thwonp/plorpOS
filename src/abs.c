@@ -922,6 +922,8 @@ bool abs_cover_want(int al, const char *base)
 
 void abs_cover_bump(const char *base) { coverq_bump(g_cq, base); }
 
+bool abs_covers_idle(void) { return coverq_idle(g_cq); }
+
 bool abs_cover_take(char *base, size_t n) { return coverq_take(g_cq, base, n); }
 
 /* ---- which book a track is ------------------------------------------------------------- */
