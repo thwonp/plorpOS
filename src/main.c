@@ -1541,6 +1541,7 @@ static void book_keep(bool now)
 		 * not played, and nothing starts after it. A plays on from here
 		 * (plorpos-7ni.16). */
 		book_write(al, track, mn->at);
+		musec_start_at(mn->at);         /* and A starts there, not at 0:00 (ps8.13) */
 		muse_toast("Stream lost. Your place is kept.");
 		g_bk.al = -1;
 		return;
