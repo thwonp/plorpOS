@@ -1545,6 +1545,9 @@ bool plat_resident_send(const plat_game *g)
 		if (dsend("SETQUIET\ton=%d", d_quiet)) d_quiet_said = d_quiet;
 		/* And which volume holds are Muse's, beside it (plorpos-5eq.14). */
 		if (dsend("SETSKIP\tindex=%d", g_skip_keys)) d_skip_said = g_skip_keys;
+		/* Game Settings > Rumble Enabled, before the core asks for the
+		 * motor at load (plorpos-5tm.5). */
+		dsend("SETRUMBLE\tindex=%d", db_get_int(db_dev(), "rumble", 1) != 0);
 
 		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
 		 * three frames before Diatom reads another message, so a chain sent
@@ -1695,6 +1698,34 @@ void plat_resident_quiet(bool on)
 	 * and the next RUN sends it anyway. */
 	if (dsock >= 0 && d_quiet != d_quiet_said && dsend("SETQUIET\ton=%d", d_quiet))
 		d_quiet_said = d_quiet;
+}
+
+/* A vibration motor Diatom can drive (plorpos-5tm.4), found as its ports
+ * find it: the Bricks' GPIO line, or an input node with FF_RUMBLE (the H700,
+ * the Rotate). Looked for once. */
+bool plat_has_rumble(void)
+{
+	static int has = -1;
+
+	if (has >= 0) return has;
+	has = 0;
+#if defined(__linux__) && !defined(PLATFORM_MIYOO)   /* the Flip's port drives none yet (plorpos-5tm.6) */
+	if (access("/sys/class/gpio/gpio227/value", W_OK) == 0) has = 1;
+	for (int i = 0; i < 32 && !has; i++) {
+		unsigned long bits[FF_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+		char path[32];
+		int fd;
+
+		snprintf(path, sizeof path, "/dev/input/event%d", i);
+		if ((fd = open(path, O_RDONLY | O_CLOEXEC)) < 0) continue;
+		if (ioctl(fd, EVIOCGBIT(EV_FF, sizeof bits), bits) >= 0 &&
+		    (bits[FF_RUMBLE / (8 * sizeof(unsigned long))] >>
+		     (FF_RUMBLE % (8 * sizeof(unsigned long))) & 1))
+			has = 1;
+		close(fd);
+	}
+#endif
+	return has;
 }
 
 void plat_skip_keys(int mask)
