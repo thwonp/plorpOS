@@ -14101,8 +14101,13 @@ static void muse_from_note(const char *pl)
 
 static void muse_pl_dir(char *out, size_t n)
 {
-	if (g_muse_plex) { plex_pl_dir(out, n); return; }   /* the source's own */
-	if (g_muse_abs) { abs_pl_dir(out, n); return; }
+	muse_src src = muse_src_saved();
+
+	/* The source's own - by the Source saved, not only the library in: while
+	 * Plex's index was still on its way the card's playlists showed under
+	 * Plex, and A could not read them (plorpos-1lw.29). */
+	if (g_muse_plex || src == MSRC_PLEX) { plex_pl_dir(out, n); return; }
+	if (g_muse_abs || src == MSRC_ABS) { abs_pl_dir(out, n); return; }
 	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
 }
 
