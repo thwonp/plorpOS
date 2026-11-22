@@ -318,7 +318,7 @@ tab besides Playlists stays on.
 - **Playlists** lists your playlists with how many tracks each has; A opens
   one. X (or a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse+ menu, as on
-  every tab. In a playlist, X removes the track under the cursor (asked first), and L2 and R2
+  every tab. In a playlist, X on a track offers **Remove from Playlist**, and L2 and R2
   move it up and down a place. On audiobooks it holds three lists Muse+ makes
   itself: **Recent Books** (the ten books you played last and have not
   finished), **Finished Books** (every finished book, newest first) and
@@ -335,9 +335,10 @@ something playing, SELECT opens Now Playing and B goes back to that album's
 tracks and then its artist's albums. Kept across restarts.
 
 **Playlists** are `.m3u` files in `Music/Playlists/`, so other players and a
-computer can read and edit them. **Y on any track** - an album's or a
+computer can read and edit them. **X on any track** - an album's or a
 playlist's - adds it to a playlist: one you have, or a new
-one named on the keyboard.
+one named on the keyboard. In a playlist, X offers **Remove from Playlist**
+as well.
 
 **SELECT** opens Muse+ from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
@@ -520,7 +521,7 @@ second screen work as they do for the card's music.
   on Plex. A fully downloaded album has a ↓ mark in the lists.
 - **Download Queue** shows in Muse+'s menu, under Plex Settings, while albums
   are downloading: the one downloading, then the rest. X on one cancels it.
-- **Y on a track** lists **Favorite Tracks** first: A adds the track, or
+- **X on a track**, then **Add to Playlist**, lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
 - **Playlists** are your Plex server's: every sync (Check for Updates, or
   the hourly one) brings them in, and a playlist you make or change here -
