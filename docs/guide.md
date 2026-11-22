@@ -574,7 +574,8 @@ background.
 The tabs are **Podcasts** (your shows; A shows a show's episodes, newest
 first), **New** (the 100 newest you have not played), **Downloads**, **Favorites**
 and **Queue**. A row shows a dot and the length for an episode you have not
-started, the time left, or Played.
+started, the time left, or Played. A played episode's title is grey, and one
+that is in the Queue says **Queued** on its cover on the other tabs.
 
 - **A** plays an episode. It streams, so it needs Wi-Fi, unless it is
   downloaded. If the stream drops, it stops and keeps your place; A carries
