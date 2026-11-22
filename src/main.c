@@ -16991,10 +16991,15 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
-		/* Y - the Rotate's long press - on a playlist: Delete (asked first)
-		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
-		 * tab (owner, plorpos-3yv.110.1). */
-		if (a->in.pressed[IN_Y] && lists && !books && n > 0) {
+		/* X on a playlist: Delete (asked first), Rename, and on Plex the
+		 * download - X as on a book or an album (owner, plorpos-5eq.16; it
+		 * was Y). The Rotate's long press, a Y, still opens it. MENU is the
+		 * Muse menu, as on every tab (owner, plorpos-3yv.110.1). */
+#ifdef PLATFORM_ROTATE
+		if ((a->in.pressed[IN_X] || a->in.pressed[IN_Y]) && lists && !books && n > 0) {
+#else
+		if (a->in.pressed[IN_X] && lists && !books && n > 0) {
+#endif
 			const char *opts[3] = { "Delete", "Rename", NULL };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
 			bool dled;

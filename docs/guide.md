@@ -316,7 +316,7 @@ tab besides Playlists stays on.
   (**Favorite Albums**; on audiobooks **Favorite Books**). Y on one takes it
   off, and it leaves the list.
 - **Playlists** lists your playlists with how many tracks each has; A opens
-  one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
+  one. X (or a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse+ menu, as on
   every tab. In a playlist, X removes the track under the cursor (asked first), and L2 and R2
   move it up and down a place. On audiobooks it holds three lists Muse+ makes
@@ -528,7 +528,7 @@ second screen work as they do for the card's music.
   it needs Wi-Fi. A smart playlist (one Plex fills by a rule, like ❤️ Tracks)
   can be played but not changed, and one longer than 2000 tracks is left out.
   Favorite Tracks stays on this device.
-- **Y on a playlist** adds **Download Playlist**: its tracks are copied to
+- **X on a playlist** adds **Download Playlist**: its tracks are copied to
   the card and it shows under Local Music as **Plex <name>**, with a ↓ mark
   here. **Keep Playlists Synced** in Plex Settings (on to begin with) keeps
   those copies in step with the playlist at every sync; Remove Download
