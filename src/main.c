@@ -426,6 +426,7 @@ static void muse_album_dir(int al, char *out, size_t n);
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
+static void muse_refresh(app *a);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
@@ -10524,19 +10525,27 @@ static void pod_auto_sync(void)
 	pod_sync_start();
 }
 
-/* From the shelf's own loop: a sync that changed an index is read in when
- * nothing else is being read. */
-static void pod_main_poll(app *a)
+/* From the shelf's own loop: a sync that changed an index is only noted.
+ * Reading it in rebuilds the whole shelf (rescan_all), a visible hitch, and
+ * its toast landed on the shelf over Muse's card (plorpos-ps8.1), so that
+ * waits for Muse to open (pod_apply_sync). */
+static void pod_main_poll(void)
 {
 	int added = 0;
 
 	if (pod_sync_take(&added)) { g_pod_stale = true; g_pod_added += added; }
+	if (g_pod_stale && muse_src_saved() != MSRC_PODCASTS) g_pod_stale = false, g_pod_added = 0;
+}
+
+/* As Muse opens: the sync noted above read in - Muse's card alone, not the
+ * whole shelf - and the new episodes said inside Muse. */
+static void pod_apply_sync(app *a)
+{
+	pod_main_poll();
 	if (g_walk_thread || !g_pod_stale) return;
 	g_pod_stale = false;
-	if (muse_src_saved() != MSRC_PODCASTS) { g_pod_added = 0; return; }
-	fprintf(stderr, "pod: reading the library again\n");
 	muse_playlists_forget();
-	rescan_all(a);
+	muse_refresh(a);
 	if (g_pod_added > 0) {
 		char m[48];
 
@@ -14740,6 +14749,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
 	}
+	pod_apply_sync(a);              /* episodes a sync found since (plorpos-ps8.1) */
 	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
 		g_muse_over = NULL;
 		g_muse_over_ctx = NULL;
@@ -20486,6 +20496,50 @@ static bool muse_dir_used(const char *dir)
 	return used;
 }
 
+typedef struct { char **k; int n, cap; } done_keys;
+
+static bool done_key_add(const char *key, const char *value, void *ctx)
+{
+	done_keys *d = ctx;
+
+	if (strcmp(value, "finished")) return true;
+	if (d->n == d->cap) {
+		int cap = d->cap ? d->cap * 2 : 256;
+		char **k = realloc(d->k, sizeof *k * (size_t)cap);
+
+		if (!k) return false;
+		d->k = k;
+		d->cap = cap;
+	}
+	return (d->k[d->n] = strdup(key)) ? (d->n++, true) : false;
+}
+
+static int done_key_cmp(const void *x, const void *y)
+{
+	return strcmp(*(char *const *)x, *(char *const *)y);
+}
+
+/* Which books are finished: the "finished" places read in one query, then
+ * looked up. A query per book was 244 ms for 4292 podcast episodes on the
+ * 34xxsp, paid at boot and on every library read (plorpos-ps8.1). */
+static void books_done_load(void)
+{
+	done_keys d = { 0 };
+	char key[LIB_PATH + 8];
+	const char *kp = key;
+	int i;
+
+	db_each_prefix(db_dev(), "book.", done_key_add, &d);
+	qsort(d.k, (size_t)d.n, sizeof *d.k, done_key_cmp);
+	for (i = 0; i < g_muse.nalbums; i++) {
+		if (!g_muse.albums[i].book || !d.n) continue;
+		book_key(i, key, sizeof key);
+		g_book_done[i] = bsearch(&kp, d.k, (size_t)d.n, sizeof *d.k, done_key_cmp) != NULL;
+	}
+	for (i = 0; i < d.n; i++) free(d.k[i]);
+	free(d.k);
+}
+
 /* Put what the walk found in place of the empty library, on the main thread:
  * the per-album arrays, the years and books from the databases, and the
  * shelf. A walk that found nothing playable takes its card off again. */
@@ -20537,14 +20591,7 @@ static void muse_install(app *a)
 		year_load();
 	}
 	flat_albums_find();
-	for (i = 0; i < g_muse.nalbums; i++) {
-		char key[LIB_PATH + 8], val[16];
-
-		if (!g_muse.albums[i].book) continue;
-		book_key(i, key, sizeof key);
-		db_get_str(db_dev(), key, val, sizeof val, "");
-		g_book_done[i] = !strcmp(val, "finished");
-	}
+	books_done_load();
 	/* The order sort_load gave the empty view is kept: fill_view uses it. */
 	if (m < a->sys.count) muse_fill_view(&a->view[m]);
 	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks in %u ms\n",
@@ -20800,6 +20847,59 @@ static void rescan_all(app *a)
 		cf_reset(&a->view[a->sys_cursor].cf, 0);
 	}
 	cf_reset(&a->cf_sys, a->sys_cursor);
+}
+
+/* Muse's library read again on its own (plorpos-ps8.1). rescan_all reads
+ * every system and drops every cover - 150-300 ms on the 34xxsp, a hitch you
+ * see - when only Muse changed. Muse is always the last card (build_muse_shelf
+ * appends it), so it goes and comes back in the same place, its card art kept.
+ * Same order of steps as rescan_all: fill, then the per-tag settings, then
+ * the sort. */
+static void muse_refresh(app *a)
+{
+	unsigned t0 = plat_now_ms();
+	int m = a->sys.count - 1;
+	SDL_Texture *card = NULL;
+	int cw = 0, ch = 0;
+	float ccb = 0;
+
+	if (g_walk_thread) return;
+	if (m >= 0 && is_muse(&a->sys.systems[m])) {
+		sysview *v = &a->view[m];
+
+		free_view_textures(v);
+		free(v->tex); free(v->tw); free(v->th); free(v->cb);
+		free(v->album);
+		lib_free(&v->list);
+		memset(v, 0, sizeof *v);
+		card = a->sys_tex[m];
+		cw = a->sys_w[m]; ch = a->sys_h[m]; ccb = a->sys_cb[m];
+		a->sys_tex[m] = NULL;
+		a->sys.count--;
+	}
+	build_muse_shelf(a, false);
+	m = a->sys.count - 1;
+	if (m >= 0 && is_muse(&a->sys.systems[m])) {
+		if (card) {
+			a->sys_tex[m] = card;
+			a->sys_w[m] = cw; a->sys_h[m] = ch; a->sys_cb[m] = ccb;
+			card = NULL;
+		}
+		display_load(a);
+		shader_load(a);
+		engine_load(a);
+		sort_load(a);
+		sort_shelf(a, m);
+		cf_reset(&a->view[m].cf, 0);
+	}
+	if (card) SDL_DestroyTexture(card);
+	/* Muse had the cursor and is gone: the shelf, as muse_install does. */
+	if (a->sys_cursor >= a->sys.count) {
+		a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
+		a->screen = SCREEN_SYSTEMS;
+		cf_reset(&a->cf_sys, a->sys_cursor);
+	}
+	fprintf(stderr, "muse: library read again in %u ms\n", plat_now_ms() - t0);
 }
 
 /* --shot <file.png> [--screen games|systems] draws one frame, writes it out
@@ -22398,7 +22498,7 @@ int main(int argc, char *argv[])
 		muse_walk_poll(&a);
 		plex_main_poll(&a);
 		abs_main_poll(&a);
-		pod_main_poll(&a);
+		pod_main_poll();
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,
