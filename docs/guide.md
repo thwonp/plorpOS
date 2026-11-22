@@ -402,9 +402,10 @@ Audiobookshelf).
   of the one you pick; the one already playing just carries on. This is the
   only way to change chapter or file in a book: L1/R1, a volume-key hold and
   a headset's next/previous all seek instead.
-- **Timeline**: every play and pause of the book, newest first, with the time
-  and where you were - including those made with the screen off. A goes back
-  to that spot.
+- **Timeline**: every play, pause and sync of the book, newest first: when,
+  what, and where you were - including those made with the screen off. A sync
+  is the place taken from Audiobookshelf because another device was further
+  on. A goes back to that spot.
 
 **Y changes the play mode on Now Playing**, and only there: in order, then
 repeat all, then repeat one, then shuffle, and round again. Its mark sits
@@ -492,7 +493,9 @@ second screen work as they do for the card's music.
   what it got so far. Downloads go in
   `Music/Plex/<artist>/<album>/` with the cover, so they are ordinary music
   when Source is the card too. A downloaded track plays from the card, even
-  on Plex.
+  on Plex. A fully downloaded album has a ↓ mark in the lists.
+- **Download Queue** shows in Muse's menu, under Plex Settings, while albums
+  are downloading: the one downloading, then the rest. X on one cancels it.
 - **Y on a track** lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
 - **Download Favorite Tracks** in Plex Settings downloads the tracks you
@@ -506,8 +509,7 @@ second screen work as they do for the card's music.
   next tracks a device that can't stream fetches while one plays, so they
   start at once. Fetched tracks share 100 MB on the card; the oldest go
   first. Devices that stream show "streams".
-- **Plex Settings** has the server, the library, both qualities, the download
-  queue (the albums still to come; X on one cancels it) and Sign Out.
+- **Plex Settings** has the server, the library, both qualities and Sign Out.
 
 Away from home, Muse reaches the server the way Plexamp does: its remote
 address, or Plex's relay. It finds the way again by itself when the network
@@ -530,10 +532,13 @@ network.
 - **Your place follows you.** Opening a book picks up where you left it,
   here or in the Audiobookshelf app, whichever was later. While a book plays,
   Muse sends its place every 15 seconds and when you pause, and marks it
-  finished at the end.
+  finished at the end. A downloaded book played without Wi-Fi sends its
+  place once it's back online, unless another device has moved on since.
 - **X on a book** downloads it, or deletes the copy. Downloads go in
   `Audiobooks/<author>/<title>/`, so they show under Local Audiobooks too,
-  and still send their place to the server.
+  and still send their place to the server. A downloaded book has a ↓ mark
+  in the lists, and while books download, **Download Queue** shows in
+  Muse's menu under Audiobookshelf Settings (X on one cancels it).
 - **Audiobookshelf Settings** has Check for Updates (only what changed),
   Resync Library (everything) and Sign Out. Muse checks every hour by itself.
 
@@ -562,7 +567,8 @@ and **Queue**. A row shows a dot and the length for an episode you have not
 started, the time left, or Played.
 
 - **A** plays an episode. It streams, so it needs Wi-Fi, unless it is
-  downloaded. It plays like a book: L1/R1 seek, X has Speed, Sleep Timer and
+  downloaded. If the stream drops, it stops and keeps your place; A carries
+  on from there. It plays like a book: L1/R1 seek, X has Speed, Sleep Timer and
   Timeline, and each episode keeps its own place.
 - An episode counts as **played** at 95%.
 - **X on an episode**: Download (or Cancel, or Delete the copy), Mark Played
@@ -574,7 +580,9 @@ started, the time left, or Played.
 - **X on a show** unsubscribes. If you downloaded some of its episodes, you
   choose whether they go too.
 
-Downloads go in `Podcasts/<show>/` and play without Wi-Fi.
+Downloads go in `Podcasts/<show>/` and play without Wi-Fi. A downloaded
+episode has a ↓ mark, and while episodes download, **Download Queue** shows
+in Muse's menu under Podcast Settings (X on one cancels it).
 **Auto-Delete** in Podcast Settings removes a download when it is played, or
 a day after; favorites are never deleted. On the Brick an episode is
 downloaded before it plays (its player cannot stream from secure sites).
