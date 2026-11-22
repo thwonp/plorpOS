@@ -13122,6 +13122,25 @@ static void np_cover(app *a, int al)
  * when the card holds one, decoded on the worker like any box art; the
  * generated card when the music carries none; nothing yet while the daemon is
  * being asked, which cover_answers settles a few milliseconds later. */
+/* Coverflow at rest on a server's albums: the covers one L1/R1 jump either
+ * way fetched to the card while nothing else is waiting, so a jump lands on
+ * drawn covers (owner, plorpos-ps8.12). Files only - no textures - and the
+ * cards on screen still go first: they are asked for after, on top. */
+static void muse_cover_ahead(const sysview *v)
+{
+	int n = v->list.count, d, k;
+
+	if (!v->album || n <= CF_WINDOW || !(g_muse_plex || g_muse_abs)) return;
+	if (!(g_muse_plex ? plex_covers_idle() : abs_covers_idle())) return;
+	for (k = CF_HALF_WINDOW + 1; k <= CF_HALF_WINDOW + CF_WINDOW; k++)
+		for (d = 1; d >= -1; d -= 2) {
+			int i = ((v->cursor + d * k) % n + n) % n, al = v->album[i];
+			char p[LIB_PATH * 2 + 8];
+
+			if (al >= 0 && al < g_muse.nalbums) cover_file(al, p, sizeof p);
+		}
+}
+
 static void muse_card_want(app *a, int s, int i)
 {
 	sysview *v = &a->view[s];
@@ -16321,6 +16340,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+		if (cover && n > 0) muse_cover_ahead(v);
 
 		/* Y marks the album under the cursor, or unmarks it. */
 		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);

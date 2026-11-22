@@ -114,6 +114,8 @@ void plex_pl_dir(char *out, size_t n);
 bool plex_cover_want(int al, const char *base);
 /* Still drawn without it: fetched sooner if it is waiting (plorpos-ps8.9). */
 void plex_cover_bump(const char *base);
+/* No cover waiting to be fetched (plorpos-ps8.12). */
+bool plex_covers_idle(void);
 /* A cover that landed: its base. False when none has. */
 bool plex_cover_take(char *base, size_t n);
 

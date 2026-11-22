@@ -121,6 +121,17 @@ void coverq_bump(coverq *q, const char *base)
 	pthread_mutex_unlock(&q->mu);
 }
 
+bool coverq_idle(coverq *q)
+{
+	bool idle;
+
+	if (!q) return true;
+	pthread_mutex_lock(&q->mu);
+	idle = q->n == 0;
+	pthread_mutex_unlock(&q->mu);
+	return idle;
+}
+
 bool coverq_take(coverq *q, char *base, size_t n)
 {
 	bool got = false;

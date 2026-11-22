@@ -25,5 +25,7 @@ void coverq_want(coverq *q, const char *src, const char *base);
 void coverq_bump(coverq *q, const char *base);
 /* One that landed, by its base: true while there are any. */
 bool coverq_take(coverq *q, char *base, size_t n);
+/* Nothing waiting (one may still be on its way): room to fetch ahead. */
+bool coverq_idle(coverq *q);
 
 #endif
