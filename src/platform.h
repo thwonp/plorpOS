@@ -441,6 +441,11 @@ void plat_rgds_child_tick(void);   /* a port's window onto the primary */
 void plat_bottom_keep(bool on);
 void plat_bottom_pump(void);
 #endif
+#if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
+/* The lid opened since the last call. Light sleep wakes on it by itself
+ * (power_key_within); Muse's dark screen asks here (plorpos-ps8.3). */
+bool plat_lid_opened(void);
+#endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
 void plat_set_sleep_timeout(int seconds);

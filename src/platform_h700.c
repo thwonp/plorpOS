@@ -507,7 +507,11 @@ static void pad_read(in_state *st)
 	}
 }
 
-/* POWER, and the lid closing as a tap of it: down now, up on the next poll. */
+static bool lid_opened;   /* plat_lid_opened's: one opening, not yet taken */
+
+/* POWER, and the lid closing as a tap of it: down now, up on the next poll.
+ * The lid opening is no button - as POWER it would sleep the shelf - but
+ * Muse's dark screen wakes on it (plat_lid_opened). */
 static void power_read(in_state *st)
 {
 	static bool lid_pulse;
@@ -520,8 +524,18 @@ static void power_read(in_state *st)
 		else if (ev.code == LID_CLOSE_KEY && ev.value == 1) {
 			set_btn(st, IN_POWER, true);
 			lid_pulse = true;
+		} else if (ev.code == LID_OPEN_KEY && ev.value == 1) {
+			lid_opened = true;
 		}
 	}
+}
+
+bool plat_lid_opened(void)
+{
+	bool was = lid_opened;
+
+	lid_opened = false;
+	return was;
 }
 
 void plat_input_poll(in_state *st)
