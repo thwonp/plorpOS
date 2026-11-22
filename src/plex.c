@@ -414,9 +414,12 @@ static int server_get(const char *path, char **body, size_t *len, int timeout_s)
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_PIN, J_SERVERS, J_LIBS, J_TIMELINE, J_FAVS, J_PICK };
-static void do_favs(void);
+enum { J_PIN, J_SERVERS, J_LIBS, J_TIMELINE, J_PLS, J_PLDL, J_PLEDIT, J_PICK };
+static void do_pls(void);
+static void do_pl_downloads(void);
 static void do_pick(void);
+struct job;
+static void do_pl_edit(struct job *j);
 typedef struct job {
 	int kind;
 	char a[320], b[600];
@@ -660,7 +663,9 @@ static void *api_main(void *arg)
 		case J_SERVERS:  do_servers(); break;
 		case J_LIBS:     do_libs(); break;
 		case J_TIMELINE: do_report(j); break;
-		case J_FAVS:     do_favs(); break;
+		case J_PLS:      do_pls(); break;
+		case J_PLDL:     do_pl_downloads(); break;
+		case J_PLEDIT:   do_pl_edit(j); break;
 		case J_PICK:     do_pick(); break;
 		}
 		free(j);
@@ -1197,6 +1202,9 @@ static void *sync_main(void *arg)
 	if (changed) g_sync_new = 1;            /* -1 (a full sync) included */
 	g_sync_last = changed ? 2 : 1;
 out:
+	/* The playlists, by the index as it now is - library changed or not
+	 * (plorpos-5eq.7). */
+	if (!g_sync_failed) plex_playlists_sync();
 	if (g_sync_failed) { g_sync_last = -1; fprintf(stderr, "plex: sync failed after %d tracks\n", g_sync_done); }
 	sset_free(&s);
 	g_sync_run = 0;
@@ -1214,11 +1222,10 @@ static volatile int g_dl_cancel;
 /* Cancel Download on an album (1lw.18): skip only the track in flight, not the
  * queue behind it, and once it has stopped, clear away album g_dl_purge. */
 static bool g_dl_skip;
-/* Plex's favorites (plorpos-1lw.16): the loved tracks' keys, in the library's
- * order, and whether the playlist wants writing once the downloads drain. */
-static int *g_fav, g_nfav;
-static bool g_fav_m3u;
-static void favs_m3u_write(void);
+/* Downloaded playlists (plorpos-5eq.7): whether their Local copies' lists
+ * want writing once the downloads drain. */
+static bool g_pl_m3u;
+static void pl_local_write_all(void);
 static int g_dl_purge = -1;
 static void purge_album(int al);
 static char g_dl_now[160];
@@ -1630,10 +1637,10 @@ static void *dl_main(void *arg)
 		while (g_dl_pos >= g_dlq_n) {
 			g_dlq_n = g_dl_pos = g_dl_total = 0;
 			g_dl_now[0] = '\0';
-			if (g_fav_m3u) {        /* a favorites sync's downloads are in */
-				g_fav_m3u = false;
+			if (g_pl_m3u) {         /* a playlist's downloads are in */
+				g_pl_m3u = false;
 				UNLOCK();
-				favs_m3u_write();
+				pl_local_write_all();
 				LOCK();
 				continue;
 			}
@@ -1923,6 +1930,8 @@ bool plex_title(const char *rel, char *out, size_t n)
 	return i >= 0;
 }
 
+/* Not inlined: each caller's buffer would get its own truncation warning. */
+__attribute__((noinline))
 void plex_pl_dir(char *out, size_t n) { snprintf(out, n, "%s/%s/Playlists", g_card, g_rel_root); }
 
 bool plex_cover_want(int al, const char *base)
@@ -2279,144 +2288,654 @@ void plex_download_cancel_album(int al)
 	if (!later) purge_album(al);
 }
 
+/* ---- playlists (plorpos-5eq.7) ---------------------------------------------------- *
+ *
+ * The Plex source's playlists are .m3u files of Plex paths in plex_pl_dir, as
+ * they always were; this keeps them the same as the server's. Pulled after
+ * every library sync: each audio playlist on the server is written over its
+ * file (the server wins - an edit made here was sent when it was made), one
+ * the server no longer has goes, and one made here that the server has not
+ * got is created there. A smart playlist is read only, and one longer than
+ * PLS_TRACKS_MAX (Plex's own "All Music" is the whole library) is left out.
+ * Favorite Tracks stays this device's own list. What is known of each is in
+ * .plex.tsv beside them: the server's id, smart or not, downloaded or not.
+ *
+ * A downloaded playlist's tracks are copied to Music/Plex as an album's are
+ * (manifest reason 'p'; 'f', the old favorites, counts as 'p'), and listed
+ * in <card>/Music/Playlists/Plex <name>.m3u for the Local source. With Keep
+ * Playlists Synced on, every pull brings the copies in line as well. */
+#define PLS_MAX        64
+#define PLS_TRACKS_MAX 2000
+#define PL_LOCAL_PRE   "Plex "
+typedef struct { char name[96]; int id; bool smart, dl; } px_pl;
+static px_pl g_pls[PLS_MAX];              /* under g_mu */
+static int   g_npls;
+static bool  g_pls_in;
+static volatile int g_pl_mirror = 1;
 static volatile int g_pl_gen;
+enum { PLE_ADD, PLE_DEL, PLE_MOVE, PLE_RENAME, PLE_DELETE };
 
-/* PLEX_FAVS_M3U twice, each rewritten whole through a temporary file: in
- * <card>/Music/Playlists the copies there are, for the Local source; in the
- * Plex source's own playlists every loved track by its Plex path, which plays
- * the copy when there is one (plex_resolve) and streams it when not. */
-static void favs_m3u_write(void)
+int plex_pl_gen(void) { return g_pl_gen; }
+void plex_set_pl_mirror(bool on) { g_pl_mirror = on; }
+
+static void pls_file(char *out, size_t n)
 {
-	char dir[700], p[800], tmp[820], f[1100], pre[700];
-	size_t pl;
-	FILE *o, *x;
+	char d[700];
+
+	plex_pl_dir(d, sizeof d);
+	snprintf(out, n, "%s/.plex.tsv", d);
+}
+
+static void pls_load_locked(void)
+{
+	char p[800], line[200];
+	FILE *f;
+
+	if (g_pls_in) return;
+	g_pls_in = true;
+	g_npls = 0;
+	pls_file(p, sizeof p);
+	if (!(f = fopen(p, "r"))) return;
+	while (g_npls < PLS_MAX && fgets(line, sizeof line, f)) {
+		px_pl *e = &g_pls[g_npls];
+		int id, smart, dl, at = 0;
+
+		line[strcspn(line, "\r\n")] = '\0';
+		if (sscanf(line, "%d\t%d\t%d\t%n", &id, &smart, &dl, &at) < 3 || !at || !line[at]) continue;
+		*e = (px_pl){ .id = id, .smart = smart != 0, .dl = dl != 0 };
+		snprintf(e->name, sizeof e->name, "%s", line + at);
+		g_npls++;
+	}
+	fclose(f);
+}
+
+static void pls_save_locked(void)
+{
+	char p[800], tmp[820], d[700];
+	FILE *f;
+	int i;
+
+	plex_pl_dir(d, sizeof d);
+	mkdirs(d);
+	pls_file(p, sizeof p);
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	if (!(f = fopen(tmp, "w"))) return;
+	for (i = 0; i < g_npls; i++)
+		fprintf(f, "%d\t%d\t%d\t%s\n", g_pls[i].id, g_pls[i].smart, g_pls[i].dl, g_pls[i].name);
+	if (fclose(f) == 0) rename(tmp, p);
+	else unlink(tmp);
+}
+
+static px_pl *pls_find_locked(const char *name)
+{
+	int i;
+
+	pls_load_locked();
+	for (i = 0; i < g_npls; i++) if (!strcmp(g_pls[i].name, name)) return &g_pls[i];
+	return NULL;
+}
+
+static px_pl *pls_get_locked(const char *name)
+{
+	px_pl *e = pls_find_locked(name);
+
+	if (e || g_npls == PLS_MAX) return e;
+	e = &g_pls[g_npls++];
+	*e = (px_pl){ 0 };
+	snprintf(e->name, sizeof e->name, "%s", name);
+	return e;
+}
+
+static void pls_drop_locked(px_pl *e)
+{
+	*e = g_pls[--g_npls];
+}
+
+bool plex_pl_smart(const char *name)
+{
+	px_pl *e;
+	bool r;
+
+	LOCK(); e = pls_find_locked(name); r = e && e->smart; UNLOCK();
+	return r;
+}
+
+bool plex_pl_downloaded(const char *name)
+{
+	px_pl *e;
+	bool r;
+
+	LOCK(); e = pls_find_locked(name); r = e && e->dl; UNLOCK();
+	return r;
+}
+
+/* The track keys of playlist `name`, in order, from its file: a Plex path's
+ * last part is "<key>.<ext>". The caller frees *out. */
+static int pl_file_keys(const char *name, int **out)
+{
+	char d[700], **v = NULL;
+	size_t rl = strlen(g_rel_root);
+	int n, i, m = 0, *k;
+
+	*out = NULL;
+	plex_pl_dir(d, sizeof d);
+	if ((n = pl_read(d, name, g_card, &v)) <= 0) { if (n == 0) pl_free(v, n); return 0; }
+	if ((k = malloc(sizeof *k * (size_t)n))) {
+		for (i = 0; i < n; i++) {
+			const char *sl = strrchr(v[i], '/');
+
+			if (strncmp(v[i], g_rel_root, rl) || !sl || atoi(sl + 1) <= 0) continue;
+			k[m++] = atoi(sl + 1);
+		}
+	}
+	pl_free(v, n);
+	*out = k;
+	return k ? m : 0;
+}
+
+/* Playlist `name`'s file, written whole from track keys; a key the index
+ * does not have (another library's, or added since the last sync) is left
+ * out. Card-relative as pl_add writes a path outside Music: "../../". */
+static void pl_file_write(const char *name, const int *keys, int n)
+{
+	char d[700], p[900], tmp[920];
+	FILE *f;
 	int i, t;
+
+	plex_pl_dir(d, sizeof d);
+	mkdirs(d);
+	snprintf(p, sizeof p, "%s/%s.m3u", d, name);
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	if (!(f = fopen(tmp, "w"))) return;
+	fputs("#EXTM3U\n", f);
+	LOCK();
+	for (i = 0; i < n; i++) {
+		const px_track *tr;
+
+		if ((t = tab_find(&g_tab, keys[i])) < 0) continue;
+		tr = &g_tab.tr[t];
+		fprintf(f, "../../%s/%d/%d/%d.%s\n", g_rel_root, g_tab.ar[g_tab.al[tr->album].artist].key,
+		        g_tab.al[tr->album].key, tr->key, ext_of(tr->part));
+	}
+	UNLOCK();
+	if (fclose(f) == 0) rename(tmp, p);
+	else unlink(tmp);
+}
+
+static void pl_local_path(const char *name, char *out, size_t n)
+{
+	snprintf(out, n, "%s/" PL_DIR_REL "/" PL_LOCAL_PRE "%.95s.m3u", g_card, name);
+}
+
+/* The Local source's list of a downloaded playlist: the copies there are. */
+static void pl_local_write(const char *name)
+{
+	char dir[700], p[900], tmp[920], f[1100], pre[700];
+	size_t pl;
+	FILE *o;
+	int *keys, n = pl_file_keys(name, &keys), i, t;
 
 	snprintf(dir, sizeof dir, "%s/" PL_DIR_REL, g_card);
 	mkdirs(dir);
-	snprintf(p, sizeof p, "%s/" PLEX_FAVS_M3U ".m3u", dir);
+	pl_local_path(name, p, sizeof p);
 	snprintf(tmp, sizeof tmp, "%s.new", p);
 	snprintf(pre, sizeof pre, "%s/Music/", g_card);
 	pl = strlen(pre);
-	plex_pl_dir(dir, sizeof dir);
-	mkdirs(dir);
-	snprintf(f, sizeof f, "%s/" PLEX_FAVS_M3U ".m3u.new", dir);
-	if (!(o = fopen(tmp, "w"))) return;
-	if (!(x = fopen(f, "w"))) { fclose(o); unlink(tmp); return; }
+	if (!(o = fopen(tmp, "w"))) { free(keys); return; }
 	fputs("#EXTM3U\n", o);
-	fputs("#EXTM3U\n", x);
 	LOCK();
-	for (i = 0; i < g_nfav; i++) {
-		const px_track *tr;
-
-		if ((t = tab_find(&g_tab, g_fav[i])) < 0) continue;
-		tr = &g_tab.tr[t];
-		/* Card-relative as pl_add writes a path outside Music: "../../". */
-		fprintf(x, "../../%s/%d/%d/%d.%s\n", g_rel_root, g_tab.ar[g_tab.al[tr->album].artist].key,
-		        g_tab.al[tr->album].key, tr->key, ext_of(tr->part));
-		if (local_copy(tr, f, sizeof f) && !strncmp(f, pre, pl)) fprintf(o, "../%s\n", f + pl);
-	}
+	for (i = 0; i < n; i++)
+		if ((t = tab_find(&g_tab, keys[i])) >= 0 && local_copy(&g_tab.tr[t], f, sizeof f) &&
+		    !strncmp(f, pre, pl))
+			fprintf(o, "../%s\n", f + pl);
 	UNLOCK();
+	free(keys);
 	if (fclose(o) == 0) rename(tmp, p);
 	else unlink(tmp);
-	snprintf(p, sizeof p, "%s/" PLEX_FAVS_M3U ".m3u", dir);
-	snprintf(tmp, sizeof tmp, "%s.new", p);
-	if (fclose(x) == 0) rename(tmp, p);
-	else unlink(tmp);
+}
+
+static void pl_local_write_all(void)
+{
+	char names[PLS_MAX][96];
+	int n = 0, i;
+
+	LOCK();
+	pls_load_locked();
+	for (i = 0; i < g_npls; i++) if (g_pls[i].dl) memcpy(names[n++], g_pls[i].name, sizeof names[0]);
+	UNLOCK();
+	for (i = 0; i < n; i++) pl_local_write(names[i]);
 	g_dl_changed = 1;
 	g_pl_gen++;
 }
 
-int plex_pl_gen(void) { return g_pl_gen; }
+static int cmp_keys(const void *x, const void *y) { return *(const int *)x - *(const int *)y; }
 
-/* The job: the server's loved tracks (rated 10, Plexamp's love), downloaded;
- * the copies of ones loved no more gone; the playlist written now and again
- * when the downloads are in. */
-static void do_favs(void)
+/* The job: the copies a downloaded playlist wants, queued; the copies no
+ * downloaded playlist wants any more gone, unless an album download wants
+ * them too; the Local lists written now and again when the downloads are in. */
+static void do_pl_downloads(void)
 {
-	char path[200], line[200], mp[700], p[1024];
-	char *b = NULL;
-	size_t len;
-	jsv root, mc, md, it = { 0 }, d;
-	int *keys = NULL, n = 0, cap = 0, i, t;
+	char names[PLS_MAX][96], mp[700], line[200], p[1024];
+	int *want = NULL, nw = 0, cap = 0, n = 0, i, j, t;
 	FILE *in;
 
-	snprintf(path, sizeof path, "/library/sections/%d/all?type=10&userRating=10"
-	         "&X-Plex-Container-Start=0&X-Plex-Container-Size=20000", C.section);
-	if (server_get(path, &b, &len, 30) != 200 || !b) {
-		free(b);
-		fprintf(stderr, "plex: favorites: the server did not answer\n");
-		return;
-	}
-	root = js_root(b, len);
-	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Metadata", &md))
-		while (js_next(md, &it, &d)) {
-			if (n == cap) {
-				int *k = realloc(keys, sizeof *k * (size_t)(cap = cap ? cap * 2 : 64));
-				if (!k) break;
-				keys = k;
-			}
-			keys[n++] = (int)jnum(d, "ratingKey");
-		}
-	free(b);
-	/* In the library's order: artist, album, track - as the shelf lists them.
-	 * A key the index does not have yet (added since the last sync) waits
-	 * for the next one. */
 	LOCK();
-	{
-		int *ord = malloc(sizeof *ord * (size_t)(n ? n : 1)), m = 0;
-
-		if (ord) {
-			for (i = 0; i < n; i++) if ((t = tab_find(&g_tab, keys[i])) >= 0) ord[m++] = t;
-			qsort(ord, (size_t)m, sizeof *ord, cmp_int);
-			for (i = 0; i < m; i++) ord[i] = g_tab.tr[ord[i]].key;
-			free(g_fav);
-			g_fav = ord; g_nfav = m;
-			for (i = 0; i < m; i++) dl_queue(g_fav[i], 'f');
-		}
-	}
+	pls_load_locked();
+	for (i = 0; i < g_npls; i++) if (g_pls[i].dl) memcpy(names[n++], g_pls[i].name, sizeof names[0]);
 	UNLOCK();
-	fprintf(stderr, "plex: favorites: %d loved\n", n);
-	/* Copies that came as favorites and are favorites no more, unless an
-	 * album download wants them too. */
+	for (i = 0; i < n; i++) {
+		int *k, m = pl_file_keys(names[i], &k);
+
+		if (nw + m > cap) {
+			int *w = realloc(want, sizeof *w * (size_t)(cap = nw + m + 64));
+			if (!w) { free(k); break; }
+			want = w;
+		}
+		for (j = 0; j < m; j++) want[nw++] = k[j];
+		free(k);
+	}
+	if (nw) qsort(want, (size_t)nw, sizeof *want, cmp_keys);
+	LOCK();
+	for (i = 0; i < nw; i++)
+		if (i == 0 || want[i] != want[i - 1]) dl_queue(want[i], 'p');
+	UNLOCK();
+	fprintf(stderr, "plex: playlists: %d downloaded, %d tracks wanted\n", n, nw);
 	manifest_path(mp, sizeof mp);
 	pthread_mutex_lock(&g_man_mu);
 	in = fopen(mp, "r");
 	pthread_mutex_unlock(&g_man_mu);
 	if (in) {
-		int gone[512], ng = 0;
+		int *gone = NULL, ng = 0, gcap = 0;
+		char *why = NULL;
 
-		while (fgets(line, sizeof line, in) && ng < 512) {
-			int k = atoi(line), j;
+		while (fgets(line, sizeof line, in)) {
+			int k = atoi(line);
 			char *tab = strchr(line, '\t');
 
-			if (!tab || tab[1] != 'f') continue;
-			for (j = 0; j < n && keys[j] != k; j++) {}
-			if (j == n) gone[ng++] = k;
+			if (!tab || (tab[1] != 'p' && tab[1] != 'f')) continue;
+			if (nw && bsearch(&k, want, (size_t)nw, sizeof *want, cmp_keys)) continue;
+			if (ng == gcap) {
+				int *g = realloc(gone, sizeof *g * (size_t)(gcap = gcap ? gcap * 2 : 64));
+				char *w = realloc(why, (size_t)gcap);
+				if (g) gone = g;
+				if (w) why = w;
+				if (!g || !w) break;
+			}
+			why[ng] = tab[1];
+			gone[ng++] = k;
 		}
 		fclose(in);
 		for (i = 0; i < ng; i++) {
-			manifest_set(gone[i], 'f', false);
+			manifest_set(gone[i], why[i], false);
 			if (manifest_has(gone[i], 'a')) continue;
 			LOCK();
 			if ((t = tab_find(&g_tab, gone[i])) >= 0 && local_copy(&g_tab.tr[t], p, sizeof p))
 				remove_copy(p);
 			UNLOCK();
 		}
+		free(gone);
+		free(why);
 	}
-	free(keys);
-	favs_m3u_write();
+	free(want);
+	/* The list the old Download Favorite Tracks wrote, on both sources. */
+	snprintf(p, sizeof p, "%s/" PL_DIR_REL "/Plex Favorites.m3u", g_card);
+	unlink(p);
+	plex_pl_dir(mp, sizeof mp);
+	snprintf(p, sizeof p, "%s/Plex Favorites.m3u", mp);
+	unlink(p);
+	pl_local_write_all();
 	LOCK();
-	g_fav_m3u = true;
+	g_pl_m3u = true;
 	UNLOCK();
 	dl_start();
 }
 
-void plex_sync_favorites(void)
+void plex_pl_download(const char *name, bool on)
 {
-	job *j = job_new(J_FAVS);
+	px_pl *e;
+	job *j;
+
+	LOCK();
+	if ((e = pls_get_locked(name))) { e->dl = on; pls_save_locked(); }
+	UNLOCK();
+	if (!on) {
+		char p[900];
+
+		pl_local_path(name, p, sizeof p);
+		unlink(p);
+	}
+	g_pl_gen++;
+	if ((j = job_new(J_PLDL))) push(j, false);
+}
+
+/* "server://<machine>/com.plexapp.plugins.library/library/metadata/<k,k,...>",
+ * urlencoded, for a playlist's uri= parameter. */
+static void pl_uri(const int *keys, int n, char *out, size_t cap)
+{
+	char raw[6000];
+	size_t o;
+	int i;
+
+	o = (size_t)snprintf(raw, sizeof raw, "server://%s/com.plexapp.plugins.library/library/metadata/", C.server_id);
+	for (i = 0; i < n && o + 16 < sizeof raw; i++)
+		o += (size_t)snprintf(raw + o, sizeof raw - o, "%s%d", i ? "," : "", keys[i]);
+	urlenc(raw, out, cap);
+}
+
+static int server_send(const char *method, const char *path, char **body, size_t *len)
+{
+	char base[256], url[20000];
+	int code;
+
+	if (!pick_base(base, sizeof base)) return 0;
+	snprintf(url, sizeof url, "%s%s", base, path);
+	code = plex_req(method, url, true, body, len, 20);
+	if (code == 0) base_failed();
+	return code;
+}
+
+/* Playlist `name` made on the server from its file here; its id, or 0. Sent
+ * in parts: a uri of a few hundred keys is as long as a request line gets. */
+static int pl_create(const char *name)
+{
+	char title[400], uri[18000], path[19000], *b = NULL, v[32] = "";
+	size_t len;
+	jsv root, mc, md, it = { 0 }, d;
+	int *keys, n = pl_file_keys(name, &keys), id = 0, at;
+
+	if (n <= 0) { free(keys); return 0; }           /* Plex makes none empty */
+	urlenc(name, title, sizeof title);
+	pl_uri(keys, n < 300 ? n : 300, uri, sizeof uri);
+	snprintf(path, sizeof path, "/playlists?type=audio&smart=0&title=%s&uri=%s", title, uri);
+	if (server_send("POST", path, &b, &len) == 200 && b) {
+		root = js_root(b, len);
+		if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Metadata", &md) &&
+		    js_next(md, &it, &d)) {
+			jstr(d, "ratingKey", v, sizeof v);
+			id = atoi(v);
+		}
+	}
+	free(b);
+	for (at = 300; id && at < n; at += 300) {
+		pl_uri(keys + at, n - at < 300 ? n - at : 300, uri, sizeof uri);
+		snprintf(path, sizeof path, "/playlists/%d/items?uri=%s", id, uri);
+		if (server_send("PUT", path, NULL, NULL) != 200) break;
+	}
+	free(keys);
+	if (id) fprintf(stderr, "plex: playlist %s made on the server (%d tracks)\n", name, n);
+	return id;
+}
+
+/* The server's item ids of playlist `id`, with each one's track key. */
+static int pl_items(int id, int **keys, int **items)
+{
+	char path[160], *b = NULL;
+	size_t len;
+	jsv root, mc, md, it = { 0 }, d;
+	int n = 0, cap = 0, *k = NULL, *im = NULL;
+
+	*keys = *items = NULL;
+	snprintf(path, sizeof path, "/playlists/%d/items?X-Plex-Container-Start=0&X-Plex-Container-Size=%d",
+	         id, PLS_TRACKS_MAX);
+	if (server_get(path, &b, &len, 30) != 200 || !b) { free(b); return -1; }
+	root = js_root(b, len);
+	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Metadata", &md))
+		while (js_next(md, &it, &d)) {
+			if (n == cap) {
+				int *k2 = realloc(k, sizeof *k2 * (size_t)(cap = cap ? cap * 2 : 128));
+				int *i2 = k2 ? realloc(im, sizeof *i2 * (size_t)cap) : NULL;
+				if (k2) k = k2;
+				if (i2) im = i2;
+				if (!k2 || !i2) break;
+			}
+			k[n] = (int)jnum(d, "ratingKey");
+			im[n++] = (int)jnum(d, "playlistItemID");
+		}
+	free(b);
+	*keys = k;
+	*items = im;
+	return n;
+}
+
+/* The pull, and the push of what was made here. */
+static void do_pls(void)
+{
+	typedef struct { int id, leaf; bool smart; char name[96]; } spl;
+	char *b = NULL, d[700], p[900];
+	size_t len;
+	jsv root, mc, md, it = { 0 }, e;
+	spl *sv;
+	pl_info *have;
+	int ns = 0, nh, i, j;
+
+	if (!g_tab.ntr) return;                     /* no index yet: its sync comes first */
+	if (server_get("/playlists?playlistType=audio", &b, &len, 30) != 200 || !b) {
+		free(b);
+		fprintf(stderr, "plex: playlists: the server did not answer\n");
+		return;
+	}
+	if (!(sv = calloc(PLS_MAX, sizeof *sv)) || !(have = calloc(PLS_MAX, sizeof *have))) { free(sv); free(b); return; }
+	root = js_root(b, len);
+	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Metadata", &md))
+		while (ns < PLS_MAX && js_next(md, &it, &e)) {
+			char title[200] = "";
+			jsv v;
+
+			jstr(e, "title", title, sizeof title);
+			sv[ns].id = (int)jnum(e, "ratingKey");
+			sv[ns].leaf = (int)jnum(e, "leafCount");
+			sv[ns].smart = js_member(e, "smart", &v) && js_is_true(v);
+			safe_name(title, sv[ns].name, 90);
+			if (!sv[ns].id || !sv[ns].name[0] || !strcmp(sv[ns].name, PLEX_FAVS)) continue;
+			if (sv[ns].leaf > PLS_TRACKS_MAX) {
+				fprintf(stderr, "plex: playlist %s left out (%d tracks)\n", sv[ns].name, sv[ns].leaf);
+				continue;
+			}
+			ns++;
+		}
+	free(b);
+	plex_pl_dir(d, sizeof d);
+	/* The server's, each over its file. */
+	for (i = 0; i < ns; i++) {
+		int *keys, *items, n = pl_items(sv[i].id, &keys, &items);
+		px_pl *pe;
+		char was[96] = "";
+
+		if (n < 0) { free(keys); free(items); continue; }
+		LOCK();
+		pls_load_locked();
+		for (j = 0; j < g_npls; j++)
+			if (g_pls[j].id == sv[i].id && strcmp(g_pls[j].name, sv[i].name)) {
+				memcpy(was, g_pls[j].name, sizeof was);               /* renamed there */
+				memcpy(g_pls[j].name, sv[i].name, sizeof g_pls[j].name);
+			}
+		if ((pe = pls_get_locked(sv[i].name))) { pe->id = sv[i].id; pe->smart = sv[i].smart; }
+		UNLOCK();
+		if (was[0]) {
+			snprintf(p, sizeof p, "%s/%s.m3u", d, was);
+			unlink(p);
+			pl_local_path(was, p, sizeof p);
+			unlink(p);
+		}
+		pl_file_write(sv[i].name, keys, n);
+		free(keys);
+		free(items);
+	}
+	/* Gone from the server: gone here. */
+	LOCK();
+	pls_load_locked();
+	for (j = 0; j < g_npls; ) {
+		if (g_pls[j].id > 0) {
+			for (i = 0; i < ns && sv[i].id != g_pls[j].id; i++) {}
+			if (i == ns) {
+				char gone[96];
+
+				memcpy(gone, g_pls[j].name, sizeof gone);
+				pls_drop_locked(&g_pls[j]);
+				UNLOCK();
+				snprintf(p, sizeof p, "%s/%s.m3u", d, gone);
+				unlink(p);
+				pl_local_path(gone, p, sizeof p);
+				unlink(p);
+				fprintf(stderr, "plex: playlist %s is gone from the server\n", gone);
+				LOCK();
+				continue;
+			}
+		}
+		j++;
+	}
+	UNLOCK();
+	/* Made here, not there yet. */
+	nh = pl_list(d, have, PLS_MAX);
+	for (i = 0; i < nh; i++) {
+		px_pl *pe;
+		int id;
+		bool known;
+
+		if (!strcmp(have[i].name, PLEX_FAVS)) continue;
+		LOCK(); pe = pls_find_locked(have[i].name); known = pe && pe->id > 0; UNLOCK();
+		if (known || !(id = pl_create(have[i].name))) continue;
+		LOCK();
+		if ((pe = pls_get_locked(have[i].name))) pe->id = id;
+		UNLOCK();
+	}
+	LOCK();
+	pls_save_locked();
+	UNLOCK();
+	free(sv);
+	free(have);
+	g_pl_gen++;
+	fprintf(stderr, "plex: playlists: %d on the server\n", ns);
+	if (g_pl_mirror) do_pl_downloads();
+}
+
+void plex_playlists_sync(void)
+{
+	job *j = job_new(J_PLS);
 
 	if (j) push(j, false);
+}
+
+/* An edit made here, sent: by track key, not by place - the server's list
+ * may hold tracks this library's index has not. */
+static void do_pl_edit(job *j)
+{
+	char path[19000], uri[400], title[400];
+	int id = (int)j->n2, key = (int)j->n3, code = 200;
+
+	switch ((int)j->n1) {
+	case PLE_ADD:
+		if (!id) {
+			px_pl *pe;
+
+			if (!(id = pl_create(j->a))) { code = 0; break; }
+			LOCK();
+			if ((pe = pls_get_locked(j->a))) { pe->id = id; pls_save_locked(); }
+			UNLOCK();
+			break;
+		}
+		pl_uri(&key, 1, uri, sizeof uri);
+		snprintf(path, sizeof path, "/playlists/%d/items?uri=%s", id, uri);
+		code = server_send("PUT", path, NULL, NULL);
+		break;
+	case PLE_DEL:
+	case PLE_MOVE: {
+		int *keys, *items, n, i, item = 0, after = 0, akey = atoi(j->b);
+
+		if (!id) break;
+		if ((n = pl_items(id, &keys, &items)) < 0) { code = 0; break; }
+		for (i = 0; i < n; i++) {
+			if (!item && keys[i] == key) item = items[i];
+			if (!after && akey && keys[i] == akey) after = items[i];
+		}
+		free(keys);
+		free(items);
+		if (!item || (akey && !after)) break;       /* not there: the next pull settles it */
+		if (j->n1 == PLE_DEL) snprintf(path, sizeof path, "/playlists/%d/items/%d", id, item);
+		else if (after) snprintf(path, sizeof path, "/playlists/%d/items/%d/move?after=%d", id, item, after);
+		else snprintf(path, sizeof path, "/playlists/%d/items/%d/move", id, item);
+		code = server_send(j->n1 == PLE_DEL ? "DELETE" : "PUT", path, NULL, NULL);
+		break;
+	}
+	case PLE_RENAME:
+		if (!id) break;
+		urlenc(j->b, title, sizeof title);
+		snprintf(path, sizeof path, "/playlists/%d?title=%s", id, title);
+		code = server_send("PUT", path, NULL, NULL);
+		break;
+	case PLE_DELETE:
+		if (!id) break;
+		snprintf(path, sizeof path, "/playlists/%d", id);
+		code = server_send("DELETE", path, NULL, NULL);
+		if (code == 204) code = 200;
+		break;
+	}
+	if (code != 200) {
+		fprintf(stderr, "plex: a playlist change did not reach the server (http %d)\n", code);
+		g_dl_fail_note = 1;
+	}
+}
+
+static void pl_edit(int op, const char *name, const char *b, int key)
+{
+	px_pl *e;
+	job *j = job_new(J_PLEDIT);
+
+	if (!j) return;
+	LOCK();
+	e = pls_find_locked(name);
+	j->n1 = op;
+	j->n2 = e ? e->id : 0;
+	j->n3 = key;
+	snprintf(j->a, sizeof j->a, "%s", name);
+	snprintf(j->b, sizeof j->b, "%s", b ? b : "");
+	if (e && op == PLE_RENAME) { snprintf(e->name, sizeof e->name, "%.95s", b); pls_save_locked(); }
+	if (e && op == PLE_DELETE) { pls_drop_locked(e); pls_save_locked(); }
+	UNLOCK();
+	if (op == PLE_RENAME || op == PLE_DELETE) {
+		char p[900], q[900];
+
+		pl_local_path(name, p, sizeof p);
+		if (op == PLE_RENAME) { pl_local_path(b, q, sizeof q); rename(p, q); }
+		else unlink(p);
+	}
+	push(j, false);
+}
+
+static int rel_key(const char *rel)
+{
+	const char *sl = rel ? strrchr(rel, '/') : NULL;
+
+	return sl && plex_is_path(rel) ? atoi(sl + 1) : 0;
+}
+
+void plex_pl_added(const char *name, const char *track)
+{
+	if (strcmp(name, PLEX_FAVS) && rel_key(track)) pl_edit(PLE_ADD, name, NULL, rel_key(track));
+}
+
+void plex_pl_removed(const char *name, const char *track)
+{
+	if (strcmp(name, PLEX_FAVS) && rel_key(track)) pl_edit(PLE_DEL, name, NULL, rel_key(track));
+}
+
+void plex_pl_moved(const char *name, const char *track, const char *after)
+{
+	char ak[16];
+
+	if (!strcmp(name, PLEX_FAVS) || !rel_key(track)) return;
+	snprintf(ak, sizeof ak, "%d", rel_key(after));
+	pl_edit(PLE_MOVE, name, ak, rel_key(track));
+}
+
+void plex_pl_renamed(const char *from, const char *to)
+{
+	if (strcmp(from, PLEX_FAVS)) pl_edit(PLE_RENAME, from, to, 0);
+}
+
+void plex_pl_deleted(const char *name)
+{
+	if (strcmp(name, PLEX_FAVS)) pl_edit(PLE_DELETE, name, NULL, 0);
 }
 
 void plex_download_cancel(void)

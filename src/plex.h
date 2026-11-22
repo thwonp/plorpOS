@@ -154,15 +154,28 @@ bool plex_album_downloading(int al);
 typedef struct { int al, tracks; bool now; char title[96], artist[64]; } plex_queued;
 int  plex_download_queue(plex_queued *out, int max);
 void plex_download_cancel_album(int al);
-/* In the background: download the tracks loved on Plex (rated 10), delete
- * the copies of ones loved no more, and write PLEX_FAVS_M3U in
- * <card>/Music/Playlists with the copies, so it plays on the Local source
- * (plorpos-1lw.16). Again later mirrors Plex again. */
-#define PLEX_FAVS_M3U "Plex Favorites"
-/* Goes up each time that sync rewrites its playlists: a cached list of them
- * is stale. */
+/* Playlists (plorpos-5eq.7). The Plex source's are files in plex_pl_dir, kept
+ * the same as the server's: plex_playlists_sync pulls them (and runs after
+ * every library sync), and an edit made here is told to the server with the
+ * calls below, after the file has changed - a track by its library path, a
+ * move by the track it now comes after (NULL: first). Favorite Tracks is
+ * this device's own and is never sent. */
+void plex_playlists_sync(void);
+bool plex_pl_smart(const char *name);       /* the server's own rule: read only */
+void plex_pl_added(const char *name, const char *track);
+void plex_pl_removed(const char *name, const char *track);
+void plex_pl_moved(const char *name, const char *track, const char *after);
+void plex_pl_renamed(const char *from, const char *to);
+void plex_pl_deleted(const char *name);
+/* A downloaded playlist: its tracks copied to Music/Plex, and listed for the
+ * Local source as "Plex <name>" in <card>/Music/Playlists. With the mirror
+ * on (the default) every pull brings the copies in line. */
+bool plex_pl_downloaded(const char *name);
+void plex_pl_download(const char *name, bool on);
+void plex_set_pl_mirror(bool on);
+/* Goes up each time the playlists change under the shelf: a cached list of
+ * them is stale. */
 int  plex_pl_gen(void);
-void plex_sync_favorites(void);
 void plex_download_cancel(void);
 /* "3 of 12 - Title" while downloads run; false when none do. */
 bool plex_download_status(char *out, size_t n);
