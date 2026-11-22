@@ -1533,6 +1533,7 @@ static void book_keep(bool now)
 	const mu_now *mn = musec_now();
 	const char *track;
 	bool ran_out = musec_take_ran_out();
+	static struct { int al, index; double at, len; } seen = { -1, 0, 0, 0 };   /* last heard */
 	int al;
 
 	if (!musec_is_book() || !g_book_done) { g_bk.al = -1; return; }
@@ -1557,8 +1558,28 @@ static void book_keep(bool now)
 		g_bk.al = -1;
 		return;
 	}
-	if (ran_out) { book_finish(al); g_bk.al = -1; return; }
+	if (ran_out) {
+		/* The end, when the book was last heard near it. An END that came
+		 * with the last file minutes from done, or an earlier file playing,
+		 * is not one: it marked a book finished mid-way once, after a
+		 * launcher restart, and for a server's book that goes to the server
+		 * (plorpos-9rf.11). The place stays; A plays on from it. */
+		if (seen.al == al && seen.len > 0 &&
+		    (seen.index < g_muse.albums[al].n - 1 || seen.at < seen.len - 120)) {
+			const char *st = musec_track(seen.index);
+
+			fprintf(stderr, "muse: %s ended at file %d, %.0f of %.0f s: not finished, place kept\n",
+			        g_muse.albums[al].name, seen.index + 1, seen.at, seen.len);
+			if (st) book_write(al, st, seen.at);
+			if (seen.index == mn->index) musec_start_at(seen.at);
+		} else {
+			book_finish(al);
+		}
+		seen.al = g_bk.al = -1;
+		return;
+	}
 	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return;
+	seen.al = al; seen.index = mn->index; seen.at = mn->at; seen.len = mn->len;
 	if (pod_is_path(track)) pod_len_note(al, mn->len);
 	if (mn->len > 0 && mn->at >= 0.95 * mn->len && pod_is_path(track)) {
 		/* Played; its place is not kept past here, or it would be
@@ -1717,6 +1738,19 @@ static void book_speed_key(int al, char *out, size_t n)
 
 static double book_speed(int al);
 
+/* What Muse plays outside the queue, as a library path: a card file as it
+ * is, an Audiobookshelf stream or a podcast episode mapped back. NULL when
+ * nothing is, or it is a stream of no Source. */
+static const char *muse_orphan_rel(void)
+{
+	const char *t = musec_orphan();
+	static char rel[LIB_PATH];
+
+	if (!t[0]) return NULL;
+	if (abs_rel_of(t, rel, sizeof rel) || pod_rel_of(t, rel, sizeof rel)) return rel;
+	return strstr(t, "://") ? NULL : t;
+}
+
 /* A book Muse played on through a launcher restart (plorpos-3yv.71): its
  * files were never in the kept queue, so musec let the queue go. Once the
  * library is in, the book's files are the queue again, at the one playing -
@@ -1729,15 +1763,31 @@ static void muse_adopt_orphan(void)
 	const char *t = musec_orphan();
 	const mu_now *mn = musec_now();
 	const char **paths;
-	static char rel[LIB_PATH];
+	static unsigned kept_gen;       /* the library it was not in (plorpos-9rf.12) */
+	static bool kept;
 	int al, i, start = 0;
 
-	if (!t[0] || g_walk_thread || g_muse.ntracks == 0) return;
+	if (!t[0]) { kept = false; return; }
+	if (g_walk_thread || g_muse.ntracks == 0) return;
+	if (kept && kept_gen == g_muse_gen) return;
 	al = ml_album_of(&g_muse, t);
-	/* An Audiobookshelf book's file, playing from its stream URL. */
-	if (al < 0 && abs_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
-	/* A podcast episode, streamed or from its download (plorpos-7ni.5). */
-	if (al < 0 && pod_rel_of(t, rel, sizeof rel)) { t = rel; al = ml_album_of(&g_muse, t); }
+	/* An Audiobookshelf book's file, playing from its stream URL; a podcast
+	 * episode, streamed or from its download (plorpos-7ni.5). */
+	if (al < 0 && (t = muse_orphan_rel())) al = ml_album_of(&g_muse, t);
+	if (al < 0 && t && (mn->state == MU_PLAYING || mn->state == MU_PAUSED) &&
+	    (abs_is_path(t) || pod_is_path(t) || !strncmp(t, "Audiobooks/", 11) ||
+	     !strncmp(t, "Podcasts/", 9))) {
+		/* A book of another Source's library - the launcher came back on
+		 * Podcasts with an Audiobookshelf book paused, or its library is
+		 * not read in yet: kept, and tried again when the library changes
+		 * (muse_src_follow goes to its Source). Let go, SELECT opened the
+		 * tabs and the book was out of reach (plorpos-9rf.12). */
+		if (!kept) fprintf(stderr, "muse: what plays is not in this library: kept for its own\n");
+		kept = true;
+		kept_gen = g_muse_gen;
+		return;
+	}
+	kept = false;
 	if (al < 0 || !g_muse.albums[al].book ||
 	    (mn->state != MU_PLAYING && mn->state != MU_PAUSED) ||
 	    !(paths = calloc((size_t)g_muse.albums[al].n, sizeof *paths))) {
@@ -14872,7 +14922,9 @@ static void muse_src_follow(app *a)
 	muse_src was = muse_src_saved(), to;
 
 	if (g_walk_thread || (mn->state != MU_PLAYING && mn->state != MU_PAUSED)) return;
-	if (!(t = musec_track(mn->index)) || !t[0] || (to = muse_src_of(t)) == was) return;
+	/* Or the book kept outside the queue since a restart (plorpos-9rf.12). */
+	if (!(t = musec_track(mn->index)) || !t[0]) t = muse_orphan_rel();
+	if (!t || !t[0] || (to = muse_src_of(t)) == was) return;
 	if (to == MSRC_ABS && was == MSRC_BOOKS && !abs_is_path(t)) return;   /* a downloaded copy */
 	if (to == MSRC_MUSIC && was == MSRC_PLEX && !strncmp(t, "Music/Plex/", 11)) return;
 	if (!muse_src_offered(to)) return;
@@ -14884,6 +14936,7 @@ static void muse_src_follow(app *a)
 	muse_playlists_forget();
 	wait_panel(a, "Muse", "Loading...");
 	muse_refresh(a);
+	muse_adopt_orphan();            /* its files are the queue again, now that they are here */
 }
 
 static bool muse_open(app *a, const menu_style *over, void *ctx)
