@@ -4232,6 +4232,27 @@ static void draw_play(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color 
 	SDL_RenderGeometry(r, NULL, v, 3, NULL, 0);
 }
 
+/* Downloaded: an arrow down onto a tray, in the heart's seat and of its
+ * size (owner, plorpos-ps8.7). */
+static void draw_download(SDL_Renderer *r, float cx, float cy, float rad, SDL_Color col)
+{
+	float s = rad * 0.22f;                 /* half the stem's width */
+	SDL_Vertex v[] = {
+		/* the stem */
+		{ { cx - s, cy - rad * 0.95f }, col, { 0, 0 } }, { { cx + s, cy - rad * 0.95f }, col, { 0, 0 } },
+		{ { cx + s, cy + rad * 0.05f }, col, { 0, 0 } }, { { cx - s, cy + rad * 0.05f }, col, { 0, 0 } },
+		/* the head */
+		{ { cx - rad * 0.7f, cy - rad * 0.1f }, col, { 0, 0 } }, { { cx + rad * 0.7f, cy - rad * 0.1f }, col, { 0, 0 } },
+		{ { cx, cy + rad * 0.6f }, col, { 0, 0 } },
+		/* the tray */
+		{ { cx - rad * 0.9f, cy + rad * 0.75f }, col, { 0, 0 } }, { { cx + rad * 0.9f, cy + rad * 0.75f }, col, { 0, 0 } },
+		{ { cx + rad * 0.9f, cy + rad * 0.95f + s }, col, { 0, 0 } }, { { cx - rad * 0.9f, cy + rad * 0.95f + s }, col, { 0, 0 } },
+	};
+	int idx[] = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 7, 8, 9, 7, 9, 10 };
+
+	SDL_RenderGeometry(r, NULL, v, (int)(sizeof v / sizeof v[0]), idx, (int)(sizeof idx / sizeof idx[0]));
+}
+
 /* A filled circle, as a fan from its center like draw_heart. */
 #define ORB_N 40
 
@@ -5001,6 +5022,7 @@ typedef struct {
 	const char *(*title)(void *ctx, int i);
 	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
 	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
+	bool (*dl)(void *ctx, int i);             /* on the card (ps8.7); NULL: no mark */
 	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
 	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
@@ -5359,8 +5381,9 @@ static void gl_draw(app *a, const gl_list *L)
 		int ty = y + (g.row_h - mline) / 2;
 		SDL_Rect row = { GL_PAD / 2, y, g.col_w + GL_PAD, g.row_h };
 		bool fav = L->fav && L->fav(L->ctx, i);
+		bool dl = L->dl && L->dl(L->ctx, i);
 		int now = L->now ? L->now(L->ctx, i) : 0;
-		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0);  /* icons, then a gap */
+		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0) + (dl ? hrad * 3 : 0);  /* icons, then a gap */
 		int tw = g.col_w - (tx - GL_PAD);
 
 		if (i == cur) {
@@ -5376,6 +5399,9 @@ static void gl_draw(app *a, const gl_list *L)
 		if (fav)
 			draw_heart(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0)), (float)(y + g.row_h / 2),
 			           (float)hrad, i == cur ? UI_TEXT : ac);
+		if (dl)
+			draw_download(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0)),
+			              (float)(y + g.row_h / 2), (float)hrad, i == cur ? UI_TEXT : ac);
 		if (val && *val) {
 			int vw = ui_text_width(fv, val);
 
@@ -15139,6 +15165,43 @@ static bool mal_fav(void *ctx, int i)
 	return muse_fav_is(a->view[a->sys_cursor].list.items[i].file);
 }
 
+/* Album al on the card, for its row's mark (owner, plorpos-ps8.7): an
+ * episode downloaded, a server book downloaded, a Plex album with every
+ * track there. ABS and Plex look at the card, so it is kept per album until
+ * the library is read again - which a finished download brings. */
+static bool muse_album_on_card(int al)
+{
+	static signed char *seen;            /* per album: 0 not looked, 1 no, 2 yes */
+	static unsigned gen;
+	static int n;
+
+	if (al < 0 || al >= g_muse.nalbums) return false;
+	if (g_muse_pod) return pod_downloaded(al, NULL, 0);
+	if (!g_muse_abs && !g_muse_plex) return false;
+	if (!seen || gen != g_muse_gen || n != g_muse.nalbums) {
+		free(seen);
+		seen = calloc((size_t)g_muse.nalbums, 1);
+		gen = g_muse_gen;
+		n = g_muse.nalbums;
+		if (!seen) return false;
+	}
+	if (!seen[al]) {
+		bool yes = g_muse_abs ? abs_book_downloaded(al) > 0
+		         : g_muse.albums[al].n > 0 && plex_album_downloaded(al) >= g_muse.albums[al].n;
+
+		seen[al] = yes ? 2 : 1;
+	}
+	return seen[al] == 2;
+}
+
+static bool mal_dl(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+
+	return v->album && i >= 0 && i < v->list.count && muse_album_on_card(v->album[i]);
+}
+
 /* A tab's name, by tab number, for the kind shown. */
 static const char *muse_tab_name(int t)
 {
@@ -15885,6 +15948,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (g_muse_pod && tab == MT_COVERFLOW && ar < 0 && L->n > 1) L->note = "L1/R1 reorder";
 	if (g_muse_pod) L->now = mal_pod_now;
 	L->fav = mal_fav;
+	L->dl = mal_dl;
 	L->art = gl_game_art;
 	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."
 	                       : tab == MT_PLAYLISTS ? "No downloads yet. X on an episode downloads it."
