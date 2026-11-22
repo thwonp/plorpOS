@@ -1664,6 +1664,7 @@ static void muse_poll(void)
 	 * order, so the queue's index is the file's (plorpos-9rf.5). */
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
+	abs_unsent_retry();             /* places made offline (ps8.15) */
 	{
 		int idx;
 		double at;

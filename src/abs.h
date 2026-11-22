@@ -82,6 +82,9 @@ bool abs_rel_of(const char *daemon_path, char *out, size_t n);
 /* The server's places, asked again (at most every few seconds): on the way
  * into Muse, so a place moved elsewhere is there before a book opens. */
 void abs_progress_refresh(void);
+/* Places the server could not take, sent again while online, every 30 s at
+ * most; cheap when there are none - from muse_poll (plorpos-ps8.15). */
+void abs_unsent_retry(void);
 /* Book `track` (any of its files, card-relative: the source's path or a
  * downloaded copy): when the server's place is newer than the one this
  * device knows, 1 with the file's index and the seconds into it, 2 when the
