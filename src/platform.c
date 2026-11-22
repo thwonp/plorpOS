@@ -486,6 +486,7 @@ static void level_nudge(bool bright, int d)
  * key reads (PortMaster, native PICO-8) and by Diatom's "SKIP dir=..." line
  * (plorpos-7wu.3, .5). One slot: the tick is ten a second. */
 static int g_musickey;
+static int g_skip_keys = 3;     /* plat_skip_keys: bit 0 Vol+, bit 1 Vol- */
 int plat_musickey_take(void)
 {
 	int v = g_musickey;
@@ -561,7 +562,7 @@ static void lv_press(lv_hold *h, int fd, int code, bool bright, int d)
 		lv_moved[k] = !bright && plat_volume_get() != before;
 	}
 	lv_hold_start(h, fd, code, bright, d);
-	if (!bright && lv_muse) {
+	if (!bright && lv_muse && (g_skip_keys >> k & 1)) {
 		h->skip = true;
 		h->next = plat_now_ms() + SKIP_HOLD_MS;
 		if (!h->next) h->next = 1;
@@ -1167,6 +1168,7 @@ static int    d_pend_bri = -1, d_pend_bri_n;      /* EXIT hands levels back  */
 /* Diatom's QUIET, its ADR-0032: what the launcher wants, and what this
  * connection was last told. -1 is "never told", which a new connection is. */
 static int    d_quiet, d_quiet_said = -1;
+static int    d_skip_said = -1;      /* the SETSKIP mask Diatom last heard */
 
 const char *plat_resident_socket(void)
 {
@@ -1541,6 +1543,8 @@ bool plat_resident_send(const plat_game *g)
 		 * sample - a game started while music plays never makes a sound -
 		 * and sent every time, a resident that restarted cannot start loud. */
 		if (dsend("SETQUIET\ton=%d", d_quiet)) d_quiet_said = d_quiet;
+		/* And which volume holds are Muse's, beside it (plorpos-5eq.14). */
+		if (dsend("SETSKIP\tindex=%d", g_skip_keys)) d_skip_said = g_skip_keys;
 
 		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
 		 * three frames before Diatom reads another message, so a chain sent
@@ -1691,6 +1695,13 @@ void plat_resident_quiet(bool on)
 	 * and the next RUN sends it anyway. */
 	if (dsock >= 0 && d_quiet != d_quiet_said && dsend("SETQUIET\ton=%d", d_quiet))
 		d_quiet_said = d_quiet;
+}
+
+void plat_skip_keys(int mask)
+{
+	g_skip_keys = mask & 3;
+	if (dsock >= 0 && g_skip_keys != d_skip_said && dsend("SETSKIP\tindex=%d", g_skip_keys))
+		d_skip_said = g_skip_keys;
 }
 
 bool plat_resident_line(const char *fmt, ...)

@@ -298,6 +298,10 @@ int  plat_resident_volume(int *count);
  * plat_run's own key reads): a hold while Muse plays is next/previous track,
  * both keys together are pause/play. Taken once by the launcher's game tick. */
 enum { MUSICKEY_NONE = 0, MUSICKEY_NEXT, MUSICKEY_PREV, MUSICKEY_TOGGLE };
+/* Which volume keys' holds are Muse's while a game runs: bit 0 Vol+, bit 1
+ * Vol-. A key whose Hotkeys row is None keeps its volume repeat instead
+ * (plorpos-5eq.14). Told to Diatom (SETSKIP) and to plat_run's own reads. */
+void plat_skip_keys(int mask);
 int  plat_musickey_take(void);
 /* Increments each time the launcher connects to a resident emulator. Anything
  * the launcher pushed into the last one has to be pushed into a new one. */
