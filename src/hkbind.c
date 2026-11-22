@@ -72,6 +72,7 @@ const char *const HK_ACTION_LABEL[] = {
 	"Fast Forward (Toggle)",  /* a press on, the next off (plorpos-73b) */
 	"Rewind", "Quick Save", "Quick Load", "Screenshot",
 	"Turbo Assign",  /* plorpos-tkh, Diatom's ADR-0045 */
+	"Save and Quit", /* the menu's Quit, unasked (plorpos-5tm.3) */
 	"Screen Layout",  /* the DS's next layout, last so other shelves drop it (plorpos-3yv.47, .62) */
 	"Swap Screens",   /* the DS's: the other screen big, kept per game (plorpos-jcj) */
 	"Stylus Tap",    /* the DS's on a port with no panel (the GKD's cursor, plorpos-46o.4) */
@@ -80,7 +81,7 @@ const char *const HK_ACTION_LABEL[] = {
 	"HUD Focus"      /* PokeDaisy's: the cursor onto its HUD, D-pad / A press it (plorpos-l22.4) */
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "fftoggle", "rewind", "savestate", "loadstate", "screenshot", "turbo", "swap", "swapscreens", "stylus", "stylusmode", "blow", "hud"
+	"ff", "fftoggle", "rewind", "savestate", "loadstate", "screenshot", "turbo", "savequit", "swap", "swapscreens", "stylus", "stylusmode", "blow", "hud"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from
