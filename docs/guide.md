@@ -318,7 +318,7 @@ tab besides Playlists stays on.
 - **Playlists** lists your playlists with how many tracks each has; A opens
   one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
   (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
-  every tab. In a playlist, X removes the track under the cursor, and L2 and R2
+  every tab. In a playlist, X removes the track under the cursor (asked first), and L2 and R2
   move it up and down a place. On audiobooks it holds three lists Muse makes
   itself: **Recent Books** (the ten books you played last and have not
   finished), **Finished Books** (every finished book, newest first) and

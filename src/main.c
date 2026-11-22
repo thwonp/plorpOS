@@ -14683,8 +14683,15 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		/* A playlist's own keys (owner): X takes the track out, L2 and R2
 		 * move it up and down a place, the cursor going with it. */
 		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
+			static const char *const yn[] = { "Yes", "No" };
 			char d[CFG_STR * 2 + 32];
 
+			/* Asked first, Yes under the cursor: A A takes it out, B or No
+			 * leaves it (owner, plorpos-5eq.8). */
+			if (muse_pick_run(a, "Remove from Playlist?", yn, 2) != 0) {
+				ui_redraw_now();
+				continue;
+			}
 			muse_pl_dir(d, sizeof d);
 			if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
 				int gone = ts->ent[sel];
