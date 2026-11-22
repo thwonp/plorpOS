@@ -1087,6 +1087,7 @@ bool abs_owns(const char *daemon_path, const char *rel)
 /* ---- places ------------------------------------------------------------------------------ */
 
 typedef struct { char id[64]; double cur; bool fin; long long last; } ab_prog;
+static volatile unsigned g_prog_gen;                 /* abs_progress_gen */
 static ab_prog *g_prog; static int g_nprog;          /* the server's, under g_mu */
 typedef struct { char id[64]; long long last; } ab_seen;
 static ab_seen *g_seen; static int g_nseen, g_cseen; /* the server's lastUpdate as this device last knew it */
@@ -1191,6 +1192,7 @@ static void pull_progress(void)
 	free(g_prog);
 	g_prog = list;
 	g_nprog = n;
+	g_prog_gen++;
 	UNLOCK();
 }
 
@@ -1448,6 +1450,7 @@ static void do_check_place(job *j)
 			pr->cur = jnum(root, "currentTime");
 			pr->fin = js_member(root, "isFinished", &v) && js_is_true(v);
 			pr->last = (long long)jnum(root, "lastUpdate");
+			g_prog_gen++;
 		}
 	}
 	if (!strcmp(g_rc_id, j->a) && g_rc_state == 1) g_rc_state = 2;
@@ -1533,6 +1536,26 @@ void abs_book_finished(const char *track)
 	UNLOCK();
 	queue_push(id, dur, dur, true, true);
 }
+
+/* Unread again (plorpos-5eq.11): no place and not finished, here at once and
+ * on the server when it answers - sent again later if it does not. */
+void abs_book_unread(const char *track)
+{
+	char id[64];
+	ab_prog *pr;
+	int b;
+	double dur = 0;
+
+	if (!abs_signed_in() || !item_of(track, id, sizeof id)) return;
+	tab_ensure();
+	LOCK();
+	if ((b = tab_find(&g_tab, id)) >= 0) dur = g_tab.b[b].dur;
+	if ((pr = prog_find(id))) { pr->cur = 0; pr->fin = false; }
+	UNLOCK();
+	queue_push(id, 0, dur, false, true);
+}
+
+unsigned abs_progress_gen(void) { return g_prog_gen; }
 
 /* ---- the worker --------------------------------------------------------------------------- */
 
