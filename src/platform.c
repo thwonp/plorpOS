@@ -730,6 +730,35 @@ static pid_t g_run_pid = -1;
 void plat_child_quiet(bool quiet) { if (g_run_pid > 0) child_quiet(g_run_pid, quiet); }
 
 
+#if defined(PLATFORM_ROTATE)
+/* The swivel over a running game (plorpos-5eq.1): closing is a POWER tap or
+ * the swipe that opens Muse, opening is the swipe that opens the switcher.
+ * The other Open rows only wake while a game runs (owner). */
+static int sw_closed_act, sw_open_act;
+
+void plat_set_swivel(int closed, int open)
+{
+	sw_closed_act = closed;
+	sw_open_act = open;
+}
+
+static gesture swivel_in_game(bool *tap)
+{
+	switch (plat_swivel_take()) {
+	case SWIVEL_CLOSED:
+		if (sw_closed_act == SWC_SLEEP) *tap = true;
+		else if (sw_closed_act == SWC_MUSE) return GESTURE_MUSE;
+		break;
+	case SWIVEL_OPENED:
+		if (sw_open_act == SWO_RECENTS) return GESTURE_SWITCHER;
+		break;
+	default:
+		break;
+	}
+	return GESTURE_NONE;
+}
+#endif
+
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
@@ -796,6 +825,17 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		poll(pfd, 4, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
 		gesture swipe = fd_ges >= 0 ? gesture_read() : GESTURE_NONE;
+#if defined(PLATFORM_ROTATE)
+		bool sw_tap = false, sw_wake = false;
+
+		/* In the music dark an opening wakes, as a tap does; nothing else. */
+		if (dark) sw_wake = plat_swivel_dark();
+		else if (!term_at) {
+			gesture g = swivel_in_game(&sw_tap);
+
+			if (on_menu && swipe == GESTURE_NONE) swipe = g;
+		}
+#endif
 		if (on_tick && !term_at) {
 			lv_muse = on_tick(ctx);
 			child_quiet(pid, lv_muse);
@@ -841,11 +881,17 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 #if defined(PLATFORM_H700)
 		/* A closed lid is a POWER tap: down, and up on the call below. */
+#if defined(PLATFORM_ROTATE)
+		if (sw_tap) lid_tap = true;
+#endif
 		if (lid_tap && !term_at && !pwr_down) plat_power_tap_or_hold(true);
 #endif
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
+#if defined(PLATFORM_ROTATE)
+			if (dark && sw_wake && pa == PWR_NONE) pa = PWR_SLEEP;   /* the wake below */
+#endif
 			if (dark) {
 				/* Music dark: a tap wakes; the music stopping for the grace
 				 * period goes on to the suspend it was holding off. The
@@ -2209,6 +2255,9 @@ static int diatom_wait(void)
 		 * see plat_resident_on_tick. */
 		if (d_on_tick) d_on_tick();
 
+#if defined(PLATFORM_ROTATE)
+		gesture sw_swipe = GESTURE_NONE;    /* the swivel's, read below */
+#endif
 #ifdef __linux__
 		{
 			struct input_event ev;
@@ -2227,6 +2276,14 @@ static int diatom_wait(void)
 					lid_tap = true;
 #endif
 			}
+#if defined(PLATFORM_ROTATE)
+			/* Taken only when it can be acted on: a turn made while the
+			 * game is starting or already pausing stays in the level, for
+			 * the next pass here or for the menu's swivel_check. */
+			if (d_got_running && !sent_stop && !d_sleep_asked &&
+			    d_gesture_asked == GESTURE_NONE)
+				sw_swipe = swivel_in_game(&lid_tap);
+#endif
 #if defined(PLATFORM_H700)
 			/* A closed lid is a POWER tap here too, as on the shelf and in a
 			 * one-shot child: down, and up on the call below (plorpos-31p). */
@@ -2261,6 +2318,9 @@ static int diatom_wait(void)
 		{
 			gesture g = gesture_read();
 
+#if defined(PLATFORM_ROTATE)
+			if (g == GESTURE_NONE) g = sw_swipe;
+#endif
 			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
 			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
 				d_gesture_asked = g;
@@ -2619,6 +2679,9 @@ bool plat_light_sleep(unsigned waited_ms)
 #else
 		if (power_key_within(200, 0)) break;
 #endif
+#if defined(PLATFORM_ROTATE)
+		if (plat_swivel_dark()) break;    /* opened: awake (plorpos-5eq.1) */
+#endif
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
 #if !defined(PLATFORM_MIYOO)             /* the Flip powers off on a charger too */
@@ -2652,6 +2715,9 @@ bool plat_light_sleep(unsigned waited_ms)
 	                                       * pressed in the dark */
 #else
 	(void)waited_ms;
+#endif
+#if defined(PLATFORM_ROTATE)
+	(void)plat_swivel_dark();             /* closed while asleep: not a turn */
 #endif
 	pwr_since = 0;
 	resume_at = plat_now_ms();

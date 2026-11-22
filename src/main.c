@@ -7385,6 +7385,10 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.lid_sleep = db_get_int(db_dev(), "lidclose", 1) != 0;
+#if defined(PLATFORM_ROTATE)
+		u.sw_closed = db_get_int(db_dev(), "swivel.closed", SWC_NOTHING);
+		u.sw_open = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
+#endif
 #if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 		u.adb = plat_adb_on();
 #endif
@@ -7694,6 +7698,22 @@ typedef struct {
  * because it borrows two of its hooks. */
 static bool muse_open(app *a, const menu_style *over, void *ctx);
 static bool g_muse_card;              /* muse_open is the card's, not SELECT's */
+#if defined(PLATFORM_ROTATE)
+/* The swivel (plorpos-5eq.1). A turn that asks for a screen - Muse, the
+ * shelf, the switcher, the last game - is carried here to the shelf's loop,
+ * and whatever is open on the way is closed: menus by g_menu_closing, Muse
+ * by the SELECT that closes it. A screen that answers to neither (a
+ * keyboard) keeps the turn waiting SW_GO_MS and then it is dropped. */
+enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
+       /* With a game paused under a menu or Muse (owner, 2026-11-22): opening
+        * goes back to the game, closing to Muse over it. */
+       SW_GO_GAME, SW_GO_MUSE_GAME };
+#define SW_GO_MS 1500u
+static int      g_sw_go;
+static unsigned g_sw_at;
+static int      g_muse_up;            /* muse_open's depth */
+static bool     g_native_menu;        /* a port's or PICO-8's menu is up */
+#endif
 
 /* Read every frame through the caller's pointer, so a screen that keeps its
  * style inside its own context can change it between frames. The info screen
@@ -11620,6 +11640,23 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 #endif
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
+#if defined(PLATFORM_ROTATE)
+	/* Rotate (Closed) / Rotate (Open) (plorpos-5eq.1): left/right steps, A
+	 * goes round. */
+	if ((sel == ST_SW_CLOSED || sel == ST_SW_OPEN) && (d || key == IN_ACCEPT)) {
+		const char *k = sel == ST_SW_CLOSED ? "swivel.closed" : "swivel.open";
+		int n = sel == ST_SW_CLOSED ? SWC_COUNT : SWO_COUNT;
+		int v = db_get_int(db_dev(), k, 0) + (d ? d : 1);
+
+		if (!d) v %= n;
+		if (v < 0) v = 0;
+		if (v >= n) v = n - 1;
+		db_set_int(db_dev(), k, v);
+		plat_set_swivel(db_get_int(db_dev(), "swivel.closed", SWC_NOTHING),
+		                db_get_int(db_dev(), "swivel.open", SWO_WAKE));
+		return MENU_STAY;
+	}
+#endif
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
 		battery_indicator_changed();
@@ -15374,6 +15411,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
 
+#if defined(PLATFORM_ROTATE)
+	g_muse_up++;
+#endif
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
@@ -15410,6 +15450,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		g_muse_over = NULL;
 		g_muse_over_ctx = NULL;
 		g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+		g_muse_up--;
+#endif
 		return g_muse_gone;
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
@@ -15425,6 +15468,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = NULL;
 	/* Nothing Muse did closes the menu it may have been opened over. */
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	g_muse_up--;
+#endif
 	return g_muse_gone;
 }
 
@@ -18255,6 +18301,10 @@ static dark_end music_dark(app *a, unsigned *waited)
 		/* The lid opened: awake, as from light sleep (plorpos-ps8.3). */
 		if (plat_lid_opened()) { end = DARK_WOKE; break; }
 #endif
+#if defined(PLATFORM_ROTATE)
+		/* The swivel opened: the same (plorpos-5eq.1). */
+		if (plat_swivel_dark()) { end = DARK_WOKE; break; }
+#endif
 		/* Volume, its Vol+Vol- chord (pause/play) and the hold-skip stay
 		 * live under the lock (plorpos-uvs.2): they run first, so the lock
 		 * below never swallows them. */
@@ -18350,9 +18400,53 @@ static bool sleep_cycle(app *a)
  * shelf, STOP in a game, where Diatom writes the Auto slot on its way out -
  * serves both. Sleep happens in here; the caller only ever sees
  * PWR_POWEROFF, or PWR_NONE to carry on. */
+#if defined(PLATFORM_ROTATE)
+/* The swivel turned: true for a sleep. This is every screen but a running
+ * game's own, where platform.c's loops take the turn (swivel_in_game). A new
+ * turn replaces the one before it. */
+static bool swivel_check(app *a)
+{
+	swivel_edge e = plat_swivel_take();
+	bool game = a->game_on || g_native_menu;
+	unsigned now = plat_now_ms();
+
+	if (e != SWIVEL_NONE) {
+		int go = SW_GO_NONE;
+
+		if (e == SWIVEL_CLOSED) {
+			int act = db_get_int(db_dev(), "swivel.closed", SWC_NOTHING);
+
+			fprintf(stderr, "swivel: closed (%d)\n", act);
+			if (act == SWC_SLEEP) { g_sw_go = SW_GO_NONE; return true; }
+			if (act == SWC_MUSE && !g_muse_up) go = game ? SW_GO_MUSE_GAME : SW_GO_MUSE;
+		} else {
+			int act = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
+
+			fprintf(stderr, "swivel: opened (%d)\n", act);
+			if (act == SWO_WAKE) go = SW_GO_NONE;
+			else if (game) go = SW_GO_GAME;
+			else go = act == SWO_SHELF ? SW_GO_SHELF
+			        : act == SWO_RECENTS ? SW_GO_RECENTS : SW_GO_RESUME;
+		}
+		g_sw_go = go;
+		g_sw_at = now;
+	}
+	if (g_sw_go) {
+		if (now - g_sw_at > SW_GO_MS) g_sw_go = SW_GO_NONE;
+		else if (g_muse_up) a->in.pressed[IN_SELECT] = true;
+		else g_menu_closing = true;
+	}
+	return false;
+}
+#endif
+
 static pwr_action power_check(app *a)
 {
 	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+
+#if defined(PLATFORM_ROTATE)
+	if (swivel_check(a) && pa == PWR_NONE) pa = PWR_SLEEP;
+#endif
 
 	/* The sleep timer just ran out (plorpos-i8d.1) - just: one that ran out
 	 * in a game must not sleep the device when its menu opens much later. */
@@ -18887,11 +18981,23 @@ static void game_menu(app *a, bool muse_only)
 	 * screen this menu opened - the save slots, Achievements - comes back as
 	 * MENU_LEFT_BACK too, so it is Continue from there as well. */
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
+#endif
 	if (muse_only)
 		c.resume = !muse_open(a, &c.st, &c);
 	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	/* Turned closed with this menu up, and the row says Muse: the menu has
+	 * closed for it (swivel_check), and Muse opens over the game. */
+	if (c.resume && g_sw_go == SW_GO_MUSE_GAME) {
+		g_sw_go = SW_GO_NONE;
+		c.resume = !muse_open(a, &c.st, &c);
+		g_menu_closing = false;
+	}
+#endif
 
 #if !defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);
@@ -18952,6 +19058,28 @@ static void muse_open_shelf(app *a, bool card)
 	g_muse_sw_ok = false;
 	if (g_muse_sw && a->running) { g_muse_sw = false; switcher_launch(a, &g_muse_pick); }
 }
+
+#if defined(PLATFORM_ROTATE)
+/* What a turn of the swivel asked for, from the shelf's loop: everything
+ * that was open is closed by now (plorpos-5eq.1). */
+static void swivel_go(app *a, int go)
+{
+	static sw_entry e[RECENT_MAX];
+
+	fprintf(stderr, "swivel: go %d\n", go);
+	if (go == SW_GO_MUSE) muse_open_shelf(a, false);
+	else if (go == SW_GO_RECENTS) switcher_shelf(a);
+	else if (go == SW_GO_RESUME && sw_build(a, e) > 0) {
+		sw_pick pk = { e[0].sys, e[0].item };
+
+		switcher_launch(a, &pk);
+	} else {
+		/* The main shelf; Resume Game with nothing played yet too. */
+		a->screen = SCREEN_SYSTEMS;
+		ui_redraw_now();
+	}
+}
+#endif
 
 static void respawn_resident(app *a)
 {
@@ -19134,6 +19262,10 @@ static run_choice native_menu(void *ctx)
 	 * the runner opens itself. Asked to quit with the menu up, the game
 	 * goes too. */
 	g_menu_closing = false;   /* sticky: see game_menu */
+#if defined(PLATFORM_ROTATE)
+	g_native_menu = true;     /* a game is under this - see swivel_check */
+	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
+#endif
 	/* A swipe from the top is Muse over the frozen game, and closing it is
 	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
 	 * held is the switcher: another game ends this one, and launch() starts
@@ -19150,6 +19282,15 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	/* Turned closed with the menu up: Muse over the game, as in game_menu. */
+	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_MUSE_GAME && a->running && !want_quit) {
+		g_sw_go = SW_GO_NONE;
+		if (muse_open(a, &st, &c) && (want_quit || !a->running)) c.choice = RUN_QUIT;
+		g_menu_closing = false;
+	}
+	g_native_menu = false;
+#endif
 	if (c.choice == RUN_RESET && g_p8_flags && !a->pico8_splore) {
 		const char *now = DMODES[owner_view(a)->dmode].name;
 
@@ -23054,6 +23195,10 @@ int main(int argc, char *argv[])
 		plat_set_sleep_timeout(a.auto_poweroff);
 		plat_set_lid_sleep(db_get_int(db_dev(), "lidclose", 1) != 0);
 #endif
+#if defined(PLATFORM_ROTATE)
+		plat_set_swivel(db_get_int(db_dev(), "swivel.closed", SWC_NOTHING),
+		                db_get_int(db_dev(), "swivel.open", SWO_WAKE));
+#endif
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
@@ -23442,6 +23587,19 @@ int main(int argc, char *argv[])
 		/* Back on the shelf, so any menu MENU closed is closed: put the flag
 		 * down before anything here can open another. See menu_leaving. */
 		g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+		if (g_sw_go) {
+			int go = g_sw_go;
+
+			g_sw_go = SW_GO_NONE;
+			/* Not one left over from a game that has ended since. */
+			if (go < SW_GO_GAME && plat_now_ms() - g_sw_at <= SW_GO_MS) {
+				a.in.pressed[IN_SELECT] = false;   /* swivel_check's, for Muse */
+				swivel_go(&a, go);
+				continue;
+			}
+		}
+#endif
 
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use

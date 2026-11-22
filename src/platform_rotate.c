@@ -646,6 +646,23 @@ static bool lid_closed(void)
 	       (sw[0] >> SW_LID & 1);
 }
 
+static int sw_last = -1;           /* the level last told: 1 closed, -1 not read yet */
+
+swivel_edge plat_swivel_take(void)
+{
+	int now = lid_closed();
+
+	if (sw_last < 0 || now == sw_last) { sw_last = now; return SWIVEL_NONE; }
+	sw_last = now;
+	return now ? SWIVEL_CLOSED : SWIVEL_OPENED;
+}
+
+bool plat_swivel_dark(void)
+{
+	if (lid_closed()) { sw_last = 1; return false; }
+	return sw_last == 1;
+}
+
 /* The screen's y (and x) for the raw point, as the player holds it. */
 static void gs_screen(float *x, float *y)
 {
