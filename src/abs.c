@@ -5,6 +5,7 @@
  * /api/items/batch/get, /api/items/<id>/file/<ino>, /api/me and
  * /api/me/progress/<id>. Measured against server 2.37.2, 2026-11-20. */
 #include "abs.h"
+#include "coverq.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -26,7 +27,6 @@
 #define PUSH_MS    15000       /* a place sent every 15 s while playing */
 #define PULL_MS    5000        /* the server's places asked at most this often */
 #define SEEN_MS    (5 * 60 * 1000)
-#define LANDED     32
 
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_refresh_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -287,7 +287,7 @@ static int req(const char *method, const char *path, const char *json,
 
 /* ---- jobs ---------------------------------------------------------------------------- */
 
-enum { J_CHECK, J_LOGIN, J_COVER, J_PUSH, J_PULL, J_LOAD, J_PLACE };
+enum { J_CHECK, J_LOGIN, J_PUSH, J_PULL, J_LOAD, J_PLACE };
 typedef struct job {
 	int kind;
 	char a[700], b[700];
@@ -876,72 +876,50 @@ bool abs_sync_take(void)
 
 /* ---- covers ---------------------------------------------------------------------------- */
 
-static char g_landed[LANDED][700];
-static int g_nlanded;
+/* Fetched on coverq's threads (plorpos-ps8.9). */
+static coverq *g_cq;
 
-static void do_cover(job *j)
+/* coverq's fetch: the item's cover at COVER_PX, to <b>.jpg. */
+static bool cover_fetch(const char *id, const char *b)
 {
 	char path[200], dest[720], part[740], *s, d[720];
 	char *body;
 	size_t len;
 	FILE *f;
+	bool ok = false;
 
-	snprintf(path, sizeof path, "/api/items/%.100s/cover?width=%d&format=jpeg", j->a, COVER_PX);
-	if (req("GET", path, NULL, &body, &len, 30) != 200) return;
-	snprintf(dest, sizeof dest, "%s.jpg", j->b);
+	snprintf(path, sizeof path, "/api/items/%.100s/cover?width=%d&format=jpeg", id, COVER_PX);
+	if (req("GET", path, NULL, &body, &len, 30) != 200) return false;
+	snprintf(dest, sizeof dest, "%s.jpg", b);
 	snprintf(part, sizeof part, "%s.part", dest);
 	snprintf(d, sizeof d, "%s", dest);
 	if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
 	if ((f = fopen(part, "wb"))) {
 		bool w = fwrite(body, 1, len, f) == len;
-		if (fclose(f) == 0 && w && rename(part, dest) == 0) {
-			LOCK();
-			if (g_nlanded < LANDED) snprintf(g_landed[g_nlanded++], sizeof g_landed[0], "%s", j->b);
-			UNLOCK();
-		} else {
-			unlink(part);
-		}
+
+		ok = fclose(f) == 0 && w && rename(part, dest) == 0;
+		if (!ok) unlink(part);
 	}
 	free(body);
+	return ok;
 }
 
 bool abs_cover_want(int al, const char *base)
 {
-	job *j;
-	int covers = 0;
+	char id[700];
 
-	if (!(j = job_new(J_COVER))) return false;
 	LOCK();
-	if (al < 0 || al >= g_tab.nb || !g_tab.b[al].cover || !C.access[0]) { UNLOCK(); free(j); return false; }
-	snprintf(j->a, sizeof j->a, "%s", g_tab.b[al].id);
+	if (al < 0 || al >= g_tab.nb || !g_tab.b[al].cover || !C.access[0]) { UNLOCK(); return false; }
+	snprintf(id, sizeof id, "%s", g_tab.b[al].id);
 	UNLOCK();
-	snprintf(j->b, sizeof j->b, "%s", base);
-	push(j, true);
-	/* The newest 48 covers wished for; one scrolled past is asked again. */
-	LOCK();
-	for (job **pp = &g_jobs; *pp; ) {
-		if ((*pp)->kind == J_COVER && ++covers > 48) {
-			job *gone = *pp;
-			*pp = gone->next;
-			g_njobs--;
-			free(gone);
-			continue;
-		}
-		pp = &(*pp)->next;
-	}
-	UNLOCK();
+	if (!g_cq && !(g_cq = coverq_new(cover_fetch))) return false;
+	coverq_want(g_cq, id, base);
 	return true;
 }
 
-bool abs_cover_take(char *base, size_t n)
-{
-	bool got = false;
+void abs_cover_bump(const char *base) { coverq_bump(g_cq, base); }
 
-	LOCK();
-	if (g_nlanded) { snprintf(base, n, "%s", g_landed[--g_nlanded]); got = true; }
-	UNLOCK();
-	return got;
-}
+bool abs_cover_take(char *base, size_t n) { return coverq_take(g_cq, base, n); }
 
 /* ---- which book a track is ------------------------------------------------------------- */
 
@@ -1467,7 +1445,6 @@ static void *api_main(void *arg)
 		switch (j->kind) {
 		case J_CHECK: do_check(j); break;
 		case J_LOGIN: do_login(j); break;
-		case J_COVER: do_cover(j); break;
 		case J_PUSH:  do_push(j); break;
 		case J_PULL:  pull_progress(); break;
 		case J_LOAD:  tab_ensure(); break;
