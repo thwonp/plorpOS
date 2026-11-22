@@ -17343,6 +17343,9 @@ static dark_end music_dark(app *a, unsigned *waited)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	plat_screen(false);
+#if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
+	(void)plat_lid_opened();              /* an opening from before the dark */
+#endif
 	for (;;) {
 		pwr_action pa;
 		unsigned now;
@@ -17366,6 +17369,10 @@ static dark_end music_dark(app *a, unsigned *waited)
 			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
 			break;
 		}
+#if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
+		/* The lid opened: awake, as from light sleep (plorpos-ps8.3). */
+		if (plat_lid_opened()) { end = DARK_WOKE; break; }
+#endif
 		/* Volume, its Vol+Vol- chord (pause/play) and the hold-skip stay
 		 * live under the lock (plorpos-uvs.2): they run first, so the lock
 		 * below never swallows them. */
