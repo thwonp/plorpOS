@@ -46,6 +46,11 @@ bool plex_ready(void);
 const char *plex_server_name(void);
 const char *plex_library_name(void);
 const char *plex_account_name(void);
+/* The server, as it last described itself (plorpos-5eq.9): tied to a Plex
+ * Pass account or not, and whether this account may download from it.
+ * 1 yes, 0 no, -1 not known (not asked yet, or it did not say). */
+int plex_pass(void);
+int plex_allow_sync(void);
 void plex_sign_out(void);
 
 /* Sign-in: start, then poll each frame. 0 waiting (`code` holds the PIN once

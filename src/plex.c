@@ -318,6 +318,34 @@ static int plex_req(const char *method, const char *url, bool with_token,
 static void cfg_save(void);
 static pthread_mutex_t g_pick_mu = PTHREAD_MUTEX_INITIALIZER;
 
+/* What the server says of itself at "/" (plorpos-5eq.9): whether it is tied
+ * to a Plex Pass account - a shared user rides on the owner's - and whether
+ * this account may download from it. -1 until it has been asked; asked each
+ * time a connection is picked, so a pass bought or lapsed is seen. */
+static volatile int g_srv_pass = -1, g_srv_sync = -1;
+
+static void server_caps(const char *uri)
+{
+	char url[400], *b = NULL;
+	size_t len;
+	jsv root, mc, v;
+
+	snprintf(url, sizeof url, "%.380s/", uri);
+	if (plex_req_c("GET", url, true, &b, &len, 5, 6) != 200 || !b) { free(b); return; }
+	root = js_root(b, len);
+	if (js_member(root, "MediaContainer", &mc)) {
+		int pass = js_member(mc, "myPlexSubscription", &v) ? js_is_true(v) : -1;
+		int sync = js_member(mc, "allowSync", &v) ? js_is_true(v) : -1;
+
+		if (pass != g_srv_pass || sync != g_srv_sync)
+			fprintf(stderr, "plex: server Plex Pass %s, downloads %s\n",
+			        pass < 0 ? "unknown" : pass ? "yes" : "no", sync < 0 ? "unknown" : sync ? "allowed" : "not allowed");
+		g_srv_pass = pass;
+		g_srv_sync = sync;
+	}
+	free(b);
+}
+
 static bool try_conns(char *out, size_t n)
 {
 	char url[400];
@@ -343,6 +371,7 @@ static bool try_conns(char *out, size_t n)
 			             : plex_req_c("GET", url, true, NULL, NULL, 5, 6);
 			if (code != 0) lan |= local;
 			if (code == 200) {
+				server_caps(c->uri);
 				LOCK();
 				snprintf(g_base, sizeof g_base, "%s", c->uri);
 				UNLOCK();
@@ -356,6 +385,16 @@ static bool try_conns(char *out, size_t n)
 }
 
 static bool refresh_conns(void);
+
+int plex_pass(void) { return g_srv_pass; }
+
+/* The quality asked of the server: Plex transcodes music only for a Plex
+ * Pass server, so one known to have none is asked for the file as it is
+ * (0, Original) whatever the settings say (plorpos-5eq.9). */
+static int kbps_stream(void)   { return g_srv_pass == 0 ? 0 : C.stream_kbps; }
+static int kbps_download(void) { return g_srv_pass == 0 ? 0 : C.download_kbps; }
+
+int plex_allow_sync(void) { return g_srv_sync; }
 
 static bool pick_base(char *out, size_t n)
 {
@@ -1410,7 +1449,7 @@ static bool download_one(int key, char reason)
 {
 	char base[256], url[2048], dest[1024], part[1100], dir[1024], partk[320], thumb[320], *s;
 	px_track t;
-	int kbps = C.download_kbps, code;
+	int kbps = kbps_download(), code;
 
 	LOCK();
 	{
@@ -1482,7 +1521,7 @@ static bool cache_file(const px_track *t, char *out, size_t n)
 	if (exists(out)) return true;
 	snprintf(out, n, "%s/cache/%d.%s", g_dir, t->key, ext_of(t->part));
 	if (exists(out)) return true;
-	if (C.stream_kbps) snprintf(out, n, "%s/cache/%d.opus", g_dir, t->key);
+	if (kbps_stream()) snprintf(out, n, "%s/cache/%d.opus", g_dir, t->key);
 	return false;
 }
 
@@ -1582,7 +1621,7 @@ static void *cache_main(void *arg)
 			snprintf(d, sizeof d, "%s/cache", g_dir);
 			mkdirs(d);
 			t0 = now_ms();
-			code = fetch_track(base, &t, C.stream_kbps, dest, NULL);
+			code = fetch_track(base, &t, kbps_stream(), dest, NULL);
 			fprintf(stderr, "plex: track %d fetched first in %u ms (http %d)\n", key, now_ms() - t0, code);
 			if (code == 0) base_failed();
 			if (code == 200) cache_trim();
@@ -2005,8 +2044,8 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	snprintf(partk, sizeof partk, "%s", t.part);
 	t.part = partk; t.title = t.artist = NULL;
 	UNLOCK();
-	stream_url(base, &t, C.stream_kbps, false, out->url, sizeof out->url, "start");
-	if (C.stream_kbps) snprintf(out->codec, sizeof out->codec, "OPUS %d", C.stream_kbps);
+	stream_url(base, &t, kbps_stream(), false, out->url, sizeof out->url, "start");
+	if (kbps_stream()) snprintf(out->codec, sizeof out->codec, "OPUS %d", kbps_stream());
 	return true;
 }
 
@@ -2084,7 +2123,7 @@ mark:
  * at a CD's FLAC. */
 static long long fetch_bytes(const px_track *t)
 {
-	return (long long)t->dur_ms * (C.stream_kbps ? C.stream_kbps : 1000) / 8;
+	return (long long)t->dur_ms * (kbps_stream() ? kbps_stream() : 1000) / 8;
 }
 
 void plex_prefetch(const char *playing, const char *const *next, int n)

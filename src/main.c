@@ -10364,6 +10364,25 @@ static void plex_say(app *a, const char *msg)
 	muse_pick_run(a, msg, OK, 1);
 }
 
+/* The server will not give this account downloads (its owner's setting). */
+#define PLEX_NO_SYNC "This server does not allow downloads"
+
+/* A server with no Plex Pass, said once a server when its music is opened
+ * (plorpos-5eq.9). What exactly Plex refuses without one has not been
+ * measured (unverified - no such account to test with): streaming away from
+ * home and downloads are what Plex's own apps keep for Plex Pass. A refusal,
+ * when it comes, is the "Could not reach the server" toast, not an error. */
+static void plex_pass_note(app *a)
+{
+	char told[CFG_STR];
+
+	if (plex_pass() != 0 || !plex_server_name()[0]) return;
+	db_get_str(db_dev(), "plex.passnote", told, sizeof told, "");
+	if (!strcmp(told, plex_server_name())) return;
+	db_set_str(db_dev(), "plex.passnote", plex_server_name());
+	plex_say(a, "No Plex Pass on this server");
+}
+
 /* `poll` behind a panel saying `msg()`, until it returns non-zero (that) or
  * B gives up (0). The work goes on either way: B only stops waiting. */
 static int src_wait(app *a, const char *title, const char *(*msg)(void), int (*poll)(void))
@@ -11171,11 +11190,25 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	else u->sync[0] = '\0';
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
 	                                              : "Sign In", !in };
-	rows[PX_SERVER]   = (menu_row){ "Server", plex_server_name()[0] ? plex_server_name() : "Choose", in };
+	/* A server with no Plex Pass says so here (plorpos-5eq.9). */
+	{
+		static char srv[160];
+
+		snprintf(srv, sizeof srv, "%s%s", plex_server_name()[0] ? plex_server_name() : "Choose",
+		         plex_server_name()[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
+		rows[PX_SERVER] = (menu_row){ "Server", srv, in };
+	}
 	rows[PX_LIBRARY]  = (menu_row){ "Library", plex_library_name()[0] ? plex_library_name() : "Choose",
 	                                in && plex_server_name()[0] };
-	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
-	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+	/* A transcode needs Plex Pass on the server: without one it is the
+	 * file as it is, and there is nothing to choose (plorpos-5eq.9). */
+	if (plex_pass() == 0) {
+		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", "Original", false };
+		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", "Original", false };
+	} else {
+		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
+		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+	}
 	/* plorpos-1lw.22: only where a track is fetched before it plays. */
 	snprintf(u->ahead, sizeof u->ahead, "%d", plex_ahead());
 	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
@@ -14932,6 +14965,7 @@ static void muse_plex_album_menu(app *a, int al)
 	if (k < 0) return;
 	if (k == dl) {
 		if (!net_online()) { muse_toast("Device is offline"); return; }
+		if (plex_allow_sync() == 0) { muse_toast(PLEX_NO_SYNC); return; }
 		plex_download_album(al);
 		muse_toast("Downloading");
 	} else if (k == del) {
@@ -15311,6 +15345,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	if (g_muse_plex) plex_pass_note(a);
 	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */
@@ -16974,6 +17009,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			k = muse_pick_run(a, name, opts, g_muse_plex ? 3 : 2);
 			if (k == 2) {
 				if (!dled && !net_online()) muse_toast("Device is offline");
+				else if (!dled && plex_allow_sync() == 0) muse_toast(PLEX_NO_SYNC);
 				else {
 					plex_pl_download(name, !dled);
 					muse_toast(dled ? "Download removed" : "Downloading");
