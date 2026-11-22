@@ -15606,9 +15606,73 @@ static SDL_Texture *bl_art(void *ctx, int i, int *w, int *h)
 
 static const char *const BL_HELP[] = { "A", "Play" };
 
+/* One of the book lists, described and painted: the screen's own frame, and
+ * what is behind its MENU (g_shelf_under) - without which the menu was drawn
+ * over the Playlists tab underneath (plorpos-5eq.12). */
+static void bl_describe(bl_ctx *c, int which, int sel, gl_list *L, gl_geom *g)
+{
+	memset(L, 0, sizeof *L);
+	L->key = GL_KEY_PICK;
+	L->header = BPL_NAME[which];
+	L->wide_header = true;
+	L->n = c->n;
+	L->accent = MUSE_ACCENT;
+	L->ctx = c;
+	L->title = bl_title;
+	L->art = bl_art;
+	L->help = BL_HELP;
+	L->nhelp = 1;
+	L->empty = which == BPL_COMPLETED ? "No finished books yet" : "No books started yet";
+	gl_geometry(g, L);
+	L->cur = sel;
+	L->phase = mq_phase(MQ_SHELF, -5, sel);
+	if (c->n > 0) {
+		int al0 = c->al[sel], y = g_year && g_year[al0] > 0 ? g_year[al0] : 0;
+		char line[200];
+
+		if (y) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, g_muse.artists[muse_artist_of(al0)].name);
+		else   snprintf(line, sizeof line, "%s", g_muse.artists[muse_artist_of(al0)].name);
+		ui_fit_text(ui_font(UI_F_META), line, L->under[L->nunder++], sizeof L->under[0], g->pane_w);
+		snprintf(L->under[L->nunder++], sizeof L->under[0], "%d / %d", sel + 1, c->n);
+	}
+}
+
+static void bl_paint(app *a, bl_ctx *c, int which, int sel)
+{
+	sysview *v = &a->view[a->sys_cursor];
+	gl_list L;
+	gl_geom g;
+
+	bl_describe(c, which, sel, &L, &g);
+	texload_drain(a);
+	draw_background(a);
+	if (c->n > 0 && is_muse(&a->sys.systems[a->sys_cursor])) {
+		SDL_Rect r;
+
+		gl_art_rect(&L, &r, NULL);
+		prime_toward(a, a->sys_cursor, v->cursor);
+		evict_far(v, TEX_KEEP_NEAR);
+		ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
+	}
+	gl_draw(a, &L);
+	draw_chrome(a->r);
+}
+
+typedef struct { bl_ctx *c; int which; const int *sel; } bl_under;
+
+static void bl_under_draw(app *a, void *ctx)
+{
+	const bl_under *u = ctx;
+
+	bl_paint(a, u->c, u->which, *u->sel);
+}
+
 static muse_exit muse_book_list(app *a, int which)
 {
 	int *al = calloc((size_t)g_muse.nalbums + 1, sizeof *al), sel = 0;
+	bl_under under;
+	void (*was_under)(app *a, void *ctx) = g_shelf_under;
+	void *was_under_ctx = g_shelf_under_ctx;
 	unsigned t0 = plat_now_ms();
 	sysview *v = &a->view[a->sys_cursor];
 	muse_exit how = MUSE_BACK;
@@ -15620,6 +15684,8 @@ static muse_exit muse_book_list(app *a, int which)
 	if (!al) return MUSE_BACK;
 	c.n = bpl_build(which, al, g_muse.nalbums);
 	fprintf(stderr, "muse: %s, %d books in %u ms\n", BPL_NAME[which], c.n, plat_now_ms() - t0);
+	under = (bl_under){ &c, which, &sel };
+	g_shelf_under = bl_under_draw; g_shelf_under_ctx = &under;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	while (!want_quit && a->running) {
@@ -15641,19 +15707,7 @@ static muse_exit muse_book_list(app *a, int which)
 			if (how != MUSE_BACK) break;
 			continue;
 		}
-		memset(&L, 0, sizeof L);
-		L.key = GL_KEY_PICK;
-		L.header = BPL_NAME[which];
-		L.wide_header = true;
-		L.n = c.n;
-		L.accent = MUSE_ACCENT;
-		L.ctx = &c;
-		L.title = bl_title;
-		L.art = bl_art;
-		L.help = BL_HELP;
-		L.nhelp = 1;
-		L.empty = which == BPL_COMPLETED ? "No finished books yet" : "No books started yet";
-		gl_geometry(&g, &L);
+		bl_describe(&c, which, sel, &L, &g);
 		if (c.n > 0) {
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + c.n - 1) % c.n;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % c.n;
@@ -15668,35 +15722,14 @@ static muse_exit muse_book_list(app *a, int which)
 			}
 		}
 		vol_keys(&a->in);
-		L.cur = sel;
-		L.phase = mq_phase(MQ_SHELF, -5, sel);
-		if (c.n > 0) {
-			int al0 = al[sel], y = g_year && g_year[al0] > 0 ? g_year[al0] : 0;
-			char line[200];
-
-			if (y) snprintf(line, sizeof line, "%d  \xC2\xB7  %s", y, g_muse.artists[muse_artist_of(al0)].name);
-			else   snprintf(line, sizeof line, "%s", g_muse.artists[muse_artist_of(al0)].name);
-			ui_fit_text(ui_font(UI_F_META), line, L.under[L.nunder++], sizeof L.under[0], g.pane_w);
-			snprintf(L.under[L.nunder++], sizeof L.under[0], "%d / %d", sel + 1, c.n);
-		}
 		if (!screen_draw_due(a, &pace, (Uint32)(sel * 7919 + c.n))) {
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		texload_drain(a);
-		draw_background(a);
-		if (c.n > 0 && is_muse(&a->sys.systems[a->sys_cursor])) {
-			SDL_Rect r;
-
-			gl_art_rect(&L, &r, NULL);
-			prime_toward(a, a->sys_cursor, v->cursor);
-			evict_far(v, TEX_KEEP_NEAR);
-			ui_glow(a->r, &r, MUSE_ACCENT, 100, 2.3f);
-		}
-		gl_draw(a, &L);
-		draw_chrome(a->r);
+		bl_paint(a, &c, which, sel);
 		plat_present(a->r);
 	}
+	g_shelf_under = was_under; g_shelf_under_ctx = was_under_ctx;
 	/* The album cursor the list borrowed for its covers. */
 	if (how != MUSE_REBUILT && home >= 0 && home < v->list.count && v->cursor != home) {
 		v->cursor = home;
