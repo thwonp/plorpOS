@@ -733,13 +733,16 @@ void plat_child_quiet(bool quiet) { if (g_run_pid > 0) child_quiet(g_run_pid, qu
 #if defined(PLATFORM_ROTATE)
 /* The swivel over a running game (plorpos-5eq.1): closing is a POWER tap or
  * the swipe that opens Muse, opening is the swipe that opens the switcher.
- * The other Open rows only wake while a game runs (owner). */
+ * The other Open rows only wake while a game runs (owner), unless the game
+ * is not kept: then "main shelf" ends it (plorpos-5eq.23). */
 static int sw_closed_act, sw_open_act;
+static bool sw_keep_game = true;
 
-void plat_set_swivel(int closed, int open)
+void plat_set_swivel(int closed, int open, bool keep_game)
 {
 	sw_closed_act = closed;
 	sw_open_act = open;
+	sw_keep_game = keep_game;
 }
 
 static gesture swivel_in_game(bool *tap)
@@ -751,6 +754,7 @@ static gesture swivel_in_game(bool *tap)
 		break;
 	case SWIVEL_OPENED:
 		if (sw_open_act == SWO_RECENTS) return GESTURE_SWITCHER;
+		if (sw_open_act == SWO_SHELF && !sw_keep_game) return GESTURE_SHELF;
 		break;
 	default:
 		break;

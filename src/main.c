@@ -7388,6 +7388,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 #if defined(PLATFORM_ROTATE)
 		u.sw_closed = db_get_int(db_dev(), "swivel.closed", SWC_NOTHING);
 		u.sw_open = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
+		u.sw_game = db_get_int(db_dev(), "swivel.game", 1) != 0;
 #endif
 #if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
 		u.adb = plat_adb_on();
@@ -7707,12 +7708,23 @@ static bool g_muse_card;              /* muse_open is the card's, not SELECT's *
 enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
        /* With a game paused under a menu or Muse (owner, 2026-11-22): opening
         * goes back to the game, closing to Muse over it. */
-       SW_GO_GAME, SW_GO_MUSE_GAME };
+       SW_GO_GAME, SW_GO_MUSE_GAME,
+       /* "Rotate Open Always Resumes Game" off (plorpos-5eq.23): the Open
+        * row as written - the game ends for the shelf, or the switcher. */
+       SW_GO_QUIT, SW_GO_SWITCH };
 #define SW_GO_MS 1500u
 static int      g_sw_go;
 static unsigned g_sw_at;
 static int      g_muse_up;            /* muse_open's depth */
 static bool     g_native_menu;        /* a port's or PICO-8's menu is up */
+static bool     g_sw_shelf;           /* the game was ended for the main shelf */
+
+static void swivel_apply(void)
+{
+	plat_set_swivel(db_get_int(db_dev(), "swivel.closed", SWC_NOTHING),
+	                db_get_int(db_dev(), "swivel.open", SWO_WAKE),
+	                db_get_int(db_dev(), "swivel.game", 1) != 0);
+}
 #endif
 
 /* Read every frame through the caller's pointer, so a screen that keeps its
@@ -11652,8 +11664,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		if (v < 0) v = 0;
 		if (v >= n) v = n - 1;
 		db_set_int(db_dev(), k, v);
-		plat_set_swivel(db_get_int(db_dev(), "swivel.closed", SWC_NOTHING),
-		                db_get_int(db_dev(), "swivel.open", SWO_WAKE));
+		swivel_apply();
+		return MENU_STAY;
+	}
+	if (sel == ST_SW_GAME && (d || key == IN_ACCEPT)) {
+		db_set_int(db_dev(), "swivel.game", db_get_int(db_dev(), "swivel.game", 1) == 0);
+		swivel_apply();
 		return MENU_STAY;
 	}
 #endif
@@ -18424,7 +18440,9 @@ static bool swivel_check(app *a)
 
 			fprintf(stderr, "swivel: opened (%d)\n", act);
 			if (act == SWO_WAKE) go = SW_GO_NONE;
-			else if (game) go = SW_GO_GAME;
+			else if (game)
+				go = act == SWO_RESUME || db_get_int(db_dev(), "swivel.game", 1) != 0
+				   ? SW_GO_GAME : act == SWO_SHELF ? SW_GO_QUIT : SW_GO_SWITCH;
 			else go = act == SWO_SHELF ? SW_GO_SHELF
 			        : act == SWO_RECENTS ? SW_GO_RECENTS : SW_GO_RESUME;
 		}
@@ -18997,6 +19015,19 @@ static void game_menu(app *a, bool muse_only)
 		c.resume = !muse_open(a, &c.st, &c);
 		g_menu_closing = false;
 	}
+	/* Turned open, the game not kept: it ends for the shelf (STOP, as Quit:
+	 * Diatom writes its Auto state on the way out), or the switcher opens. */
+	if (c.resume && g_sw_go == SW_GO_QUIT) {
+		g_sw_go = SW_GO_NONE;
+		g_sw_shelf = true;
+		c.resume = false;
+		plat_resident_line("STOP");
+	} else if (c.resume && g_sw_go == SW_GO_SWITCH) {
+		g_sw_go = SW_GO_NONE;
+		if (c.bg) SDL_DestroyTexture(c.bg);
+		game_switch(a);
+		return;
+	}
 #endif
 
 #if !defined(PLATFORM_H700)
@@ -19270,7 +19301,12 @@ static run_choice native_menu(void *ctx)
 	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
 	 * held is the switcher: another game ends this one, and launch() starts
 	 * it (plorpos-gl5.3). */
-	if (plat_run_menu_why() == GESTURE_SWITCHER) {
+	if (plat_run_menu_why() == GESTURE_SHELF) {
+#if defined(PLATFORM_ROTATE)
+		g_sw_shelf = true;        /* the swivel: the game ends for the shelf */
+#endif
+		c.choice = RUN_QUIT;
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER) {
 		bool powered;
 
 		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
@@ -19287,6 +19323,19 @@ static run_choice native_menu(void *ctx)
 	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_MUSE_GAME && a->running && !want_quit) {
 		g_sw_go = SW_GO_NONE;
 		if (muse_open(a, &st, &c) && (want_quit || !a->running)) c.choice = RUN_QUIT;
+		g_menu_closing = false;
+	}
+	/* Turned open, the game not kept - as in game_menu. */
+	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_QUIT) {
+		g_sw_go = SW_GO_NONE;
+		g_sw_shelf = true;
+		c.choice = RUN_QUIT;
+	} else if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_SWITCH && a->running && !want_quit) {
+		bool powered;
+
+		g_sw_go = SW_GO_NONE;
+		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
+			c.choice = RUN_QUIT;
 		g_menu_closing = false;
 	}
 	g_native_menu = false;
@@ -20371,6 +20420,15 @@ static void launch_one(app *a)
 					gesture g = plat_resident_gesture_asked();
 
 					if (g == GESTURE_SWITCHER) { game_switch(a); continue; }
+#if defined(PLATFORM_ROTATE)
+					/* The swivel opened for the main shelf: the game ends
+					 * as Quit ends it (plorpos-5eq.23). */
+					if (g == GESTURE_SHELF) {
+						g_sw_shelf = true;
+						plat_resident_line("STOP");
+						continue;
+					}
+#endif
 					game_menu(a, g == GESTURE_MUSE);
 					continue;
 				}
@@ -23196,8 +23254,7 @@ int main(int argc, char *argv[])
 		plat_set_lid_sleep(db_get_int(db_dev(), "lidclose", 1) != 0);
 #endif
 #if defined(PLATFORM_ROTATE)
-		plat_set_swivel(db_get_int(db_dev(), "swivel.closed", SWC_NOTHING),
-		                db_get_int(db_dev(), "swivel.open", SWO_WAKE));
+		swivel_apply();
 #endif
 		g_aout_policy = aout_load();
 
@@ -23588,6 +23645,11 @@ int main(int argc, char *argv[])
 		 * down before anything here can open another. See menu_leaving. */
 		g_menu_closing = false;
 #if defined(PLATFORM_ROTATE)
+		if (g_sw_shelf) {
+			g_sw_shelf = false;
+			a.screen = SCREEN_SYSTEMS;
+			ui_redraw_now();
+		}
 		if (g_sw_go) {
 			int go = g_sw_go;
 

@@ -461,8 +461,9 @@ swivel_edge plat_swivel_take(void);
  * closed, and that opening is left for plat_swivel_take. A closing in the
  * dark is swallowed: nothing closes a sleeping unit further. */
 bool plat_swivel_dark(void);
-/* The two rows, for the loops that run a game (platform.c). */
-void plat_set_swivel(int closed, int open);
+/* The rows, for the loops that run a game (platform.c). keep_game: opening
+ * never leaves a running game ("Rotate Open Always Resumes Game"). */
+void plat_set_swivel(int closed, int open, bool keep_game);
 #endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
@@ -531,7 +532,10 @@ bool plat_resident_sleep_asked(void);
  * for - the two sides decide the same way from the same numbers. */
 /* GESTURE_MENU: a finger held still over the game - the in-game menu (RG DS,
  * plorpos-rgds.24.4; the Rotate's diatom does its own). */
-typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU } gesture;
+/* GESTURE_SHELF: the Rotate's swivel opened with "main shelf" and the game
+ * not kept (plorpos-5eq.23): the game ends and the shelf is next. */
+typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU,
+               GESTURE_SHELF } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30
