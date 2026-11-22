@@ -1539,10 +1539,10 @@ static void book_keep(bool now)
 	track = musec_track(mn->index);
 	al = ml_album_of(&g_muse, track);
 	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
-	if (ran_out && pod_is_path(track) && musec_end_cut() && !g_book_done[al]) {
+	if (ran_out && (pod_is_path(track) || abs_is_path(track)) && musec_end_cut() && !g_book_done[al]) {
 		/* The stream stopped short - Wi-Fi or the server went: not heard, so
 		 * not played, and nothing starts after it. A plays on from here
-		 * (plorpos-7ni.16). */
+		 * (plorpos-7ni.16; an Audiobookshelf book too, any file, 9rf.13). */
 		book_write(al, track, mn->at);
 		musec_start_at(mn->at);         /* and A starts there, not at 0:00 (ps8.13) */
 		muse_toast("Stream lost. Your place is kept.");
