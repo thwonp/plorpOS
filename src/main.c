@@ -7705,7 +7705,9 @@ static bool g_muse_card;              /* muse_open is the card's, not SELECT's *
  * by the SELECT that closes it. A screen that answers to neither (a
  * keyboard) keeps the turn waiting SW_GO_MS and then it is dropped. */
 enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
-       SW_GO_GAME };   /* Muse over a paused game: back to the game */
+       /* With a game paused under a menu or Muse (owner, 2026-11-22): opening
+        * goes back to the game, closing to Muse over it. */
+       SW_GO_GAME, SW_GO_MUSE_GAME };
 #define SW_GO_MS 1500u
 static int      g_sw_go;
 static unsigned g_sw_at;
@@ -18399,36 +18401,39 @@ static bool sleep_cycle(app *a)
  * serves both. Sleep happens in here; the caller only ever sees
  * PWR_POWEROFF, or PWR_NONE to carry on. */
 #if defined(PLATFORM_ROTATE)
-/* The swivel turned: true for a sleep. Over a paused game only the sleep is
- * taken - the game's own loops do the rest (platform.c swivel_in_game). */
+/* The swivel turned: true for a sleep. This is every screen but a running
+ * game's own, where platform.c's loops take the turn (swivel_in_game). A new
+ * turn replaces the one before it. */
 static bool swivel_check(app *a)
 {
 	swivel_edge e = plat_swivel_take();
 	bool game = a->game_on || g_native_menu;
 	unsigned now = plat_now_ms();
-	int go = SW_GO_NONE;
 
-	if (e == SWIVEL_CLOSED) {
-		int act = db_get_int(db_dev(), "swivel.closed", SWC_NOTHING);
+	if (e != SWIVEL_NONE) {
+		int go = SW_GO_NONE;
 
-		fprintf(stderr, "swivel: closed (%d)\n", act);
-		if (act == SWC_SLEEP) return true;
-		if (act == SWC_MUSE && !game && !g_muse_up) go = SW_GO_MUSE;
-	} else if (e == SWIVEL_OPENED) {
-		int act = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
+		if (e == SWIVEL_CLOSED) {
+			int act = db_get_int(db_dev(), "swivel.closed", SWC_NOTHING);
 
-		fprintf(stderr, "swivel: opened (%d)\n", act);
-		/* Muse up over a game, and the row says the game: Muse closes. */
-		if (game && g_muse_up && act == SWO_RESUME) go = SW_GO_GAME;
-		else if (!game)
-			go = act == SWO_SHELF ? SW_GO_SHELF : act == SWO_RECENTS ? SW_GO_RECENTS
-			   : act == SWO_RESUME ? SW_GO_RESUME : SW_GO_NONE;
+			fprintf(stderr, "swivel: closed (%d)\n", act);
+			if (act == SWC_SLEEP) { g_sw_go = SW_GO_NONE; return true; }
+			if (act == SWC_MUSE && !g_muse_up) go = game ? SW_GO_MUSE_GAME : SW_GO_MUSE;
+		} else {
+			int act = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
+
+			fprintf(stderr, "swivel: opened (%d)\n", act);
+			if (act == SWO_WAKE) go = SW_GO_NONE;
+			else if (game) go = SW_GO_GAME;
+			else go = act == SWO_SHELF ? SW_GO_SHELF
+			        : act == SWO_RECENTS ? SW_GO_RECENTS : SW_GO_RESUME;
+		}
+		g_sw_go = go;
+		g_sw_at = now;
 	}
-	if (go) { g_sw_go = go; g_sw_at = now; }
 	if (g_sw_go) {
 		if (now - g_sw_at > SW_GO_MS) g_sw_go = SW_GO_NONE;
 		else if (g_muse_up) a->in.pressed[IN_SELECT] = true;
-		else if (g_sw_go == SW_GO_GAME) g_sw_go = SW_GO_NONE;
 		else g_menu_closing = true;
 	}
 	return false;
@@ -18976,11 +18981,23 @@ static void game_menu(app *a, bool muse_only)
 	 * screen this menu opened - the save slots, Achievements - comes back as
 	 * MENU_LEFT_BACK too, so it is Continue from there as well. */
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
+#endif
 	if (muse_only)
 		c.resume = !muse_open(a, &c.st, &c);
 	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
+#if defined(PLATFORM_ROTATE)
+	/* Turned closed with this menu up, and the row says Muse: the menu has
+	 * closed for it (swivel_check), and Muse opens over the game. */
+	if (c.resume && g_sw_go == SW_GO_MUSE_GAME) {
+		g_sw_go = SW_GO_NONE;
+		c.resume = !muse_open(a, &c.st, &c);
+		g_menu_closing = false;
+	}
+#endif
 
 #if !defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);
@@ -19246,7 +19263,8 @@ static run_choice native_menu(void *ctx)
 	 * goes too. */
 	g_menu_closing = false;   /* sticky: see game_menu */
 #if defined(PLATFORM_ROTATE)
-	g_native_menu = true;     /* the swivel only sleeps here - see swivel_check */
+	g_native_menu = true;     /* a game is under this - see swivel_check */
+	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
 #endif
 	/* A swipe from the top is Muse over the frozen game, and closing it is
 	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
@@ -19265,6 +19283,12 @@ static run_choice native_menu(void *ctx)
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
 #if defined(PLATFORM_ROTATE)
+	/* Turned closed with the menu up: Muse over the game, as in game_menu. */
+	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_MUSE_GAME && a->running && !want_quit) {
+		g_sw_go = SW_GO_NONE;
+		if (muse_open(a, &st, &c) && (want_quit || !a->running)) c.choice = RUN_QUIT;
+		g_menu_closing = false;
+	}
 	g_native_menu = false;
 #endif
 	if (c.choice == RUN_RESET && g_p8_flags && !a->pico8_splore) {
@@ -23569,7 +23593,7 @@ int main(int argc, char *argv[])
 
 			g_sw_go = SW_GO_NONE;
 			/* Not one left over from a game that has ended since. */
-			if (go != SW_GO_GAME && plat_now_ms() - g_sw_at <= SW_GO_MS) {
+			if (go < SW_GO_GAME && plat_now_ms() - g_sw_at <= SW_GO_MS) {
 				a.in.pressed[IN_SELECT] = false;   /* swivel_check's, for Muse */
 				swivel_go(&a, go);
 				continue;

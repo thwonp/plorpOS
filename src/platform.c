@@ -830,7 +830,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 
 		/* In the music dark an opening wakes, as a tap does; nothing else. */
 		if (dark) sw_wake = plat_swivel_dark();
-		else {
+		else if (!term_at) {
 			gesture g = swivel_in_game(&sw_tap);
 
 			if (on_menu && swipe == GESTURE_NONE) swipe = g;
@@ -2277,7 +2277,12 @@ static int diatom_wait(void)
 #endif
 			}
 #if defined(PLATFORM_ROTATE)
-			sw_swipe = swivel_in_game(&lid_tap);
+			/* Taken only when it can be acted on: a turn made while the
+			 * game is starting or already pausing stays in the level, for
+			 * the next pass here or for the menu's swivel_check. */
+			if (d_got_running && !sent_stop && !d_sleep_asked &&
+			    d_gesture_asked == GESTURE_NONE)
+				sw_swipe = swivel_in_game(&lid_tap);
 #endif
 #if defined(PLATFORM_H700)
 			/* A closed lid is a POWER tap here too, as on the shelf and in a
