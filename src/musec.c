@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -88,6 +89,8 @@ static bool  (*g_resolve)(const char *rel, musec_remote *out);
 static bool  (*g_failed)(const char *rel);
 static bool  (*g_online)(void);     /* musec_set_online */
 static int     g_net_fail;          /* musec_take_net_fail */
+static bool    g_auto_rewind;       /* musec_set_auto_rewind */
+static time_t  g_paused_at;         /* when it went to paused, by the wall clock; 0 unknown */
 static int     g_retried = -1;      /* the queue entry tried again after an ERROR */
 static bool  (*g_owns)(const char *daemon_path, const char *rel);
 static double  g_len_fixed;
@@ -458,8 +461,15 @@ static void event(const char *line)
 		g_advanced = false;
 		g_asked = false;
 		g_pause_sent = 0;
-		g_now.state = !strcmp(v, "playing") ? MU_PLAYING
-		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
+		{
+			mu_state was = g_now.state;
+
+			g_now.state = !strcmp(v, "playing") ? MU_PLAYING
+			            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
+			/* By the wall clock: a night asleep is a night paused. */
+			if (g_now.state == MU_PAUSED && was != MU_PAUSED) g_paused_at = time(NULL);
+			else if (g_now.state != MU_PAUSED) g_paused_at = 0;
+		}
 		if (g_now.state == MU_PLAYING) {
 			g_skips = 0;
 			g_retried = -1;
@@ -989,6 +999,41 @@ void musec_pause(void)
 	if (!g_pause_until) g_pause_until = 1;
 }
 
+/* Auto Rewind (plorpos-5eq.4): a book or an episode paused a while resumes
+ * a little back, the longer the pause the further - the Audiobookshelf
+ * app's steps. */
+double musec_rewind_for(double paused_s)
+{
+	if (paused_s < 10) return 0;
+	if (paused_s < 60) return 3;
+	if (paused_s < 300) return 10;
+	if (paused_s < 1800) return 20;
+	return 30;
+}
+
+void musec_set_auto_rewind(bool on) { g_auto_rewind = on; }
+
+static double rewind_due(void)
+{
+	double back;
+
+	if (!g_auto_rewind || !g_book || !g_paused_at) return 0;
+	back = musec_rewind_for(difftime(time(NULL), g_paused_at));
+	g_paused_at = 0;
+	return back;
+}
+
+/* Before a RESUME: the SEEK goes first, so it is heard from there. */
+static void rewind_resume(void)
+{
+	double back = rewind_due();
+
+	if (back > 0 && g_now.at > 0) {
+		fprintf(stderr, "muse: auto rewind %.0f s\n", back);
+		seek_to(g_now.at > back ? g_now.at - back : 0);
+	}
+}
+
 void musec_toggle(void)
 {
 	/* By what the last toggle asked for until the daemon says it happened: its
@@ -1016,6 +1061,7 @@ void musec_toggle(void)
 			return;
 		}
 		if (g_before_heard) g_before_heard();   /* see play_current */
+		rewind_resume();
 		sendf("RESUME");
 	}
 	else if (g_qn > 0) play_current();
@@ -1030,10 +1076,12 @@ void musec_resume_release(int index, double at)
 	g_held = false;
 	if (index < 0 || index >= g_qn || !g_order.order) {
 		if (g_before_heard) g_before_heard();
+		rewind_resume();
 		sendf("RESUME");
 		return;
 	}
 	g_order.pos = index;                 /* a book: in order, so position is file */
+	at -= rewind_due();
 	g_start_at = at > 0 ? at : 0;
 	play_current();
 }

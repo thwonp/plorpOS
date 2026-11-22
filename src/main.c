@@ -10068,6 +10068,15 @@ static bool muse_hold(void)
 	return plat_hold_switch() || muse_hold_soft();
 }
 
+/* Auto Rewind, db "muse.autorewind", off until asked for; read once. */
+static int g_auto_rewind = -1;
+
+static bool auto_rewind_on(void)
+{
+	if (g_auto_rewind < 0) g_auto_rewind = db_get_int(db_dev(), "muse.autorewind", 0) != 0;
+	return g_auto_rewind;
+}
+
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
 {
@@ -10095,7 +10104,13 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
 	rows[3] = (menu_row){ "Play Resets Sleep Timer",
 	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
-	return 4;
+	/* Auto Rewind (owner, plorpos-5eq.4): books and podcasts; on a music
+	 * Source the row is there, off and not to be changed. */
+	if (muse_src_shown() == MSRC_MUSIC || muse_src_shown() == MSRC_PLEX)
+		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
+	else
+		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
+	return 5;
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -10137,6 +10152,12 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 	}
 	if (sel == 3 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
 		db_set_int(db_dev(), "muse.sleepreset", !db_get_int(db_dev(), "muse.sleepreset", 1));
+	if (sel == 4 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT) &&
+	    muse_src_shown() != MSRC_MUSIC && muse_src_shown() != MSRC_PLEX) {
+		g_auto_rewind = !auto_rewind_on();
+		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
+		musec_set_auto_rewind(g_auto_rewind);
+	}
 	return MENU_STAY;
 }
 
@@ -15135,6 +15156,19 @@ static bool book_start(int al)
 	 * (owner, plorpos-7ni.12). */
 	if (pod_is_path(g_muse.tracks[b->first].path)) pod_queue_top(al);
 	for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
+	/* Auto Rewind for a book opened again: by how long since it was last
+	 * played or paused (booklast, the Timeline's note). */
+	if (at > 0 && db_get_int(db_dev(), "muse.autorewind", 0)) {
+		char key[LIB_PATH + 16];
+		int last;
+
+		memcpy(key, "booklast.", 9);
+		tl_book_id(al, key + 9, sizeof key - 9);
+		if ((last = db_get_int(db_dev(), key, 0)) > 0 && time(NULL) > last) {
+			at -= musec_rewind_for(difftime(time(NULL), last));
+			if (at < 0) at = 0;
+		}
+	}
 	fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
 	muse_play(paths, b->n, start, at, true, book_speed(al),
 	          g_muse.artists[muse_artist_of(al)].name, b->name);
@@ -22692,6 +22726,7 @@ int main(int argc, char *argv[])
 			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_set_online(net_online);
+			musec_set_auto_rewind(db_get_int(db_dev(), "muse.autorewind", 0) != 0);
 			musec_on_resume(muse_resume_hold);
 			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */
 			musec_on_before_heard(aout_before_muse);

@@ -91,6 +91,10 @@ void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),
 /* `online`: whether the device has a network at all. With it, a remote track
  * asked for off the network is not tried. */
 void musec_set_online(bool (*online)(void));
+/* Auto Rewind: on, a book paused 10 s or more resumes 3 to 30 s back. The
+ * steps, for a book opened again from its kept place. */
+void   musec_set_auto_rewind(bool on);
+double musec_rewind_for(double paused_s);
 /* Once: 1 a remote track was not played for want of a network, 2 its server
  * could not be reached; 0 neither. */
 int musec_take_net_fail(void);

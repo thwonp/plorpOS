@@ -446,6 +446,11 @@ the same buttons keep working for 30 seconds, so a pause in the dark can be
 undone in the dark. Then the device suspends, or with Auto Off it powers
 down. NextUI pauses the music to sleep; this is plorpOS's own.
 
+**Auto Rewind** (Playback Settings, off to begin with) starts a book or a
+podcast episode a little back when it has been paused a while: 3 seconds
+after ten seconds paused, 10 after a minute, 20 after five minutes and 30
+after half an hour. It is not offered on Local Music or Plex.
+
 For a pocket, lock the buttons. On every device but the Miyoo Mini Flip that is **Sleep Button Lock** in
 Playback Settings (Off/On); while it is on and the music plays with the screen dark, the face
 and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
