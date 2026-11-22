@@ -51,12 +51,17 @@ typedef bool (*kb_power)(void *ctx);
 kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
                     char *buf, int cap, unsigned accent,
                     kb_backdrop backdrop, kb_power power, void *ctx);
+/* The same, with `hint` greyed in the field while it is empty: an example
+ * of what to type (plorpos-ps8.6). */
+kb_result kb_prompt_hint(SDL_Renderer *r, in_state *in, const char *title, const char *hint,
+                         char *buf, int cap, unsigned accent,
+                         kb_backdrop backdrop, kb_power power, void *ctx);
 
 /* One frame, no loop, for the --keyboard shot harness. The panel is dense
  * enough that laying it out against a screenshot beats laying it out against
  * a device, and the same argument already justifies --menu and --slots.
  * `layer` is 0 lower, 1 upper, 2 symbols. */
-void kb_preview(SDL_Renderer *r, const char *title, const char *text,
+void kb_preview(SDL_Renderer *r, const char *title, const char *text, const char *hint,
                 int layer, int row, int col, unsigned accent);
 
 #endif
