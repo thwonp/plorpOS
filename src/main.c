@@ -12741,7 +12741,13 @@ static bool cover_file(int al, char *out, size_t n)
 	}
 	if (c->st == COV_FOLDER) return ml_folder_image(g_muse_root, &g_muse, al, out, n);
 	if (c->st == COV_NONE) return false;
-	if (c->st == COV_ASKED && now - c->asked_ms < 5000) return false;
+	if (c->st == COV_ASKED && now - c->asked_ms < 5000) {
+		/* Drawn and still waiting: up the queue, so what is on screen comes
+		 * before what a fast scroll passed (plorpos-ps8.9). */
+		if (g_muse_plex) plex_cover_bump(base);
+		else if (g_muse_abs) abs_cover_bump(base);
+		return false;
+	}
 
 	snprintf(out, n, "%s.jpg", base);
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
@@ -12820,7 +12826,10 @@ static bool cover_answers(void)
 	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base) ||
 	       pod_cover_take(base, sizeof base)) {
 		landed = true;
+		/* Only the albums waiting for one: every album's base was 3527
+		 * snprintfs per cover on the Brick's Plex library (ps8.9). */
 		for (i = 0; g_cov && (g_muse_plex || g_muse_abs) && i < g_muse.nalbums; i++) {
+			if (g_cov[i].st != COV_ASKED) continue;
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
 		}

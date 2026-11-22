@@ -68,6 +68,7 @@ bool abs_is_path(const char *rel);
 bool abs_title(const char *rel, char *out, size_t n);
 void abs_pl_dir(char *out, size_t n);
 bool abs_cover_want(int al, const char *base);
+void abs_cover_bump(const char *base);   /* see plex_cover_bump */
 bool abs_cover_take(char *base, size_t n);
 
 /* ---- playing ------------------------------------------------------------------------ */

@@ -4,6 +4,7 @@
  * and photo transcoder, the universal audio transcoder and the timeline.
  * Everything over net_fetch, which runs the device's curl. */
 #include "plex.h"
+#include "coverq.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -403,7 +404,7 @@ static int server_get(const char *path, char **body, size_t *len, int timeout_s)
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_PIN, J_SERVERS, J_LIBS, J_COVER, J_TIMELINE, J_FAVS, J_PICK };
+enum { J_PIN, J_SERVERS, J_LIBS, J_TIMELINE, J_FAVS, J_PICK };
 static void do_favs(void);
 static void do_pick(void);
 typedef struct job {
@@ -443,10 +444,8 @@ typedef struct { char name[128]; int key; } lib_t;
 static lib_t g_libs[MAX_LIBS];
 static volatile int g_nlibs;
 
-/* Covers that landed. */
-#define LANDED 32
-static char g_landed[LANDED][600];
-static int  g_nlanded;
+/* Covers, fetched on coverq's threads (plorpos-ps8.9). */
+static coverq *g_cq;
 
 static void do_pin(job *j)
 {
@@ -596,19 +595,20 @@ static void do_libs(void)
 	g_nlibs = n > 0 ? n : -1;
 }
 
-static void do_cover(job *j)
+/* coverq's fetch: Plex's resize of the album's thumb, to <b>.jpg. */
+static bool cover_fetch(const char *thumb, const char *b)
 {
 	char base[256], url[1400], enc[700], dest[620], part[640];
 	char hdr[160];
 	const char *h[1] = { hdr };
 	int code;
 
-	if (!pick_base(base, sizeof base)) return;
-	urlenc(j->a, enc, sizeof enc);
+	if (!pick_base(base, sizeof base)) return false;
+	urlenc(thumb, enc, sizeof enc);
 	snprintf(url, sizeof url, "%s/photo/:/transcode?width=%d&height=%d&minSize=1&upscale=1&url=%s",
 	         base, COVER_PX, COVER_PX, enc);
 	snprintf(hdr, sizeof hdr, "X-Plex-Token: %s", C.token);
-	snprintf(dest, sizeof dest, "%s.jpg", j->b);
+	snprintf(dest, sizeof dest, "%s.jpg", b);
 	snprintf(part, sizeof part, "%s.part", dest);
 	{
 		char d[620], *s;
@@ -616,14 +616,10 @@ static void do_cover(job *j)
 		if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
 	}
 	code = net_fetch(url, "GET", h, 1, part, 5, 30, NULL);
-	if (code == 200 && rename(part, dest) == 0) {
-		LOCK();
-		if (g_nlanded < LANDED) snprintf(g_landed[g_nlanded++], sizeof g_landed[0], "%s", j->b);
-		UNLOCK();
-	} else {
-		unlink(part);
-		if (code == 0) base_failed();
-	}
+	if (code == 200 && rename(part, dest) == 0) return true;
+	unlink(part);
+	if (code == 0) base_failed();
+	return false;
 }
 
 static void do_report(job *j)
@@ -653,7 +649,6 @@ static void *api_main(void *arg)
 		case J_PIN:      do_pin(j); break;
 		case J_SERVERS:  do_servers(); break;
 		case J_LIBS:     do_libs(); break;
-		case J_COVER:    do_cover(j); break;
 		case J_TIMELINE: do_report(j); break;
 		case J_FAVS:     do_favs(); break;
 		case J_PICK:     do_pick(); break;
@@ -1884,52 +1879,20 @@ void plex_pl_dir(char *out, size_t n) { snprintf(out, n, "%s/%s/Playlists", g_ca
 
 bool plex_cover_want(int al, const char *base)
 {
-	job *j;
+	char thumb[600];
 
 	LOCK();
 	if (al < 0 || al >= g_tab.nal || !g_tab.al[al].thumb[0] || !C.token[0]) { UNLOCK(); return false; }
-	j = job_new(J_COVER);
-	if (j) {
-		snprintf(j->a, sizeof j->a, "%s", g_tab.al[al].thumb);
-		snprintf(j->b, sizeof j->b, "%s", base);
-	}
+	snprintf(thumb, sizeof thumb, "%s", g_tab.al[al].thumb);
 	UNLOCK();
-	if (!j) return false;
-	push(j, true);   /* the newest first: what is on screen now */
-	/* A fast scroll asks for hundreds: keep the newest 48, and an album
-	 * scrolled past is asked for again if it comes back (COV_ASKED expires). */
-	LOCK();
-	{
-		job **pp = &g_jobs;
-		int covers = 0;
-
-		while (*pp) {
-			if ((*pp)->kind == J_COVER && ++covers > 48) {
-				job *gone = *pp;
-				*pp = gone->next;
-				g_njobs--;
-				free(gone);
-				continue;
-			}
-			pp = &(*pp)->next;
-		}
-	}
-	UNLOCK();
+	if (!g_cq && !(g_cq = coverq_new(cover_fetch))) return false;
+	coverq_want(g_cq, thumb, base);
 	return true;
 }
 
-bool plex_cover_take(char *base, size_t n)
-{
-	bool got = false;
+void plex_cover_bump(const char *base) { coverq_bump(g_cq, base); }
 
-	LOCK();
-	if (g_nlanded) {
-		snprintf(base, n, "%s", g_landed[--g_nlanded]);
-		got = true;
-	}
-	UNLOCK();
-	return got;
-}
+bool plex_cover_take(char *base, size_t n) { return coverq_take(g_cq, base, n); }
 
 bool plex_resolve(const char *rel, musec_remote *out)
 {
