@@ -461,6 +461,9 @@ swivel_edge plat_swivel_take(void);
  * closed, and that opening is left for plat_swivel_take. A closing in the
  * dark is swallowed: nothing closes a sleeping unit further. */
 bool plat_swivel_dark(void);
+/* The Y just pressed came from a long press on the panel, not the Y button
+ * (plorpos-5eq.19). Asked once per Y. */
+bool plat_touch_long(void);
 /* The rows, for the loops that run a game (platform.c). keep_game: opening
  * never leaves a running game ("Rotate Open Always Resumes Game"). */
 void plat_set_swivel(int closed, int open, bool keep_game);
