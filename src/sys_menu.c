@@ -251,6 +251,17 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
 	 * screen but the game's. Off, the disc is only the low-battery dot. */
 	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
+#if defined(PLATFORM_ROTATE)
+	{
+		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping
+		 * unit, so there is no "nothing" for it (plorpos-5eq.1). */
+		static const char *const closed[] = { "nothing", "sleep", "muse+ now playing" };
+		static const char *const open[] = { "wake only", "main shelf", "recents", "resume game" };
+
+		out[ST_SW_CLOSED] = (menu_row){ "Rotate (Closed)", closed[u->sw_closed % 3u], true };
+		out[ST_SW_OPEN]   = (menu_row){ "Rotate (Open)",   open[u->sw_open % 4u], true };
+	}
+#endif
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */

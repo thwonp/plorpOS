@@ -71,6 +71,9 @@ typedef enum {
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
+#if defined(PLATFORM_ROTATE)
+	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
+#endif
 #endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
@@ -220,6 +223,7 @@ typedef struct {
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
+	int         sw_closed, sw_open; /* Rotate: the swivel's rows (5eq.1), SWC_ / SWO_ */
 	bool        adb;         /* RG DS, Zero 40: adb over USB is on (plorpos-rgds.11) */
 	bool        adb_restart; /* Zero 40: turned off, still on until a restart (auv.12) */
 	/* RG DS, Dual Screen Settings (plorpos-rgds.18.1): the second panel is

@@ -446,6 +446,24 @@ void plat_bottom_pump(void);
  * (power_key_within); Muse's dark screen asks here (plorpos-ps8.3). */
 bool plat_lid_opened(void);
 #endif
+#if defined(PLATFORM_ROTATE)
+/* The swivel (plorpos-5eq.1). System Settings' "Rotate (Closed)" and
+ * "Rotate (Open)" say what a turn does; opening always wakes a sleeping unit
+ * (the hall switch is a kernel wake source, and nothing at runtime turns
+ * that off). The level is read, not the events: every reader of the system
+ * node drains it, and a sleep ends with the turn already made. */
+typedef enum { SWIVEL_NONE, SWIVEL_CLOSED, SWIVEL_OPENED } swivel_edge;
+enum { SWC_NOTHING, SWC_SLEEP, SWC_MUSE, SWC_COUNT };
+enum { SWO_WAKE, SWO_SHELF, SWO_RECENTS, SWO_RESUME, SWO_COUNT };
+/* The turn made since the last call, once. */
+swivel_edge plat_swivel_take(void);
+/* For a dark screen or a sleep: true once the unit is open after having been
+ * closed, and that opening is left for plat_swivel_take. A closing in the
+ * dark is swallowed: nothing closes a sleeping unit further. */
+bool plat_swivel_dark(void);
+/* The two rows, for the loops that run a game (platform.c). */
+void plat_set_swivel(int closed, int open);
+#endif
 #if defined(PLATFORM_MIYOO)
 /* The Flip's sleep-to-power-off wait, seconds (Sleep Poweroff, f1p.56). */
 void plat_set_sleep_timeout(int seconds);
