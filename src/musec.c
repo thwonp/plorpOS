@@ -86,6 +86,8 @@ static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that que
  * stream's META (a transcode says 0) must not take away. */
 static bool  (*g_resolve)(const char *rel, musec_remote *out);
 static bool  (*g_failed)(const char *rel);
+static bool  (*g_online)(void);     /* musec_set_online */
+static int     g_net_fail;          /* musec_take_net_fail */
 static int     g_retried = -1;      /* the queue entry tried again after an ERROR */
 static bool  (*g_owns)(const char *daemon_path, const char *rel);
 static double  g_len_fixed;
@@ -251,6 +253,27 @@ static void play_current(void)
 		g_names_remote = remote && r.names;
 		g_now.codec[0] = '\0';
 
+		if (remote && g_online && !g_online() && (r.wait || strstr(r.url, "://"))) {
+			/* A stream, or a track fetched first, with no network: not
+			 * tried - it would wait out a timeout and say nothing - and
+			 * said so (musec_take_net_fail). What played before stops, as
+			 * for a track that waits; the place asked for stays, so play
+			 * starts there once the network is back (plorpos-5eq.13). */
+			sendf("STOP");
+			snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
+			snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist[0] ? r.artist : g_artist);
+			snprintf(g_now.album, sizeof g_now.album, "%s", r.names ? "" : g_album);
+			g_now.len = g_len_fixed = r.len;
+			g_now.at = g_start_at;
+			g_now.state = MU_STOPPED;
+			g_now.index = g_order.pos;
+			g_now.count = g_qn;
+			g_wait_remote = false;
+			g_asked = false;
+			g_net_fail = 1;
+			memset(r.url, 0, sizeof r.url);
+			return;
+		}
 		if (remote && r.wait) {
 			/* Not playable yet (fetched first): shown as the track asked
 			 * for, stopped, and asked for again on each poll. What played
@@ -594,6 +617,15 @@ static void event(const char *line)
 			g_asked = false;
 			g_now.state = MU_STOPPED;
 			g_end_cut = g_ran_out = true;
+			g_net_fail = g_online && !g_online() ? 1 : 2;
+		}
+		/* A server's track that will not open, tried twice: stopped and
+		 * said so, not skipped past - the next one has the same server
+		 * (plorpos-5eq.13). */
+		else if (g_play_remote) {
+			g_asked = false;
+			g_now.state = MU_STOPPED;
+			g_net_fail = g_online && !g_online() ? 1 : 2;
 		}
 		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
@@ -797,6 +829,16 @@ void musec_retitle(void)
 	g_len_fixed = r.len;
 	if (g_now.len <= 0) g_now.len = r.len;
 	memset(r.url, 0, sizeof r.url);
+}
+
+void musec_set_online(bool (*online)(void)) { g_online = online; }
+
+int musec_take_net_fail(void)
+{
+	int r = g_net_fail;
+
+	g_net_fail = 0;
+	return r;
 }
 
 void musec_set_remote(bool (*resolve)(const char *rel, musec_remote *out),

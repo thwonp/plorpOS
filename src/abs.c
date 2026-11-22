@@ -23,6 +23,16 @@
 #include "net.h"
 #include "rajson.h"
 
+/* A download failed (not cancelled): once, for a toast (plorpos-5eq.13). */
+static volatile int g_dl_fail_note;
+bool abs_download_take_failed(void)
+{
+	bool r = g_dl_fail_note != 0;
+
+	g_dl_fail_note = 0;
+	return r;
+}
+
 #define BATCH      20          /* books per batch/get: ~3 MB of JSON each */
 #define COVER_PX   500
 #define PUSH_MS    15000       /* a place sent every 15 s while playing */
@@ -1741,6 +1751,7 @@ static void *dl_main(void *arg)
 		UNLOCK();
 		ok = dl_one(id);
 		fprintf(stderr, "abs: download %s %s\n", id, ok ? "done" : g_dl_cancel ? "cancelled" : "failed");
+		if (!ok && !g_dl_cancel) g_dl_fail_note = 1;
 		if (ok) g_dl_changed = 1;
 		else if (g_dl_cancel) {
 			char stage[700];

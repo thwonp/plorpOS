@@ -170,4 +170,7 @@ bool plex_download_status(char *out, size_t n);
  * source's library is out of date. */
 bool plex_download_take_changed(void);
 
+/* True once after a download failed (not cancelled). */
+bool plex_download_take_failed(void);
+
 #endif

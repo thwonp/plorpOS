@@ -24,6 +24,16 @@
 #include "playlist.h"
 #include "rajson.h"
 
+/* A download failed (not cancelled): once, for a toast (plorpos-5eq.13). */
+static volatile int g_dl_fail_note;
+bool plex_download_take_failed(void)
+{
+	bool r = g_dl_fail_note != 0;
+
+	g_dl_fail_note = 0;
+	return r;
+}
+
 #define PLEX_TV        "https://plex.tv/api/v2"
 #define PRODUCT        "plorpOS"
 /* The transcoder serves the Opus profile below to a client that says it is a
@@ -1436,6 +1446,7 @@ static bool download_one(int key, char reason)
 		return true;
 	}
 	fprintf(stderr, "plex: download of track %d failed (http %d)\n", key, code);
+	g_dl_fail_note = 1;
 	if (code == 0) base_failed();
 	return false;
 }

@@ -128,4 +128,7 @@ bool abs_download_status(char *out, size_t n);
 /* True once after a download finished or a copy went: Audiobooks changed. */
 bool abs_download_take_changed(void);
 
+/* True once after a download failed (not cancelled). */
+bool abs_download_take_failed(void);
+
 #endif
