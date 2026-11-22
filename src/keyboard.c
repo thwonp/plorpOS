@@ -72,6 +72,7 @@ typedef struct {
 	int  len, cur;      /* cursor sits BEFORE buf[cur] */
 	int  layer;         /* 0 lower, 1 upper, 2 symbols */
 	int  row, col;
+	const char *hint;   /* greyed in an empty field, or NULL (plorpos-ps8.6) */
 } kb_state;
 
 static void ins(kb_state *k, char c, int cap)
@@ -155,6 +156,8 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 		shown[k->len] = '\0';
 		SDL_RenderSetClipRect(r, &clip);
 		ui_text(r, fk, shown, f.x + 12 - shift, f.y + fpad, -1, UI_TEXT);
+		/* An example of what goes here, until the first character. */
+		if (!k->len && k->hint) ui_text(r, fk, k->hint, f.x + 12, f.y + fpad, -1, UI_TEXT_DIM);
 		SDL_RenderSetClipRect(r, NULL);
 
 		/* Caret at the measured pixel width rather than a fixed advance,
@@ -246,12 +249,13 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 	}
 }
 
-void kb_preview(SDL_Renderer *r, const char *title, const char *text,
+void kb_preview(SDL_Renderer *r, const char *title, const char *text, const char *hint,
                 int layer, int row, int col, unsigned accent)
 {
 	kb_state k;
 
 	memset(&k, 0, sizeof k);
+	k.hint = hint;
 	snprintf(k.buf, sizeof k.buf, "%s", text ? text : "");
 	k.len = (int)strlen(k.buf);
 	k.cur = k.len;
@@ -267,10 +271,18 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
                     char *buf, int cap, unsigned accent,
                     kb_backdrop backdrop, kb_power power, void *ctx)
 {
+	return kb_prompt_hint(r, in, title, NULL, buf, cap, accent, backdrop, power, ctx);
+}
+
+kb_result kb_prompt_hint(SDL_Renderer *r, in_state *in, const char *title, const char *hint,
+                         char *buf, int cap, unsigned accent,
+                         kb_backdrop backdrop, kb_power power, void *ctx)
+{
 	kb_state k;
 	int cols;
 
 	memset(&k, 0, sizeof k);
+	k.hint = hint;
 	snprintf(k.buf, sizeof k.buf, "%s", buf ? buf : "");
 	k.len = (int)strlen(k.buf);
 	k.cur = k.len;

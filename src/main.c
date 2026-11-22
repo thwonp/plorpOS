@@ -10198,8 +10198,8 @@ static bool abs_setup(app *a)
 		snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : sv);   /* the last one, to edit */
 	}
 	for (;;) {
-		kr = kb_prompt(a->r, &a->in, "Server Address", addr, (int)sizeof addr, MUSE_ACCENT,
-		               abs_kb_backdrop, power_due_ctx, a);
+		kr = kb_prompt_hint(a->r, &a->in, "Server Address", "e.g. 192.168.1.2:13378",
+		                    addr, (int)sizeof addr, MUSE_ACCENT, abs_kb_backdrop, power_due_ctx, a);
 		if (kr == KB_POWER) { power_off(a); return false; }
 		if (kr != KB_ACCEPT || !addr[0]) return false;
 		abs_check_start(addr);
@@ -20969,6 +20969,7 @@ static const char *shot_hare_who  = "1 connected";
 static const char *shot_hare_head = "receiving Contra (USA).zip";
 static const char *shot_wait, *shot_wait_msg = "Scanning...";
 static const char *shot_kb_text = "correct horse";
+static const char *shot_kb_hint;
 /* The title was hardcoded to "Wi-Fi password", so the one other thing that
  * uses this keyboard - signing in to RetroAchievements - could not be
  * rendered at all. A harness narrower than the thing it checks. */
@@ -21105,7 +21106,7 @@ static void take_shot(app *a)
 	draw_shelf(a);
 	if (shot_menu) tortos_menu_draw(a, shot_menu_sel);
 	if (shot_slots) shot_draw_slots(a);
-	if (shot_kb) kb_preview(a->r, shot_kb_title, shot_kb_text,
+	if (shot_kb) kb_preview(a->r, shot_kb_title, shot_kb_text, shot_kb_hint,
 	                        shot_kb_layer, 1, 0, MENU_ACCENT);
 	/* The in-game notice is not drawn by this process - Diatom composites it
 	 * over the game - so it cannot be screenshotted like the rest. Rendered
@@ -21803,6 +21804,7 @@ int main(int argc, char *argv[])
 				shot_kb_layer = atoi(argv[++i]);
 			if (i + 1 < argc && argv[i + 1][0] != '-') shot_kb_text = argv[++i];
 			if (i + 1 < argc && argv[i + 1][0] != '-') shot_kb_title = argv[++i];
+			if (i + 1 < argc && argv[i + 1][0] != '-') shot_kb_hint = argv[++i];
 		}
 		else if (!strcmp(argv[i], "--slots")) {
 			shot_slots = 1;
