@@ -15153,16 +15153,18 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			continue;
 		}
 		/* A playlist's own keys (owner): X is the track's menu - Add to
-		 * Playlist under the cursor, Remove from Playlist below it, so a
-		 * slip of X removes nothing (plorpos-5eq.8, .18) - and L2 and R2
-		 * move it up and down a place, the cursor going with it. */
+		 * Playlist, and Remove from Playlist, asked again with Yes under
+		 * the cursor (owner, plorpos-5eq.8, .18) - and L2 and R2 move it
+		 * up and down a place, the cursor going with it. */
 		if (ts->pl && items > 0 && a->in.pressed[IN_X]) {
 			static const char *const opts[] = { "Add to Playlist", "Remove from Playlist" };
+			static const char *const yn[] = { "Yes", "No" };
 			char d[CFG_STR * 2 + 32];
 			int k = muse_pick_run(a, g_muse.tracks[ts->trk[sel]].name, opts, 2);
 
 			if (k == 0) muse_add_to_playlist(a, ts->trk[sel]);
-			if (k != 1 || !muse_pl_editable(ts->pl)) {
+			if (k != 1 || !muse_pl_editable(ts->pl) ||
+			    muse_pick_run(a, "Remove from Playlist?", yn, 2) != 0) {
 				ui_redraw_now();
 				continue;
 			}
