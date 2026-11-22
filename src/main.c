@@ -3714,6 +3714,13 @@ static bool muse_hk_stick(void)
 #endif
 }
 
+/* A volume hold set to None is the volume's repeat in a game too: the
+ * game's side of the keys is told which holds are Muse's (plorpos-5eq.14). */
+static void muse_hk_tell(void)
+{
+	plat_skip_keys((g_mhk[MH_VOLUP] != MA_NONE ? 1 : 0) | (g_mhk[MH_VOLDN] != MA_NONE ? 2 : 0));
+}
+
 static int muse_hk_get(int i)
 {
 	if (!g_mhk_in) {
@@ -3726,6 +3733,7 @@ static int muse_hk_get(int i)
 			g_mhk[k] = (signed char)(v >= 0 && v < MA_N ? v : MUSE_HK[k].def);
 		}
 		g_mhk_in = true;
+		muse_hk_tell();
 	}
 	return g_mhk[i];
 }
@@ -3738,6 +3746,7 @@ static void muse_hk_set(int i, int act)
 	g_mhk[i] = (signed char)act;
 	snprintf(key, sizeof key, "muse.hk.%s", MUSE_HK[i].key);
 	db_set_int(db_dev(), key, act);
+	muse_hk_tell();
 }
 
 /* Action `act`, once: a tap in the dark, a volume hold on music, the chord.
@@ -23284,6 +23293,7 @@ int main(int argc, char *argv[])
 #if defined(PLATFORM_ROTATE)
 		swivel_apply();
 #endif
+		(void)muse_hk_get(0);     /* read, and the volume holds told (5eq.14) */
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
