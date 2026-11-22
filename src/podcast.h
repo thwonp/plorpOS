@@ -106,6 +106,9 @@ int  pod_download_state(int al);     /* 0 none, 1 waiting, 2 downloading */
 void pod_download(int al);
 /* False when there was nothing to stop: it had landed already. */
 bool pod_download_cancel(int al);
+/* The episodes on their way, the one downloading first: album and whether it
+ * is that one. Their count (plorpos-ps8.8). */
+int pod_download_queue(int *al, bool *now, int max);
 bool pod_delete_download(int al);
 /* A line while downloads run: "45% of 60 MB, 2 more waiting", or "27 MB"
  * when the server gives no size. */

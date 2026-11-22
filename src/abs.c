@@ -1746,6 +1746,35 @@ int abs_book_downloaded(int al)
 	return r;
 }
 
+int abs_download_queue(int *al, bool *now, int max)
+{
+	int n = 0, b;
+
+	LOCK();
+	if (g_dl_id[0] && n < max && (b = tab_find(&g_tab, g_dl_id)) >= 0) { al[n] = b; now[n++] = true; }
+	for (int i = 0; i < g_dl_n && n < max; i++)
+		if ((b = tab_find(&g_tab, g_dl_q[i])) >= 0) { al[n] = b; now[n++] = false; }
+	UNLOCK();
+	return n;
+}
+
+void abs_download_cancel_book(int al)
+{
+	const char *id;
+
+	LOCK();
+	if ((id = book_id(al))) {
+		if (!strcmp(g_dl_id, id)) g_dl_cancel = 1;
+		for (int i = 0; i < g_dl_n; i++)
+			if (!strcmp(g_dl_q[i], id)) {
+				memmove(g_dl_q + i, g_dl_q + i + 1, sizeof g_dl_q[0] * (size_t)(g_dl_n - i - 1));
+				g_dl_n--;
+				break;
+			}
+	}
+	UNLOCK();
+}
+
 bool abs_book_downloading(int al)
 {
 	const char *id;

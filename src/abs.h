@@ -118,6 +118,9 @@ int  abs_book_downloaded(int al);
 bool abs_book_downloading(int al);
 void abs_download_book(int al);
 void abs_download_cancel(void);
+/* As pod_download_queue (plorpos-ps8.8), and one book out of it. */
+int  abs_download_queue(int *al, bool *now, int max);
+void abs_download_cancel_book(int al);
 void abs_delete_book(int al);
 /* A line for the screen while downloads run ("Downloading 3 of 12"). */
 bool abs_download_status(char *out, size_t n);

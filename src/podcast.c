@@ -1256,6 +1256,18 @@ bool pod_download_cancel(int al)
 	return hit;
 }
 
+int pod_download_queue(int *al, bool *now, int max)
+{
+	int n = 0, a;
+
+	LOCK();
+	if (g_dl_key[0] && n < max && (a = album_of_key_locked(g_dl_key)) >= 0) { al[n] = a; now[n++] = true; }
+	for (int i = 0; i < g_dl_n && n < max; i++)
+		if ((a = album_of_key_locked(g_dl_q[i])) >= 0) { al[n] = a; now[n++] = false; }
+	UNLOCK();
+	return n;
+}
+
 bool pod_delete_download(int al)
 {
 	char path[1400], sid[12];

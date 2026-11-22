@@ -29,7 +29,7 @@ const char *sys_menu_src_label(muse_src s)
 	return s >= 0 && s < MSRC_COUNT ? L[s] : L[0];
 }
 
-int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out)
+int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 {
 	bool remote = src == MSRC_PLEX || src == MSRC_ABS || src == MSRC_PODCASTS;
 	int n = 0;
@@ -46,6 +46,7 @@ int sys_menu_muse_rows(bool books, muse_src src, sm_muse_row *out)
 	if (src == MSRC_PLEX) out[n++] = SMM_PLEX;
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
+	if (dlq && remote) out[n++] = SMM_DLQ;
 	return n;
 }
 
@@ -67,7 +68,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		}
 		if (u->muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_src, ids);
+			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_src, u->muse_dlq != NULL, ids);
 
 			for (k = 0; k < n; k++)
 				switch (ids[k]) {
@@ -101,6 +102,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_POD:
 					out[k] = (menu_row){ "Podcast Settings", NULL, true };
+					break;
+				case SMM_DLQ:
+					out[k] = (menu_row){ "Download Queue", u->muse_dlq, true };
 					break;
 				case SMM_TABS:
 					out[k] = (menu_row){ "Tab Settings", NULL, true };

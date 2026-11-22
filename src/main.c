@@ -427,6 +427,7 @@ static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
 static void muse_refresh(app *a);
+static const char *muse_dlq_label(void);
 static bool is_pico8(const system_cfg *s);
 static bool is_splore(const system_cfg *s, const char *file);
 static bool is_portmaster(const system_cfg *s, const char *file);
@@ -7071,6 +7072,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_src   = u.muse ? muse_src_shown() : MSRC_MUSIC;
+		u.muse_dlq   = u.muse ? muse_dlq_label() : NULL;
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
@@ -9722,7 +9724,7 @@ static int menu_shelf_width(app *a)
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
 		if (muse) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int nn = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), ids);
+			int nn = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), muse_dlq_label() != NULL, ids);
 
 			for (k = 0; k < nn; k++) {
 				if (ids[k] == SMM_SORT) srow = k;
@@ -10688,52 +10690,109 @@ static bool muse_source_pick(app *a)
 	return true;
 }
 
-/* Download Queue (plorpos-1lw.21): the albums still to download, one row
- * each; X cancels that album, as Cancel Download on the album does. */
-#define PLEX_QMAX 48
-typedef struct { plex_queued q[PLEX_QMAX]; int n; char foot[160], cnt[PLEX_QMAX][24]; } plex_queue_ui;
+/* Download Queue (plorpos-1lw.21; every server source and in Muse's own menu,
+ * plorpos-ps8.8): what the Source shown still has to download, the one
+ * downloading first, one row each; X cancels that one. */
+#define DLQ_MAX 48
+typedef struct {
+	plex_queued q[DLQ_MAX];
+	int al[DLQ_MAX], n;
+	bool now[DLQ_MAX];
+	char val[DLQ_MAX][24], foot[160];
+} dlq_ui;
 
-static int plex_queue_build(void *ctx, menu_row *rows, int max, const char **heading)
+/* Fills u for the Source shown; its count. */
+static int muse_dlq_list(dlq_ui *u)
 {
-	plex_queue_ui *u = ctx;
-	int i, n = 0;
+	muse_src s = muse_src_shown();
+	int i;
+
+	u->n = 0;
+	if (s == MSRC_PLEX) {
+		u->n = plex_download_queue(u->q, DLQ_MAX);
+		for (i = 0; i < u->n; i++) { u->al[i] = u->q[i].al; u->now[i] = u->q[i].now; }
+	} else if (s == MSRC_ABS) {
+		u->n = abs_download_queue(u->al, u->now, DLQ_MAX);
+	} else if (s == MSRC_PODCASTS) {
+		u->n = pod_download_queue(u->al, u->now, DLQ_MAX);
+	}
+	return u->n;
+}
+
+/* Muse menu's Download Queue value ("3 albums"), NULL when nothing is on its
+ * way - then the row is not there. */
+static const char *muse_dlq_label(void)
+{
+	static dlq_ui u;
+	static char lab[32];
+	muse_src s = muse_src_shown();
+	const char *one = s == MSRC_PLEX ? "album" : s == MSRC_ABS ? "book" : "episode";
+	int n = muse_dlq_list(&u);
+
+	if (!n) return NULL;
+	snprintf(lab, sizeof lab, "%d%s %s%s", n, n == DLQ_MAX ? "+" : "", one, n == 1 ? "" : "s");
+	return lab;
+}
+
+static int dlq_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	dlq_ui *u = ctx;
+	muse_src s = muse_src_shown();
+	int i, n = 0, k = muse_dlq_list(u);
 
 	*heading = "Download Queue";
-	u->n = plex_download_queue(u->q, PLEX_QMAX < max - 3 ? PLEX_QMAX : max - 3);
-	for (i = 0; i < u->n; i++) {
-		snprintf(u->cnt[i], sizeof u->cnt[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
-		rows[n++] = (menu_row){ u->q[i].title, u->q[i].now ? "downloading" : u->cnt[i], true };
+	if (k > max - 3) k = max - 3;
+	for (i = 0; i < k; i++) {
+		const char *t = s == MSRC_PLEX ? u->q[i].title
+		              : u->al[i] >= 0 && u->al[i] < g_muse.nalbums ? g_muse.albums[u->al[i]].name : "";
+
+		if (u->now[i] && s == MSRC_PODCASTS && pod_download_permille() >= 0)
+			snprintf(u->val[i], sizeof u->val[i], "%d%%", pod_download_permille() / 10);
+		else if (u->now[i]) snprintf(u->val[i], sizeof u->val[i], "downloading");
+		else if (s == MSRC_PLEX)
+			snprintf(u->val[i], sizeof u->val[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
+		else snprintf(u->val[i], sizeof u->val[i], "waiting");
+		rows[n++] = (menu_row){ t, u->val[i], true };
 	}
-	if (!u->n) return 0;                 /* all done or cancelled: back to Plex Settings */
+	if (!k) return 0;                    /* all done or cancelled: back */
+	if (!(s == MSRC_PLEX ? plex_download_status(u->foot, sizeof u->foot)
+	      : s == MSRC_ABS ? abs_download_status(u->foot, sizeof u->foot)
+	      : pod_download_status(u->foot, sizeof u->foot)))
+		u->foot[0] = '\0';
 	rows[n++] = MENU_RULE;
-	rows[n++] = MENU_NOTE(plex_download_status(u->foot, sizeof u->foot) ? u->foot : "");
-	rows[n++] = MENU_NOTE("X: cancel the album");
+	rows[n++] = MENU_NOTE(u->foot);
+	rows[n++] = MENU_NOTE(s == MSRC_PLEX ? "X: cancel the album" : s == MSRC_ABS ? "X: cancel the book"
+	                                     : "X: cancel the episode");
 	return n;
 }
 
-static menu_result plex_queue_key(app *a, void *ctx, in_button key, int sel)
+static menu_result dlq_key(app *a, void *ctx, in_button key, int sel)
 {
-	plex_queue_ui *u = ctx;
+	dlq_ui *u = ctx;
+	muse_src s = muse_src_shown();
 
 	(void)a;
 	if (key == IN_X && sel >= 0 && sel < u->n) {
-		plex_download_cancel_album(u->q[sel].al);
+		if (s == MSRC_PLEX) plex_download_cancel_album(u->al[sel]);
+		else if (s == MSRC_ABS) abs_download_cancel_book(u->al[sel]);
+		else pod_download_cancel(u->al[sel]);
 		muse_toast("Download cancelled");
 	}
 	return MENU_STAY;
 }
 
-static void plex_queue_screen(app *a)
+static void muse_dlq_screen(app *a)
 {
-	plex_queue_ui u = { 0 };
+	static dlq_ui u;                     /* 48 albums' titles: off the stack */
 
+	memset(&u, 0, sizeof u);
 	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
-	         plex_queue_build, plex_queue_key, &u);
+	         dlq_build, dlq_key, &u);
 }
 
 enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
-       PX_DOWNLOADS, PX_FAVS, PX_SIGNOUT, PX_ROWS };
-typedef struct { bool rebuilt; char sync[48], dl[160], ahead[8]; Uint32 ok_until; } plex_set_ui;
+       PX_FAVS, PX_SIGNOUT, PX_ROWS };   /* Download Queue: Muse's own menu now (ps8.8) */
+typedef struct { bool rebuilt; char sync[48], ahead[8]; Uint32 ok_until; } plex_set_ui;
 
 static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -10749,13 +10808,6 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
-	{
-		plex_queued q[PLEX_QMAX];
-		int nq = plex_download_queue(q, PLEX_QMAX);
-
-		if (!nq) snprintf(u->dl, sizeof u->dl, "none");
-		else snprintf(u->dl, sizeof u->dl, nq == 1 ? "1 album" : "%d%s albums", nq, nq == PLEX_QMAX ? "+" : "");
-	}
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
 	                                              : "Sign In", !in };
 	rows[PX_SERVER]   = (menu_row){ "Server", plex_server_name()[0] ? plex_server_name() : "Choose", in };
@@ -10770,7 +10822,6 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
 	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
-	rows[PX_DOWNLOADS]= (menu_row){ "Download Queue", u->dl, strcmp(u->dl, "none") != 0 };
 	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
 	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
 	return PX_ROWS;
@@ -10833,9 +10884,6 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
-	case PX_DOWNLOADS:
-		plex_queue_screen(a);
-		return MENU_STAY;
 	case PX_FAVS:
 		if (!net_online()) { muse_toast("Downloads need Wi-Fi"); return MENU_STAY; }
 		plex_sync_favorites();
@@ -11392,7 +11440,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * Settings is the fork's own row (TortOS-28l), always last. */
 		if (is_muse(&a->sys.systems[a->sys_cursor])) {
 			sm_muse_row ids[SM_MUSE_ROWS];
-			int n = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), ids);
+			int n = sys_menu_muse_rows(muse_books_shown(), muse_src_shown(), muse_dlq_label() != NULL, ids);
 			sm_muse_row id = sel >= 0 && sel < n ? ids[sel] : SMM_COUNT;
 
 			if (id == SMM_SORT) {
@@ -11406,6 +11454,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
 				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
