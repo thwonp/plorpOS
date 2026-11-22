@@ -110,7 +110,7 @@ next pass, so MENU from Play Time or Wi-Fi goes straight back to the shelf (or,
 in the in-game menu, to Continue). The runner does this itself; a screen with
 its own loop asks `menu_leaving(a)` for its way out instead of testing B and
 MENU, which is how all of them used to treat MENU as a second B. The flag is
-put down only outside the menus - the shelf's loop, `game_menu`, Muse - and
+put down only outside the menus - the shelf's loop, `game_menu`, Muse+ - and
 never when a menu opens, so a screen that opens a second one after the first
 came back sees it still raised.
 

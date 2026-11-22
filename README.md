@@ -26,7 +26,7 @@ plorpOS started as a fork of [TortOS](https://tortos.games/) for the TrimUI Bric
     <td align="center"><img src="res/readme/cheevos.png" width="240" alt="An achievements list"><br><sub>RetroAchievements on the device</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="res/readme/muse.png" width="240" alt="Muse's shelf of albums"><br><sub>Your albums, in Muse</sub></td>
+    <td align="center"><img src="res/readme/muse.png" width="240" alt="Muse+'s shelf of albums"><br><sub>Your albums, in Muse+</sub></td>
     <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>Nintendo DS, laid out your way</sub></td>
     <td align="center"><img src="res/readme/rotate-ports.png" width="240" alt="The Ports shelf with PortMaster games"><br><sub>Ports, installed by PortMaster</sub></td>
   </tr>
@@ -131,10 +131,10 @@ The PIN is new every time you open Over The Hare.
 | **Y** | Favorite |
 | **L1/R1** | Jump a screenful |
 | **MENU** | Settings for the device, or for the shelf you're in |
-| **SELECT** | Muse, the music and audiobook player. Press it again to close |
+| **SELECT** | Muse+, the music and audiobook player. Press it again to close |
 | **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's or Mini Flip's lid is a tap (Flip: **Lid Close** in System Settings turns that off) |
 
-**In a game,** MENU opens the in-game menu and holding it opens the game switcher. SELECT in that menu opens Muse. A tap of POWER saves and sleeps; holding it saves and turns the device off.
+**In a game,** MENU opens the in-game menu and holding it opens the game switcher. SELECT in that menu opens Muse+. A tap of POWER saves and sleeps; holding it saves and turns the device off.
 
 The volume buttons work everywhere. Brightness is MENU plus volume (Home plus volume on the GKD). On devices with sticks, the left stick works as the D-pad, and the right stick and stick clicks can be hotkeys.
 
@@ -200,7 +200,7 @@ Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotk
 - **Press Turbo Assign again** before the last press to cancel.
 - **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
-A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo Assignments** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
+A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse+ don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo Assignments** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 
 </details>
 
@@ -213,7 +213,7 @@ They're under **MENU > System Settings**. The device has two ways to rest: **sle
 - **Suspend** comes 10 seconds after the device falls asleep, however it fell asleep. When music ends with the screen dark, it suspends 30 seconds later. Neither is a setting.
 - **Auto Off** (default Never; not on the RG Rotate): how long the device sits untouched before it powers itself off. Next time you turn it on, you're back where you were. Auto Off and Auto Sleep can't both be on: setting one turns the other to Never.
 
-Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse's own **Screen Off** setting decides when the screen goes dark instead. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
+Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse+'s own **Screen Off** setting decides when the screen goes dark instead. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
 
 **Miyoo Mini Flip:** no suspend and no Auto Off. **Sleep Poweroff** (default 2 minutes) powers a sleeping Flip off instead.
 
@@ -224,7 +224,7 @@ Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-ga
 
 Yes, except on the Miyoo Mini Flip. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search and **A** to pair. They reconnect by themselves from then on. Wired headphones always win when they're plugged in.
 
-The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
+The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse+.
 
 **On the Brick and Brick Pro, Wi-Fi starts before Bluetooth,** at power-on and after sleep. The two share one radio chip, and on the Brick Pro starting them together could freeze the device. So the headphones wait until Wi-Fi has connected, or has given up after 15 seconds, and take around 20 to 30 seconds to come back after sleep. Turn Wi-Fi off under **MENU > Network Services** when you don't need it, and they reconnect sooner.
 
@@ -233,14 +233,14 @@ The device's volume buttons set the headphones' volume, and the headphones' own 
 <details>
 <summary><b>How do I add music?</b></summary>
 
-Put it in `Music/` on the card, from a computer or over Wi-Fi with Over The Hare, a folder per artist and a folder inside that per album: `Music/Radiohead/The Bends/01 Planet Telex.mp3`. An album folder put straight into `Music/` is moved under its artist when its tags name one, and songs in no folder at all are moved into `Music/Singles/`, an album of their own. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV all play. Muse appears on the shelf once there's music, and each album's cover comes from its own files, or a picture in the album's folder. **MENU > Album Art** on Muse's shelf fetches a sharper cover over Wi-Fi from [MusicBrainz](https://musicbrainz.org)'s Cover Art Archive for any album whose files carry none, or only a small one.
+Put it in `Music/` on the card, from a computer or over Wi-Fi with Over The Hare, a folder per artist and a folder inside that per album: `Music/Radiohead/The Bends/01 Planet Telex.mp3`. An album folder put straight into `Music/` is moved under its artist when its tags name one, and songs in no folder at all are moved into `Music/Singles/`, an album of their own. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV all play. Muse+ appears on the shelf once there's music, and each album's cover comes from its own files, or a picture in the album's folder. **MENU > Album Art** on Muse+'s shelf fetches a sharper cover over Wi-Fi from [MusicBrainz](https://musicbrainz.org)'s Cover Art Archive for any album whose files carry none, or only a small one.
 
 </details>
 
 <details>
 <summary><b>How do I add audiobooks?</b></summary>
 
-Put each book in its own folder in `Audiobooks/`, with an author's folder above it or without: `Audiobooks/Iain M. Banks/The Hydrogen Sonata/` or `Audiobooks/The Hydrogen Sonata/`. One M4B or a folder of MP3s both work, and the files play in name order. **MENU > Show** on Muse's shelf switches between your music and your books. A book remembers where you stopped, even through a power-off, and one played to the end is marked finished; A on it starts it over.
+Put each book in its own folder in `Audiobooks/`, with an author's folder above it or without: `Audiobooks/Iain M. Banks/The Hydrogen Sonata/` or `Audiobooks/The Hydrogen Sonata/`. One M4B or a folder of MP3s both work, and the files play in name order. **MENU > Show** on Muse+'s shelf switches between your music and your books. A book remembers where you stopped, even through a power-off, and one played to the end is marked finished; A on it starts it over.
 
 </details>
 

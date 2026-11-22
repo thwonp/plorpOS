@@ -21,7 +21,7 @@ makes X a turbo of the game's B.
 A, B, X, Y, L1, R1, L2 and R2 can be turbo. Directions, START and SELECT
 cannot. A notice says what happened each time.
 
-**It lasts for the game.** The in-game menu and Muse leave it alone; quitting
+**It lasts for the game.** The in-game menu and Muse+ leave it alone; quitting
 ends it, and the next game starts with none.
 
 **Persistent Turbo Assignments** (Game Settings, off by default) keeps it instead: every

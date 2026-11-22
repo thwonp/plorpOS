@@ -529,7 +529,7 @@ static void system_menu(void)
 		int mn, k;
 
 		m.muse = true;
-		m.sys_name = "Muse";
+		m.sys_name = "Muse+";
 		m.sys_core = "";
 		m.game_count = 7;
 		m.sort = NULL;

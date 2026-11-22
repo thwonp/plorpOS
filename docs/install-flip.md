@@ -32,7 +32,7 @@ Miyoo's MainUI.
    Copy everything in it to the root of the card, merging folders. It adds:
    ```
    .tmp_update/updater   the boot hook
-   plorpOS/              the launcher, diatom, Muse, cores, ssh, the Wi-Fi driver, fonts, cards
+   plorpOS/              the launcher, diatom, Muse+, cores, ssh, the Wi-Fi driver, fonts, cards
    Roms/<console>/       empty folders named as the shelves expect
    Bios/  Saves/
    MD5SUMS               a checksum for every file
@@ -100,9 +100,9 @@ RPG), where Snes9x 2005 Plus stays the better pick.
 - **Menu**, tapped: the in-game menu (Continue, Save, Load, Display, Scanline
   Filter, Hotkeys, Reset, Quit and the rows a system adds). On the shelf it
   opens the shelf's menu.
-- **Menu**, held: the switcher (recent games, Muse).
+- **Menu**, held: the switcher (recent games, Muse+).
 - **Volume keys**: volume. **Menu + volume keys**: brightness. Both volume
-  keys together pause or play Muse.
+  keys together pause or play Muse+.
 - **Hotkeys** (fast-forward, rewind, quick save and load, screenshot) are set
   in the in-game menu's **Hotkeys** screen.
 - **Power**, tapped, or closing the lid: the screen goes dark and the game

@@ -5,7 +5,7 @@ deliberate:
 
 | | holds | why it is separate |
 |---|---|---|
-| `.userdata/<platform>/tortos.db` | volume, brightness, Auto Sleep, Auto Off, audio output, radios, UI and Muse preferences, display mode, shader and core per shelf and per game, and the RetroAchievements and ScreenScraper accounts | per handheld. A card moved to another device should not carry the first one's screen and speaker settings, or its account token |
+| `.userdata/<platform>/tortos.db` | volume, brightness, Auto Sleep, Auto Off, audio output, radios, UI and Muse+ preferences, display mode, shader and core per shelf and per game, and the RetroAchievements and ScreenScraper accounts | per handheld. A card moved to another device should not carry the first one's screen and speaker settings, or its account token |
 | `.userdata/shared/.tortos/library.db` | timezone, startup system, core options, hotkeys, favorites, recents, play time, achievements, palettes, disc choices | per card. It travels with the library, the same way favorites and earned achievements do |
 
 The shipped defaults are **compiled into the launcher** and seed whichever

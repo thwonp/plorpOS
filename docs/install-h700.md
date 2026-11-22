@@ -158,7 +158,7 @@ Native PICO-8 has no save states or rewind.
   the device from that sleep. Once it has gone on into a deep sleep, only
   POWER wakes it.
 - **Logs** are in `.userdata/<device>/logs/` on the plorpOS card.
-- **Muse** plays mp3, aac, m4a/m4b, flac, ogg, opus and wav from `Music/` and
+- **Muse+** plays mp3, aac, m4a/m4b, flac, ogg, opus and wav from `Music/` and
   `Audiobooks/`.
 - **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
   BaseOS installs them on the next start. plorpOS leaves unknown files there
