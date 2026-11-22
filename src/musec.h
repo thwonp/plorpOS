@@ -133,6 +133,9 @@ bool musec_asked(void);
 /* That, for a remote track: the old one plays on until the new one opens, so
  * "playing" alone hides it (plorpos-ps8.2). */
 bool musec_asked_stream(void);
+/* The next play of the current track (A from stopped) starts at `at`, not
+ * at 0: a stream cut short keeps its place (plorpos-ps8.13). */
+void musec_start_at(double at);
 /* The last track's end was a stream cut short (Wi-Fi or its server went), not
  * the file's end: the daemon's END said cut=1 (plorpos-7ni.16). */
 bool musec_end_cut(void);
