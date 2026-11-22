@@ -7704,7 +7704,8 @@ static bool g_muse_card;              /* muse_open is the card's, not SELECT's *
  * and whatever is open on the way is closed: menus by g_menu_closing, Muse
  * by the SELECT that closes it. A screen that answers to neither (a
  * keyboard) keeps the turn waiting SW_GO_MS and then it is dropped. */
-enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME };
+enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
+       SW_GO_GAME };   /* Muse over a paused game: back to the game */
 #define SW_GO_MS 1500u
 static int      g_sw_go;
 static unsigned g_sw_at;
@@ -18417,7 +18418,9 @@ static bool swivel_check(app *a)
 		int act = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
 
 		fprintf(stderr, "swivel: opened (%d)\n", act);
-		if (!game)
+		/* Muse up over a game, and the row says the game: Muse closes. */
+		if (game && g_muse_up && act == SWO_RESUME) go = SW_GO_GAME;
+		else if (!game)
 			go = act == SWO_SHELF ? SW_GO_SHELF : act == SWO_RECENTS ? SW_GO_RECENTS
 			   : act == SWO_RESUME ? SW_GO_RESUME : SW_GO_NONE;
 	}
@@ -18425,6 +18428,7 @@ static bool swivel_check(app *a)
 	if (g_sw_go) {
 		if (now - g_sw_at > SW_GO_MS) g_sw_go = SW_GO_NONE;
 		else if (g_muse_up) a->in.pressed[IN_SELECT] = true;
+		else if (g_sw_go == SW_GO_GAME) g_sw_go = SW_GO_NONE;
 		else g_menu_closing = true;
 	}
 	return false;
@@ -23564,9 +23568,12 @@ int main(int argc, char *argv[])
 			int go = g_sw_go;
 
 			g_sw_go = SW_GO_NONE;
-			a.in.pressed[IN_SELECT] = false;   /* swivel_check's, for Muse */
-			swivel_go(&a, go);
-			continue;
+			/* Not one left over from a game that has ended since. */
+			if (go != SW_GO_GAME && plat_now_ms() - g_sw_at <= SW_GO_MS) {
+				a.in.pressed[IN_SELECT] = false;   /* swivel_check's, for Muse */
+				swivel_go(&a, go);
+				continue;
+			}
 		}
 #endif
 
