@@ -56,8 +56,12 @@ if [ "$MODE" = all ]; then
 	adb shell "cd $CARD/plorpOS && [ -d .rocknix ] || { mkdir .rocknix &&
 		for f in tortos.elf diatom muse musectl; do [ -f \$f ] && mv \$f .rocknix/; done; true; }"
 	adb shell "mkdir -p $CARD/plorpOS/lib $CARD/System"
+	# Libraries go in as .new and are renamed over: a running launcher or Muse
+	# keeps the file it mapped. Written in place, the one in use changed under
+	# it - Muse died with SIGILL that way (plorpos-9rf.8).
 	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0; do
-		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l" > /dev/null
+		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l.new" > /dev/null
+		adb shell "mv -f $CARD/plorpOS/lib/$l.new $CARD/plorpOS/lib/$l"
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
 	adb push "$ROOT/sd/h700/radio.sh" "$CARD/plorpOS/radio.sh" > /dev/null
@@ -79,7 +83,8 @@ fi
 case $MODE in muse|all)
 	adb shell "mkdir -p $CARD/plorpOS/lib"
 	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
-		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l" > /dev/null
+		adb push "$(readlink -f "$LIB/$l")" "$CARD/plorpOS/lib/$l.new" > /dev/null   # see the SDL loop
+		adb shell "mv -f $CARD/plorpOS/lib/$l.new $CARD/plorpOS/lib/$l"
 	done
 	for t in COPYING.LGPLv3 COPYING.GPLv3 LICENSE.mbedtls; do adb push "$LIB/$t" "$CARD/plorpOS/lib/" > /dev/null; done
 	adb shell "rm -f $CARD/plorpOS/lib/COPYING.LGPLv2.1"   # FFmpeg is LGPL 3 now (7ni.1)
