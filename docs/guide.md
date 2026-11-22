@@ -521,10 +521,17 @@ second screen work as they do for the card's music.
   are downloading: the one downloading, then the rest. X on one cancels it.
 - **Y on a track** lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
-- **Download Favorite Tracks** in Plex Settings downloads the tracks you
-  loved on Plex (in Plexamp, for example) and lists them in a playlist,
-  **Plex Favorites**, on both sources. Run it again to catch up with
-  Plex: new loves are added, and the copies of tracks you unloved are deleted.
+- **Playlists** are your Plex server's: every sync (Check for Updates, or
+  the hourly one) brings them in, and a playlist you make or change here -
+  add, remove, move, rename, delete - is changed on the server at once, so
+  it needs Wi-Fi. A smart playlist (one Plex fills by a rule, like ❤️ Tracks)
+  can be played but not changed, and one longer than 2000 tracks is left out.
+  Favorite Tracks stays on this device.
+- **Y on a playlist** adds **Download Playlist**: its tracks are copied to
+  the card and it shows under Local Music as **Plex <name>**, with a ↓ mark
+  here. **Keep Playlists Synced** in Plex Settings (on to begin with) keeps
+  those copies in step with the playlist at every sync; Remove Download
+  takes them off again.
 - **Check for Updates** (in Plex Settings) reads only what changed on the
   server since the last sync, in seconds. Muse also does this every hour.
 - **Resync Library** (in Plex Settings) reads the whole library again.

@@ -11183,7 +11183,11 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
 	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
-	rows[PX_FAVS]     = (menu_row){ "Download " PLEX_FAVS, NULL, g_muse_plex };
+	/* Playlists follow the server at every sync either way; this is whether
+	 * a downloaded one's copies do too (plorpos-5eq.7; it replaced Download
+	 * Favorite Tracks - a playlist is downloaded from the Playlists tab). */
+	rows[PX_FAVS]     = (menu_row){ "Keep Playlists Synced",
+	                                db_get_int(db_dev(), "plex.plmirror", 1) ? "On" : "Off", in };
 	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
 	return PX_ROWS;
 }
@@ -11211,6 +11215,14 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 
 		for (i = 0; i < 4 && AHEAD[i] != plex_ahead(); i++) {}
 		plex_set_ahead(AHEAD[((i == 4 ? 0 : i) + d + 4) % 4]);
+		return MENU_STAY;
+	}
+	if (sel == PX_FAVS && d) {
+		bool on = !db_get_int(db_dev(), "plex.plmirror", 1);
+
+		db_set_int(db_dev(), "plex.plmirror", on);
+		plex_set_pl_mirror(on);
+		if (on && net_online()) plex_playlists_sync();
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
@@ -11245,11 +11257,6 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
-	case PX_FAVS:
-		if (!net_online()) { muse_toast("Device is offline"); return MENU_STAY; }
-		plex_sync_favorites();
-		muse_toast("Downloading Plex favorites");
-		return MENU_STAY;
 	case PX_SIGNOUT: {
 		static const char *const YN[] = { "Sign Out", "Cancel" };
 
@@ -14628,6 +14635,18 @@ static int muse_pl_find(const char *dir, const char *name, const char *path)
 	return at;
 }
 
+/* A Plex playlist is the server's too (plorpos-5eq.7): changed only on the
+ * network, and never one the server keeps by a rule of its own. False,
+ * having said why, when `name` cannot be changed now. Favorite Tracks is
+ * this device's own. */
+static bool muse_pl_editable(const char *name)
+{
+	if (!g_muse_plex || !strcmp(name, PLEX_FAVS)) return true;
+	if (plex_pl_smart(name)) { muse_toast("A Plex smart playlist cannot be changed"); return false; }
+	if (!net_online()) { muse_toast("Device is offline"); return false; }
+	return true;
+}
+
 static void muse_add_to_playlist(app *a, int t)
 {
 	const char *labels[MENU_RUN_ROWS];
@@ -14647,7 +14666,7 @@ static void muse_add_to_playlist(app *a, int t)
 	}
 	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) {
 		if (g_muse_plex && !strcmp(g_pls[i].name, PLEX_FAVS)) continue;
-		if (!strcmp(g_pls[i].name, PLEX_FAVS_M3U)) continue;   /* the next sync rewrites it */
+		if (g_muse_plex && plex_pl_smart(g_pls[i].name)) continue;   /* the server's rule fills it */
 		labels[n] = g_pls[i].name; map[n++] = i;
 	}
 	k = muse_pick_run(a, "Add to Playlist", labels, n);
@@ -14666,7 +14685,11 @@ static void muse_add_to_playlist(app *a, int t)
 	} else {
 		snprintf(name, sizeof name, "%s", g_pls[map[k]].name);
 	}
-	if (pl_add(d, name, g_muse.tracks[t].path)) snprintf(msg, sizeof msg, "Added to %s", name);
+	if (!muse_pl_editable(name)) return;
+	if (pl_add(d, name, g_muse.tracks[t].path)) {
+		snprintf(msg, sizeof msg, "Added to %s", name);
+		if (g_muse_plex) plex_pl_added(name, g_muse.tracks[t].path);
+	}
 	else snprintf(msg, sizeof msg, "Could not add to %s", name);
 	g_npls = -1;
 	muse_toast(msg);
@@ -15074,13 +15097,16 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 
 			/* Asked first, Yes under the cursor: A A takes it out, B or No
 			 * leaves it (owner, plorpos-5eq.8). */
-			if (muse_pick_run(a, "Remove from Playlist?", yn, 2) != 0) {
+			if (!muse_pl_editable(ts->pl) ||
+			    muse_pick_run(a, "Remove from Playlist?", yn, 2) != 0) {
 				ui_redraw_now();
 				continue;
 			}
 			muse_pl_dir(d, sizeof d);
 			if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
 				int gone = ts->ent[sel];
+
+				if (g_muse_plex) plex_pl_removed(ts->pl, g_muse.tracks[ts->trk[sel]].path);
 
 				for (i = sel; i + 1 < ts->n; i++) {
 					ts->trk[i] = ts->trk[i + 1];
@@ -15100,7 +15126,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			char d[CFG_STR * 2 + 32];
 
 			muse_pl_dir(d, sizeof d);
-			if (j >= 0 && j < items) {
+			if (j >= 0 && j < items && muse_pl_editable(ts->pl)) {
 				/* The file's entries trade places; the rows' entry numbers
 				 * stay with the rows, so only the tracks swap here. */
 				if (pl_swap(d, ts->pl, ts->ent[sel], ts->ent[j])) {
@@ -15109,6 +15135,9 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 					ts->trk[sel] = ts->trk[j];
 					ts->trk[j] = t;
 					sel = j;
+					if (g_muse_plex)
+						plex_pl_moved(ts->pl, g_muse.tracks[ts->trk[sel]].path,
+						              sel > 0 ? g_muse.tracks[ts->trk[sel - 1]].path : NULL);
 					ui_redraw_now();
 				} else {
 					muse_toast("Could not move");
@@ -16228,6 +16257,7 @@ static muse_exit muse_book_list(app *a, int which)
 
 static const char *mpl_title(void *ctx, int i) { (void)ctx; return g_pls[i].name; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
+static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_muse_plex && plex_pl_downloaded(g_pls[i].name); }
 
 /* ---- Podcasts: episode rows (plorpos-7ni.4) ---------------------------------- */
 
@@ -16561,6 +16591,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->cur = psel;
 		L->title = mpl_title;
 		L->value = mpl_value;
+		L->dl = mpl_dl;
 		L->empty = "No playlists yet. Y on a track adds one.";
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
@@ -16929,17 +16960,33 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		 * or Rename. X does nothing here; MENU is the Muse menu, as on every
 		 * tab (owner, plorpos-3yv.110.1). */
 		if (a->in.pressed[IN_Y] && lists && !books && n > 0) {
-			static const char *const OPTS[] = { "Delete", "Rename" };
+			const char *opts[3] = { "Delete", "Rename", NULL };
 			char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], to[PL_NAME_MAX], msg[200];
+			bool dled;
 			int k;
 
 			muse_pl_dir(d, sizeof d);
 			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
-			k = muse_pick_run(a, name, OPTS, 2);
-			if (k == 0) {
+			/* On Plex a third: its tracks copied to the card, and kept in
+			 * step (plorpos-5eq.7). */
+			dled = g_muse_plex && plex_pl_downloaded(name);
+			if (g_muse_plex) opts[2] = dled ? "Remove Download" : "Download Playlist";
+			k = muse_pick_run(a, name, opts, g_muse_plex ? 3 : 2);
+			if (k == 2) {
+				if (!dled && !net_online()) muse_toast("Device is offline");
+				else {
+					plex_pl_download(name, !dled);
+					muse_toast(dled ? "Download removed" : "Downloading");
+				}
+			} else if (k >= 0 && !muse_pl_editable(name)) {
+				/* said why */
+			} else if (k == 0) {
 				snprintf(msg, sizeof msg, "Delete \"%s\"?", name);
 				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
-					muse_toast(pl_delete(d, name) ? "Deleted" : "Could not delete");
+					bool ok = pl_delete(d, name);
+
+					if (ok && g_muse_plex) plex_pl_deleted(name);
+					muse_toast(ok ? "Deleted" : "Could not delete");
 					g_npls = -1;
 					muse_playlists_load();
 					if (g_mls_psel >= g_npls) g_mls_psel = g_npls > 0 ? g_npls - 1 : 0;
@@ -16947,7 +16994,10 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			} else if (k == 1) {
 				snprintf(to, sizeof to, "%s", name);
 				if (muse_name_prompt(a, "Rename Playlist", to, (int)sizeof to) && strcmp(to, name)) {
-					if (pl_rename(d, name, to)) snprintf(msg, sizeof msg, "Renamed to %s", to);
+					if (pl_rename(d, name, to)) {
+						snprintf(msg, sizeof msg, "Renamed to %s", to);
+						if (g_muse_plex) plex_pl_renamed(name, to);
+					}
 					else snprintf(msg, sizeof msg, "%s already exists", to);
 					g_npls = -1;
 					muse_toast(msg);
@@ -22912,6 +22962,7 @@ int main(int argc, char *argv[])
 			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
+			plex_set_pl_mirror(db_get_int(db_dev(), "plex.plmirror", 1) != 0);
 			abs_init(P_CARD, P_SHARED);
 			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
