@@ -111,6 +111,10 @@ bool abs_resume_hold(const char *track);
 int  abs_resume_poll(int *index, double *at);
 /* The book ran out: finished on the server too. */
 void abs_book_finished(const char *track);
+/* Marked unread: its place and its finish taken off the server too. */
+void abs_book_unread(const char *track);
+/* Goes up when the server's places were read again (abs_server_place). */
+unsigned abs_progress_gen(void);
 
 /* ---- downloads ---------------------------------------------------------------------- */
 

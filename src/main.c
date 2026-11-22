@@ -1417,6 +1417,7 @@ static void book_item_write(int al, const char *track, double at)
 /* A place is "<seconds>\t<file>", the file by its name rather than its number
  * so a file added to the folder later moves nothing, or "finished". */
 static void pod_at_forget(int al);
+static void book_state_set(int al, int st);
 static void book_write(int al, const char *track, double at)
 {
 	char key[LIB_PATH + 8], val[LIB_PATH + 32];
@@ -1426,6 +1427,7 @@ static void book_write(int al, const char *track, double at)
 	snprintf(val, sizeof val, "%.1f\t%s", at, file ? file + 1 : track);
 	db_set_str(db_dev(), key, val);
 	g_book_done[al] = false;
+	book_state_set(al, 1);
 	pod_at_forget(al);
 	book_item_write(al, track, at);
 }
@@ -1442,8 +1444,27 @@ static void book_finish(int al)
 	memcpy(key, "bookdone.", 9);
 	db_set_int(db_dev(), key, (int)time(NULL));
 	g_book_done[al] = true;
+	book_state_set(al, 2);
 	abs_book_finished(g_muse.tracks[g_muse.albums[al].first].path);
 	fprintf(stderr, "muse: finished %s\n", g_muse.albums[al].name);
+}
+
+/* Unread again (plorpos-5eq.11): no place, no finish, on the server too.
+ * The Timeline stays, so a place lost to a slip can be gone back to. */
+static void book_unread(int al)
+{
+	char key[LIB_PATH + 16];
+
+	book_key(al, key, sizeof key);
+	db_del(db_dev(), key);
+	if (book_item_key(al, key, sizeof key)) db_del(db_dev(), key);
+	tl_book_id(al, key + 9, sizeof key - 9);
+	memcpy(key, "bookdone.", 9);
+	db_del(db_dev(), key);
+	g_book_done[al] = false;
+	book_state_set(al, 0);
+	abs_book_unread(g_muse.tracks[g_muse.albums[al].first].path);
+	fprintf(stderr, "muse: %s marked unread\n", g_muse.albums[al].name);
 }
 
 /* Where book `al` starts: its file, and `at` seconds into it. The beginning
@@ -4343,6 +4364,45 @@ static void draw_orb(SDL_Renderer *r, float cx, float cy, float rad,
 	SDL_RenderGeometry(r, NULL, v, ORB_N + 1, idx, ORB_N * 3);
 }
 
+/* A book's mark (plorpos-5eq.11): a ring, its left half filled for one in
+ * progress, all of it for one finished. */
+static void draw_progress(SDL_Renderer *r, float cx, float cy, float rad, bool full, SDL_Color col)
+{
+	SDL_Vertex v[ORB_N * 2 + ORB_N / 2 + 2];
+	int idx[ORB_N * 6 + ORB_N / 2 * 3], n = 0, k = 0, i;
+	float in = rad * 0.72f;
+
+	if (full) { draw_orb(r, cx, cy, rad, col); return; }
+	for (i = 0; i < ORB_N; i++) {
+		float t = (float)(2.0 * M_PI * i / ORB_N);
+
+		v[n++] = (SDL_Vertex){ { cx + rad * cosf(t), cy + rad * sinf(t) }, col, { 0, 0 } };
+		v[n++] = (SDL_Vertex){ { cx + in * cosf(t), cy + in * sinf(t) }, col, { 0, 0 } };
+	}
+	for (i = 0; i < ORB_N; i++) {
+		int a0 = i * 2, a1 = (i + 1) % ORB_N * 2;
+
+		idx[k++] = a0; idx[k++] = a0 + 1; idx[k++] = a1;
+		idx[k++] = a1; idx[k++] = a0 + 1; idx[k++] = a1 + 1;
+	}
+	/* The left half: a fan from the center over the angles pi/2..3pi/2. */
+	{
+		int c = n, first;
+
+		v[n++] = (SDL_Vertex){ { cx, cy }, col, { 0, 0 } };
+		first = n;
+		for (i = 0; i <= ORB_N / 2; i++) {
+			float t = (float)(M_PI / 2 + M_PI * i / (ORB_N / 2));
+
+			v[n++] = (SDL_Vertex){ { cx + in * cosf(t), cy + in * sinf(t) }, col, { 0, 0 } };
+		}
+		for (i = 0; i < ORB_N / 2; i++) { idx[k++] = c; idx[k++] = first + i; idx[k++] = first + i + 1; }
+	}
+	SDL_RenderGeometry(r, NULL, v, n, idx, k);
+}
+
+static int book_state(int al);
+
 /* The gauge, read at most every 5 s: each read is two sysfs files opened,
  * read and closed, and it is asked every frame something is drawn. */
 static Uint32 g_batt_next;
@@ -4973,6 +5033,21 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 
 			draw_heart(a->r, (float)(margin + hrad), (float)dy, (float)hrad, c);
 		}
+		/* A book in progress or finished (plorpos-5eq.11). */
+		if (is_muse(gs) && v->album && idx >= 0 && idx < v->list.count && book_state(v->album[idx])) {
+			int dy = ty + line / 2 + (ft2 ? ui_font_descent(ft2) / 2 : 0);
+			SDL_Color c = { (Uint8)(gs->accent >> 16), (Uint8)(gs->accent >> 8),
+			                (Uint8)gs->accent, (Uint8)(255 * ta) };
+
+			/* Before the title where it is centered with room to spare; at
+			 * the edge, past the heart, when it fills the line and slides. */
+			bool hearted = muse_fav_is(g->file);
+			float cx = slides ? (float)(margin + hrad + (hearted ? hrad * 5 / 2 : 0))
+			                  : (float)(tx - tw / 2 - hrad * 2);
+
+			draw_progress(a->r, cx, (float)dy, (float)hrad * 0.8f,
+			              book_state(v->album[idx]) == 2, c);
+		}
 		if (slides) {
 			ui_text_marquee(a->r, ft2, g->title, boxx, ty, boxw,
 			                phase, ui_fade(UI_TEXT, ta));
@@ -5008,7 +5083,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			/* A book says it is finished there, and says nothing rather than
 			 * its own name again when it is a folder with no author above it. */
 			if (al >= 0 && g_muse.albums[al].book) {
-				if (g_book_done && g_book_done[al]) under = "Finished";
+				if (book_state(al) == 2) under = "Finished";
 				else if (!strcmp(g->name, g->title)) under = "";
 			}
 			ui_fit_text(ui_font(UI_F_MENU), under, afit, sizeof afit, boxw);
@@ -5085,6 +5160,7 @@ typedef struct {
 	const char *(*value)(void *ctx, int i);   /* dim, at the row's end; NULL none */
 	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
 	bool (*dl)(void *ctx, int i);             /* on the card (ps8.7); NULL: no mark */
+	int  (*mark)(void *ctx, int i);           /* a book: 1 in progress, 2 finished (5eq.11) */
 	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
 	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
@@ -5445,7 +5521,9 @@ static void gl_draw(app *a, const gl_list *L)
 		bool fav = L->fav && L->fav(L->ctx, i);
 		bool dl = L->dl && L->dl(L->ctx, i);
 		int now = L->now ? L->now(L->ctx, i) : 0;
-		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0) + (dl ? hrad * 3 : 0);  /* icons, then a gap */
+		int mark = L->mark ? L->mark(L->ctx, i) : 0;
+		int tx = GL_PAD + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0) + (dl ? hrad * 3 : 0)
+		         + (mark ? hrad * 3 : 0);          /* icons, then a gap */
 		int tw = g.col_w - (tx - GL_PAD);
 
 		if (i == cur) {
@@ -5464,6 +5542,9 @@ static void gl_draw(app *a, const gl_list *L)
 		if (dl)
 			draw_download(a->r, (float)(GL_PAD + hrad + (now ? hrad * 3 : 0) + (fav ? hrad * 3 : 0)),
 			              (float)(y + g.row_h / 2), (float)hrad, i == cur ? UI_TEXT : ac);
+		if (mark)
+			draw_progress(a->r, (float)(tx - hrad * 2), (float)(y + g.row_h / 2), (float)hrad * 0.8f,
+			              mark == 2, i == cur ? UI_TEXT : ac);
 		if (val && *val) {
 			int vw = ui_text_width(fv, val);
 
@@ -14531,32 +14612,39 @@ static void muse_tracks_under_draw(app *a, void *ctx)
 	                  mn->state == MU_PLAYING || mn->state == MU_PAUSED, musec_path());
 }
 
-/* Audiobookshelf: download book `al`, or delete its copy (plorpos-9rf.6). */
-static void muse_abs_book_menu(app *a, int al)
+/* X on a book (plorpos-5eq.11): Mark as Complete and Mark as Unread, by
+ * what it is now, and for an Audiobookshelf book its download first - get
+ * it, cancel it, or delete the copy (plorpos-9rf.6). */
+static void muse_book_menu(app *a, int al)
 {
-	const char *labels[1];
+	enum { B_DL, B_DLCANCEL, B_DLDEL, B_DONE, B_UNREAD };
+	const char *labels[3], *heading = g_muse.albums[al].name;
+	int act[3], n = 0, st = book_state(al), k;
 
-	if (abs_book_downloading(al)) {
-		labels[0] = "Cancel Downloads";
-		if (muse_pick_run(a, "Downloading", labels, 1) == 0) {
-			abs_download_cancel();
-			muse_toast("Download cancelled");
-		}
-		return;
+	if (g_muse_abs) {
+		if (abs_book_downloading(al)) { heading = "Downloading"; labels[n] = "Cancel Downloads"; act[n++] = B_DLCANCEL; }
+		else if (abs_book_downloaded(al)) { heading = "On the card"; labels[n] = "Delete Download"; act[n++] = B_DLDEL; }
+		else { heading = "Not on the card"; labels[n] = "Download Book"; act[n++] = B_DL; }
 	}
-	if (abs_book_downloaded(al)) {
-		labels[0] = "Delete Download";
-		if (muse_pick_run(a, "On the card", labels, 1) == 0) {
-			abs_delete_book(al);
-			muse_toast("Download deleted");
-		}
-		return;
+	if (st != 2) { labels[n] = "Mark as Complete"; act[n++] = B_DONE; }
+	if (st != 0) { labels[n] = "Mark as Unread"; act[n++] = B_UNREAD; }
+	if ((k = muse_pick_run(a, heading, labels, n)) < 0) return;
+	switch (act[k]) {
+	case B_DLCANCEL: abs_download_cancel(); muse_toast("Download cancelled"); break;
+	case B_DLDEL:    abs_delete_book(al);   muse_toast("Download deleted"); break;
+	case B_DL:
+		if (!net_online()) { muse_toast("Device is offline"); break; }
+		abs_download_book(al);
+		muse_toast("Downloading");
+		break;
+	case B_DONE:
+	case B_UNREAD:
+		/* Not under the player: it would write the book's place again. */
+		if (muse_playing_album(NULL) == al) musec_stop();
+		if (act[k] == B_DONE) book_finish(al); else book_unread(al);
+		muse_toast(act[k] == B_DONE ? "Marked as complete" : "Marked as unread");
+		break;
 	}
-	labels[0] = "Download Book";
-	if (muse_pick_run(a, "Not on the card", labels, 1) != 0) return;
-	if (!net_online()) { muse_toast("Device is offline"); return; }
-	abs_download_book(al);
-	muse_toast("Downloading");
 }
 
 /* A server's download under way, for the line under the cover. */
@@ -14743,8 +14831,9 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			muse_plex_album_menu(a, ts->album);
 			continue;
 		}
-		if (g_muse_abs && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
-			muse_abs_book_menu(a, ts->album);
+		if (!g_muse_pod && !ts->pl && ts->album >= 0 && g_muse.albums[ts->album].book &&
+		    a->in.pressed[IN_X]) {
+			muse_book_menu(a, ts->album);
 			continue;
 		}
 		/* A playlist's own keys (owner): X takes the track out, L2 and R2
@@ -15383,6 +15472,14 @@ static bool muse_album_on_card(int al)
 	return seen[al] == 2;
 }
 
+static int mal_mark(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+
+	return v->album && i >= 0 && i < v->list.count ? book_state(v->album[i]) : 0;
+}
+
 static bool mal_dl(void *ctx, int i)
 {
 	app *a = ctx;
@@ -15597,15 +15694,17 @@ static int bpl_by_done(const void *x, const void *y)
 }
 
 /* List `which` of the books in the library now showing, as album indexes. */
-static int bpl_build(int which, int *out, int max)
+/* Every book of the library with what is known of it: its places and its
+ * finish on this device, and the server's word on a server's book. The
+ * caller frees each id and dir, and the array. */
+static int bpl_scan_books(bpl_book **out)
 {
-	static unsigned seed;
 	bpl_book *b = calloc((size_t)g_muse.nalbums + 1, sizeof *b);
-	int *k = calloc((size_t)g_muse.nalbums + 1, sizeof *k);
-	int nb = 0, nk = 0, i, n = 0;
+	int nb = 0, i;
 	bpl_scan sc;
 
-	if (!b || !k) { free(b); free(k); return 0; }
+	*out = b;
+	if (!b) return 0;
 	for (i = 0; i < g_muse.nalbums; i++) {
 		const char *p = g_muse.tracks[g_muse.albums[i].first].path, *slash = strrchr(p, '/');
 		char id[LIB_PATH];
@@ -15635,6 +15734,56 @@ static int bpl_build(int which, int *out, int max)
 		else if (cur > 0) b[i].place = true;
 		if (ms / 1000 > b[i].last) b[i].last = ms / 1000;
 	}
+	return nb;
+}
+
+/* A book's mark: 0 not started, 1 in progress, 2 finished - by the same
+ * reading as the book lists, kept per album until the library or the
+ * server's places are read again; a place written, a finish and a mark
+ * change it in place (plorpos-5eq.11). Podcasts have their own marks. */
+static unsigned char *g_bstate;
+static unsigned g_bstate_gen, g_bstate_abs;
+static int g_bstate_n = -1;
+
+static int book_state(int al)
+{
+	if (g_muse_pod || al < 0 || al >= g_muse.nalbums || !g_muse.albums[al].book) return 0;
+	if (g_bstate_n != g_muse.nalbums || g_bstate_gen != g_muse_gen || g_bstate_abs != abs_progress_gen()) {
+		bpl_book *b;
+		int nb, i;
+
+		free(g_bstate);
+		g_bstate = calloc((size_t)g_muse.nalbums + 1, 1);
+		g_bstate_n = g_muse.nalbums;
+		g_bstate_gen = g_muse_gen;
+		g_bstate_abs = abs_progress_gen();
+		if (!g_bstate) { g_bstate_n = -1; return 0; }
+		nb = bpl_scan_books(&b);
+		for (i = 0; i < nb; i++) {
+			g_bstate[b[i].al] = b[i].fin ? 2 : b[i].place ? 1 : 0;
+			free(b[i].id);
+			free(b[i].dir);
+		}
+		free(b);
+	}
+	return g_bstate[al];
+}
+
+static void book_state_set(int al, int st)
+{
+	if (g_bstate && g_bstate_n == g_muse.nalbums && g_bstate_gen == g_muse_gen &&
+	    al >= 0 && al < g_bstate_n) g_bstate[al] = (unsigned char)st;
+}
+
+static int bpl_build(int which, int *out, int max)
+{
+	static unsigned seed;
+	bpl_book *b;
+	int nb = bpl_scan_books(&b);
+	int *k = calloc((size_t)g_muse.nalbums + 1, sizeof *k);
+	int nk = 0, i, n = 0;
+
+	if (!b || !k) { free(b); free(k); return 0; }
 	for (i = 0; i < nb; i++) {
 		if (which == BPL_CONTINUE && (b[i].fin || !b[i].place)) continue;
 		if (which == BPL_COMPLETED && !b[i].fin) continue;
@@ -15667,6 +15816,7 @@ static int bpl_build(int which, int *out, int max)
 typedef struct { app *a; const int *al; int n; } bl_ctx;
 
 static const char *bl_title(void *ctx, int i) { return g_muse.albums[((bl_ctx *)ctx)->al[i]].name; }
+static int bl_mark(void *ctx, int i) { return book_state(((bl_ctx *)ctx)->al[i]); }
 
 static SDL_Texture *bl_art(void *ctx, int i, int *w, int *h)
 {
@@ -15696,6 +15846,7 @@ static void bl_describe(bl_ctx *c, int which, int sel, gl_list *L, gl_geom *g)
 	L->accent = MUSE_ACCENT;
 	L->ctx = c;
 	L->title = bl_title;
+	L->mark = bl_mark;
 	L->art = bl_art;
 	L->help = BL_HELP;
 	L->nhelp = 1;
@@ -15791,6 +15942,11 @@ static muse_exit muse_book_list(app *a, int which)
 			if (in_repeat(&a->in, IN_L1))   sel = gl_page_step(sel, c.n, g.rows, -1);
 			if (in_repeat(&a->in, IN_R1))   sel = gl_page_step(sel, c.n, g.rows, +1);
 			gl_scroll_apply(&gs, &sel, c.n);
+			if (a->in.pressed[IN_X]) {
+				muse_book_menu(a, al[sel]);
+				ui_redraw_now();
+				continue;
+			}
 			if (a->in.pressed[IN_ACCEPT]) {
 				how = muse_book(a, al[sel]);
 				if (how != MUSE_BACK || g_muse_gone) break;
@@ -16171,6 +16327,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (g_muse_pod) L->now = mal_pod_now;
 	L->fav = mal_fav;
 	L->dl = mal_dl;
+	L->mark = mal_mark;
 	L->art = gl_game_art;
 	L->empty = g_muse_pod ? (tab == MT_FAVORITES ? "No favorite episodes yet. Y on an episode marks it."
 	                       : tab == MT_PLAYLISTS ? "No downloads yet. X on an episode downloads it."
@@ -16462,8 +16619,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			ui_redraw_now();
 			continue;
 		}
-		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_abs && v->album) {
-			muse_abs_book_menu(a, v->album[v->cursor]);
+		if (a->in.pressed[IN_X] && albums && n > 0 && !g_muse_pod && v->album &&
+		    g_muse.albums[v->album[v->cursor]].book) {
+			muse_book_menu(a, v->album[v->cursor]);
 			ui_redraw_now();
 			continue;
 		}

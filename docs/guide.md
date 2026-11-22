@@ -367,7 +367,11 @@ Playing and carries on where you left it: its place is kept every thirty
 seconds while it plays, whenever it pauses or moves to the next file, and when
 the device turns off. B from there goes back to the list you picked the book
 from. A book played to its end says Finished under its cover,
-and A on it starts it over. Books always play in order, and on books Sort By
+and A on it starts it over. In the lists and on Coverflow a book you have
+started has a half-filled circle before its title, and a finished one a
+filled circle. X on a book has **Mark as Complete** and **Mark as Unread**;
+Unread puts it back at the start, and its Timeline (below) stays, so a place
+lost to a slip can be gone back to. Books always play in order, and on books Sort By
 is by author or by title and there is no Album Art. A book's cover is the one its files carry, or the picture in its
 folder: one named cover or folder, or the only one there.
 
@@ -539,7 +543,8 @@ network.
   Muse sends its place every 15 seconds and when you pause, and marks it
   finished at the end. A downloaded book played without Wi-Fi sends its
   place once it's back online, unless another device has moved on since.
-- **X on a book** downloads it, or deletes the copy. Downloads go in
+- **X on a book** downloads it, or deletes the copy; Mark as Complete and
+  Mark as Unread there go to the server too. Downloads go in
   `Audiobooks/<author>/<title>/`, so they show under Local Audiobooks too,
   and still send their place to the server. A downloaded book has a ↓ mark
   in the lists, and while books download, **Download Queue** shows in
