@@ -5161,6 +5161,8 @@ typedef struct {
 	bool (*fav)(void *ctx, int i);            /* NULL: no hearts */
 	bool (*dl)(void *ctx, int i);             /* on the card (ps8.7); NULL: no mark */
 	int  (*mark)(void *ctx, int i);           /* a book: 1 in progress, 2 finished (5eq.11) */
+	bool (*dim)(void *ctx, int i);            /* a played episode: its title quieter (5eq.10) */
+	const char *badge;                        /* on the art's top left corner; NULL none */
 	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
 	SDL_Texture *(*art)(void *ctx, int i, int *w, int *h);
@@ -5552,11 +5554,17 @@ static void gl_draw(app *a, const gl_list *L)
 			        1, i == cur ? UI_TEXT : UI_TEXT_DIM);
 			tw -= vw + GL_PAD;
 		}
-		if (i == cur && ui_text_width(fm, title) > tw) {
-			ui_text_marquee(a->r, fm, title, tx, ty, tw, phase, UI_TEXT);
-		} else {
-			ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1,
-			        i == cur ? UI_TEXT : UI_TEXT_SOFT);
+		{
+			/* A played episode: grey, and on the lit row a step back from
+			 * white - told apart, still read (plorpos-5eq.10). */
+			bool dim = L->dim && L->dim(L->ctx, i);
+			SDL_Color tc = i == cur ? (dim ? ui_fade(UI_TEXT, 0.62f) : UI_TEXT)
+			                        : dim ? UI_TEXT_DIM : UI_TEXT_SOFT;
+
+			if (i == cur && ui_text_width(fm, title) > tw)
+				ui_text_marquee(a->r, fm, title, tx, ty, tw, phase, tc);
+			else
+				ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1, tc);
 		}
 		/* A tap on a row opens it, walking the cursor there first; on a game
 		 * list it only brings it into focus, as a tap on a card does. A long
@@ -5576,6 +5584,14 @@ static void gl_draw(app *a, const gl_list *L)
 
 		gl_art_rect(L, &art, &tex);
 		if (tex) SDL_RenderCopy(a->r, tex, NULL, &art);
+		if (L->badge && art.w > 0) {
+			int bh = fl + 6, bw = ui_text_width(fv, L->badge) + bh;
+			SDL_Rect b = { art.x + GL_PAD / 2, art.y + GL_PAD / 2, bw, bh };
+
+			SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			ui_round_rect(a->r, &b, bh / 2, (SDL_Color){ 16, 18, 24, 235 });
+			ui_text(a->r, fv, L->badge, b.x + bw / 2, b.y + 3, 0, ac);
+		}
 		y = art.y + art.h + GL_PAD / 2;
 		for (i = 0; i < L->nunder; i++, y += fl)
 			ui_text(a->r, fv, L->under[i], cx, y, 0,
@@ -15426,6 +15442,15 @@ static const char *mal_title(void *ctx, int i)
 	return v->list.items[i].title;
 }
 
+static int pod_at(int al);
+static bool mal_pod_played(void *ctx, int i)
+{
+	app *a = ctx;
+	const sysview *v = &a->view[a->sys_cursor];
+
+	return v->album && i >= 0 && i < v->list.count && pod_at(v->album[i]) == -2;
+}
+
 static int mal_pod_now(void *ctx, int i)
 {
 	app *a = ctx;
@@ -16325,6 +16350,11 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->value = g_muse_pod ? mal_pod_value : NULL;
 	if (g_muse_pod && tab == MT_COVERFLOW && ar < 0 && L->n > 1) L->note = "L1/R1 reorder";
 	if (g_muse_pod) L->now = mal_pod_now;
+	if (g_muse_pod) L->dim = mal_pod_played;
+	/* In the queue, said on its art everywhere but the Queue tab itself. */
+	if (g_muse_pod && tab != MT_COVERFLOW && L->n > 0 && v->album &&
+	    pod_queue_pos(v->album[v->cursor]) >= 0)
+		L->badge = "Queued";
 	L->fav = mal_fav;
 	L->dl = mal_dl;
 	L->mark = mal_mark;
