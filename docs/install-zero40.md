@@ -58,7 +58,7 @@ go loose in `Bios/`. Music goes in `Music/`, one folder per album.
 | B | Back |
 | X | Game details |
 | Y | Favorite |
-| Select | Muse |
+| Select | Muse+ |
 | Menu | The plorpOS menu; in a game, the game menu |
 | Menu + Volume | Brightness |
 

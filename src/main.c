@@ -10545,7 +10545,7 @@ static bool plex_setup(app *a)
 static void muse_source_reload(app *a)
 {
 	muse_playlists_forget();
-	wait_panel(a, "Muse", "Loading...");
+	wait_panel(a, "Muse+", "Loading...");
 	rescan_all(a);
 }
 
@@ -11857,7 +11857,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
 				if (id != SMM_RESCAN) return MENU_STAY;
-				wait_panel(a, "Muse", "Scanning...");
+				wait_panel(a, "Muse+", "Scanning...");
 				rescan_all(a);
 				return MENU_DONE;
 			}
@@ -15333,7 +15333,7 @@ static void muse_src_follow(app *a)
 	fprintf(stderr, "muse: Source back to %s, which is playing\n", sys_menu_src_label(to));
 	muse_src_save(to);
 	muse_playlists_forget();
-	wait_panel(a, "Muse", "Loading...");
+	wait_panel(a, "Muse+", "Loading...");
 	muse_refresh(a);
 	muse_adopt_orphan();            /* its files are the queue again, now that they are here */
 }
@@ -15365,7 +15365,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 			if (!g_walk_thread) break;
 			if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 			muse_backdrop(a);
-			menu_draw(a, "Muse", &row, 1, -1, 0, MUSE_ACCENT);
+			menu_draw(a, "Muse+", &row, 1, -1, 0, MUSE_ACCENT);
 			draw_chrome(a->r);
 			plat_present(a->r);
 		}
@@ -21481,7 +21481,10 @@ static void build_muse_shelf(app *a, bool bg)
 	i = a->sys.count;
 	s = &a->sys.systems[i];
 	memset(s, 0, sizeof *s);
-	snprintf(s->name, CFG_STR, "%s", "Muse");
+	/* The player's name where it is shown (owner, plorpos-5eq.5): Muse is
+	 * TortOS's, and this one has grown past it. Its tag, its files and
+	 * every name in the code stay "muse". */
+	snprintf(s->name, CFG_STR, "%s", "Muse+");
 	snprintf(s->tag, sizeof s->tag, "%s", "MUSE");
 	snprintf(s->card, CFG_STR, "%s", "MUSE.png");
 	s->accent = MUSE_ACCENT;

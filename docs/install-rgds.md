@@ -39,7 +39,7 @@ Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console,
              Nintendo DS/ and Ports/ among them
 Bios/        BIOS files, loose
 Saves/       one folder per console
-Music/       albums for Muse
+Music/       albums for Muse+
 Audiobooks/
 plorpOS/     the launcher itself - leave it as it is
 ```
@@ -64,8 +64,8 @@ in Menu > **Dual Screen Settings**:
 - **Secondary Screen**: on or off.
 - **Secondary Function**: **Details** shows the game under the cursor (cover,
   what the scrape knows, play time, achievements; swipe for its three pages).
-  **Muse** puts Muse's Now Playing there, also beside your game. Touch it and
-  the whole of Muse runs on that screen (see Touch). While Muse is open on
+  **Muse+** puts Muse+'s Now Playing there, also beside your game. Touch it and
+  the whole of Muse+ runs on that screen (see Touch). While Muse+ is open on
   the main screen, the other one shows the queue: drag to scroll, tap a track
   to play it.
 
@@ -82,21 +82,21 @@ Both screens are touchscreens. The one plorpOS is on does what the buttons do:
 | tap | selects what is under it; A on the selected item |
 | swipe | the d-pad (a longer swipe moves further, a flick coasts) |
 | swipe in from the left or right edge | B (back) |
-| swipe down from the top edge | Muse |
+| swipe down from the top edge | Muse+ |
 | swipe up from the bottom edge | Recent games |
 | long press | Y on what is under it (favorite a game) |
 | two-finger tap | X on what is under it (a game's info) |
 | three-finger tap | Menu |
 
-In a game, the game's screen takes the edge swipes (Muse, Recent games) and a
+In a game, the game's screen takes the edge swipes (Muse+, Recent games) and a
 long press opens the in-game menu. In a DS game that is the top screen: the
 bottom one is only ever the game's.
 
-With Secondary Function set to Muse, touch works on both screens without
+With Secondary Function set to Muse+, touch works on both screens without
 tapping in first. Whichever screen your finger lands on takes over, and the
-same swipe carries on there. Muse on the second screen is touch only: the
+same swipe carries on there. Muse+ on the second screen is touch only: the
 buttons, a touch on the main screen, or playing your game hand control back
-and return it to Now Playing. Swiping back at Muse's top level goes to Now
+and return it to Now Playing. Swiping back at Muse+'s top level goes to Now
 Playing there.
 
 ## Ports

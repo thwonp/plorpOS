@@ -67,7 +67,7 @@ Turn the Rotate off, put the card in a computer, and copy your files onto the
 ```
 Roms/<system>/   games, one folder per system (see plorpOS/systems.cfg)
 Bios/            BIOS files, and pico8_64 + pico8.dat for native PICO-8
-Music/           Muse's music
+Music/           Muse+'s music
 Saves/           saves, per console
 ```
 
@@ -101,19 +101,19 @@ Open or closed, the screen's touch does what the buttons do:
 | tap | selects what is under it; A on the selected item |
 | swipe | the d-pad (a longer swipe moves further, a flick coasts) |
 | swipe in from the left or right edge | B (back) |
-| swipe down from the top edge | Muse, also in a game |
+| swipe down from the top edge | Muse+, also in a game |
 | swipe up from the bottom edge | Recent games, also in a game |
 | long press | Y on what is under it (favorite a game) |
 | two-finger tap | X on what is under it (a game's info) |
 | three-finger tap | Menu |
 | long press in a game | the in-game menu |
 
-The **side key** is Muse's: tap to play or pause, hold for the previous track,
+The **side key** is Muse+'s: tap to play or pause, hold for the previous track,
 double tap for the next - on the shelf and in a game.
 
 **Bluetooth headsets**: Menu > Bluetooth, Y to search, A to pair. Sound moves
-to the headset while it is connected and back to the speaker after; Muse
-pauses when the headset goes. Its own buttons play/pause and skip in Muse.
+to the headset while it is connected and back to the speaker after; Muse+
+pauses when the headset goes. Its own buttons play/pause and skip in Muse+.
 
 ## Nintendo DS
 

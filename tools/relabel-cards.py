@@ -22,7 +22,7 @@ FONT = os.path.join(ROOT, "res", "fonts", "head.ttf")   # card labels are headin
 LABELS = {
     "32X": "SEGA 32X", "ARCADE": "ARCADE", "FAVORITES": "FAVORITES",
     "GBA": "GBA", "GBC": "GAME BOY COLOR", "GB": "GAME BOY",
-    "GENESIS": "GENESIS", "GG": "GAME GEAR", "MUSE": "MUSE",
+    "GENESIS": "GENESIS", "GG": "GAME GEAR", "MUSE": "MUSE+",
     "NDS": "NINTENDO DS", "NEOGEO": "NEO GEO", "NES": "NES",
     "NGPC": "NGP COLOR", "NGP": "NGP", "PCE": "TURBOGRAFX-16",
     "PICO8": "PICO-8", "PS": "PLAYSTATION", "SEGACD": "SEGA CD",

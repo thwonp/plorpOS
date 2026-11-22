@@ -292,7 +292,7 @@ int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[DU_SECONDARY] = (menu_row){ "Secondary Screen", u->dual_on ? "on" : "off", true };
 	/* What the second panel shows on the shelf - nothing to choose while it
 	 * is off. */
-	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse" : "Details", u->dual_on };
+	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse+" : "Details", u->dual_on };
 	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
 	return DU_ROWS;
 }

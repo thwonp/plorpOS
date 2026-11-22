@@ -85,7 +85,7 @@ def classic():
         f = ImageFont.truetype(FONT, 54)
     except OSError:
         f = ImageFont.load_default()
-    d.text((W // 2, 727), "MUSE", font=f, fill=LABEL + (255,), anchor="ms")
+    d.text((W // 2, 727), "MUSE+", font=f, fill=LABEL + (255,), anchor="ms")
     im.save(CLASSIC)
     print(CLASSIC, os.path.getsize(CLASSIC), "bytes")
 

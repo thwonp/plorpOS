@@ -27,7 +27,7 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **A** | open a system, or start a game |
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
-| **Y** | favorite it - Favorites is a shelf of its own. In Muse, Y favorites the album under the cursor (or takes it off), and Muse's Favorites tab shows only those |
+| **Y** | favorite it - Favorites is a shelf of its own. In Muse+, Y favorites the album under the cursor (or takes it off), and Muse+'s Favorites tab shows only those |
 | **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
 | **MENU + volume** | brightness, everywhere, including in game, held the same way (Home with the volume rocker on the GKD) |
 | **Fn1 / Fn2** (Brick, Brick Pro) | the two function keys, Fn1 the left: nothing until bound as hotkeys, alone or with a modifier |
@@ -38,7 +38,7 @@ them, and `dot_clean /Volumes/YOURCARD` removes them.
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Shader (Scanline Filter on the Miyoo Mini Flip), Palette (Game Boy), Disc (multi-disc games), Achievements, Hotkeys, Reset, Quit. Native PICO-8 has Continue, Display, Reset, Splore, Quit (PortMaster ports: Continue, Reset, Quit); its Display is the same per-system Display Mode (Stretch, Aspect, Integer), saved at once but read only when PICO-8 starts, so a changed value shows "Reset game to apply" until the game is reset. On the DS, Display is **Layout**, with a **Display** row under it; a Nintendo DS game on a unit with two sticks adds **Stylus Stick** (Right Stick by default / Left Stick, which stick moves the stylus cursor) below Hotkeys |
 | **MENU, held** (on a shelf or in game) | the game switcher: your recent games as cards, left/right to pick, **A** to play, **X** to remove one, **Y** to favorite it. Hold it about 0.7 s; a tap is still the menu above, on release. Another game picked from inside a game ends the first (it is saved). The RG Rotate also opens it with a swipe up from the bottom edge |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
-| **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
+| **SELECT** | Muse+, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
 | **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends 10 seconds later (the Miyoo Mini Flip has no suspend: it powers off after **Sleep Poweroff**); a tap wakes it. A hold powers off. In a game, the game is saved first either way |
 
 MENU means three different menus depending on where you are, and each one is
@@ -48,7 +48,7 @@ the whole menu at once - from Play Time or Network Services straight back to whe
 were, or back into the game - and B goes back one screen at a time.
 
 **plorpOS carries this table itself**, under **MENU > Controls**: five pages
-that left and right step through - moving, the shelf, a game, Muse, and the
+that left and right step through - moving, the shelf, a game, Muse+, and the
 buttons that work anywhere (the RG Rotate adds a sixth, Touch). It is the copy that is always to hand, and the one
 that follows your Gamelist Layout, so the page shows the axes as they are on
 your device. This guide is the long version of the
@@ -63,7 +63,7 @@ than any one console:
 | **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, and on the RG Rotate and Miyoo Mini Flip **SSH**; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget. Not on the Miyoo Mini Flip |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
-| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing` |
+| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse+). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing` |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **Gamelist Layout**: `Coverflow`, `Detailed List` or `Art List`, how a game shelf is drawn. **System Order**: `Year`, `A-Z` or `Maker` - see below. **Header Font** and **Body Font**: `Fredoka`, `Josefin Sans`, `Quicksand` or `Lato`, for the headings and for everything else. **Ports Tile**: `Visible` or `Hidden`, whether the Ports card is on the systems row (only listed on devices that have one; hiding it does not delete anything, and Ports games in Favorites and the switcher wait for it to come back) |
 | **Game Settings** | for every console. **Games Auto-Resume**: `on`, a launch loads the game's autosave; `off`, it starts fresh and the autosave is still written. **Rewind Speed**: `1x` to `10x`, or `Off` (the default). **Fast-Forward Speed**: `2x`, `4x` or `8x`, what both Fast Forward hotkeys (Hold and Toggle) run at. **Confirm Reset/Quit**: the in-game menu asks before either. **Persistent Turbo Assignments**: each game keeps its Turbo Assign buttons - see below. **Achievements Enabled**: `off`, a game starts without its set. **Achievements Sign-In**: the RetroAchievements account, or `sign in`. **Download Achievement Sets**: every game's set onto the card at once, for playing offline; games already cached are skipped, and the panel counts the games with no achievements to earn. **Scraping**: Box Art, ScreenScraper and Import gamelist.xml metadata, below |
 | **Game Settings > Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
@@ -206,10 +206,10 @@ plugging in mid-game does not arrive at nine decibels louder than you left it.
 ### USB DAC
 
 Any USB audio device the kernel recognises works: a USB-C dongle DAC, a
-USB headset, a desktop DAC. Plug it in and game sound, Muse and native
+USB headset, a desktop DAC. Plug it in and game sound, Muse+ and native
 PICO-8 move to it within about a second; the row reads `auto (USB DAC)`.
 The volume buttons set the DAC's own volume. Pull it out and sound falls
-back to the jack or the speaker - Muse pauses first, so an album does not
+back to the jack or the speaker - Muse+ pauses first, so an album does not
 carry on out loud.
 
 **On the Brick and Brick Pro, use the USB-C port on top.** The bottom port
@@ -260,7 +260,7 @@ device's buttons set only the starting volume; after that, change it on the
 headset itself. In a game, a press on the headset changes the level without
 showing the bar.
 
-**The headset's play, pause and skip buttons control Muse**, wherever you are,
+**The headset's play, pause and skip buttons control Muse+**, wherever you are,
 a game included.
 
 One thing behaves differently on a Bluetooth sink and is not a bug:
@@ -274,20 +274,20 @@ to the speaker within a second or two and the game keeps running. It never ends
 a game to report an audio problem. That fallback is the emulator's own - it
 does not wait for the launcher to notice the headset is gone.
 
-## Muse
+## Muse+
 
-Muse plays the music and the audiobooks on the card. Its card at the end of
-the shelf opens Muse on its tabs (below), on the album that is playing if one
+Muse+ plays the music and the audiobooks on the card. Its card at the end of
+the shelf opens Muse+ on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse, has the album count, Sort By, Album Art (below), Tab Settings, Rescan
+Muse+, has the album count, Sort By, Album Art (below), Tab Settings, Rescan
 Folder for music copied on while the device was running, Playback Settings
 (not on the Miyoo Mini Flip), and Source.
 
 **Source** picks what the shelf holds: Local Music, Local Audiobooks,
 [Plex Music](#plex), [Audiobookshelf](#audiobookshelf) or
 [Podcasts](#podcasts). (Before the next release this was two rows, Show and
-Source.) Muse opens on whichever you left
+Source.) Muse+ opens on whichever you left
 it on, except that SELECT with a book playing lands on the books, on that
 book.
 
@@ -296,12 +296,12 @@ album title, two of the same title going in their artists' order, or by year,
 newest first and albums with no year last. The jump goes by the initial of
 whichever it is - an artist's, or an album's - and by year, a year at a time.
 
-Muse has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
+Muse+ has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
 **Coverflow** (on audiobooks **Authors**, **Books**, **Favorites**,
 **Playlists** and **Coverflow**),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
-round from the last to the first, and Muse opens on the tab you left it on.
-**Tab Settings** in Muse's MENU lists the tabs in order with On or Off: A (or
+round from the last to the first, and Muse+ opens on the tab you left it on.
+**Tab Settings** in Muse+'s MENU lists the tabs in order with On or Off: A (or
 left/right) switches one, and L2 and R2 move it up and down, which is the
 order along the bottom too. One order for music and audiobooks; at least one
 tab besides Playlists stays on.
@@ -317,9 +317,9 @@ tab besides Playlists stays on.
   off, and it leaves the list.
 - **Playlists** lists your playlists with how many tracks each has; A opens
   one. Y (a long press on the RG Rotate) on a playlist offers **Delete**
-  (asked first) and **Rename** (on the keyboard); MENU is the Muse menu, as on
+  (asked first) and **Rename** (on the keyboard); MENU is the Muse+ menu, as on
   every tab. In a playlist, X removes the track under the cursor (asked first), and L2 and R2
-  move it up and down a place. On audiobooks it holds three lists Muse makes
+  move it up and down a place. On audiobooks it holds three lists Muse+ makes
   itself: **Recent Books** (the ten books you played last and have not
   finished), **Finished Books** (every finished book, newest first) and
   **Random Books** (twelve books, different each time you open it). On Audiobookshelf they
@@ -339,11 +339,11 @@ computer can read and edit them. **Y on any track** - an album's or a
 playlist's - adds it to a playlist: one you have, or a new
 one named on the keyboard.
 
-**SELECT** opens Muse from anywhere that is not a running game: the
+**SELECT** opens Muse+ from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
-underneath. SELECT again closes it from any screen in Muse, and the music keeps
+underneath. SELECT again closes it from any screen in Muse+, and the music keeps
 playing. B goes back one screen: Now Playing to the album's tracks, the tracks
-to the shelf, and the shelf out of Muse. The exceptions are Over The Hare and a
+to the shelf, and the shelf out of Muse+. The exceptions are Over The Hare and a
 Box Art fetch, which only keep working while they are on screen.
 
 Albums go in `Music/`, a folder per artist and one inside it per album:
@@ -398,8 +398,8 @@ Down together; a hold set to None goes back to stepping the volume while it
 is held. (In a game a hold set to None does nothing.) **Reset to Default**
 puts them all back. A headset's own buttons are not changed by any of this.
 | **B** | the album's tracks; for a book, the list it was picked from |
-| **MENU** | Muse's menu |
-| **SELECT** | close Muse |
+| **MENU** | Muse+'s menu |
+| **SELECT** | close Muse+ |
 
 **More** (X on a book's Now Playing):
 
@@ -448,7 +448,7 @@ In the dark the volume keys change the volume and a headset's buttons work,
 both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
 sides) do what they do there and wake the screen, like an iPod's. Any other
 button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
-(MENU in Muse, then Playback Settings) and the screen stays dark: Now Playing's
+(MENU in Muse+, then Playback Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
 the same buttons keep working for 30 seconds, so a pause in the dark can be
@@ -472,12 +472,12 @@ the Mute Switch has it. With the screen on, the
 switch locks nothing; Now Playing shows a padlock beside the mode while it is
 down, so you can see it is set before the screen goes dark.
 
-Covers come from the music. The first time an album is shown, Muse takes the
+Covers come from the music. The first time an album is shown, Muse+ takes the
 picture its files carry and keeps it beside the album, in
 `Music/<artist>/.media/`, the way box art sits in `Roms/<system>/.media`. An
 album whose files carry none gets a generated card.
 
-**Album Art**, in MENU on Muse's shelf, fetches covers over Wi-Fi for every
+**Album Art**, in MENU on Muse+'s shelf, fetches covers over Wi-Fi for every
 album with none, or with one smaller than the shelf draws it - 461px. It asks
 MusicBrainz which record the album is, from the artist and album folder names
 and the number of tracks - the track count is what tells a same-named single,
@@ -488,7 +488,7 @@ cover may be added later. MusicBrainz takes a request a second, so a large
 library takes a while: seven albums took a minute on the Brick.
 
 Off Wi-Fi, a stream or a download from Plex, Audiobookshelf or Podcasts is
-not tried: Muse says **Device is offline**. On Wi-Fi with the server not
+not tried: Muse+ says **Device is offline**. On Wi-Fi with the server not
 answering it says **Could not reach the server**. Either way nothing is
 skipped and a book's place stays where it was.
 
@@ -496,18 +496,18 @@ skipped and a book's place stays where it was.
 
 *Coming in the next release; not in v1.9.x.*
 
-Muse can play a Plex music library instead of the card's (not on the Miyoo
+Muse+ can play a Plex music library instead of the card's (not on the Miyoo
 Mini Flip: a big library doesn't fit in its memory). Set **Source** to
-Plex in Muse's MENU. The first time it asks you to sign in: open
+Plex in Muse+'s MENU. The first time it asks you to sign in: open
 plex.tv/link on a phone or computer and enter the code on the screen. Then
-pick the server and the music library. Muse reads the whole library once
+pick the server and the music library. Muse+ reads the whole library once
 (about 40 seconds for 47,000 tracks) and keeps it on the card, so it opens at
 once after that. Plex needs Wi-Fi. The tabs, Now Playing, the queue and the
 second screen work as they do for the card's music.
 
 - **Streaming** plays at the quality in **Plex Settings**: Original, or an
   Opus transcode at 96 to 320 kbps (128 by default; transcoding needs Plex
-  Pass). On a server with no Plex Pass, Muse says so once, shows it beside
+  Pass). On a server with no Plex Pass, Muse+ says so once, shows it beside
   the server's name in Plex Settings, and plays and downloads the original
   files; if the server's owner has turned downloads off for your account,
   a download says so instead of starting. Away from home the Brick can't stream, so it downloads each track
@@ -520,7 +520,7 @@ second screen work as they do for the card's music.
   `Music/Plex/<artist>/<album>/` with the cover, so they are ordinary music
   when Source is the card too. A downloaded track plays from the card, even
   on Plex. A fully downloaded album has a ↓ mark in the lists.
-- **Download Queue** shows in Muse's menu, under Plex Settings, while albums
+- **Download Queue** shows in Muse+'s menu, under Plex Settings, while albums
   are downloading: the one downloading, then the rest. X on one cancels it.
 - **Y on a track** lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
@@ -536,7 +536,7 @@ second screen work as they do for the card's music.
   those copies in step with the playlist at every sync; Remove Download
   takes them off again.
 - **Check for Updates** (in Plex Settings) reads only what changed on the
-  server since the last sync, in seconds. Muse also does this every hour.
+  server since the last sync, in seconds. Muse+ also does this every hour.
 - **Resync Library** (in Plex Settings) reads the whole library again.
 - **Pre-fetch Tracks** (in Plex Settings; 1, 3, 5 or 10) is how many of the
   next tracks a device that can't stream fetches while one plays, so they
@@ -544,27 +544,27 @@ second screen work as they do for the card's music.
   first. Devices that stream show "streams".
 - **Plex Settings** has the server, the library, both qualities and Sign Out.
 
-Away from home, Muse reaches the server the way Plexamp does: its remote
+Away from home, Muse+ reaches the server the way Plexamp does: its remote
 address, or Plex's relay. It finds the way again by itself when the network
 changes; a song cut off by that ends, and the next one plays.
 
-Plex sees what Muse plays and counts a play at 90%, as Plexamp does. The
+Plex sees what Muse+ plays and counts a play at 90%, as Plexamp does. The
 sign-in is kept on the card in `.userdata/shared/plex/`.
 
 ### Audiobookshelf
 
 *Coming in the next release.*
 
-Muse can play the books on an Audiobookshelf server on your home network.
+Muse+ can play the books on an Audiobookshelf server on your home network.
 Set **Source** to Audiobookshelf. The first time, type the server's address
-(such as `192.168.0.2:13378`), then your username and password. Muse reads
+(such as `192.168.0.2:13378`), then your username and password. Muse+ reads
 the library once (about 10 seconds for 700 books) and keeps it on the card.
 Books stream on every device; they need Wi-Fi and the server on the same
 network.
 
 - **Your place follows you.** Opening a book picks up where you left it,
   here or in the Audiobookshelf app, whichever was later. While a book plays,
-  Muse sends its place every 15 seconds and when you pause, and marks it
+  Muse+ sends its place every 15 seconds and when you pause, and marks it
   finished at the end. A downloaded book played without Wi-Fi sends its
   place once it's back online, unless another device has moved on since.
 - **X on a book** downloads it, or deletes the copy; Mark as Complete and
@@ -572,9 +572,9 @@ network.
   `Audiobooks/<author>/<title>/`, so they show under Local Audiobooks too,
   and still send their place to the server. A downloaded book has a ↓ mark
   in the lists, and while books download, **Download Queue** shows in
-  Muse's menu under Audiobookshelf Settings (X on one cancels it).
+  Muse+'s menu under Audiobookshelf Settings (X on one cancels it).
 - **Audiobookshelf Settings** has Check for Updates (only what changed),
-  Resync Library (everything) and Sign Out. Muse checks every hour by itself.
+  Resync Library (everything) and Sign Out. Muse+ checks every hour by itself.
 
 The sign-in is kept on the card in `.userdata/shared/abs/`.
 
@@ -591,7 +591,7 @@ add some:
 - **Search Podcasts** finds shows by name in Apple's podcast directory. A on
   one subscribes to it.
 
-Muse fetches every show's new episodes when you open it (at most every half
+Muse+ fetches every show's new episodes when you open it (at most every half
 hour) and when you choose **Check for Updates**. Nothing is fetched in the
 background.
 
@@ -617,7 +617,7 @@ that is in the Queue says **Queued** on its cover on the other tabs.
 
 Downloads go in `Podcasts/<show>/` and play without Wi-Fi. A downloaded
 episode has a ↓ mark, and while episodes download, **Download Queue** shows
-in Muse's menu under Podcast Settings (X on one cancels it).
+in Muse+'s menu under Podcast Settings (X on one cancels it).
 **Auto-Delete** in Podcast Settings removes a download when it is played, or
 a day after; favorites are never deleted.
 
@@ -638,12 +638,12 @@ name underneath. The art is in `plorpOS/cards/` on the card.
 **System Order** picks the order of the systems. `Year` is release order, with
 PICO-8 and Arcade first. `A-Z` is by name. `Maker` groups them - Arcade,
 Nintendo, Sega, NEC, SNK, Sony, then PICO-8 - each group in release order.
-Favorites stays first and Muse last whichever you pick, and the shelf reorders
+Favorites stays first and Muse+ last whichever you pick, and the shelf reorders
 the moment you change it.
 
 **Gamelist Layout** picks how a game shelf looks. The systems row is always
 the row above; this is about the games inside a system, and Favorites
-and Ports follow it too. Muse keeps its own shelf.
+and Ports follow it too. Muse+ keeps its own shelf.
 
 `Coverflow` is the row above, with box art.
 
