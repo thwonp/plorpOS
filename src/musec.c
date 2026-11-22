@@ -504,6 +504,10 @@ static void event(const char *line)
 
 		field(line, "cut", cut, sizeof cut);
 		g_end_cut = cut[0] == '1';
+		/* A book's stream cut short stops where it is: on to the next file
+		 * skipped the rest of this one, and off the last one the book read
+		 * as finished (plorpos-9rf.13). Its place is kept (book_keep). */
+		if (g_end_cut && g_book) { g_now.state = MU_STOPPED; g_ran_out = true; return; }
 		advance(false);
 	} else if (!strncmp(line, "SINK", 4)) {
 		char prev[sizeof g_sink_said];
@@ -583,6 +587,14 @@ static void event(const char *line)
 		 * again, rather than skipped (plorpos-1lw.19). */
 		else if (g_failed && (k = muq_current(&g_order)) >= 0 && k < g_qn && k != g_retried &&
 		         g_failed(g_q[k])) { g_retried = k; play_current(); }
+		/* A book's stream that will not open - its server gone - is a cut,
+		 * not a bad file: stopped where it was, its place kept, rather than
+		 * skipped on to the last file (plorpos-9rf.13). */
+		else if (g_book && g_play_remote) {
+			g_asked = false;
+			g_now.state = MU_STOPPED;
+			g_end_cut = g_ran_out = true;
+		}
 		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
 }
