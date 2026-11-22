@@ -302,6 +302,10 @@ enum { MUSICKEY_NONE = 0, MUSICKEY_NEXT, MUSICKEY_PREV, MUSICKEY_TOGGLE };
  * Vol-. A key whose Hotkeys row is None keeps its volume repeat instead
  * (plorpos-5eq.14). Told to Diatom (SETSKIP) and to plat_run's own reads. */
 void plat_skip_keys(int mask);
+
+/* Whether the device has a vibration motor a game can shake (plorpos-5tm.4).
+ * Game Settings > Rumble Enabled is greyed where it has none. */
+bool plat_has_rumble(void);
 int  plat_musickey_take(void);
 /* Increments each time the launcher connects to a resident emulator. Anything
  * the launcher pushed into the last one has to be pushed into a new one. */
