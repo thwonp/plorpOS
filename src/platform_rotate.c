@@ -646,6 +646,8 @@ static bool lid_closed(void)
 	       (sw[0] >> SW_LID & 1);
 }
 
+bool plat_touch_long(void) { return touch_long_take(); }
+
 static int sw_last = -1;           /* the level last told: 1 closed, -1 not read yet */
 
 swivel_edge plat_swivel_take(void)

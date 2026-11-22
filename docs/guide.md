@@ -521,7 +521,7 @@ second screen work as they do for the card's music.
   on Plex. A fully downloaded album has a ↓ mark in the lists.
 - **Download Queue** shows in Muse+'s menu, under Plex Settings, while albums
   are downloading: the one downloading, then the rest. X on one cancels it.
-- **X on a track**, then **Add to Playlist**, lists **Favorite Tracks** first: A adds the track, or
+- **X on a track** (or a long press on the RG Rotate), then **Add to Playlist**, lists **Favorite Tracks** first: A adds the track, or
   removes it if it's in already. It's a playlist on the Playlists tab.
 - **Playlists** are your Plex server's: every sync (Check for Updates, or
   the hourly one) brings them in, and a playlist you make or change here -
@@ -530,8 +530,8 @@ second screen work as they do for the card's music.
   can be played but not changed, and one longer than 2000 tracks is left out.
   Favorite Tracks stays on this device.
 - **X on a playlist** adds **Download Playlist**: its tracks are copied to
-  the card and it shows under Local Music as **Plex <name>**, with a ↓ mark
-  here. **Keep Playlists Synced** in Plex Settings (on to begin with) keeps
+  the card and it shows under Local Music as **Plex <name>**, the "Plex" in
+  gray, with a ↓ mark here. **Keep Playlists Synced** in Plex Settings (on to begin with) keeps
   those copies in step with the playlist at every sync; Remove Download
   takes them off again.
 - **Check for Updates** (in Plex Settings) reads only what changed on the

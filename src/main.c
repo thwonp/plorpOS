@@ -5290,6 +5290,7 @@ typedef struct {
 	bool (*dl)(void *ctx, int i);             /* on the card (ps8.7); NULL: no mark */
 	int  (*mark)(void *ctx, int i);           /* a book: 1 in progress, 2 finished (5eq.11) */
 	bool (*dim)(void *ctx, int i);            /* a played episode: its title quieter (5eq.10) */
+	int  (*lead)(void *ctx, int i);           /* bytes the title opens with, drawn as dim (5eq.21) */
 	const char *badge;                        /* on the art's top left corner; NULL none */
 	int (*now)(void *ctx, int i);             /* 1 playing, 2 paused, 0 not; NULL none */
 	/* NULL: no art pane. Else the item's texture or NULL while it loads. */
@@ -5689,7 +5690,18 @@ static void gl_draw(app *a, const gl_list *L)
 			SDL_Color tc = i == cur ? (dim ? ui_fade(UI_TEXT, 0.62f) : UI_TEXT)
 			                        : dim ? UI_TEXT_DIM : UI_TEXT_SOFT;
 
-			if (i == cur && ui_text_width(fm, title) > tw)
+			int lead = L->lead ? L->lead(L->ctx, i) : 0;
+			char pre[16];
+
+			/* A prefix in grey ("Plex " on a playlist downloaded from Plex,
+			 * plorpos-5eq.21), while the whole title fits its row. */
+			if (lead > 0 && lead < (int)sizeof pre && ui_text_width(fm, title) <= tw) {
+				memcpy(pre, title, (size_t)lead);
+				pre[lead] = 0;
+				ui_text(a->r, fm, pre, tx, ty, -1,
+				        i == cur ? ui_fade(UI_TEXT, 0.62f) : UI_TEXT_DIM);
+				ui_text(a->r, fm, title + lead, tx + ui_text_width(fm, pre), ty, -1, tc);
+			} else if (i == cur && ui_text_width(fm, title) > tw)
 				ui_text_marquee(a->r, fm, title, tx, ty, tw, phase, tc);
 			else
 				ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1, tc);
@@ -15141,6 +15153,14 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+#ifdef PLATFORM_ROTATE
+		/* A long press on a music track is X's menu; the Y button is
+		 * nothing there, as on every port (owner, plorpos-5eq.19). */
+		if (a->in.pressed[IN_Y] && items > 0 && mtl_music(ts)) {
+			a->in.pressed[IN_Y] = false;
+			if (plat_touch_long()) a->in.pressed[IN_X] = true;
+		}
+#endif
 
 		if (a->in.pressed[IN_ACCEPT] && items > 0) {
 			/* The track already playing is not started over: A on it is the
@@ -15177,12 +15197,8 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
 		}
 		/* Add to Playlist: Y on a book or Audiobookshelf; on music it is in
-		 * X's menu (plorpos-5eq.18). The Rotate's long press, a Y, keeps it. */
-#ifdef PLATFORM_ROTATE
-		if (a->in.pressed[IN_Y] && items > 0) {
-#else
+		 * X's menu (plorpos-5eq.18), which the Rotate's long press opens. */
 		if (a->in.pressed[IN_Y] && items > 0 && !mtl_music(ts)) {
-#endif
 			muse_add_to_playlist(a, ts->trk[sel]);
 			continue;
 		}
@@ -15335,7 +15351,7 @@ static muse_exit muse_playlist_open(app *a, int idx, bool now)
 	if (idx < 0 || idx >= g_npls) return MUSE_BACK;
 	snprintf(name, sizeof name, "%s", g_pls[idx].name);
 	muse_pl_dir(d, sizeof d);
-	if ((n = pl_read(d, name, P_CARD, &v)) < 0) { muse_toast("Could not read it"); return MUSE_BACK; }
+	if ((n = pl_read(d, name, P_CARD, &v)) < 0) { muse_toast("Failed to read"); return MUSE_BACK; }
 	trk = calloc((size_t)n + 1, sizeof *trk);
 	ent = calloc((size_t)n + 1, sizeof *ent);
 	for (i = 0; trk && ent && i < n; i++) {
@@ -16416,6 +16432,13 @@ static const char *mpl_title(void *ctx, int i)
 }
 static bool mpl_fav(void *ctx, int i) { (void)ctx; return pl_heart_at(g_pls[i].name) != NULL; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
+/* Local Music: a playlist downloaded from Plex is "Plex <name>" (Download
+ * Playlist writes it so), and says so in grey (owner, plorpos-5eq.21). */
+static int mpl_lead(void *ctx, int i)
+{
+	(void)ctx;
+	return !g_muse_plex && !g_muse_abs && !strncmp(g_pls[i].name, "Plex ", 5) ? 5 : 0;
+}
 static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_muse_plex && plex_pl_downloaded(g_pls[i].name); }
 
 /* ---- Podcasts: episode rows (plorpos-7ni.4) ---------------------------------- */
@@ -16752,6 +16775,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->value = mpl_value;
 		L->fav = mpl_fav;
 		L->dl = mpl_dl;
+		L->lead = mpl_lead;
 		L->empty = "No playlists yet. X on a track adds one.";
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
@@ -17118,10 +17142,12 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		/* X on a playlist: Delete (asked first), Rename, and on Plex the
 		 * download - X as on a book or an album (owner, plorpos-5eq.16; it
-		 * was Y). The Rotate's long press, a Y, still opens it. MENU is the
-		 * Muse menu, as on every tab (owner, plorpos-3yv.110.1). */
+		 * was Y). The Rotate's long press still opens it; its Y button does
+		 * not (plorpos-5eq.19). MENU is the Muse menu, as on every tab
+		 * (owner, plorpos-3yv.110.1). */
 #ifdef PLATFORM_ROTATE
-		if ((a->in.pressed[IN_X] || a->in.pressed[IN_Y]) && lists && !books && n > 0) {
+		if ((a->in.pressed[IN_X] || (a->in.pressed[IN_Y] && lists && !books && plat_touch_long())) &&
+		    lists && !books && n > 0) {
 #else
 		if (a->in.pressed[IN_X] && lists && !books && n > 0) {
 #endif
@@ -21726,6 +21752,11 @@ static void build_muse_shelf(app *a, bool bg)
 	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
 	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
 	g_muse_pod = src == MSRC_PODCASTS && pod_lib_cached();
+	/* The playlists are the Source's (muse_pl_dir), and which Source is in
+	 * has just been decided: a list read before this - behind the
+	 * "Loading..." panel of a Source change - was the last Source's, shown
+	 * under the new one where A could not read it (plorpos-5eq.20). */
+	muse_playlists_forget();
 	if (!g_muse_plex && src == MSRC_PLEX)
 		plex_sync_start(false);      /* set up, never synced: on its way */
 	if (!g_muse_abs && src == MSRC_ABS)

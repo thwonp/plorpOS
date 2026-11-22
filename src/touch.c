@@ -309,6 +309,18 @@ static void touch_coast(void)
 	if ((touch.cv < 0 ? -touch.cv : touch.cv) < FLICK_STOP_PXMS) touch.coasting = false;
 }
 
+/* When the last long press fired: its Y reaches the screen a few polls
+ * later, behind the steps that walk the cursor to the row. */
+static unsigned long_at;
+
+bool touch_long_take(void)
+{
+	bool was = long_at && plat_now_ms() - long_at < 1500;
+
+	long_at = 0;
+	return was;
+}
+
 void touch_poll(in_state *st)
 {
 	if (touch.pulsing) { set_btn(st, touch.up, false); touch.pulsing = false; }
@@ -321,6 +333,8 @@ void touch_poll(in_state *st)
 	    !(touch.free && touch.moved) && touch.far <= TOUCH_SLOP_PX * TOUCH_SLOP_PX &&
 	    plat_now_ms() - touch.t0 >= TOUCH_HOLD_MS) {
 		touch.held = true;
+		long_at = plat_now_ms();
+		if (!long_at) long_at = 1;
 		touch_at(IN_Y);
 	}
 	if (touch.qn > 0) {
