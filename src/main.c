@@ -3671,16 +3671,137 @@ static void aout_apply(bool force)
 
 #define VOL_SKIP_HOLD_MS 500
 
-/* Next or previous - on a book, ten seconds on or back instead: a book's
- * chapters and files change only under More > Chapters (owner, i8d.9). */
-static void muse_skip(int dir)
+static double seek_step(const in_state *in, in_button b);
+
+/* ---- Muse's Hotkeys (owner, plorpos-5eq.6) -------------------------------- *
+ *
+ * What each shoulder, D-pad and stick direction does on Now Playing, in a
+ * track list and with the screen off, and what the volume keys' two holds
+ * and their chord do everywhere: one action a button, any number of buttons
+ * an action. The same for every Source - a book's L1/R1 change its file as
+ * music's change its track (the i8d.9 call withdrawn). A B X Y are fixed.
+ * db "muse.hk.<key>", read once. */
+enum { MA_NONE, MA_TOGGLE, MA_FWD, MA_BACK, MA_NEXT, MA_PREV, MA_N };
+static const char *const MA_LABEL[MA_N] =
+	{ "None", "Play/Pause", "Skip Forward", "Skip Backward", "Next Track", "Previous Track" };
+enum { MH_L1, MH_R1, MH_L2, MH_R2, MH_LEFT, MH_RIGHT, MH_UP, MH_DOWN,
+       MH_SLEFT, MH_SRIGHT, MH_SUP, MH_SDOWN, MH_NP_N,
+       MH_VOLUP = MH_NP_N, MH_VOLDN, MH_VOLBOTH, MH_N };
+static const struct { const char *key, *label; in_button b; int def; } MUSE_HK[MH_N] = {
+	{ "l1", "L1", IN_L1, MA_PREV },           { "r1", "R1", IN_R1, MA_NEXT },
+	{ "l2", "L2", IN_L2, MA_NONE },           { "r2", "R2", IN_R2, MA_NONE },
+	{ "left", "D-pad Left", IN_LEFT, MA_BACK },   { "right", "D-pad Right", IN_RIGHT, MA_FWD },
+	{ "up", "D-pad Up", IN_UP, MA_NONE },         { "down", "D-pad Down", IN_DOWN, MA_NONE },
+	{ "sleft", "Stick Left", IN_SLEFT, MA_BACK }, { "sright", "Stick Right", IN_SRIGHT, MA_FWD },
+	{ "sup", "Stick Up", IN_SUP, MA_NONE },       { "sdown", "Stick Down", IN_SDOWN, MA_NONE },
+	{ "volup", "Volume Up, Held", IN_VOLUP, MA_NEXT },
+	{ "voldn", "Volume Down, Held", IN_VOLDN, MA_PREV },
+	{ "volboth", "Volume Up + Down", IN_NONE, MA_TOGGLE },
+};
+static signed char g_mhk[MH_N];
+static bool g_mhk_in;
+
+/* A stick's directions get rows of their own where the launcher is told
+ * the stick moved (IN_SLEFT..): the GKD and RG DS build, and a Brick Pro
+ * or H700 with sticks. (unverified on a stickless GKD: the rows are there
+ * and do nothing.) Elsewhere a stick, if any, is the D-pad. */
+static bool muse_hk_stick(void)
 {
-	if (musec_is_book()) musec_seek_by(dir * 10.0);
-	else if (dir > 0)    musec_next();
-	else                 musec_prev();
+#if defined(PLATFORM_GKD)
+	return true;
+#else
+	return plat_two_sticks();
+#endif
 }
 
-static double seek_step(const in_state *in, in_button b);
+static int muse_hk_get(int i)
+{
+	if (!g_mhk_in) {
+		char key[32];
+		int k, v;
+
+		for (k = 0; k < MH_N; k++) {
+			snprintf(key, sizeof key, "muse.hk.%s", MUSE_HK[k].key);
+			v = db_get_int(db_dev(), key, MUSE_HK[k].def);
+			g_mhk[k] = (signed char)(v >= 0 && v < MA_N ? v : MUSE_HK[k].def);
+		}
+		g_mhk_in = true;
+	}
+	return g_mhk[i];
+}
+
+static void muse_hk_set(int i, int act)
+{
+	char key[32];
+
+	(void)muse_hk_get(i);
+	g_mhk[i] = (signed char)act;
+	snprintf(key, sizeof key, "muse.hk.%s", MUSE_HK[i].key);
+	db_set_int(db_dev(), key, act);
+}
+
+/* Action `act`, once: a tap in the dark, a volume hold on music, the chord.
+ * A skip is ten seconds. */
+static void muse_hk_once(int act)
+{
+	switch (act) {
+	case MA_TOGGLE: musec_toggle(); break;
+	case MA_FWD:    musec_seek_by(+10); break;
+	case MA_BACK:   musec_seek_by(-10); break;
+	case MA_NEXT:   musec_next(); break;
+	case MA_PREV:   musec_prev(); break;
+	}
+}
+
+/* Action `act` for button `b` as it is held: a skip steps further the
+ * longer the hold (seek_step), a track change repeats, play/pause is the
+ * press alone. */
+static void muse_hk_held(in_state *in, int act, in_button b)
+{
+	switch (act) {
+	case MA_TOGGLE: if (in->pressed[b]) musec_toggle(); break;
+	case MA_FWD:    if (in_repeat(in, b)) musec_seek_by(+seek_step(in, b)); break;
+	case MA_BACK:   if (in_repeat(in, b)) musec_seek_by(-seek_step(in, b)); break;
+	case MA_NEXT:   if (in_repeat(in, b)) musec_next(); break;
+	case MA_PREV:   if (in_repeat(in, b)) musec_prev(); break;
+	}
+}
+
+/* The D-pad's row for button `b` gives way to the stick's when the stick is
+ * what moved (it sets both), where the stick has rows. */
+static bool muse_hk_shadowed(const in_state *in, int i)
+{
+	return i >= MH_LEFT && i <= MH_DOWN && muse_hk_stick() && in->down[IN_SLEFT + (i - MH_LEFT)];
+}
+
+/* Now Playing's buttons, each poll; `all` false for a track list, which
+ * keeps Up, Down, L2 and R2 for itself. */
+static void muse_hk_poll(in_state *in, bool all)
+{
+	int i;
+
+	for (i = 0; i < MH_NP_N; i++) {
+		if (!all && (i == MH_L2 || i == MH_R2 || i == MH_UP || i == MH_DOWN ||
+		             i == MH_SUP || i == MH_SDOWN)) continue;
+		if (i >= MH_SLEFT && !muse_hk_stick()) break;
+		if (muse_hk_shadowed(in, i)) continue;
+		muse_hk_held(in, muse_hk_get(i), MUSE_HK[i].b);
+	}
+}
+
+/* With the screen off: button `b` was pressed. */
+static void muse_hk_dark(const in_state *in, in_button b)
+{
+	int i;
+
+	for (i = 0; i < MH_NP_N; i++) {
+		if (MUSE_HK[i].b != b) continue;
+		if (i >= MH_SLEFT && !muse_hk_stick()) return;
+		if (muse_hk_shadowed(in, i)) i += MH_SLEFT - MH_LEFT;
+		muse_hk_once(muse_hk_get(i));
+		return;
+	}
+}
 
 /* What the volume keys asked of Muse during a game - a hold while it plays is
  * the next or previous track, both keys together are pause/play - carried out
@@ -3689,9 +3810,9 @@ static double seek_step(const in_state *in, in_button b);
 static void music_keys(void)
 {
 	switch (plat_musickey_take()) {
-	case MUSICKEY_NEXT:   muse_skip(+1);  break;
-	case MUSICKEY_PREV:   muse_skip(-1);  break;
-	case MUSICKEY_TOGGLE: musec_toggle(); break;
+	case MUSICKEY_NEXT:   muse_hk_once(muse_hk_get(MH_VOLUP));   break;
+	case MUSICKEY_PREV:   muse_hk_once(muse_hk_get(MH_VOLDN));   break;
+	case MUSICKEY_TOGGLE: muse_hk_once(muse_hk_get(MH_VOLBOTH)); break;
 	}
 }
 
@@ -3719,11 +3840,12 @@ static void vol_keys(in_state *st)
 	for (k = 0; k < 2; k++) {
 		int o = 1 - k;
 
-		if (st->pressed[key[k]] && st->down[key[o]]) {
+		/* Both together: its action, and None leaves two volume keys. */
+		if (st->pressed[key[k]] && st->down[key[o]] && muse_hk_get(MH_VOLBOTH) != MA_NONE) {
 			if (moved[o]) plat_volume_nudge(o == 0 ? -1 : +1);
 			moved[0] = moved[1] = armed[0] = armed[1] = false;
 			chord = true;
-			musec_toggle();
+			muse_hk_once(muse_hk_get(MH_VOLBOTH));
 			return;
 		}
 	}
@@ -3737,17 +3859,23 @@ static void vol_keys(in_state *st)
 
 			plat_volume_nudge(dir);
 			moved[k] = plat_volume_get() != before;
-			armed[k] = musec_playing();
+			/* A hold set to None is a volume key held: it steps on. */
+			armed[k] = musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
 		} else if (!armed[k]) {
 			if (in_repeat(st, b)) plat_volume_nudge(dir);
-		} else if (st->down[b] && now - st->down_since[b] >= VOL_SKIP_HOLD_MS &&
-		           (musec_is_book() ? in_repeat(st, b) : st->down_since[b] != skipped[k])) {
-			/* On a book the hold seeks, and goes on seeking as a held
-			 * Left/Right does (i8d.9); on music it skips once. */
-			skipped[k] = st->down_since[b];
-			if (moved[k]) { plat_volume_nudge(-dir); moved[k] = false; }
-			if (musec_is_book()) musec_seek_by(dir * seek_step(st, b));
-			else if (k) musec_prev(); else musec_next();
+		} else {
+			int act = muse_hk_get(MH_VOLUP + k);
+			bool seeks = act == MA_FWD || act == MA_BACK;
+
+			/* A skip goes on skipping, further the longer, as a held
+			 * Left/Right does; anything else happens once a hold. */
+			if (st->down[b] && now - st->down_since[b] >= VOL_SKIP_HOLD_MS &&
+			    (seeks ? in_repeat(st, b) : st->down_since[b] != skipped[k])) {
+				skipped[k] = st->down_since[b];
+				if (moved[k]) { plat_volume_nudge(-dir); moved[k] = false; }
+				if (seeks) musec_seek_by((act == MA_FWD ? +1 : -1) * seek_step(st, b));
+				else muse_hk_once(act);
+			}
 		}
 	}
 }
@@ -10110,7 +10238,60 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	return 5;
+	rows[5] = (menu_row){ "Hotkeys", NULL, true };
+	return 6;
+}
+
+/* Hotkeys, from Playback Settings (owner, plorpos-5eq.6): a row a button
+ * with its action, Left/Right and A stepping through the actions; the
+ * volume keys' holds and chord under Global, where None gives a held volume
+ * key back its repeat. */
+static int g_mhk_row[MH_N + 4];   /* the row's button; -1 a heading, -2 Reset */
+
+static int muse_hk_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	int i, n = 0;
+
+	(void)ctx;
+	(void)max;
+	*heading = "Hotkeys";
+	g_mhk_row[n] = -1; rows[n++] = (menu_row){ "Now Playing", "", false };
+	for (i = 0; i < MH_NP_N; i++) {
+		if (i >= MH_SLEFT && !muse_hk_stick()) break;
+		g_mhk_row[n] = i;
+		rows[n++] = (menu_row){ MUSE_HK[i].label, MA_LABEL[muse_hk_get(i)], true };
+	}
+	g_mhk_row[n] = -1; rows[n++] = (menu_row){ "Global", "", false };
+	for (i = MH_VOLUP; i < MH_N; i++) {
+		g_mhk_row[n] = i;
+		rows[n++] = (menu_row){ MUSE_HK[i].label, MA_LABEL[muse_hk_get(i)], true };
+	}
+	g_mhk_row[n] = -2; rows[n++] = (menu_row){ "Reset to Default", "", true };
+	return n;
+}
+
+static menu_result muse_hk_key(app *a, void *ctx, in_button key, int sel)
+{
+	int i, act;
+
+	(void)a;
+	(void)ctx;
+	if (sel < 0 || sel >= (int)(sizeof g_mhk_row / sizeof g_mhk_row[0])) return MENU_STAY;
+	i = g_mhk_row[sel];
+	if (i == -2 && key == IN_ACCEPT) {
+		for (i = 0; i < MH_N; i++) muse_hk_set(i, MUSE_HK[i].def);
+		return MENU_STAY;
+	}
+	if (i < 0 || (key != IN_LEFT && key != IN_RIGHT && key != IN_ACCEPT)) return MENU_STAY;
+	act = muse_hk_get(i);
+	muse_hk_set(i, key == IN_LEFT ? (act + MA_N - 1) % MA_N : (act + 1) % MA_N);
+	return MENU_STAY;
+}
+
+static void muse_hotkeys_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         muse_hk_build, muse_hk_key, NULL);
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -10158,6 +10339,7 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
+	if (sel == 5 && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -13662,11 +13844,30 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		        UI_TEXT_DIM);
 	}
 
-	np_help(r, fs, musec_is_book()
-	        ? (state ? "A: play    L1/R1, Left/Right: seek    X: more"
-	                 : "A: pause    L1/R1, Left/Right: seek    X: more")
-	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
-	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"));
+	/* The buttons as Hotkeys has them: pairs that change track, pairs that
+	 * seek; a pair split between the two is not said. */
+	{
+		static const struct { int lo, hi; const char *name; } PAIR[] = {
+			{ MH_L1, MH_R1, "L1/R1" }, { MH_L2, MH_R2, "L2/R2" },
+			{ MH_LEFT, MH_RIGHT, "Left/Right" }, { MH_UP, MH_DOWN, "Up/Down" },
+		};
+		char help[200], trk[64] = "", sk[64] = "";
+		size_t k;
+
+		for (k = 0; k < sizeof PAIR / sizeof PAIR[0]; k++) {
+			int x = muse_hk_get(PAIR[k].lo), y = muse_hk_get(PAIR[k].hi);
+			char *to = (x == MA_PREV && y == MA_NEXT) || (x == MA_NEXT && y == MA_PREV) ? trk
+			         : (x == MA_BACK && y == MA_FWD) || (x == MA_FWD && y == MA_BACK) ? sk : NULL;
+
+			if (!to) continue;
+			snprintf(to + strlen(to), sizeof trk - strlen(to), "%s%s", to[0] ? ", " : "", PAIR[k].name);
+		}
+		snprintf(help, sizeof help, "A: %s%s%s%s%s%s%s    %s", state ? "play" : "pause",
+		         trk[0] ? "    " : "", trk, trk[0] ? ": track" : "",
+		         sk[0] ? "    " : "", sk, sk[0] ? ": seek" : "",
+		         musec_is_book() ? "X: more" : "Y: mode");
+		np_help(r, fs, help);
+	}
 	draw_battery(r);
 	return wait;
 }
@@ -14161,15 +14362,8 @@ static muse_exit muse_now_screen(app *a)
 			memset(&drawn, 0, sizeof drawn);     /* the menu drew over it */
 			continue;
 		}
-		/* On a book the shoulders seek too (i8d.9). */
-		if (in_repeat(&a->in, IN_L1)) {
-			if (musec_is_book()) musec_seek_by(-seek_step(&a->in, IN_L1)); else musec_prev();
-		}
-		if (in_repeat(&a->in, IN_R1)) {
-			if (musec_is_book()) musec_seek_by(+seek_step(&a->in, IN_R1)); else musec_next();
-		}
-		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
-		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
+		/* The shoulders, the D-pad and the stick: Muse's Hotkeys. */
+		muse_hk_poll(&a->in, true);
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
@@ -14816,10 +15010,9 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % items;
 			gl_scroll_apply(&gs, &sel, items);
 		}
-		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
-		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
-		if (in_repeat(&a->in, IN_L1))       muse_skip(-1);
-		if (in_repeat(&a->in, IN_R1))       muse_skip(+1);
+		/* Left/Right and L1/R1, as Now Playing has them (Hotkeys); Up and
+		 * Down are the list's, L2 and R2 a playlist's. */
+		muse_hk_poll(&a->in, false);
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
@@ -17924,10 +18117,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 			/* Now Playing's bindings - see muse_now_screen. */
 			if (b == IN_ACCEPT)     musec_toggle();
 			else if (b == IN_Y)     muse_cycle_mode();
-			else if (b == IN_L1)    muse_skip(-1);
-			else if (b == IN_R1)    muse_skip(+1);
-			else if (b == IN_LEFT)  musec_seek_by(-10);
-			else if (b == IN_RIGHT) musec_seek_by(+10);
+			else muse_hk_dark(&a->in, (in_button)b);
 			if (wake) { end = DARK_WOKE; break; }
 		}
 		SDL_Delay(50);

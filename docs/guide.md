@@ -384,10 +384,19 @@ Audiobookshelf).
 | | |
 |---|---|
 | **A** | pause, or play |
-| **L1/R1** | previous / next track; More than three seconds in, L1 starts the track over. On a book they seek like Left/Right |
+| **L1/R1** | previous / next track, or a book's previous / next file; more than three seconds in, L1 starts it over |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
 | **Y** | the play mode (music) |
 | **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
+
+L1, R1, L2, R2, the D-pad and a stick's directions can be changed under
+**Hotkeys** in Playback Settings: each takes Play/Pause, Skip Forward, Skip
+Backward, Next Track, Previous Track or None, and several buttons can share
+an action. They are the same for every Source, and A, B, X and Y stay as
+they are. **Global** there has the volume keys' two holds and Volume Up +
+Down together; a hold set to None goes back to stepping the volume while it
+is held. (In a game a hold set to None does nothing.) **Reset to Default**
+puts them all back. A headset's own buttons are not changed by any of this.
 | **B** | the album's tracks; for a book, the list it was picked from |
 | **MENU** | Muse's menu |
 | **SELECT** | close Muse |
@@ -403,9 +412,9 @@ Audiobookshelf).
   **Play Resets Sleep Timer** (Playback Settings) is turned off. It is not
   kept across restarts.
 - **Chapters**: an M4B's chapters, or a book's files. A plays from the start
-  of the one you pick; the one already playing just carries on. This is the
-  only way to change chapter or file in a book: L1/R1, a volume-key hold and
-  a headset's next/previous all seek instead.
+  of the one you pick; the one already playing just carries on. L1/R1 and a
+  volume-key hold change a book's file as they change a track; a headset's
+  next/previous seek instead.
 - **Timeline**: every play, pause and sync of the book, newest first: when,
   what, and where you were - including those made with the screen off. A sync
   is the place taken from Audiobookshelf because another device was further
@@ -454,7 +463,7 @@ after half an hour. It is not offered on Local Music or Plex.
 For a pocket, lock the buttons. On every device but the Miyoo Mini Flip that is **Sleep Button Lock** in
 Playback Settings (Off/On); while it is on and the music plays with the screen dark, the face
 and shoulder buttons (and the Rotate's touch panel) are ignored. The volume keys,
-Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track; on a book, a seek) and the
+Vol+ and Vol- together (pause/play), a volume-key hold (next/previous track) and the
 Rotate's side media key stay live, and so do POWER and a headset's buttons. On the
 Brick, set **Mute Switch** (System Settings) to `muse button lock` instead: the switch
 then no longer mutes; it works like an iPod's hold switch, locking the same buttons
@@ -584,7 +593,7 @@ that is in the Queue says **Queued** on its cover on the other tabs.
 
 - **A** plays an episode. It streams, so it needs Wi-Fi, unless it is
   downloaded. If the stream drops, it stops and keeps your place; A carries
-  on from there. It plays like a book: L1/R1 seek, X has Speed, Sleep Timer and
+  on from there. It plays like a book: X has Speed, Sleep Timer and
   Timeline, and each episode keeps its own place.
 - An episode counts as **played** at 95%.
 - **X on an episode**: Download (or Cancel, or Delete the copy), Mark Played
