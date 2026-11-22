@@ -14817,6 +14817,44 @@ static int muse_from_playlist(void)
  *
  * `over` is the menu it opened over, or NULL for the shelf and the screens
  * that draw it. True when that menu's power rule ended it too. */
+/* The Source that holds `rel`, a queued track: a server's stream, an episode,
+ * a downloaded Audiobookshelf book (its folder's .abs), else the card's
+ * books or music. */
+static muse_src muse_src_of(const char *rel)
+{
+	char id[64];
+
+	if (plex_is_path(rel)) return MSRC_PLEX;
+	if (abs_is_path(rel)) return MSRC_ABS;
+	if (pod_is_path(rel)) return MSRC_PODCASTS;
+	if (abs_item(rel, id, sizeof id)) return MSRC_ABS;
+	return !strncmp(rel, "Audiobooks/", 11) ? MSRC_BOOKS : MSRC_MUSIC;
+}
+
+/* Muse opens on the Source of what is playing or paused, so SELECT reaches
+ * Now Playing after browsing another one (owner, plorpos-ps8.10). Only a
+ * source that is set up; one that can show the track already stays. */
+static void muse_src_follow(app *a)
+{
+	const mu_now *mn = musec_now();
+	const char *t;
+	muse_src was = muse_src_saved(), to;
+
+	if (g_walk_thread || (mn->state != MU_PLAYING && mn->state != MU_PAUSED)) return;
+	if (!(t = musec_track(mn->index)) || !t[0] || (to = muse_src_of(t)) == was) return;
+	if (to == MSRC_ABS && was == MSRC_BOOKS && !abs_is_path(t)) return;   /* a downloaded copy */
+	if (to == MSRC_MUSIC && was == MSRC_PLEX && !strncmp(t, "Music/Plex/", 11)) return;
+	if (!muse_src_offered(to)) return;
+	if ((to == MSRC_PLEX && !plex_lib_cached()) || (to == MSRC_ABS && !abs_lib_cached()) ||
+	    (to == MSRC_PODCASTS && !pod_lib_cached()))
+		return;
+	fprintf(stderr, "muse: Source back to %s, which is playing\n", sys_menu_src_label(to));
+	muse_src_save(to);
+	muse_playlists_forget();
+	wait_panel(a, "Muse", "Loading...");
+	muse_refresh(a);
+}
+
 static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
@@ -14850,6 +14888,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
 	}
+	muse_src_follow(a);             /* the Source of what is playing (ps8.10) */
 	pod_apply_sync(a);              /* episodes a sync found since (plorpos-ps8.1) */
 	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
 		g_muse_over = NULL;
