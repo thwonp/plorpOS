@@ -260,6 +260,10 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 
 		out[ST_SW_CLOSED] = (menu_row){ "Rotate (Closed)", closed[u->sw_closed % 3u], true };
 		out[ST_SW_OPEN]   = (menu_row){ "Rotate (Open)",   open[u->sw_open % 4u], true };
+		/* Off, Rotate (Open) is done as written with a game running too:
+		 * "main shelf" ends the game (plorpos-5eq.23). */
+		out[ST_SW_GAME]   = (menu_row){ "Rotate Open Always Resumes Game",
+		                                u->sw_game ? "on" : "off", true };
 	}
 #endif
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold

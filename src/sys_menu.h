@@ -73,6 +73,7 @@ typedef enum {
 	ST_SLEEP, ST_BATTPCT,
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
+	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
 #endif
 #endif
 #if SYS_HAS_MUTESW
@@ -224,6 +225,7 @@ typedef struct {
 	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	bool        lid_sleep;   /* Flip: closing the lid sleeps (f1p.61) */
 	int         sw_closed, sw_open; /* Rotate: the swivel's rows (5eq.1), SWC_ / SWO_ */
+	bool        sw_game;     /* Rotate: opening always resumes a running game (5eq.23) */
 	bool        adb;         /* RG DS, Zero 40: adb over USB is on (plorpos-rgds.11) */
 	bool        adb_restart; /* Zero 40: turned off, still on until a restart (auv.12) */
 	/* RG DS, Dual Screen Settings (plorpos-rgds.18.1): the second panel is
