@@ -5,8 +5,8 @@
 # a 128 MB device cannot load the core beside the launcher (plorpos-f1p.95);
 # and patches/fbneo-cyclone-state.patch: a state made with Cyclone on and one
 # made with it off refuse each other instead of crashing (plorpos-f1p.95.12).
-# Only the full core has Cyclone: FBNeo's subset makefiles leave it out, so the
-# patch changes nothing in the family cores.
+# patches/fbneo-family-cyclone.patch gives the family cores Cyclone, which
+# FBNeo's subset makefiles leave out (plorpos-f1p.95.14).
 #
 #   build-fbneo.sh            every driver          -> fbneo_libretro.so
 #   build-fbneo.sh cps12      CPS-1 and CPS-2 only  -> fbneo_cps12_libretro.so
@@ -22,6 +22,7 @@ XFLAGS="$ARCH -O2"
 fetch fbneo finalburnneo/FBNeo a836e52198aa5ce1f54be7b050e44872a1223797 a04fdb75c2f46998a3df82a20b66ca2b7488f7f484699dbf4b0851b5f28542d9
 (cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-lazy-cpu-maps.patch)
 (cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-cyclone-state.patch)
+(cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-family-cyclone.patch)
 D=fbneo/src/burner/libretro
 A="platform=rpi2 $XCW"
 if [ -n "$SUB" ]; then
