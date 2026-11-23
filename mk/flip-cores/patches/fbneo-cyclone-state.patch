@@ -1,0 +1,80 @@
+--- a/src/burner/libretro/retro_memory.cpp
++++ b/src/burner/libretro/retro_memory.cpp
+@@ -324,6 +324,28 @@
+ 	}
+ }
+ 
++// plorpOS (plorpos-f1p.95.12): a state made with Cyclone (the ARM 68000 core)
++// and one made with the C core lay the CPU out differently, and nothing in the
++// stream says which; restoring one with the other crashes. A Cyclone state
++// ends with four marker bytes, and each kind refuses the other.
++#ifdef USE_CYCLONE
++static const UINT8 cyclone_mark[4] = { 'C', 'Y', 'C', '1' };
++static size_t cyclone_mark_len() { return nSekCpuCore == SEK_CORE_C68K ? sizeof(cyclone_mark) : 0; }
++static bool cyclone_mark_ok(const void *data, size_t size)
++{
++	const bool marked = size >= sizeof(cyclone_mark) &&
++		memcmp((const UINT8*)data + size - sizeof(cyclone_mark), cyclone_mark, sizeof(cyclone_mark)) == 0;
++	if (marked != (cyclone_mark_len() != 0)) {
++		HandleMessage(RETRO_LOG_WARN, "[FBNeo] State refused: it was made with Cyclone %s\n", marked ? "on" : "off");
++		return false;
++	}
++	return true;
++}
++#else
++static size_t cyclone_mark_len() { return 0; }
++static bool cyclone_mark_ok(const void *, size_t) { return true; }
++#endif
++
+ size_t retro_serialize_size()
+ {
+ 	if (nBurnDrvActive == ~0U)
+@@ -341,7 +363,7 @@
+ 	BurnAcb = StateLenAcb;
+ 	LibretroAreaScan(nAction);
+ 
+-	return nStateLen[nSavestateContext];
++	return nStateLen[nSavestateContext] + cyclone_mark_len();
+ }
+ 
+ bool retro_serialize(void *data, size_t size)
+@@ -362,9 +384,12 @@
+ 	// Tweaking from context
+ 	TweakScanFlags(nAction);
+ 
++	if (size < cyclone_mark_len())
++		return false;
++
+ 	BurnAcb = StateWriteAcb;
+ 	pStateBuffer = (UINT8*)data;
+-	nTempSize = size;
++	nTempSize = size - cyclone_mark_len();
+ 	bScanOk = true;
+ 
+ 	LibretroAreaScan(nAction);
+@@ -373,6 +398,11 @@
+ 	if (!bScanOk)
+ 		return false;
+ 
++#ifdef USE_CYCLONE
++	if (cyclone_mark_len())
++		memcpy((UINT8*)data + size - sizeof(cyclone_mark), cyclone_mark, sizeof(cyclone_mark));
++#endif
++
+ 	return true;
+ }
+ 
+@@ -387,9 +417,12 @@
+ 	// Tweaking from context
+ 	TweakScanFlags(nAction);
+ 
++	if (!cyclone_mark_ok(data, size))
++		return false;
++
+ 	BurnAcb = StateReadAcb;
+ 	pStateBuffer = (UINT8*)data;
+-	nTempSize = size;
++	nTempSize = size - cyclone_mark_len();
+ 	bScanOk = true;
+ 
+ 	LibretroAreaScan(nAction);
