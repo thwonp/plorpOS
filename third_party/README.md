@@ -19,6 +19,7 @@ unmodified; to update, replace the files from the pinned upstream and rebuild.
 | `libchdr/` | https://github.com/rtissera/libchdr | `607694c` | BSD-3-Clause |
 | `libchdr/deps/lzma-26.02/` | LZMA SDK, via libchdr | | public domain |
 | `libchdr/deps/miniz-3.1.2/` | miniz, via libchdr | | Unlicense |
+| `qrcodegen/` | https://github.com/nayuki/QR-Code-generator (`c/qrcodegen.[ch]`) | `v1.8.0` | MIT |
 | `libchdr/deps/zstd-1.5.7/` | zstd's single-file decoder, via libchdr | | BSD (chosen of its BSD/GPLv2 dual license); `LICENSE` from zstd v1.5.7 |
 
 ## rcheevos: what is here

@@ -1,6 +1,7 @@
 # The vendored code under third_party/ (see third_party/README.md): libchdr
 # and rcheevos' rhash, which hash a CD game the way RetroAchievements does
-# (plorpos-gkd.53), and a DS cartridge (hash_rom.c, plorpos-3yv.107.1).
+# (plorpos-gkd.53), and a DS cartridge (hash_rom.c, plorpos-3yv.107.1); and
+# Nayuki's QR encoder for the Tailscale sign-in link (plorpos-8ns).
 # Included by mk/cross.mk for the devices and by the Makefile for the host
 # checks; each sets TP_OUT (where the objects go) and TP_OPT (its optimisation
 # and target flags) first.
@@ -13,14 +14,15 @@
 # is why consumers add TP_CFLAGS, not just the include paths. A mismatch is no
 # compile error, just a struct of the wrong size.
 TP_DEFS   := -DRC_HASH_NO_ENCRYPTED -DRC_HASH_NO_ZIP
-TP_CFLAGS := $(TP_DEFS) -Ithird_party/rcheevos/include -Ithird_party/libchdr/include
+TP_CFLAGS := $(TP_DEFS) -Ithird_party/rcheevos/include -Ithird_party/libchdr/include -Ithird_party/qrcodegen
 
 # libchdr's unity.c is the library in one file, all but the A/V Huffman codec,
 # which chd.c's codec table still names.
 TP_SRC := third_party/libchdr/unity.c \
           third_party/libchdr/src/libchdr_codec_avhuff.c \
           third_party/rcheevos/src/rc_compat.c \
-          $(addprefix third_party/rcheevos/src/rhash/,hash.c hash_disc.c hash_rom.c cdreader.c md5.c)
+          $(addprefix third_party/rcheevos/src/rhash/,hash.c hash_disc.c hash_rom.c cdreader.c md5.c) \
+          third_party/qrcodegen/qrcodegen.c
 TP_OBJ := $(patsubst third_party/%.c,$(TP_OUT)/%.o,$(TP_SRC))
 
 # RC_NO_THREADS: rc_compat's mutexes serve rc_client, not rhash, and would
