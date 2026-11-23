@@ -22,6 +22,9 @@ wifi_on() {
 	while [ $i -lt 15 ]; do
 		if wpa_cli -p $WPA_SOCK -i wlan0 status 2> /dev/null | grep -q '^wpa_state=COMPLETED'; then
 			udhcpc -i wlan0 -S -t 5 -T 7 -b -q > /dev/null 2>&1
+			# The clock (plorpos-5tm.9): oakMOSS runs no time daemon. One
+			# BusyBox ntpd -q sets it and the RTC (UTC), then exits.
+			(ntpd -n -q -p pool.ntp.org && hwclock -w -u) > /dev/null 2>&1 &
 			return 0
 		fi
 		sleep 1
@@ -36,6 +39,7 @@ wifi_on() {
 wifi_stop_once() {
 	wpa_cli -p $WPA_SOCK -i wlan0 terminate > /dev/null 2>&1
 	killall -q udhcpc 2> /dev/null
+	killall -q ntpd 2> /dev/null      # a sync still waiting for an answer
 	ip link set dev wlan0 down 2> /dev/null
 	# One at a time, users first: BusyBox rmmod given all three unloads none.
 	rmmod xradio_wlan 2> /dev/null; rmmod xradio_core 2> /dev/null; rmmod xradio_mac 2> /dev/null
