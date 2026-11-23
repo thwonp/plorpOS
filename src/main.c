@@ -17984,6 +17984,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 	memset(&a->in, 0, sizeof a->in);
 }
 
+static int gs_rewind(void);
+
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
@@ -18023,6 +18025,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		/* The Flip's diatom keeps no rewind history for a PS1 state (over its cap): no row to bind. */
 		if (i == 2 /* Rewind */ && tag && !strcmp(tag, "PS")) continue;
 #endif
+		/* Nor where the shelf never rewinds (plorpos-5tm.8). */
+		if (i == 2 /* Rewind */ && plat_rewind_never(tag)) continue;
 		if (is_nds_tag(tag) && !shown) {
 #if defined(PLATFORM_ROTATE)
 			shown = i == R_SWAP || i == R_SWAPSCREENS || i == R_BLOW;
@@ -18036,8 +18040,17 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		if (shown) vis[nact++] = i;
 	}
 	const int NROWS = FIRST_ACT + nact;
+	/* Rewind Speed Off: the Rewind row is greyed, its binding kept for when
+	 * rewind is back on (plorpos-5tm.8). The cursor steps over it. */
+	int rw_dead = -1;
+
+	if (gs_rewind() == RW_COUNT - 1)
+		for (i = 0; i < nact; i++)
+			if (vis[i] == 2 /* Rewind */) rw_dead = FIRST_ACT + i;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
+	for (i = 0; i < nact; i++)   /* live flags before the first poll */
+		rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], "", FIRST_ACT + i != rw_dead };
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -18080,12 +18093,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				capturing = menu_tap = false;   /* a lone tap, released */
 			}
 		} else {
-			if (in_repeat(&a->in, IN_UP)) {
-				sel = (sel + NROWS - 1) % NROWS;
-			}
-			if (in_repeat(&a->in, IN_DOWN)) {
-				sel = (sel + 1) % NROWS;
-			}
+			if (in_repeat(&a->in, IN_UP))   sel = menu_step_sel(rows, NROWS, sel, -1);
+			if (in_repeat(&a->in, IN_DOWN)) sel = menu_step_sel(rows, NROWS, sel, +1);
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, tag);
@@ -18136,13 +18145,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				if (hk_mod_from_wire(mod_wire[m]) == mi) ml = mod_label[m];
 			if (capturing && i == sel - FIRST_ACT)
 				snprintf(vals[i], sizeof vals[i], "Press...");
+			else if (FIRST_ACT + i == rw_dead)
+				snprintf(vals[i], sizeof vals[i], "off in settings");
 			else
 				snprintf(vals[i], sizeof vals[i], "%s%s%s%s",
 				         hk_trig_mod(t) ? ml : "",
 				         hk_trig_mod(t) ? " + " : "",
 				         hk_trig_stick(t) && plat_two_sticks() ? "L " : "",
 				         HK_TRIG_NAME[t]);
-			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i], true };
+			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i],
+			                                  FIRST_ACT + i != rw_dead };
 		}
 		rows[NROWS] = MENU_RULE;
 		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press button(s)    Menu: cancel"
