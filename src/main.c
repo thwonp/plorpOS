@@ -13864,8 +13864,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * Longer Titles: title, artist and album centered across the top, the
 	 * battery's width as margin either side; the title on up to two lines,
 	 * artist and album on one, cut with dots. Under them the cover on the
-	 * left half and beside it a stack - the count and mode, the Source, the
-	 * bar, Next on up to two lines - centered on the cover's height. In
+	 * left half and beside it a stack - the count and mode, the bar, the
+	 * Source, Next on up to two lines - centered on the cover's height. In
 	 * portrait the stack goes under the cover instead. */
 	bool lng = np_layout_long();
 	int tx = NP_TX, tw = NP_TW;          /* the three lines */
