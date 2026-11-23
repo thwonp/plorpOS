@@ -1,4 +1,4 @@
-# Installing on an Anbernic H700 (RG SP, RG34xxSP, RG35XX H)
+# Installing on an Anbernic H700 (RG SP, RG34xxSP, RG35XX H, RG35XX SP)
 
 *v1.9.x installs to `TortOS/`; `plorpOS/` starts with the next release.*
 
@@ -7,7 +7,7 @@ handhelds by Prashant Vaibhav (<https://github.com/pvaibhav/BaseOS>). BaseOS
 goes on one microSD card and starts whatever frontend it finds on the other;
 plorpOS is that frontend. plorpOS does not include or change BaseOS.
 
-One zip runs on the **RG SP**, **RG34xxSP** and **RG35XX H**. You need the
+One zip runs on the **RG SP**, **RG34xxSP**, **RG35XX H** and **RG35XX SP**. You need the
 device, two microSD cards and a computer.
 
 ## 1. BaseOS on the first card (TF1)
@@ -83,10 +83,10 @@ sets the shelf's; the in-game **Layout** row sets the game's own. The **Swap Scr
 The **Display** row under Layout picks how Single Screen and the
 Overlay's big screen fill the display: **Aspect** (4:3, the default),
 **Stretch** (the whole panel, on the 720x480 RG SP and RG34xxSP) or
-**Integer** (2x, 512x384). The RG35XX H's panel is 4:3, so it offers Aspect
-and Integer only.
+**Integer** (2x, 512x384). The RG35XX H and RG35XX SP have 4:3 panels, so
+they offer Aspect and Integer only.
 
-On the RG SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
+On the RG SP and RG35XX SP the D-pad moves the stylus cursor: in Hotkeys, bind **Stylus
 Mode** (turns the cursor on and off; it shows only while the bottom screen is
 up) and **Stylus Tap** (hold to touch where the cursor is). On a unit with two
 sticks (RG34xxSP, RG35XX H) a stick moves it and the D-pad stays the game's:
@@ -126,10 +126,10 @@ What to expect:
 - First launches can be slow: Balatro patches the game for about 30 seconds,
   Mindustry takes about 20.
 - Some ports are built for a 720 px wide panel and crop the edges on a 640 px
-  one (the RG35XX H). Apotris does: switch its screen shape from 3:2 to 4:3 in
+  one (the RG35XX H and RG35XX SP). Apotris does: switch its screen shape from 3:2 to 4:3 in
   its settings.
 - The RG35XX H's two sticks and their clicks (L3/R3) reach ports as an
-  ordinary gamepad's. The RG SP has no sticks, so a port that needs one
+  ordinary gamepad's. The RG SP and RG35XX SP have no sticks, so a port that needs one
   (Mindustry steers its cursor with the left stick) cannot be played there.
 - A port that is killed mid-run (power button hold) leaves a mount or two
   behind; the next port clears them.
@@ -152,8 +152,13 @@ Native PICO-8 has no save states or rewind.
 
 - **Saved Wi-Fi networks** live on the plorpOS card, in
   `.userdata/<device>/wpa_supplicant.conf` (`<device>` is
-  `rgsp` on the RG SP), with their passwords.
+  `rgsp` on the RG SP, `rg34xx` on the RG34xxSP, `rg35xx` on the RG35XX H
+  and RG35XX SP), with their passwords.
 - **Brightness:** hold Menu and press Volume +/-.
+- **A new device's clock** starts at 1970. Set it in System Settings > Date &
+  Time, or secure downloads fail (Splore's carts, for one).
+- **USB DACs** work on every model. BaseOS on the RG35XX H and RG35XX SP has no
+  USB audio driver, so plorpOS loads its own when it starts.
 - **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
   the device from that sleep. Once it has gone on into a deep sleep, only
   POWER wakes it.

@@ -41,7 +41,7 @@ plorpOS started as a fork of [TortOS](https://tortos.games/) for the TrimUI Bric
 | TrimUI Brick, Brick Hammer, Brick Pro | From the card, on the stock system. One card works in all three | [Installing on the Brick](docs/install-brick.md) |
 | GKD 350H Ultra | On top of the stock ROCKNIX, at the screen's full resolution | [Installing on the GKD](docs/install-gkd.md) |
 | Anbernic RG Rotate | A card image ([base618](https://github.com/thwonp/base618), Linux). Android stays on the device | [Installing on the RG Rotate](docs/install-rotate.md) |
-| Anbernic RG SP, RG34xxSP, RG35XX H | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [Installing on an H700](docs/install-h700.md) |
+| Anbernic RG SP, RG34xxSP, RG35XX H, RG35XX SP | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [Installing on an H700](docs/install-h700.md) |
 | Miyoo Mini Flip | From the card, on the stock firmware | [Installing on the Mini Flip](docs/install-flip.md) |
 | MagicX Zero 40 (next release) | As the launcher on [oakMOSS](https://github.com/spruceUI/oakMOSS), from its first card or a second | [Installing on the Zero 40](docs/install-zero40.md) |
 | Anbernic RG Nano | **plorpOS nano**, a pared down music-first version, as a card image | [Installing on the RG Nano](docs/install-nano.md) |
@@ -173,7 +173,7 @@ Sign in to your RetroAchievements account under **MENU > Game Settings > Achieve
 Open **Hotkeys** in the in-game menu. There are eight actions: **Fast Forward (Hold)** and **Rewind** (both work while held), **Fast Forward (Toggle)** (a press turns fast-forward on, the next press off; it also stops when you load a state or quit the game), **Quick Save**, **Quick Load**, **Screenshot**, **Turbo Assign** (see the next question) and **Save and Quit** (the in-game menu's Quit in one press: the autosave is written and no confirmation is asked). A Nintendo DS game adds **Screen Layout** (the next screen layout; MENU + X by default on the GKD and Rotate), **Swap Screens** (the other screen big, remembered per game) and **Blow Into Mic** (held: the game hears you blow into the microphone). On the GKD it also adds **Stylus Tap**, the button that touches where the stick's cursor is (R2 by default). On the Brick, Brick Pro and H700 handhelds it adds **Stylus Tap** (R Stick Click by default on a unit with two sticks) and, on a unit without a second stick, **Stylus Mode** (a cursor over the bottom screen, moved by the D-pad), plus **HUD Focus** for PokeDaisy DS (the cursor onto its HUD). With two sticks the cursor is always on, moved by the stick the in-game menu's **Stylus Stick** row picks, right by default. Pick an action, press **A**, then press its trigger: a button alone, or held under a modifier. **X** clears an action, and a lone tap of **MENU** cancels while it waits. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** and **Fast-Forward Speed** are in **MENU > Game Settings**.
 
 **Modifiers** are buttons you hold for a chord, like MENU + X. Each hotkey has its own: hold the modifier when you press the trigger and the screen shows it, so Fast Forward (Hold) on L Stick Click + A and Rewind on MENU + A work side by side. The modifiers each device offers:
-- **Brick, RG SP, RG Rotate, Miyoo Mini Flip:** Menu or Select.
+- **Brick, RG SP, RG35XX SP, RG Rotate, Miyoo Mini Flip:** Menu or Select.
 - **Brick Pro, RG34xxSP, RG35XX H:** Menu, Select or L Stick Click.
 - **GKD:** Menu, Home, Stick Click or Select.
 
@@ -254,7 +254,7 @@ Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the 
 <details>
 <summary><b>Something went wrong. How do I send the logs?</b></summary>
 
-Open **MENU > Network Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/<device>/logs/` on the card: `tg3040` (Brick), `gkd`, `rotate`, `miyooflip`, or on an H700 its BaseOS device name (`rgsp` on the RG SP).
+Open **MENU > Network Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/<device>/logs/` on the card: `tg3040` (Brick), `gkd`, `rotate`, `miyooflip`, or on an H700 its BaseOS device name (`rgsp` on the RG SP, `rg35xx` on the RG35XX H and SP).
 
 </details>
 
