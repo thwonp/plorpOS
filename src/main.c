@@ -13871,6 +13871,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	int tx = NP_TX, tw = NP_TW;          /* the three lines */
 	int cx = NP_TX, cw = NP_TW;          /* the stack's column */
 	int ly, ty, sx, sy, ny;              /* label, title, Source, Next */
+	int my = -1;                         /* Longer Titles: the marks' own row over the count, when there are any */
 	char wl[3][2][200], chap[128];
 	int wn[3] = { 1, 1, 1 };
 	/* A chapter with a title of its own is what is playing; one that is
@@ -13901,6 +13902,15 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		int lm = ui_font_line(UI_F_META);
 		/* Next's two lines are always allowed for, so the stack stays put. */
 		int stack = 5 * lm + UI_BAR_H + 16 + 28 + 16 + 24;
+		/* The mode's mark, a book's speed, the sleep timer and the lock on
+		 * a row of their own over the count, which the quality shares
+		 * (owner, plorpos-5eq.24) - a row only while there is one of them. */
+		int mrow = ui_font_height(UI_F_META) * 3 / 2 + 12;
+		bool marks = lock || sleep_timer_left() > 0
+		          || (musec_is_book() ? fabs(musec_speed() - 1.0) > 0.01
+		                              : MUSE_MODES[musec_mode()].glyph >= 0);
+
+		if (marks) stack += mrow;
 		int words, ctop, room, side;
 
 		tx = m;
@@ -13933,6 +13943,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		}
 		/* The words centered between the screen's top and the cover's. */
 		ty = (cov.y - words) / 2;
+		if (marks) { my = ly; ly += mrow; }
 		/* The count, the bar and its times, the Source, Next. */
 		bar = ly + lm + 28;
 		sx = cx;
@@ -14009,6 +14020,14 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			 * and a 1 in a fixed-width cell read as "1 of  14". */
 			gx += ui_text(r, fs, line, cx, y, -1, UI_TEXT_DIM) + 18;
 		}
+		/* Longer Titles: what is playing, as the file or stream is, at the
+		 * count's right end in its own type; the marks on the row above. */
+		if (lng) {
+			if (mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
+				ui_text(r, fs, mn->codec, cx + cw, y, 1, UI_TEXT_DIM);
+			gx = cx;
+			y = my;
+		}
 		if (g >= 0) {
 			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
 			gx += gs + 12;
@@ -14029,12 +14048,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		/* The Mute Switch down in muse button lock: what the buttons will
 		 * do once the screen goes dark, which is nothing. Only while it is
 		 * down, as an iPod shows its hold. TortOS-7cv. */
-		if (lock) { ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc); gx += gs + 12; }
-		/* Longer Titles: what is playing, as the file or stream is, at the
-		 * line's right end in the count's own type (owner, plorpos-5eq.24) -
-		 * unless the marks before it have run that far. */
-		if (lng && mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
-			ui_text(r, fs, mn->codec, cx + cw, y, 1, UI_TEXT_DIM);
+		if (lock) ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc);
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
