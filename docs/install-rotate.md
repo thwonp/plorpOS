@@ -78,6 +78,9 @@ Download the Rotate update zip from
 one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
 underneath (the kernel, for one) comes only as a new card image.
 
+v1.10 also updates the Rotate's device tree, so opening the swivel wakes it from sleep. The first
+start after copying the folder shows "System updated", then restarts once by itself.
+
 ## Adding games over Wi-Fi
 
 1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.

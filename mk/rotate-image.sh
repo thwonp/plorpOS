@@ -138,6 +138,9 @@ printf '%s\n' 'dir /dev 0755 0 0' 'nod /dev/console 0600 0 0 c 5 1' 'dir /lib 07
 	"file /lib/firmware/sprd/pm_bootcode.bin $W/pm_bootcode.bin 0644 0 0" > "$W/initrd.list"
 "$KBUILD/usr/gen_init_cpio" -t 0 "$W/initrd.list" | gzip -9 -n > "$W/initrd-fw.cpio.gz"
 mcopy -o -i "$W/p2-out.img" "$W/initrd-fw.cpio.gz" ::/initrd-fw.cpio.gz
+# base618's device tree (the swivel wakes from deep sleep, plorpos-5eq.25),
+# over the base's: the one session.sh would otherwise install on first boot.
+mcopy -o -i "$W/p2-out.img" "$ROOT/sd/rotate/boot/ums512-rg-rotate.dtb" ::/dtb/sprd/ums512-rg-rotate.dtb
 
 # 3. The rootfs filesystem, inside a container (root there = this user, so
 #    owners are kept). fstab gains the data partition; Armbian's resize stays

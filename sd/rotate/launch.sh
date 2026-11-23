@@ -136,7 +136,7 @@ if [ "$BLUETOOTH" != 1 ]; then
 	) >> "$LOG" 2>&1 &
 fi
 
-rm -f /tmp/tortos_poweroff
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 cd "$DIR" || exit 1
 FAILS=0
 while : ; do
@@ -146,6 +146,11 @@ while : ; do
 	if [ -f /tmp/tortos_poweroff ]; then
 		sync
 		exec systemctl poweroff
+	fi
+	# A new device tree from session.sh, taken at the next boot (plorpos-5eq.25).
+	if [ -f /tmp/tortos_reboot ]; then
+		sync
+		exec systemctl reboot
 	fi
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
