@@ -157,6 +157,8 @@ elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/lib32/libSDL2-2.0.so.0" "$P/lib32/"   # SDL2 for 32-bit ports (mk/build-sdl2-armhf.sh)
 	mkdir -p "$P/h700/portmaster"
 	cp "$ROOT/sd/h700/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" "$B/portcompat.so" "$P/h700/portmaster/"
+	mkdir -p "$P/h700/usb-audio"   # USB DACs on the RG35XX H / SP, loaded by launch_frontend.sh (plorpos-2wl.15)
+	cp "$ROOT/sd/h700/usb-audio/"*.ko "$P/h700/usb-audio/"
 	# By soname, as the binaries ask for them; FFmpeg's LGPL text beside it
 	# (THIRD-PARTY-LICENSES.md).
 	L=$ROOT/sysroot-h700/usr/lib

@@ -68,6 +68,19 @@ fi
 [ -f "$DIR/radio.sh" ] && . "$DIR/radio.sh"
 [ "$BLUETOOTH" = 1 ] && bt_on > /dev/null 2>&1 &
 
+# USB DACs on the RG35XX H and RG35XX SP (plorpos-2wl.15): their stock kernels
+# have no USB audio; the RG SP's has it built in (so /sys/module has it). The
+# modules match only this 4.9.170 build, and insmod refuses any other. In the
+# background: a DAC already plugged in is probed when the module arrives.
+if [ ! -d /sys/module/snd_usb_audio ] && [ "$(uname -r)" = 4.9.170 ]; then
+	(
+		for m in snd-hwdep snd-usbmidi-lib snd-usb-audio; do
+			insmod "$DIR/h700/usb-audio/$m.ko" || { echo "usb audio: $m did not load"; exit; }
+		done
+		echo "usb audio: modules loaded"
+	) >> "$LOG" 2>&1 &
+fi
+
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {
 	pidof diatom > /dev/null && return

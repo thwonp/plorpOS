@@ -195,6 +195,13 @@ by rebuilding it.
 
 ---
 
+### USB audio modules on the H700 (`plorpOS/h700/usb-audio/`)
+
+- `snd-hwdep.ko`, `snd-usbmidi-lib.ko`, `snd-usb-audio.ko` - **Linux kernel** ALSA USB audio driver and
+  its two helpers, from vanilla linux-4.9.170 (`sound/usb/`, `sound/core/hwdep*.c`, unmodified), built by
+  this project as modules for the RG35XX H / RG35XX SP stock kernels, which lack them. **GPL-2.0**.
+  Source: linux-4.9.170 from kernel.org; the build script and notes are in `sd/h700/usb-audio/`.
+
 ### adb on the Anbernic RG DS (`plorpOS/rgds/adb/`)
 
 ROCKNIX has no adb daemon, so the RG DS card carries Debian buster's, none of
