@@ -66,12 +66,8 @@ rm -rf "$S"; mkdir -p "$S"
 # that one prototype, Cool Cool Jam, does not draw on it - plorpos-f1p.62.3.11).
 flip_cfg() {
 	sed -e 's/^\(sys|Game Boy Advance|[^|]*|\)armgba|/\1gpsp|/' \
-	    -e 's/^\(sys|Neo Geo|[^|]*|\)fbneo|/\1fbalpha2012_neogeo|/' \
 	    -e 's/^\(sys|Neo Geo Pocket[^|]*|[^|]*|\)mednafen_ngp|/\1race|/' \
 	    -e 's/^\(sys|SNES|[^|]*|\)snes9x2010|/\1snes9x2005_plus|/' \
-	    -e '/^sys|Arcade|Arcade|fbneo|/c\
-sys|Arcade (FBA 2012)|Arcade (FBA 2012)|fbalpha2012|ARCADE|FBA2012.png|1FB4E0|zip,7z||Arcade\
-sys|Arcade (MAME 2000)|Arcade (MAME 2000)|mame2000|MAME|MAME2000.png|129C50|zip,7z||Arcade' \
 	    "$ROOT/config/systems.cfg" > "$1"
 }
 # The Flip's card art: shrink-only to the focused card's frame area. The classic
@@ -88,7 +84,9 @@ flip_cards() { # staging dir
 }
 # Per-game alternatives on the shelf's Core row (src/main.c ALT_CORES, ALT_ON_MIYOO):
 # systems.cfg names only each shelf's default core (plorpos-f1p.84).
-FLIP_ALT_CORES="mednafen_ngp mednafen_supafaust"
+# FBNeo's family cores are not named there either: the launcher picks one per
+# set from res/maps/fbneo-family.txt (shelf_core, plorpos-f1p.95.13).
+FLIP_ALT_CORES="mednafen_ngp mednafen_supafaust fbneo_cps12 fbneo_neogeo"
 stage_cores() { # systems.cfg dir: every core it names and the alternatives, from FLIP_CORES
 	mkdir -p "$2"
 	for c in $(cfg_cores "$1") $FLIP_ALT_CORES; do
@@ -127,9 +125,8 @@ stage_all() {
 		: > "$F/${c}_libretro.so"
 	done
 	plorpos_files "$S" "$F"
-	# The mame2000 and fbalpha2012 shelves are named, and their art asked for,
-	# by those cores' own romset maps (src/setmap.c), the Nano port's.
-	mkdir -p "$S/res/maps"; cp "$ROOT/res/nano/maps/"*.txt "$S/res/maps/"
+	# Which FBNeo sets play on which family core (mk/flip-cores/build-fbneo.sh).
+	mkdir -p "$S/res/maps"; cp "$ROOT/sd/miyoo/fbneo-family.txt" "$S/res/maps/"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders: just the two display filters' list
 	mkdir -p "$S/shaders"; cp "$ROOT/sd/miyoo/shaders.cfg" "$S/shaders/"
 	flip_cards "$S"

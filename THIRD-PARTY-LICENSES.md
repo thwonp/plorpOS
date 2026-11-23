@@ -300,9 +300,7 @@ GPL core is that tarball plus the patches named there), by
 | `race_libretro.so` | Neo Geo Pocket (Color) | libretro/RACE @ c7810dd | GPL-2.0-or-later |
 | `mednafen_supafaust_libretro.so` | SNES, per-game alternative to Snes9x 2005 Plus | libretro/supafaust @ 642d1d1 | GPL-2.0 |
 | `mednafen_ngp_libretro.so` | Neo Geo Pocket (Color), per-game alternative to RACE | libretro/beetle-ngp-libretro @ a50d5ac | GPL-2.0 |
-| `fbalpha2012_neogeo_libretro.so` | Neo Geo | libretro/fbalpha2012_neogeo @ e092097 | **Non-commercial** (FB Alpha licence) |
-| `fbalpha2012_libretro.so` | Arcade (FBA 2012) | libretro/fbalpha2012 @ 0ce3153 | **Non-commercial** (FB Alpha licence, plus MAME's) |
-| `mame2000_libretro.so` | Arcade (MAME 2000) | libretro/mame2000-libretro @ 181b42e + `mk/flip-cores/patches/mame2000-nano.patch` | **Non-commercial** (MAME licence) |
+| `fbneo_libretro.so`, `fbneo_cps12_libretro.so`, `fbneo_neogeo_libretro.so` | Arcade, Neo Geo (the launcher picks the build per set) | finalburnneo/FBNeo @ a836e52 + `mk/flip-cores/patches/fbneo-lazy-cpu-maps.patch` | **Non-commercial** (FBNeo's licence plus MAME's; full text in `LICENSE-FBNeo.txt`) |
 | `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
 | `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
 

@@ -1,0 +1,38 @@
+--- a/src/burner/libretro/Makefile.cps12
++++ b/src/burner/libretro/Makefile.cps12
+@@ -51,3 +51,16 @@
+ 
+ CFLAGS += -DSUBSET=\"$(SUBSET)\" -DSUPPORT_SPLIT_DRIVER -DBUILD_CAPCOM
+ CXXFLAGS += -DSUBSET=\"$(SUBSET)\" -DSUPPORT_SPLIT_DRIVER -DBUILD_CAPCOM
++
++# plorpOS (plorpos-f1p.95.14): Cyclone, the ARM 68000 core, as Makefile.all
++# has it - the subset makefiles left it out, so a family core ran every 68000
++# on the C core whatever fbneo-cyclone said.
++ifeq ($(USE_CYCLONE), 1)
++	FBNEO_DEFINES	+= -DUSE_CYCLONE
++	INCLUDE_DIRS	+= $(FBNEO_CPU_DIR)/cyclone
++	SOURCES_S	+= $(FBNEO_CPU_DIR)/cyclone/Cyclone.S
++	SOURCES_CXX	:= $(filter-out $(FBNEO_CPU_DIR)/m68000_intf.cpp,$(SOURCES_CXX)) $(FBNEO_CPU_DIR)/c68000_intf.cpp
++	ARM_FLAGS	= -mword-relocations -mlittle-endian -munaligned-access
++	CFLAGS		+= -fno-optimize-sibling-calls -funsafe-math-optimizations -fsingle-precision-constant
++	CXXFLAGS	+= -fno-optimize-sibling-calls -funsafe-math-optimizations -fsingle-precision-constant
++endif
+--- a/src/burner/libretro/Makefile.neogeo
++++ b/src/burner/libretro/Makefile.neogeo
+@@ -30,3 +30,16 @@
+ 
+ CFLAGS += -DSUBSET=\"$(SUBSET)\" -DSUPPORT_SPLIT_DRIVER -DBUILD_NEOGEO
+ CXXFLAGS += -DSUBSET=\"$(SUBSET)\" -DSUPPORT_SPLIT_DRIVER -DBUILD_NEOGEO
++
++# plorpOS (plorpos-f1p.95.14): Cyclone, the ARM 68000 core, as Makefile.all
++# has it - the subset makefiles left it out, so a family core ran every 68000
++# on the C core whatever fbneo-cyclone said.
++ifeq ($(USE_CYCLONE), 1)
++	FBNEO_DEFINES	+= -DUSE_CYCLONE
++	INCLUDE_DIRS	+= $(FBNEO_CPU_DIR)/cyclone
++	SOURCES_S	+= $(FBNEO_CPU_DIR)/cyclone/Cyclone.S
++	SOURCES_CXX	:= $(filter-out $(FBNEO_CPU_DIR)/m68000_intf.cpp,$(SOURCES_CXX)) $(FBNEO_CPU_DIR)/c68000_intf.cpp
++	ARM_FLAGS	= -mword-relocations -mlittle-endian -munaligned-access
++	CFLAGS		+= -fno-optimize-sibling-calls -funsafe-math-optimizations -fsingle-precision-constant
++	CXXFLAGS	+= -fno-optimize-sibling-calls -funsafe-math-optimizations -fsingle-precision-constant
++endif

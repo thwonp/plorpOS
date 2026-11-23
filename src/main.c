@@ -439,7 +439,15 @@ static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) 
 /* Achievements Enabled (plorpos-pyz.7): Off, a launch hands no set over and
  * fetches none, so the game plays as one RetroAchievements has never seen.
  * Unlocks already owed to the account still go. */
-static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", 1) != 0; }
+#if defined(PLATFORM_MIYOO)
+/* Off by default on the Flip (plorpos-f1p.95.7): evaluating a set costs a
+ * heavy game its full speed there - Marvel vs. Capcom ran 59.2 fps of 59.63
+ * with its 92 achievements watched, 59.6 without (2026-11-22). */
+#define CHEEVOS_DEFAULT 0
+#else
+#define CHEEVOS_DEFAULT 1
+#endif
+static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", CHEEVOS_DEFAULT) != 0; }
 static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
 /* Game Settings opens the first and Network Services the second; both are
  * written after this. */
@@ -946,6 +954,25 @@ static const char *shelf_core(app *a, int sys, const char *file)
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's FBNeo is three cores (plorpos-f1p.95.13): the whole of it is 50 MB to load, and the CPS-1/CPS-2 and
+	 * Neo Geo builds are 8 MB each - Marvel vs. Capcom starts in 3.6 s, not 4.8. res/maps/fbneo-family.txt names each
+	 * family set's build (mk/flip-cores/build-fbneo.sh writes it); any other set plays on the full core, and so does
+	 * every set when the family core is not on the card. A set always has the same core, so its states stay its own:
+	 * one build does not load another's. */
+	if (k < 0 && file && !strcmp(s->core, "fbneo")) {
+		static char fam[CFG_STR];
+		char path[CFG_STR * 2];
+		const char *base = strrchr(file, '/'), *f;
+
+		snprintf(path, sizeof path, "%s/res/maps/fbneo-family.txt", P_ROOT);
+		if ((f = setmap_title(path, base ? base + 1 : file))) {
+			snprintf(fam, sizeof fam, "fbneo_%s", f);
+			snprintf(path, sizeof path, "%s/cores/%s_libretro.so", P_ROOT, fam);
+			if (access(path, R_OK) == 0) return fam;
+		}
+	}
+#endif
 	if (k < 0) return s->core;
 	if (ALT_CORES[k].per_game) {
 		char key[LIB_PATH + 32], name[CFG_STR];
@@ -2489,6 +2516,19 @@ static void evict_cut(sysview *v, int cursor_keep, int from_keep)
  * a launcher grown by a long scroll (anon past 45 MB) made the Arcade shelf
  * fail to load, and PlayStation thrash the core's pages out (plorpos-f1p.26,
  * .27). Everything dropped decodes again on the way back, as after a cold boot. */
+#include <malloc.h>
+static void free_all_textures(app *a);
+static long flip_anon_kb(void)
+{
+	char l[128]; long kb = -1;
+	FILE *f = fopen("/proc/self/status", "r");
+
+	if (!f) return -1;
+	while (fgets(l, sizeof l, f)) if (sscanf(l, "RssAnon: %ld", &kb) == 1) break;
+	fclose(f);
+	return kb;
+}
+
 static void flip_trim_for_launch(app *a, int keep)
 {
 	for (int i = 0; i < a->sys.count; i++) {
@@ -2500,6 +2540,17 @@ static void flip_trim_for_launch(app *a, int keep)
 	 * the focused one: the four neighbours took 230-400 ms to come back as
 	 * placeholders after every game (plorpos-f1p.42). A few cover textures. */
 	evict_far(&a->view[keep], 2);
+	/* And then everything else (plorpos-f1p.95.5): the covers just kept, the backdrop, any decode in flight, and
+	 * the heap's free pages back to the kernel. A CPS-2 game beside the launcher has 10 MB to spare, not 3, and
+	 * the trim takes 0-1 ms; the shelf is back in 113-130 ms after the game against 210-312 (measured, mvsc). */
+	{
+		long a0 = flip_anon_kb();
+		uint64_t t0 = plat_now_ms();
+
+		free_all_textures(a);
+		malloc_trim(0);
+		fprintf(stderr, "trim: launcher anon %ld -> %ld kB in %u ms\n", a0, flip_anon_kb(), (unsigned)(plat_now_ms() - t0));
+	}
 }
 #endif
 
@@ -18441,6 +18492,28 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	return GS_ROWS;
 }
 
+#if defined(PLATFORM_MIYOO)
+/* Said every time Achievements Enabled is turned on (owner, plorpos-f1p.95.7). */
+static void cheevos_warning(app *a)
+{
+	static const char *const TEXT =
+		"Warning - RetroAchievements may impact performance on heavy games";
+	char lines[CHV_WRAP_LINES][CHV_WRAP_COLS];
+	menu_row rows[CHV_WRAP_LINES + 2];
+	int n, i;
+
+	n = wrap_text(ui_font(UI_F_MENU), TEXT, menu_std_width(a), lines, CHV_WRAP_LINES);
+	for (i = 0; i < n; i++) rows[i] = (menu_row){ lines[i], MENU_BODY_MARK, true };
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE("A to continue");
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	note_panel(a, "RetroAchievements", rows, n);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+#endif
+
 /* Left, right and A all change the row: the on/off ones flip, and the two
  * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
  * Download Achievement Sets and Scraping are doors, so only A opens them. */
@@ -18451,7 +18524,7 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		[GS_CONFIRM] = { "confirmquit", 0 },
 		[GS_TURBO]   = { "persistturbo", 0 },
 		[GS_RUMBLE]  = { "rumble", 1 },
-		[GS_CHEEVOS] = { "cheevos", 1 },
+		[GS_CHEEVOS] = { "cheevos", CHEEVOS_DEFAULT },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
@@ -18476,8 +18549,12 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
 		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
 	} else if (onoff[sel].key) {
-		db_set_int(db_dev(), onoff[sel].key,
-		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));
+		const int on = !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def);
+
+		db_set_int(db_dev(), onoff[sel].key, on);
+#if defined(PLATFORM_MIYOO)
+		if (sel == GS_CHEEVOS && on) cheevos_warning(a);
+#endif
 	}
 	return MENU_STAY;
 }

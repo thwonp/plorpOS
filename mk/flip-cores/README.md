@@ -35,9 +35,13 @@ that folder exists; retrain after changing the core's pin, patches or flags.
 picodrive's Cyclone.s generator runs on the host (`g++`).
 
 Notes:
-- `mame2000`: the RG Nano port's changes (`patches/mame2000-nano.patch`). The
-  community prebuilt cannot open ROMs when the content folder path is over 26
-  characters.
+- `fbneo`: three builds of one pin (`build-fbneo.sh`, `build-fbneo.sh cps12`,
+  `build-fbneo.sh neogeo`) with `patches/fbneo-lazy-cpu-maps.patch`, or the core's
+  40 MB of static tables keep it from loading. The CPS and Neo Geo builds are 8 MB
+  against 50 and load a second sooner; a family build also writes `out/fbneo_<family>.sets`,
+  and `sort -u` of the two is `sd/miyoo/fbneo-family.txt`, the launcher's set -> core
+  map. Pinned at a836e52, not HEAD. FB Alpha 2012 and MAME 2000, the arcade cores
+  before it, are in git history.
 - `pcsx_rearmed`: `../patches/pcsx-rearmed-flip-tc.patch` (dynarec translation
   cache 16 MB -> 4 MB) and `HAVE_PHYSICAL_CDROM=0`, or dlopen fails on
   `dir_list_new`.
