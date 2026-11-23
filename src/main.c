@@ -13864,13 +13864,15 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * Longer Titles: title, artist and album centered across the top, the
 	 * battery's width as margin either side; the title on up to two lines,
 	 * artist and album on one, cut with dots. Under them the cover on the
-	 * left half and beside it a stack - the count and mode with the quality
-	 * at the line's end, the bar, the Source, Next on up to two lines - centered on the cover's height. In
+	 * left half and beside it a stack - the mode's mark and the lock when there
+	 * are any, the count with the quality at its line's end, the bar, the
+	 * Source, Next on up to two lines - centered on the cover's height. In
 	 * portrait the stack goes under the cover instead. */
 	bool lng = np_layout_long();
 	int tx = NP_TX, tw = NP_TW;          /* the three lines */
 	int cx = NP_TX, cw = NP_TW;          /* the stack's column */
 	int ly, ty, sx, sy, ny;              /* label, title, Source, Next */
+	int my = -1;                         /* Longer Titles: the marks' own row over the count, when there are any */
 	char wl[3][2][200], chap[128];
 	int wn[3] = { 1, 1, 1 };
 	/* A chapter with a title of its own is what is playing; one that is
@@ -13901,6 +13903,18 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		int lm = ui_font_line(UI_F_META);
 		/* Next's two lines are always allowed for, so the stack stays put. */
 		int stack = 5 * lm + UI_BAR_H + 16 + 28 + 16 + 24;
+		/* The mode's mark, a book's speed, the sleep timer and the lock on
+		 * a row of their own over the count, which the quality shares
+		 * (owner, plorpos-5eq.24) - a row only while there is one of them.
+		 * Not in portrait: the count's line is the cover's width there and
+		 * holds them, and the row would cost the cover its size. */
+		int mrow = ui_font_height(UI_F_META) * 3 / 2 + 12;
+		bool marks = !UI_PORTRAIT
+		          && (lock || sleep_timer_left() > 0
+		              || (musec_is_book() ? fabs(musec_speed() - 1.0) > 0.01
+		                                  : MUSE_MODES[musec_mode()].glyph >= 0));
+
+		if (marks) stack += mrow;
 		int words, ctop, room, side;
 
 		tx = m;
@@ -13933,6 +13947,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		}
 		/* The words centered between the screen's top and the cover's. */
 		ty = (cov.y - words) / 2;
+		if (marks) { my = ly; ly += mrow; }
 		/* The count, the bar and its times, the Source, Next. */
 		bar = ly + lm + 28;
 		sx = cx;
@@ -14009,6 +14024,15 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			 * and a 1 in a fixed-width cell read as "1 of  14". */
 			gx += ui_text(r, fs, line, cx, y, -1, UI_TEXT_DIM) + 18;
 		}
+		/* Longer Titles: what is playing, as the file or stream is, at the
+		 * count's right end in its own type; the marks on the row above,
+		 * where there is one. */
+		if (lng && my >= 0) {
+			if (mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
+				ui_text(r, fs, mn->codec, cx + cw, y, 1, UI_TEXT_DIM);
+			gx = cx;
+			y = my;
+		}
 		if (g >= 0) {
 			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
 			gx += gs + 12;
@@ -14030,10 +14054,9 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		 * do once the screen goes dark, which is nothing. Only while it is
 		 * down, as an iPod shows its hold. TortOS-7cv. */
 		if (lock) { ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc); gx += gs + 12; }
-		/* Longer Titles: what is playing, as the file or stream is, at the
-		 * line's right end in the count's own type (owner, plorpos-5eq.24) -
-		 * unless the marks before it have run that far. */
-		if (lng && mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
+		/* With the marks on the count's line (portrait, or none showing):
+		 * the quality at its end, unless they have run that far. */
+		if (lng && my < 0 && mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
 			ui_text(r, fs, mn->codec, cx + cw, y, 1, UI_TEXT_DIM);
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
@@ -22220,6 +22243,7 @@ static int shot_jump;               /* letter-jumps to apply before drawing */
 /* --nowplaying ALBUM [TRACK [SECONDS]], and --paused with it. */
 static int   shot_np = -1, shot_np_track, shot_np_paused, shot_np_original;
 static const char *shot_np_codec;
+static int   shot_np_index = -1, shot_np_count, shot_np_lock;
 static float shot_np_at = 83.0f;
 /* --mode NAME plays whatever the shot shows in that play mode: the mark beside
  * the track count is drawn from it. */
@@ -22326,7 +22350,8 @@ static void np_shot(app *a)
 		for (c = mn.codec; *c; c++) if (*c == '_') *c = ' ';
 	}
 	if (shot_np_original) g_np_long = 0;
-	np_draw(a, &mn, next, muse_hold());
+	if (shot_np_index >= 0) { mn.index = shot_np_index; mn.count = shot_np_count; }
+	np_draw(a, &mn, next, shot_np_lock || muse_hold());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not
@@ -23023,6 +23048,12 @@ int main(int argc, char *argv[])
 		else if (!strcmp(argv[i], "--paused")) shot_np_paused = 1;
 		else if (!strcmp(argv[i], "--np-original")) shot_np_original = 1;   /* Now-Playing Layout: Original */
 		else if (!strcmp(argv[i], "--np-codec") && i + 1 < argc) shot_np_codec = argv[++i];   /* the quality words, _ for a space */
+		/* --np-count I N: the count's line as "I of N"; --np-lock: its lock mark. */
+		else if (!strcmp(argv[i], "--np-count") && i + 2 < argc) {
+			shot_np_index = atoi(argv[++i]) - 1;
+			shot_np_count = atoi(argv[++i]);
+		}
+		else if (!strcmp(argv[i], "--np-lock")) shot_np_lock = 1;
 		else if (!strcmp(argv[i], "--mode") && i + 1 < argc) shot_mode = argv[++i];
 		else if (!strcmp(argv[i], "--gamelist") && i + 1 < argc) shot_gl = argv[++i];
 		else if (!strcmp(argv[i], "--sysmove") && i + 1 < argc)
