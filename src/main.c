@@ -22220,6 +22220,7 @@ static int shot_jump;               /* letter-jumps to apply before drawing */
 /* --nowplaying ALBUM [TRACK [SECONDS]], and --paused with it. */
 static int   shot_np = -1, shot_np_track, shot_np_paused, shot_np_original;
 static const char *shot_np_codec;
+static int   shot_np_index = -1, shot_np_count, shot_np_lock;
 static float shot_np_at = 83.0f;
 /* --mode NAME plays whatever the shot shows in that play mode: the mark beside
  * the track count is drawn from it. */
@@ -22326,7 +22327,8 @@ static void np_shot(app *a)
 		for (c = mn.codec; *c; c++) if (*c == '_') *c = ' ';
 	}
 	if (shot_np_original) g_np_long = 0;
-	np_draw(a, &mn, next, muse_hold());
+	if (shot_np_index >= 0) { mn.index = shot_np_index; mn.count = shot_np_count; }
+	np_draw(a, &mn, next, shot_np_lock || muse_hold());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not
@@ -23023,6 +23025,12 @@ int main(int argc, char *argv[])
 		else if (!strcmp(argv[i], "--paused")) shot_np_paused = 1;
 		else if (!strcmp(argv[i], "--np-original")) shot_np_original = 1;   /* Now-Playing Layout: Original */
 		else if (!strcmp(argv[i], "--np-codec") && i + 1 < argc) shot_np_codec = argv[++i];   /* the quality words, _ for a space */
+		/* --np-count I N: the count's line as "I of N"; --np-lock: its lock mark. */
+		else if (!strcmp(argv[i], "--np-count") && i + 2 < argc) {
+			shot_np_index = atoi(argv[++i]) - 1;
+			shot_np_count = atoi(argv[++i]);
+		}
+		else if (!strcmp(argv[i], "--np-lock")) shot_np_lock = 1;
 		else if (!strcmp(argv[i], "--mode") && i + 1 < argc) shot_mode = argv[++i];
 		else if (!strcmp(argv[i], "--gamelist") && i + 1 < argc) shot_gl = argv[++i];
 		else if (!strcmp(argv[i], "--sysmove") && i + 1 < argc)
