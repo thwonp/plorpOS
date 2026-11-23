@@ -386,7 +386,7 @@ static void gone(const char *rel)
  * (plorpos-5tm.14). */
 static void prune(void)
 {
-	char d[512], top[512], plex[512];
+	char d[640], top[512], plex[512];
 
 	printf("prune: a deleted folder's cover and the folders it empties\n");
 	snprintf(top, sizeof top, "%s/P/Audiobooks", root);
