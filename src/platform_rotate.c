@@ -1503,6 +1503,33 @@ static void *radios_restore(void *unused)
  * suspended with both, 35 mA without (rtcwake runs, plorpos-3yv.72). So the
  * output goes off and wlan0 down around the write; wpa_supplicant stays and
  * re-associates in ~4 s after the wake. */
+/* The swivel's opening woke the kernel. Only an opening can (the device
+ * tree's wakeup-event-action), but a close and an open while asleep leave
+ * the level where it was, so the level alone shows no turn: the wake
+ * source says it (plorpos-5eq.25). Needs base618's DTB with the hall on
+ * the EIC; on the old one (AP GPIO) the opening never wakes the kernel. */
+static bool woke_by_hall(void)
+{
+	static int hall_irq = -2;          /* -2 not looked up, -1 none */
+	char l[160];
+	FILE *f;
+	int irq = -1;
+
+	if (hall_irq == -2) {
+		hall_irq = -1;
+		if ((f = fopen("/proc/interrupts", "r"))) {
+			while (fgets(l, sizeof l, f))
+				if (strstr(l, "Hall Swivel")) { hall_irq = atoi(l); break; }
+			fclose(f);
+		}
+	}
+	/* Cleared by each suspend; unreadable (ENODATA) when no irq woke it. */
+	if (hall_irq < 0 || !(f = fopen("/sys/power/pm_wakeup_irq", "r"))) return false;
+	if (fscanf(f, "%d", &irq) != 1) irq = -1;
+	fclose(f);
+	return irq == hall_irq;
+}
+
 static bool sleep_mem(void)
 {
 	/* A pending wake source makes the kernel refuse with EBUSY; a few tries
@@ -1513,7 +1540,12 @@ static bool sleep_mem(void)
 
 		if (fd >= 0) close(fd);
 		if (n == 3) {
-			fprintf(stderr, "sleep: resumed\n");
+			bool hall = woke_by_hall();
+
+			/* An opening, for plat_swivel_take: closed is the level
+			 * before it, whatever the lid was when sleep began. */
+			if (hall) sw_last = 1;
+			fprintf(stderr, "sleep: resumed%s\n", hall ? " by the swivel" : "");
 			return true;
 		}
 		fprintf(stderr, "sleep: suspend refused: %s\n", strerror(errno));
