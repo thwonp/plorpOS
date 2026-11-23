@@ -6,7 +6,7 @@
 #   mk/h700-deploy.sh diatom    the resident emulator (../diatom, PORT=h700,
 #                               or DIATOM_ELF); restarted with the launcher
 #   mk/h700-deploy.sh muse      Muse, musectl and btplayer, with the FFmpeg libraries
-#   mk/h700-deploy.sh all       launcher, SDL2 and FFmpeg libraries, launch
+#   mk/h700-deploy.sh all       launcher, SDL2 and FFmpeg libraries, USB audio modules, launch
 #                               script, Splore's wget shim, Muse and diatom; the frontend session restarts to run it
 #
 #   mk/h700-deploy.sh ds        the Nintendo DS shelf: DSperate (the Brick's build, mk/build-dsperate-brick.sh)
@@ -64,6 +64,9 @@ if [ "$MODE" = all ]; then
 		adb shell "mv -f $CARD/plorpOS/lib/$l.new $CARD/plorpOS/lib/$l"
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
+	# USB DACs on the RG35XX H / SP: launch_frontend.sh loads these (plorpos-2wl.15).
+	adb shell "mkdir -p $CARD/plorpOS/h700/usb-audio"
+	for k in "$ROOT/sd/h700/usb-audio/"*.ko; do adb push "$k" "$CARD/plorpOS/h700/usb-audio/" > /dev/null; done
 	adb push "$ROOT/sd/h700/radio.sh" "$CARD/plorpOS/radio.sh" > /dev/null
 	adb push "$ROOT/sd/tortos/bt-alsa.sh" "$CARD/plorpOS/bt-alsa.sh" > /dev/null
 	adb shell "mkdir -p $CARD/plorpOS/pico8"
