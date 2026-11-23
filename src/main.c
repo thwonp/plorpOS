@@ -13933,10 +13933,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		}
 		/* The words centered between the screen's top and the cover's. */
 		ty = (cov.y - words) / 2;
+		/* The count, the bar and its times, the Source, Next. */
+		bar = ly + lm + 28;
 		sx = cx;
-		sy = ly + lm + 16;
-		bar = sy + lm + 28;
-		ny = bar + 16 + lm + 24;
+		sy = bar + 16 + lm + 16;
+		ny = sy + lm + 16;
 	}
 
 	/* A book played to its end says so, rather than that it stopped. */
