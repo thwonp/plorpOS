@@ -1326,6 +1326,7 @@ static const char *muse_net_why(void)
 
 static bool muse_offline_has(int al);
 static bool muse_offline_any(void);
+static int muse_offline_count(void);
 static muse_src muse_src_shown(void);
 static void muse_toast(const char *msg);
 
@@ -5770,8 +5771,27 @@ static void gl_draw(app *a, const gl_list *L)
 	first = cur - g.rows / 2;
 	if (first > n - g.rows) first = n - g.rows;
 	if (first < 0) first = 0;
-	if (n == 0 && L->empty)
-		ui_text(a->r, fm, L->empty, GL_PAD, g.top + (g.row_h - mline) / 2, -1, UI_TEXT_DIM);
+	if (n == 0 && L->empty) {
+		/* Two lines when one does not fit - a narrow screen, the Zero 40's
+		 * 480 px (plorpos-5tm.16.5): cut at the last space that fits. */
+		int y = g.top + (g.row_h - mline) / 2, room = TORTOS_SCREEN_W - 2 * GL_PAD;
+		char l1[192];
+		size_t k = strlen(L->empty), c = k;
+
+		if (k < sizeof l1 && ui_text_width(fm, L->empty) > room) {
+			char *sp;
+
+			memcpy(l1, L->empty, k + 1);
+			while ((sp = strrchr(l1, ' ')) && (*sp = '\0', ui_text_width(fm, l1) > room)) { }
+			c = strlen(l1);
+		}
+		if (c >= k) {
+			ui_text(a->r, fm, L->empty, GL_PAD, y, -1, UI_TEXT_DIM);
+		} else {
+			ui_text(a->r, fm, l1, GL_PAD, y, -1, UI_TEXT_DIM);
+			ui_text(a->r, fm, L->empty + c + 1, GL_PAD, y + g.row_h, -1, UI_TEXT_DIM);
+		}
+	}
 	for (i = first; i < n && i < first + g.rows; i++) {
 		const char *title = L->title(L->ctx, i);
 		const char *val = L->value ? L->value(L->ctx, i) : NULL;
@@ -7487,7 +7507,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.muse       = is_muse(sc);
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		/* Podcasts: every episode, not the tab's list (plorpos-7ni.4). */
-		u.game_count = is_muse(sc) && g_muse_pod ? g_muse.nalbums : a->view[sys].list.count;
+		u.game_count = !is_muse(sc) || !g_muse_pod ? a->view[sys].list.count
+		             : muse_src_offline() ? muse_offline_count() : g_muse.nalbums;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
@@ -16479,11 +16500,13 @@ static bool muse_offline_has(int al)
 	return g_off_has && al >= 0 && al < g_muse.nalbums && g_off_has[al];
 }
 
-static bool muse_offline_any(void)
+static int muse_offline_count(void)
 {
 	muse_offline_look();
-	return g_off_any > 0;
+	return g_off_any;
 }
+
+static bool muse_offline_any(void) { return muse_offline_count() > 0; }
 
 static int mal_mark(void *ctx, int i)
 {
