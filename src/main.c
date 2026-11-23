@@ -1257,6 +1257,16 @@ static bool g_muse_books;
 static bool g_muse_plex;
 static bool g_plex_stale;    /* a sync wrote a new index: load it when idle */
 static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle */
+static unsigned g_muse_card_gen;
+/* A download finished or a copy went (Audiobookshelf, Plex): the Local
+ * source rescans when idle, and the rows' on-the-card marks are looked at
+ * again now, not at the next Source (plorpos-5tm.12). */
+static void muse_card_changed(void)
+{
+	g_local_stale = true;
+	g_muse_card_gen++;
+	ui_redraw_now();
+}
 /* Audiobookshelf (plorpos-9rf): the library g_muse holds, as Plex's above. */
 static bool g_muse_abs;
 static bool g_abs_stale;
@@ -1705,6 +1715,9 @@ static void muse_poll(void)
 	musec_poll();
 	sleep_timer_tick();
 	mn = musec_now();
+	/* Here, not in the shelf's polls: read in Muse+'s screens and menus too,
+	 * where the marks they change are (plorpos-5tm.12). */
+	if (abs_download_take_changed() | plex_download_take_changed()) muse_card_changed();
 	/* A stream not tried for want of a network, or one whose server did not
 	 * answer; a download that failed, the same two ways (plorpos-5eq.13). */
 	{
@@ -11180,7 +11193,6 @@ static void abs_main_poll(app *a)
 	unsigned now = plat_now_ms();
 
 	if (abs_sync_take()) g_abs_stale = true;
-	if (abs_download_take_changed()) g_local_stale = true;
 	if (g_walk_thread) return;
 	if (g_abs_stale && muse_src_saved() == MSRC_ABS) {
 		g_abs_stale = false;
@@ -11523,7 +11535,6 @@ static void plex_main_poll(app *a)
 	unsigned now = plat_now_ms();
 
 	if (plex_sync_take()) g_plex_stale = true;
-	if (plex_download_take_changed()) g_local_stale = true;
 	if (g_walk_thread) return;
 	if ((g_plex_stale && muse_source_saved_plex()) ||
 	    (g_local_stale && !g_muse_plex && !g_muse_abs && !plex_download_status(NULL, 0) &&
@@ -16174,16 +16185,19 @@ static bool mal_fav(void *ctx, int i)
 static bool muse_album_on_card(int al)
 {
 	static signed char *seen;            /* per album: 0 not looked, 1 no, 2 yes */
-	static unsigned gen;
+	static unsigned gen, card_gen;
 	static int n;
 
 	if (al < 0 || al >= g_muse.nalbums) return false;
 	if (g_muse_pod) return pod_downloaded(al, NULL, 0);
 	if (!g_muse_abs && !g_muse_plex) return false;
-	if (!seen || gen != g_muse_gen || n != g_muse.nalbums) {
+	/* g_muse_card_gen: a download finished or a copy went (plorpos-5tm.12) -
+	 * looked at again then, not only at the next Source. */
+	if (!seen || gen != g_muse_gen || card_gen != g_muse_card_gen || n != g_muse.nalbums) {
 		free(seen);
 		seen = calloc((size_t)g_muse.nalbums, 1);
 		gen = g_muse_gen;
+		card_gen = g_muse_card_gen;
 		n = g_muse.nalbums;
 		if (!seen) return false;
 	}
