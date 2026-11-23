@@ -3690,10 +3690,10 @@ enum { MH_L1, MH_R1, MH_L2, MH_R2, MH_LEFT, MH_RIGHT, MH_UP, MH_DOWN,
 static const struct { const char *key, *label; in_button b; int def; } MUSE_HK[MH_N] = {
 	{ "l1", "L1", IN_L1, MA_PREV },           { "r1", "R1", IN_R1, MA_NEXT },
 	{ "l2", "L2", IN_L2, MA_NONE },           { "r2", "R2", IN_R2, MA_NONE },
-	{ "left", "D-pad Left", IN_LEFT, MA_BACK },   { "right", "D-pad Right", IN_RIGHT, MA_FWD },
-	{ "up", "D-pad Up", IN_UP, MA_NONE },         { "down", "D-pad Down", IN_DOWN, MA_NONE },
-	{ "sleft", "Stick Left", IN_SLEFT, MA_BACK }, { "sright", "Stick Right", IN_SRIGHT, MA_FWD },
-	{ "sup", "Stick Up", IN_SUP, MA_NONE },       { "sdown", "Stick Down", IN_SDOWN, MA_NONE },
+	{ "left", "Left", IN_LEFT, MA_BACK },         { "right", "Right", IN_RIGHT, MA_FWD },
+	{ "up", "Up", IN_UP, MA_NONE },               { "down", "Down", IN_DOWN, MA_NONE },
+	{ "sleft", "Stick L", IN_SLEFT, MA_BACK },    { "sright", "Stick R", IN_SRIGHT, MA_FWD },
+	{ "sup", "Stick U", IN_SUP, MA_NONE },        { "sdown", "Stick D", IN_SDOWN, MA_NONE },
 	{ "volup", "Volume Up, Held", IN_VOLUP, MA_NEXT },
 	{ "voldn", "Volume Down, Held", IN_VOLDN, MA_PREV },
 	{ "volboth", "Volume Up + Down", IN_NONE, MA_TOGGLE },
@@ -10307,24 +10307,53 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	return 7;
 }
 
-/* Hotkeys, from Playback Settings (owner, plorpos-5eq.6): a row a button
- * with its action, Left/Right and A stepping through the actions; the
- * volume keys' holds and chord under Global, where None gives a held volume
- * key back its repeat. */
-static int g_mhk_row[MH_N + 4];   /* the row's button; -1 a heading, -2 Reset */
+/* Hotkeys, from Playback Settings (owner, plorpos-5eq.6, .26): a row an
+ * action, listing its buttons. A records one more: the row asks for a button
+ * and the next L1/R1/L2/R2, D-pad or stick press is the action's, taken off
+ * whichever action had it (storage stays a button's action). X clears the
+ * action's buttons. The volume keys' holds and chord under Global keep a row a
+ * key, Left/Right/A stepping through the actions, where None gives a held
+ * volume key back its repeat. */
+static const int MHK_ACT[] = { MA_TOGGLE, MA_FWD, MA_BACK, MA_NEXT, MA_PREV };
+#define MHK_ACT_N ((int)(sizeof MHK_ACT / sizeof MHK_ACT[0]))
+#define MHK_ROW_ACT 100            /* g_mhk_row: MHK_ROW_ACT + an MA_ action */
+static int g_mhk_row[24];          /* a Global row's key; -1 a heading, -2 Reset */
+static char g_mhk_val[MHK_ACT_N][160];   /* all 12 buttons fit */
+static int g_mhk_rec = MA_NONE;    /* the action asking for a button */
+
+/* The Now Playing buttons this device has: the stick's only where it is told. */
+static int muse_hk_np_n(void)
+{
+	return muse_hk_stick() ? MH_NP_N : MH_SLEFT;
+}
 
 static int muse_hk_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
-	int i, n = 0;
+	int i, k, n = 0;
 
 	(void)ctx;
 	(void)max;
 	*heading = "Hotkeys";
 	g_mhk_row[n] = -1; rows[n++] = (menu_row){ "Now Playing", "", false };
-	for (i = 0; i < MH_NP_N; i++) {
-		if (i >= MH_SLEFT && !muse_hk_stick()) break;
-		g_mhk_row[n] = i;
-		rows[n++] = (menu_row){ MUSE_HK[i].label, MA_LABEL[muse_hk_get(i)], true };
+	for (k = 0; k < MHK_ACT_N; k++) {
+		char *v = g_mhk_val[k];
+		size_t len = 0;
+
+		v[0] = '\0';
+		for (i = 0; i < muse_hk_np_n(); i++) {
+			if (muse_hk_get(i) != MHK_ACT[k]) continue;
+			/* "L Stick U" where there are two sticks, "Stick U" on the GKD. */
+			len += (size_t)snprintf(v + len, len < sizeof g_mhk_val[k] ? sizeof g_mhk_val[k] - len : 0,
+			                        "%s%s%s", len ? ", " : "",
+			                        i >= MH_SLEFT && plat_two_sticks() ? "L " : "", MUSE_HK[i].label);
+		}
+		g_mhk_row[n] = MHK_ROW_ACT + MHK_ACT[k];
+		rows[n++] = MHK_ACT[k] == g_mhk_rec
+		          /* Grey, not white (owner): a prompt, not a setting. Dead
+		           * rows draw quiet; only muse_hk_record shows it, and that
+		           * loop never moves the cursor. */
+		          ? (menu_row){ "Press L/R or directional", NULL, false }
+		          : (menu_row){ MA_LABEL[MHK_ACT[k]], v[0] ? v : "None", true };
 	}
 	g_mhk_row[n] = -1; rows[n++] = (menu_row){ "Global", "", false };
 	for (i = MH_VOLUP; i < MH_N; i++) {
@@ -10332,19 +10361,85 @@ static int muse_hk_build(void *ctx, menu_row *rows, int max, const char **headin
 		rows[n++] = (menu_row){ MUSE_HK[i].label, MA_LABEL[muse_hk_get(i)], true };
 	}
 	g_mhk_row[n] = -2; rows[n++] = (menu_row){ "Reset to Default", "", true };
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE(g_mhk_rec != MA_NONE ? "B: cancel" : "A: set    X: clear");
 	return n;
+}
+
+/* A on an action row: the screen as menu_run draws it, the row asking for a
+ * button, until one comes or B/MENU cancels. Its own loop because menu_run
+ * keeps Up/Down, B and SELECT for itself, and here they are buttons. */
+static void muse_hk_record(app *a, int act, int sel)
+{
+	menu_row rows[32];
+	const char *heading = NULL;
+	ui_pace pace = {0};
+	int i, n;
+
+	g_mhk_rec = act;
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (a->running && !want_quit) {
+		plat_input_poll(&a->in);
+		muse_poll();
+		aout_apply(false);
+		if (a->in.quit_requested) { a->running = false; break; }
+		if (power_check(a) == PWR_POWEROFF) { power_off(a); break; }
+		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_MENU]) break;
+		/* Backwards: a stick that also moves the D-pad (the GKD's) is the
+		 * stick. */
+		for (i = muse_hk_np_n() - 1; i >= 0; i--)
+			if (a->in.pressed[MUSE_HK[i].b]) break;
+		if (i >= 0) {
+			muse_hk_set(i, act);
+			/* Still held, it would reach menu_run as cursor moves - and the
+			 * D-pad a stick drives can let go after the stick does. */
+			for (;;) {
+				for (i = 0; i < MH_NP_N && !a->in.down[MUSE_HK[i].b]; i++) ;
+				if (i == MH_NP_N || !a->running || want_quit) break;
+				SDL_Delay(IDLE_POLL_MS);
+				plat_input_poll(&a->in);
+			}
+			break;
+		}
+		vol_keys(&a->in);
+		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
+		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
+
+		n = muse_hk_build(NULL, rows, 32, &heading);
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		tick_tint(a);
+		shelf_dim_cached(a, 120);
+		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MENU_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	g_mhk_rec = MA_NONE;
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
 }
 
 static menu_result muse_hk_key(app *a, void *ctx, in_button key, int sel)
 {
 	int i, act;
 
-	(void)a;
 	(void)ctx;
 	if (sel < 0 || sel >= (int)(sizeof g_mhk_row / sizeof g_mhk_row[0])) return MENU_STAY;
 	i = g_mhk_row[sel];
 	if (i == -2 && key == IN_ACCEPT) {
-		for (i = 0; i < MH_N; i++) muse_hk_set(i, MUSE_HK[i].def);
+		if (confirm_panel(a, "Hotkeys", "Reset all hotkeys?", "Reset"))
+			for (i = 0; i < MH_N; i++) muse_hk_set(i, MUSE_HK[i].def);
+		return MENU_STAY;
+	}
+	if (i >= MHK_ROW_ACT) {
+		act = i - MHK_ROW_ACT;
+		if (key == IN_ACCEPT) muse_hk_record(a, act, sel);
+		if (key == IN_X)
+			for (i = 0; i < muse_hk_np_n(); i++)
+				if (muse_hk_get(i) == act) muse_hk_set(i, MA_NONE);
 		return MENU_STAY;
 	}
 	if (i < 0 || (key != IN_LEFT && key != IN_RIGHT && key != IN_ACCEPT)) return MENU_STAY;

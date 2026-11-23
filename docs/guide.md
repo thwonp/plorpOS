@@ -395,14 +395,16 @@ Audiobookshelf).
 the title on up to two lines, with the cover and the progress bar under them.
 `Original` keeps the words beside the cover, sliding when they are too long.
 
-L1, R1, L2, R2, the D-pad and a stick's directions can be changed under
-**Hotkeys** in Playback Settings: each takes Play/Pause, Skip Forward, Skip
-Backward, Next Track, Previous Track or None, and several buttons can share
-an action. They are the same for every Source, and A, B, X and Y stay as
-they are. **Global** there has the volume keys' two holds and Volume Up +
-Down together; a hold set to None goes back to stepping the volume while it
-is held. (In a game a hold set to None does nothing.) **Reset to Default**
-puts them all back. A headset's own buttons are not changed by any of this.
+**Hotkeys** in Playback Settings lists Play/Pause, Skip Forward, Skip
+Backward, Next Track and Previous Track, each with its buttons. Press **A**
+on one, then L1, R1, L2, R2, a D-pad direction or a stick direction to add
+it (B cancels); a button belongs to one action at a time, so it moves from
+any action that had it. **X** clears an action's buttons. They are the same
+for every Source, and A, B, X and Y stay as they are. **Global** there has
+the volume keys' two holds and Volume Up + Down together; a hold set to None
+goes back to stepping the volume while it is held. (In a game a hold set to
+None does nothing.) **Reset to Default** asks first, then puts them all back.
+A headset's own buttons are not changed by any of this.
 | **B** | the album's tracks; for a book, the list it was picked from |
 | **MENU** | Muse+'s menu |
 | **SELECT** | close Muse+ |
