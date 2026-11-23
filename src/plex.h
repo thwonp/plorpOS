@@ -178,6 +178,9 @@ void plex_pl_deleted(const char *name);
 bool plex_pl_downloaded(const char *name);
 void plex_pl_download(const char *name, bool on);
 void plex_set_pl_mirror(bool on);
+/* Offline Mode (plorpos-5tm.16): no request leaves; downloads under way stop. */
+void plex_set_offline(bool on);
+bool plex_offline(void);
 /* Goes up each time the playlists change under the shelf: a cached list of
  * them is stale. */
 int  plex_pl_gen(void);
