@@ -20111,7 +20111,8 @@ static int run_port(app *a, const system_cfg *s, const char *file)
  * The shelf's Display Mode, as near as PICO-8's own flags come. Stretch is
  * a draw_rect over the whole output, measured off the renderer before
  * run_alone takes it down, so it is the panel's real size on either device.
- * Integer is pixel_perfect. Aspect is no flag at all, PICO-8's own fit.
+ * Integer is pixel_perfect 1. Aspect is pixel_perfect 0, PICO-8's own fit
+ * (pico8sdl.so keeps it off the Pi's video driver, plorpos-2wl.16).
  * Neither flag is saved in config.txt, so a run that
  * passes none is not left with the last one's. */
 static int run_pico8(app *a, const char *bin, const char *folder,
