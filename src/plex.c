@@ -457,7 +457,7 @@ static int server_get(const char *path, char **body, size_t *len, int timeout_s)
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_PIN, J_SERVERS, J_LIBS, J_TIMELINE, J_PLS, J_PLDL, J_PLEDIT, J_PICK };
+enum { J_PIN, J_SERVERS, J_LIBS, J_TIMELINE, J_PLS, J_PLDL, J_PLEDIT, J_PICK, J_PLAYS };
 static void do_pls(void);
 static void do_pl_downloads(void);
 static void do_pick(void);
@@ -475,6 +475,8 @@ static bool g_api_up;
 static pthread_cond_t g_api_cv = PTHREAD_COND_INITIALIZER;
 static job *g_jobs;                       /* a stack: the newest cover first */
 static int  g_njobs;
+
+static job *job_new(int kind);
 
 static void push(job *j, bool front)
 {
@@ -689,6 +691,73 @@ static void do_report(job *j)
 	server_get(path, NULL, NULL, 5);
 }
 
+/* Plays counted with no server to tell - Offline Mode, or no network
+ * (plorpos-5tm.16.4): kept in plays.tsv, a track key a line, and each sent
+ * as one scrobble when the server answers again. No timeline went for
+ * them, so Plex counts each once (with a timeline a scrobble counted
+ * twice). The file being sent is set aside, so a play made meanwhile is
+ * not lost; one the server does not take goes back. */
+static pthread_mutex_t g_plays_mu = PTHREAD_MUTEX_INITIALIZER;
+static volatile bool g_plays_busy;
+static unsigned g_plays_last;
+
+static void plays_path(char *out, size_t n, bool sending)
+{
+	snprintf(out, n, "%s/plays%s", g_dir, sending ? ".sending" : ".tsv");
+}
+
+static void plays_add(int key)
+{
+	char p[700];
+	FILE *f;
+
+	plays_path(p, sizeof p, false);
+	pthread_mutex_lock(&g_plays_mu);
+	if ((f = fopen(p, "a"))) { fprintf(f, "%d\n", key); fclose(f); }
+	pthread_mutex_unlock(&g_plays_mu);
+}
+
+static void do_plays(void)
+{
+	char p[700], s[700], path[200], line[32];
+	int sent = 0, kept = 0;
+	FILE *f;
+
+	plays_path(p, sizeof p, false);
+	plays_path(s, sizeof s, true);
+	pthread_mutex_lock(&g_plays_mu);
+	if (access(s, F_OK) != 0) rename(p, s);   /* one left by a restart goes first */
+	pthread_mutex_unlock(&g_plays_mu);
+	if ((f = fopen(s, "r"))) {
+		while (fgets(line, sizeof line, f)) {
+			int key = atoi(line);
+
+			if (key <= 0) continue;
+			snprintf(path, sizeof path, "/:/scrobble?identifier=com.plexapp.plugins.library&key=%d", key);
+			if (!g_offline && server_get(path, NULL, NULL, 10) == 200) sent++;
+			else { plays_add(key); kept++; }
+		}
+		fclose(f);
+		unlink(s);
+	}
+	if (sent || kept) fprintf(stderr, "plex: %d plays made offline sent%s\n", sent, kept ? ", some kept" : "");
+	g_plays_busy = false;
+}
+
+void plex_plays_retry(void)
+{
+	char p[700], s[700];
+	unsigned now = now_ms();
+	job *j;
+
+	if (g_plays_busy || g_offline || !C.token[0] || (g_plays_last && now - g_plays_last < 30000u)) return;
+	g_plays_last = now;
+	plays_path(p, sizeof p, false);
+	plays_path(s, sizeof s, true);
+	if ((access(p, F_OK) != 0 && access(s, F_OK) != 0) || !net_online()) return;
+	if ((j = job_new(J_PLAYS))) { g_plays_busy = true; push(j, false); }
+}
+
 static void *api_main(void *arg)
 {
 	(void)arg;
@@ -710,6 +779,7 @@ static void *api_main(void *arg)
 		case J_PLDL:     do_pl_downloads(); break;
 		case J_PLEDIT:   do_pl_edit(j); break;
 		case J_PICK:     do_pick(); break;
+		case J_PLAYS:    do_plays(); break;
 		}
 		free(j);
 	}
@@ -2105,6 +2175,7 @@ void plex_tick(const char *rel, int state, double at, double len)
 		key = k; counted = false; last_state = -1;
 	}
 	if (!key || !C.token[0]) return;
+	if (g_offline) goto mark;                     /* no timelines; the play counted below */
 	if (state == 0 && last_state <= 0) goto mark;
 	if (state == last_state && (state != 1 || now - last_ms < TIMELINE_MS)) goto mark;
 	last_state = state;
@@ -2119,6 +2190,21 @@ mark:
 	 * top counted it twice (measured: viewCount 0 -> 2, carol, 2026-11-16).
 	 * So no scrobble - a timeline the moment it crosses, in case the next
 	 * 5 s one would come after the end. */
+	if (!counted && len > 0 && at >= len * PLAYED_AT && (g_offline || !net_online())) {
+		/* Once a play: Muse's connection lost for a moment reads as a
+		 * track change and clears `counted`, so the same track again
+		 * within its own length is that, not a second play. */
+		static int added;
+		static unsigned added_ms;
+
+		counted = true;
+		if (key != added || now - added_ms > (unsigned)(len * 1000)) {
+			plays_add(key);                       /* sent when the server answers */
+			added = key;
+			added_ms = now;
+		}
+		return;
+	}
 	if (!counted && len > 0 && at >= len * PLAYED_AT && (j = job_new(J_TIMELINE))) {
 		counted = true;
 		last_ms = now;
@@ -2409,6 +2495,7 @@ void plex_set_offline(bool on)
 	g_offline = on;
 	fprintf(stderr, "plex: Offline Mode %s\n", on ? "on" : "off");
 	if (on) plex_download_cancel();
+	else g_plays_last = 0;                        /* plays made offline go at once */
 }
 
 bool plex_offline(void) { return g_offline; }

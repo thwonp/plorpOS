@@ -180,6 +180,9 @@ void plex_pl_download(const char *name, bool on);
 void plex_set_pl_mirror(bool on);
 /* Offline Mode (plorpos-5tm.16): no request leaves; downloads under way stop. */
 void plex_set_offline(bool on);
+/* Plays counted offline (plays.tsv), sent as scrobbles once the server
+ * answers; from the poll, every 30 s at most. */
+void plex_plays_retry(void);
 /* For Offline Mode's lists: n flags, an album with any track on the card
  * (from the downloads manifest), and one track's copy. */
 void plex_albums_local(unsigned char *out, int n);

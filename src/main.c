@@ -1807,6 +1807,7 @@ static void muse_poll(void)
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
 	abs_unsent_retry();             /* places made offline (ps8.15) */
+	plex_plays_retry();             /* plays counted offline (5tm.16.4) */
 	{
 		int idx;
 		double at;
