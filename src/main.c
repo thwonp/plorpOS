@@ -439,7 +439,15 @@ static bool gs_auto_resume(void) { return db_get_int(db_dev(), "autoresume", 1) 
 /* Achievements Enabled (plorpos-pyz.7): Off, a launch hands no set over and
  * fetches none, so the game plays as one RetroAchievements has never seen.
  * Unlocks already owed to the account still go. */
-static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", 1) != 0; }
+#if defined(PLATFORM_MIYOO)
+/* Off by default on the Flip (plorpos-f1p.95.7): evaluating a set costs a
+ * heavy game its full speed there - Marvel vs. Capcom ran 59.2 fps of 59.63
+ * with its 92 achievements watched, 59.6 without (2026-11-22). */
+#define CHEEVOS_DEFAULT 0
+#else
+#define CHEEVOS_DEFAULT 1
+#endif
+static bool gs_cheevos(void) { return db_get_int(db_dev(), "cheevos", CHEEVOS_DEFAULT) != 0; }
 static bool port_art(const system_cfg *s, const game_entry *g, char *out, size_t n);
 /* Game Settings opens the first and Network Services the second; both are
  * written after this. */
@@ -18240,6 +18248,28 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	return GS_ROWS;
 }
 
+#if defined(PLATFORM_MIYOO)
+/* Said every time Achievements Enabled is turned on (owner, plorpos-f1p.95.7). */
+static void cheevos_warning(app *a)
+{
+	static const char *const TEXT =
+		"Warning - RetroAchievements may impact performance on heavy games";
+	char lines[CHV_WRAP_LINES][CHV_WRAP_COLS];
+	menu_row rows[CHV_WRAP_LINES + 2];
+	int n, i;
+
+	n = wrap_text(ui_font(UI_F_MENU), TEXT, menu_std_width(a), lines, CHV_WRAP_LINES);
+	for (i = 0; i < n; i++) rows[i] = (menu_row){ lines[i], MENU_BODY_MARK, true };
+	rows[n++] = MENU_RULE;
+	rows[n++] = MENU_NOTE("A to continue");
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	note_panel(a, "RetroAchievements", rows, n);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+#endif
+
 /* Left, right and A all change the row: the on/off ones flip, and the two
  * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
  * Download Achievement Sets and Scraping are doors, so only A opens them. */
@@ -18250,7 +18280,7 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		[GS_CONFIRM] = { "confirmquit", 0 },
 		[GS_TURBO]   = { "persistturbo", 0 },
 		[GS_RUMBLE]  = { "rumble", 1 },
-		[GS_CHEEVOS] = { "cheevos", 1 },
+		[GS_CHEEVOS] = { "cheevos", CHEEVOS_DEFAULT },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
@@ -18275,8 +18305,12 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "ffspeed", FF_SPEEDS[ff]);
 		plat_resident_line("SETFFSPEED\tspeed=%d", FF_SPEEDS[ff]);
 	} else if (onoff[sel].key) {
-		db_set_int(db_dev(), onoff[sel].key,
-		           !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def));
+		const int on = !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def);
+
+		db_set_int(db_dev(), onoff[sel].key, on);
+#if defined(PLATFORM_MIYOO)
+		if (sel == GS_CHEEVOS && on) cheevos_warning(a);
+#endif
 	}
 	return MENU_STAY;
 }
