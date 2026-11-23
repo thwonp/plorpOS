@@ -17,7 +17,7 @@ DL=${DL:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist-inputs/src
 GC=${GOCACHE_DIR:-$HOME/.cache/plorpos-go}   # module + build cache: big, not tmpfs
 W=$R/build/$PORT/tailscale-src
 F=$DL/tailscale-$VER.tar.gz
-KEEP=cli,osrouter,nattraversal,udptransport,dns,linuxdnsfight,iptables,portmapper,ipnbus,health,useroutes
+KEEP=cli,osrouter,nattraversal,udptransport,dns,linuxdnsfight,iptables,portmapper,ipnbus,health,useroutes,netstack
 
 mkdir -p "$DL" "$GC"
 [ -s "$F" ] || curl -sSfL --max-time 300 -o "$F" "https://github.com/tailscale/tailscale/archive/refs/tags/v$VER.tar.gz"

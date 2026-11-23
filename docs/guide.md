@@ -60,7 +60,7 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, and on the RG Rotate and Miyoo Mini Flip **SSH**; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, on the RG Rotate and Miyoo Mini Flip **SSH**, and on the Zero 40 **SSH** and **Tailscale** (see below); **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget. Not on the Miyoo Mini Flip |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse+). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing`. **Rotate (Closed)** (RG Rotate): what turning the screen closed does - `nothing`, `sleep`, or `open Muse+` (Now Playing, or the Muse+ tabs when nothing is playing), in a game too. **Rotate (Open)** (RG Rotate): what turning it open does - `wake only`, `main shelf`, `recents` or `resume last game`. Opening always wakes a sleeping Rotate. **Rotate Open Always Resumes Game** (RG Rotate): `on` to start, so with a game running, opening goes back to the game from its menu or from Muse+, and only `recents` acts on the game itself (the game switcher). `off`, Rotate (Open) is done as written with a game running too: `main shelf` ends the game (saved as Quit saves it; a port or PICO-8 just closes) and `recents` opens the switcher |
@@ -179,6 +179,19 @@ Volume and brightness draw the same thin line across the top of the screen in
 the launcher, in a game, and in the in-game menu. One firmware, one piece of
 feedback - tinted by which of the two it is, warm for brightness and cyan for
 volume, so the line says what it is without a glyph or a number on it.
+
+### Tailscale
+
+*Coming in the next release.* On the Zero 40 for now.
+
+**MENU > Network Services > Tailscale** puts the device on your tailnet. The
+first time, A shows a QR code: scan it with a phone, or open the link under
+it, and sign in. The screen closes by itself once the device is on, and the
+row shows its tailnet address, the one to type into SSH on another machine.
+It signs back in by itself after that, a reboot included.
+
+It joins as `plorpos-zero40`, can reach MagicDNS names, and uses routes from
+your subnet routers. A on the row turns it off.
 
 ## Audio
 

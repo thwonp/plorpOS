@@ -8135,7 +8135,7 @@ static void ts_signin_screen(app *a)
 	char url[256] = "", shown[256] = "", line[96];
 	unsigned asked = 0;
 	ts_state st = TS_STARTING;
-	bool have_qr = false;
+	bool have_qr = false, online = false;
 	TTF_Font *ft = ui_font(UI_F_TITLE), *fm = ui_font(UI_F_MENU), *fs = ui_font(UI_F_META);
 	SDL_Color white = { 255, 255, 255, 255 };
 
@@ -8149,6 +8149,7 @@ static void ts_signin_screen(app *a)
 			asked = now;
 			st = ts_status(NULL, 0, url, sizeof url);
 			if (st == TS_RUNNING || st == TS_OFF) break;
+			online = net_online();
 			if (strcmp(url, shown)) {
 				snprintf(shown, sizeof shown, "%s", url);
 				have_qr = url[0] && qrcodegen_encodeText(url, tmp, qr, qrcodegen_Ecc_LOW,
@@ -8201,7 +8202,7 @@ static void ts_signin_screen(app *a)
 			}
 		} else {
 			ui_text(a->r, fm, st == TS_LOGIN ? "Approve this device in Tailscale"
-			                                 : "Starting... (needs Wi-Fi)", W / 2, H / 2, 0, UI_TEXT);
+			                   : online ? "Connecting..." : "Waiting for Wi-Fi", W / 2, H / 2, 0, UI_TEXT);
 		}
 		ui_text(a->r, fs, "X: turn off   B: back", W / 2, H - GL_PAD - ui_font_line(UI_F_META), 0, UI_TEXT_DIM);
 		draw_chrome(a->r);
