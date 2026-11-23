@@ -287,6 +287,7 @@ static void play_current(void)
 			 * before stops now, not when this one is ready. */
 			if (!g_wait_remote) {
 				sendf("STOP");
+				g_asked = false;
 				snprintf(g_now.title, sizeof g_now.title, "%s", r.title);
 				snprintf(g_now.artist, sizeof g_now.artist, "%s", r.artist[0] ? r.artist : g_artist);
 				snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
@@ -463,6 +464,14 @@ static void event(const char *line)
 		 * came up for a tenth of a second at every track change. */
 		if (g_advanced && !strcmp(v, "stopped")) { g_advanced = false; return; }
 		g_advanced = false;
+		/* A PLAY or RESUME on its way is answered by "playing", or by an ERROR
+		 * first - so "stopped" or "paused" meanwhile is older news. A Muse
+		 * just started sends one in reply to the connect's STATUS, after the
+		 * PLAY has gone: read as an answer, it cleared the ask while a stream
+		 * still opened (23 s over a Tailscale relay), and A sent a second
+		 * PLAY, from 0 - the book jumped back to the start of the file and
+		 * that place went to the server. */
+		if (g_asked && strcmp(v, "playing")) return;
 		g_asked = false;
 		g_pause_sent = 0;
 		{
@@ -516,6 +525,11 @@ static void event(const char *line)
 
 		field(line, "len", v, sizeof v); if (atof(v) > 0) g_now.len = atof(v);
 		field(line, "at", v, sizeof v);  at = atof(v);
+		/* Before a PLAY or RESUME is answered, a position is from before it,
+		 * as for STATE above: a fresh Muse's reply to STATUS said 0:00 over
+		 * the place a book was opening at. "playing" comes ahead of the
+		 * first POS that counts. */
+		if (g_asked) return;
 		/* While a seek is on its way, a position that is not the seek's is
 		 * from before it: the once-a-second report sent as the SEEK went
 		 * out, or an earlier seek of a held d-pad landing. Taken at its
@@ -1194,6 +1208,7 @@ void musec_jump_at(int i, double at)
 void musec_stop(void)
 {
 	g_wait_remote = false;
+	g_asked = false;                    /* the "stopped" it brings is the answer */
 	sendf("STOP");
 }
 
