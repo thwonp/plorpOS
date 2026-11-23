@@ -372,7 +372,9 @@ and A on it starts it over. In the lists and on Coverflow a book you have
 started has a half-filled circle before its title, and a finished one a
 filled circle. X on a book has **Mark as Complete** and **Mark as Unread**;
 Unread puts it back at the start, and its Timeline (below) stays, so a place
-lost to a slip can be gone back to. Books always play in order, and on books Sort By
+lost to a slip can be gone back to. **Delete Book** (asked first) removes the
+book's files and its folder from the card, stopping it if it is playing; a
+folder that holds another book keeps that book. Books always play in order, and on books Sort By
 is by author or by title and there is no Album Art. A book's cover is the one its files carry, or the picture in its
 folder: one named cover or folder, or the only one there.
 
