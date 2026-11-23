@@ -164,6 +164,9 @@ void musec_next(void);
 void musec_prev(void);
 void musec_seek_by(double delta);
 void musec_stop(void);
+/* Asked when play is pressed on a stopped queue; true when it has played
+ * something itself (a finished book from its beginning, plorpos-5tm.18). */
+void musec_on_play_stopped(bool (*fn)(void));
 /* Stopped with nothing in the player, as before anything was played: the
  * queue and the names on show go, so a toggle has nothing to start again -
  * for a book deleted from under it (plorpos-5tm.15). */

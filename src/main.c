@@ -15032,6 +15032,19 @@ static int muse_playing_album(int *row)
 	return al;
 }
 
+/* Play on a finished book (owner, plorpos-5tm.18): from its beginning, as
+ * the list starts one. Its Timeline stays; the place written as it plays
+ * makes it unfinished again, here and on a server. */
+static bool muse_play_stopped(void)
+{
+	int al = musec_is_book() ? muse_playing_album(NULL) : -1;
+
+	if (al < 0 || !g_book_done || !g_book_done[al]) return false;
+	fprintf(stderr, "muse: %s again from the beginning\n", g_muse.albums[al].name);
+	musec_jump_at(0, 0);
+	return true;
+}
+
 /* One album's tracks, over the shelf its cover sits on.
  *
  * THIS USED TO BE THE WHOLE OF MUSE: artists, then their albums, then tracks,
@@ -24013,6 +24026,7 @@ int main(int argc, char *argv[])
 			musec_set_online(net_online);
 			musec_set_auto_rewind(db_get_int(db_dev(), "muse.autorewind", 0) != 0);
 			musec_on_resume(muse_resume_hold);
+			musec_on_play_stopped(muse_play_stopped);   /* a finished book: again (5tm.18) */
 			musec_on_state(muse_on_state);      /* Timeline, Sleep Timer (i8d.5/.6) */
 			musec_on_before_heard(aout_before_muse);
 #if !defined(PLAT_PIPEWIRE)
