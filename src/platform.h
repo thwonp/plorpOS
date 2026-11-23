@@ -306,6 +306,10 @@ void plat_skip_keys(int mask);
 /* Whether the device has a vibration motor a game can shake (plorpos-5tm.4).
  * Game Settings > Rumble Enabled is greyed where it has none. */
 bool plat_has_rumble(void);
+/* Whether a shelf never rewinds, whatever Rewind Speed says: the DS everywhere
+ * but the GKD and Rotate (plorpos-reo.21). Its Hotkeys row is hidden there
+ * (plorpos-5tm.8). */
+bool plat_rewind_never(const char *tag);
 int  plat_musickey_take(void);
 /* Increments each time the launcher connects to a resident emulator. Anything
  * the launcher pushed into the last one has to be pushed into a new one. */

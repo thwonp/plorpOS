@@ -1642,13 +1642,8 @@ bool plat_resident_send(const plat_game *g)
 		 * its build default on every RUN, so it is re-sent every run, as
 		 * SETHOTKEYS is. Set on the Hotkeys screen. */
 		{
-			int every = db_get_int(db_dev(), "rewindspeed", 0);
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
-			/* Off for the DS on the Brick and H700 (plorpos-reo.21): a
-			 * capture is a 6 MB state that takes ~20 ms, which no frame of
-			 * a heavy 3D scene can spare on four Cortex-A53s. */
-			if (tag && !strcmp(tag, "NDS")) every = 0;
-#endif
+			int every = plat_rewind_never(tag) ? 0
+			            : db_get_int(db_dev(), "rewindspeed", 0);
 			dsend("SETREWINDSPEED\tevery=%d", every);
 		}
 		/* And the fast-forward hotkey's speed (plorpos-pyz.5), the same way:
@@ -1703,6 +1698,19 @@ void plat_resident_quiet(bool on)
 /* A vibration motor Diatom can drive (plorpos-5tm.4), found as its ports
  * find it: the Bricks' GPIO line, or an input node with FF_RUMBLE (the H700,
  * the Rotate). Looked for once. */
+bool plat_rewind_never(const char *tag)
+{
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
+	/* Off for the DS (plorpos-reo.21): a capture is a 6 MB state that takes
+	 * ~20 ms, which no frame of a heavy 3D scene can spare on four
+	 * Cortex-A53s. */
+	return tag && !strcmp(tag, "NDS");
+#else
+	(void)tag;
+	return false;
+#endif
+}
+
 bool plat_has_rumble(void)
 {
 	static int has = -1;
