@@ -2,8 +2,12 @@
 #include "tailscale.h"
 
 #if TS_ROWS
+#include <ctype.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/un.h>
@@ -104,8 +108,71 @@ ts_state ts_status(char *ip, size_t ipn, char *url, size_t urln)
 	return TS_STARTING;
 }
 
+bool ts_connected(void)
+{
+	static volatile unsigned asked;   /* a benign race: two threads may both ask */
+	static volatile bool up;
+	struct timespec t;
+	unsigned now;
+	char buf[4096];
+	const char *v;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	now = (unsigned)(t.tv_sec * 1000u + t.tv_nsec / 1000000u) | 1u;   /* never 0 */
+	if (asked && now - asked < 2000u) return up;
+	/* BackendState comes early in the reply, well inside the first 4 KB -
+	 * which may be cut mid-object, so it is found by hand, not parsed. The
+	 * daemon indents its JSON. */
+	v = localapi_status(buf, sizeof buf) > 0 ? strstr(buf, "\"BackendState\"") : NULL;
+	if (v) v += strspn(v + 14, " \t:") + 14;
+	up = v && !strncmp(v, "\"Running\"", 9);
+	asked = now;
+	return up;
+}
+
+static bool tailnet_ip(const struct sockaddr *sa)
+{
+	if (sa->sa_family == AF_INET) {
+		const unsigned char *b = (const unsigned char *)&((const struct sockaddr_in *)sa)->sin_addr;
+
+		return b[0] == 100 && (b[1] & 0xc0) == 64;            /* 100.64.0.0/10 */
+	}
+	if (sa->sa_family == AF_INET6) {
+		static const unsigned char ts[6] = { 0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0 };
+
+		return !memcmp(&((const struct sockaddr_in6 *)sa)->sin6_addr, ts, sizeof ts);
+	}
+	return false;
+}
+
+bool ts_tailnet_addr(const char *address)
+{
+	const char *s = strstr(address, "://");
+	char host[256];
+	size_t n = 0;
+	struct addrinfo hints = { .ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM }, *res, *r;
+	bool yes = false;
+
+	s = s ? s + 3 : address;
+	if (*s == '[') {                                          /* [fd7a:...]:13378 */
+		for (s++; *s && *s != ']' && n < sizeof host - 1; s++) host[n++] = *s;
+	} else {
+		for (; *s && *s != ':' && *s != '/' && n < sizeof host - 1; s++) host[n++] = (char)tolower((unsigned char)*s);
+	}
+	host[n] = '\0';
+	if (n && host[n - 1] == '.') host[--n] = '\0';
+	if (!n) return false;
+	if (n > 7 && !strcmp(host + n - 7, ".ts.net")) return true;
+	if (getaddrinfo(host, NULL, &hints, &res) != 0) return false;
+	for (r = res; r && !yes; r = r->ai_next) yes = tailnet_ip(r->ai_addr);
+	freeaddrinfo(res);
+	return yes;
+}
+
 #else
 bool     ts_on(void) { return false; }
+bool     ts_connected(void) { return false; }
+bool     ts_tailnet_addr(const char *address) { (void)address; return false; }
 bool     ts_set(bool on) { (void)on; return false; }
 ts_state ts_status(char *ip, size_t ipn, char *url, size_t urln)
 {

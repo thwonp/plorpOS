@@ -596,6 +596,13 @@ network.
   Muse+'s menu under Audiobookshelf Settings (X on one cancels it).
 - **Audiobookshelf Settings** has Check for Updates (only what changed),
   Resync Library (everything) and Sign Out. Muse+ checks every hour by itself.
+  **Server** changes the address.
+- **Away from home, with [Tailscale](#tailscale)** (Zero 40 for now): put the
+  server's tailnet address (such as `100.10.0.0:13378`) in **Tailnet Server**.
+  Muse+ uses it while Tailscale is connected and the home address otherwise.
+  Signing in at a tailnet address fills in Tailnet Server; add the home
+  address under Server later. An address that doesn't answer where you are is
+  saved anyway.
 
 The sign-in is kept on the card in `.userdata/shared/abs/`.
 

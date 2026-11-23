@@ -23,6 +23,7 @@
 
 #include "net.h"
 #include "rajson.h"
+#include "tailscale.h"
 
 /* A download failed (not cancelled): once, for a toast (plorpos-5eq.13). */
 static volatile int g_dl_fail_note;
@@ -53,7 +54,7 @@ static char g_rel_root[400];             /* card-relative root of this library's
 /* ---- the config (P_SHARED/abs/config, 0600) ---------------------------------------- */
 
 static struct {
-	char server[256], user[128];
+	char server[256], tailnet[256], user[128];   /* tailnet: plorpos-dpy */
 	char access[1024], refresh[1024], legacy[1024];
 	char lib_id[64], lib_name[128];
 } C;
@@ -104,8 +105,8 @@ static void cfg_save_locked(void)
 	mkdirs(g_dir);
 	if ((fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0) return;
 	if (!(f = fdopen(fd, "w"))) { close(fd); return; }
-	fprintf(f, "server=%s\nuser=%s\naccess=%s\nrefresh=%s\nlegacy=%s\nlib_id=%s\nlib_name=%s\n",
-	        C.server, C.user, C.access, C.refresh, C.legacy, C.lib_id, C.lib_name);
+	fprintf(f, "server=%s\ntailnet=%s\nuser=%s\naccess=%s\nrefresh=%s\nlegacy=%s\nlib_id=%s\nlib_name=%s\n",
+	        C.server, C.tailnet, C.user, C.access, C.refresh, C.legacy, C.lib_id, C.lib_name);
 	fflush(f);
 	fsync(fd);
 	fclose(f);
@@ -128,7 +129,7 @@ static void cfg_load(void)
 			*v++ = '\0';
 #define F(k) else if (!strcmp(line, #k)) snprintf(C.k, sizeof C.k, "%s", v)
 			if (0) {}
-			F(server); F(user); F(access); F(refresh); F(legacy); F(lib_id); F(lib_name);
+			F(server); F(tailnet); F(user); F(access); F(refresh); F(legacy); F(lib_id); F(lib_name);
 #undef F
 		}
 		fclose(f);
@@ -231,6 +232,16 @@ static bool parse_tokens(const char *body, size_t len)
  * offline - a place is kept unsent, a sync fails, a book plays its copy. */
 static volatile bool g_offline;
 
+/* The address the server is asked at (plorpos-dpy): the tailnet one while
+ * Tailscale is connected, else Server - and whichever is set when only one
+ * is. `ts` is ts_connected(), asked before taking g_mu since it may wait on
+ * the daemon's socket. Under g_mu. */
+static const char *base_locked(bool ts)
+{
+	if (!C.tailnet[0]) return C.server;
+	return ts || !C.server[0] ? C.tailnet : C.server;
+}
+
 static bool refresh_tokens(const char *used)
 {
 	char url[400], hdr[1100], tmp[128], ref[sizeof C.refresh];
@@ -238,12 +249,12 @@ static bool refresh_tokens(const char *used)
 	char *body;
 	size_t len;
 	int code;
-	bool ok = false;
+	bool ok = false, ts = ts_connected();
 
 	pthread_mutex_lock(&g_refresh_mu);
 	LOCK();
 	if (strcmp(used, C.access)) { UNLOCK(); pthread_mutex_unlock(&g_refresh_mu); return true; }
-	snprintf(url, sizeof url, "%s/auth/refresh", C.server);
+	snprintf(url, sizeof url, "%s/auth/refresh", base_locked(ts));
 	snprintf(ref, sizeof ref, "%s", C.refresh);
 	UNLOCK();
 	if (!ref[0]) { pthread_mutex_unlock(&g_refresh_mu); return false; }
@@ -270,8 +281,8 @@ static bool refresh_tokens(const char *used)
 
 /* `path` on the server, with the account's access token, the reply into memory
  * (NUL-terminated). The HTTP status, 0 for no answer, -1 when it could not run. */
-static int req(const char *method, const char *path, const char *json,
-               char **body, size_t *len, int timeout_s)
+static int req_at(const char *at, const char *method, const char *path, const char *json,
+                  char **body, size_t *len, int timeout_s)
 {
 	char url[1400], auth[1100], tmp[128], used[sizeof C.access];
 	const char *h[3];
@@ -280,8 +291,10 @@ static int req(const char *method, const char *path, const char *json,
 	if (body) *body = NULL;
 	if (g_offline) return 0;                       /* as no answer */
 	for (attempt = 0; attempt < 2; attempt++) {
+		bool ts = at ? false : ts_connected();
+
 		LOCK();
-		snprintf(url, sizeof url, "%s%s", C.server, path);
+		snprintf(url, sizeof url, "%s%s", at ? at : base_locked(ts), path);
 		snprintf(used, sizeof used, "%s", C.access);
 		UNLOCK();
 		if (!used[0]) return 401;
@@ -303,9 +316,16 @@ static int req(const char *method, const char *path, const char *json,
 	return code;
 }
 
+/* At the address in use; req_at's `at` is another, the one being checked. */
+static int req(const char *method, const char *path, const char *json,
+               char **body, size_t *len, int timeout_s)
+{
+	return req_at(NULL, method, path, json, body, len, timeout_s);
+}
+
 /* ---- jobs ---------------------------------------------------------------------------- */
 
-enum { J_CHECK, J_LOGIN, J_PUSH, J_PULL, J_LOAD, J_PLACE };
+enum { J_CHECK, J_LOGIN, J_ADDR, J_PUSH, J_PULL, J_LOAD, J_PLACE };
 typedef struct job {
 	int kind;
 	char a[700], b[700];
@@ -431,9 +451,18 @@ static void do_login(job *j)
 		                      : "The server refused the sign-in");
 		return;
 	}
-	LOCK();
-	snprintf(C.server, sizeof C.server, "%s", g_checked);
-	UNLOCK();
+	/* Signed in at a tailnet address (plorpos-dpy): it is the Tailnet Server,
+	 * and Server - the one used off the tailnet - is left as it was. */
+	{
+		char at[sizeof g_checked];
+		bool tn;
+
+		LOCK(); snprintf(at, sizeof at, "%s", g_checked); UNLOCK();
+		tn = ts_tailnet_addr(at);
+		LOCK();
+		snprintf(tn ? C.tailnet : C.server, sizeof C.server, "%s", at);
+		UNLOCK();
+	}
 	if (!parse_tokens(body, len)) { free(body); auth_fail("The server sent no token"); return; }
 	jstr(js_root(body, len), "userDefaultLibraryId", dflt, sizeof dflt);
 	{
@@ -445,19 +474,68 @@ static void do_login(job *j)
 	LOCK(); snprintf(C.user, sizeof C.user, "%s", name); cfg_save_locked(); UNLOCK();
 	g_lost = 0;
 	if (!pick_library(dflt)) { auth_fail("No audiobook library on that server"); return; }
-	fprintf(stderr, "abs: signed in to %s, library %s\n", C.server, C.lib_name);
+	fprintf(stderr, "abs: signed in to %s, library %s\n", g_checked, C.lib_name);
 	g_auth = 1;
+}
+
+/* "192.168.0.2:13378" is enough: the scheme is added, a trailing / goes. */
+static void addr_norm(const char *address, char *a, size_t cap)
+{
+	size_t n;
+
+	snprintf(a, cap, "%s%s", strstr(address, "://") ? "" : "http://", address);
+	for (n = strlen(a); n && (a[n - 1] == '/' || a[n - 1] == ' '); n--) a[n - 1] = '\0';
+}
+
+/* The other address, set once signed in (plorpos-dpy). The account's token is
+ * tried there: only the same server takes it. No answer is saved anyway - a
+ * home address typed away from home - and says so in `why`. */
+static void do_addr(job *j)
+{
+	bool tn = j->b[0] == 't';
+	char *slot = tn ? C.tailnet : C.server, *other = tn ? C.server : C.tailnet;
+	const char *why = "";
+	int code;
+
+	if (!j->a[0]) {                                   /* cleared */
+		LOCK();
+		if (!other[0]) { UNLOCK(); auth_fail("Keep one address"); return; }
+		slot[0] = '\0';
+		cfg_save_locked();
+		UNLOCK();
+		g_auth = 1;
+		return;
+	}
+	code = req_at(j->a, "GET", "/api/me", NULL, NULL, NULL, 10);
+	if (code == 401 || code == 403) { auth_fail("Not the same server"); return; }
+	if (code != 0 && (code < 200 || code >= 300)) { auth_fail("Not an Audiobookshelf server"); return; }
+	if (code == 0) why = "Saved. No answer now";
+	LOCK();
+	snprintf(slot, sizeof C.server, "%.255s", j->a);
+	snprintf(g_auth_why, sizeof g_auth_why, "%s", why);
+	cfg_save_locked();
+	UNLOCK();
+	g_auth = 1;
+}
+
+void abs_addr_start(bool tailnet, const char *address)
+{
+	job *j = job_new(J_ADDR);
+
+	g_auth = 0;
+	LOCK(); g_auth_why[0] = '\0'; UNLOCK();
+	if (!j) { auth_fail("Out of memory"); return; }
+	if (address[0]) addr_norm(address, j->a, sizeof j->a);
+	j->b[0] = tailnet ? 't' : 's';
+	push(j, true);
 }
 
 void abs_check_start(const char *address)
 {
 	job *j = job_new(J_CHECK);
 	char a[600];
-	size_t n;
 
-	/* "192.168.0.2:13378" is enough: the scheme is added, a trailing / goes. */
-	snprintf(a, sizeof a, "%s%s", strstr(address, "://") ? "" : "http://", address);
-	for (n = strlen(a); n && (a[n - 1] == '/' || a[n - 1] == ' '); n--) a[n - 1] = '\0';
+	addr_norm(address, a, sizeof a);
 	g_auth = 0;
 	if (!j) { auth_fail("Out of memory"); return; }
 	snprintf(j->a, sizeof j->a, "%s", a);
@@ -631,8 +709,9 @@ static void tab_ensure(void)
 
 /* ---- the library --------------------------------------------------------------------- */
 
-bool abs_signed_in(void) { return C.access[0] && C.server[0] && C.lib_id[0]; }
+bool abs_signed_in(void) { return C.access[0] && (C.server[0] || C.tailnet[0]) && C.lib_id[0]; }
 const char *abs_server(void) { return C.server; }
+const char *abs_tailnet(void) { return C.tailnet; }
 const char *abs_user(void) { return C.user; }
 const char *abs_library_name(void) { return C.lib_name; }
 
@@ -1014,10 +1093,12 @@ bool abs_resolve(const char *rel, musec_remote *out)
 {
 	int b, k;
 	const char *tok;
+	bool ts;
 
 	if (!abs_is_path(rel)) return false;
 	memset(out, 0, sizeof *out);
 	tab_ensure();
+	ts = ts_connected();
 	LOCK();
 	if ((b = path_book(rel, &k)) < 0) {
 		UNLOCK();
@@ -1033,7 +1114,7 @@ bool abs_resolve(const char *rel, musec_remote *out)
 	 * access token lasts an hour, and a seek in a long file asks again. */
 	tok = C.legacy[0] ? C.legacy : C.access;
 	snprintf(out->url, sizeof out->url, "%s/api/items/%s/file/%s?token=%s",
-	         C.server, g_tab.b[b].id, g_tab.f[g_tab.b[b].first + k].ino, tok);
+	         base_locked(ts), g_tab.b[b].id, g_tab.f[g_tab.b[b].first + k].ino, tok);
 	UNLOCK();
 	return true;
 }
@@ -1640,6 +1721,7 @@ static void *api_main(void *arg)
 		switch (j->kind) {
 		case J_CHECK: do_check(j); break;
 		case J_LOGIN: do_login(j); break;
+		case J_ADDR:  do_addr(j); break;
 		case J_PUSH:  do_push(j); break;
 		case J_PULL:  pull_progress(); break;
 		case J_LOAD:  tab_ensure(); break;
@@ -1766,13 +1848,14 @@ static bool dl_one(const char *id)
 	g_dl_files = n;
 	for (k = 0; k < n && !g_dl_cancel; k++) {
 		char ino[48];
+		bool ts = ts_connected();
 
 		g_dl_file = k + 1;
 		LOCK();
 		if ((b = tab_find(&g_tab, id)) < 0 || k >= g_tab.b[b].n) { UNLOCK(); return false; }
 		file_name(b, k, f, sizeof f);
 		snprintf(ino, sizeof ino, "%s", g_tab.f[g_tab.b[b].first + k].ino);
-		snprintf(url, sizeof url, "%s/api/items/%s/file/%s", C.server, id, ino);
+		snprintf(url, sizeof url, "%s/api/items/%s/file/%s", base_locked(ts), id, ino);
 		snprintf(auth, sizeof auth, "Authorization: Bearer %s", C.legacy[0] ? C.legacy : C.access);
 		UNLOCK();
 		snprintf(path, sizeof path, "%s/%s", stage, f);
