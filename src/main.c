@@ -15286,14 +15286,65 @@ static void muse_tracks_under_draw(app *a, void *ctx)
 	                  mn->state == MU_PLAYING || mn->state == MU_PAUSED, musec_path());
 }
 
+/* Delete Book (plorpos-5tm.13): a Local Books book off the card. Its files,
+ * then its folder and whatever else is in it (cover art) unless another
+ * book's folder is inside it, then an author's folder it leaves empty - never
+ * Audiobooks itself. Its place and its finish go too; a server's copy keeps
+ * its own. False when a file would not go. */
+static bool book_delete(int al)
+{
+	const ml_album *b = &g_muse.albums[al];
+	char dir[LIB_PATH * 3], p[LIB_PATH * 3 + 260], top[LIB_PATH * 3], key[LIB_PATH + 16], *slash;
+	bool ok = true, inner = false;
+	struct dirent *e;
+	struct stat st;
+	DIR *d;
+	int i;
+
+	if (b->n <= 0) return false;
+	book_key(al, key, sizeof key);
+	db_del(db_dev(), key);
+	tl_book_id(al, key + 9, sizeof key - 9);
+	memcpy(key, "bookdone.", 9);
+	db_del(db_dev(), key);
+	for (i = 0; i < b->n; i++) {
+		snprintf(p, sizeof p, "%s/%s", g_muse_root, g_muse.tracks[b->first + i].path);
+		if (remove(p) != 0 && errno != ENOENT) ok = false;
+	}
+	snprintf(dir, sizeof dir, "%s/%s", g_muse_root, g_muse.tracks[b->first].path);
+	if (!(slash = strrchr(dir, '/'))) return ok;
+	*slash = '\0';
+	if ((d = opendir(dir))) {
+		while ((e = readdir(d)) && !inner) {
+			if (e->d_name[0] == '.') continue;
+			snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+			inner = stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+		}
+		closedir(d);
+	}
+	snprintf(top, sizeof top, "%s/Audiobooks", g_muse_root);
+	if (!inner && strncmp(dir, top, strlen(top)) == 0 && strcmp(dir, top) != 0) {
+		if (nftw(dir, rm_one, 8, FTW_DEPTH | FTW_PHYS) != 0) ok = false;
+		if ((slash = strrchr(dir, '/'))) {
+			*slash = '\0';
+			if (strcmp(dir, top) != 0) rmdir(dir);     /* only when empty */
+		}
+	}
+	fprintf(stderr, "muse: deleted book %s%s\n", b->name, ok ? "" : " (some files stayed)");
+	return ok;
+}
+
 /* X on a book (plorpos-5eq.11): Mark as Complete and Mark as Unread, by
  * what it is now, and for an Audiobookshelf book its download first - get
- * it, cancel it, or delete the copy (plorpos-9rf.6). */
-static void muse_book_menu(app *a, int al)
+ * it, cancel it, or delete the copy (plorpos-9rf.6). A Local Books book can
+ * be deleted from the card, last and asked about (plorpos-5tm.13). True when
+ * that rebuilt the library: every album index the caller holds is stale, and
+ * it lets go as for Rescan Folder (MUSE_REBUILT). */
+static bool muse_book_menu(app *a, int al)
 {
-	enum { B_DL, B_DLCANCEL, B_DLDEL, B_DONE, B_UNREAD };
-	const char *labels[3], *heading = g_muse.albums[al].name;
-	int act[3], n = 0, st = book_state(al), k;
+	enum { B_DL, B_DLCANCEL, B_DLDEL, B_DONE, B_UNREAD, B_DEL };
+	const char *labels[4], *heading = g_muse.albums[al].name;
+	int act[4], n = 0, st = book_state(al), k;
 
 	if (g_muse_abs) {
 		if (abs_book_downloading(al)) { heading = "Downloading"; labels[n] = "Cancel Downloads"; act[n++] = B_DLCANCEL; }
@@ -15302,7 +15353,8 @@ static void muse_book_menu(app *a, int al)
 	}
 	if (st != 2) { labels[n] = "Mark as Complete"; act[n++] = B_DONE; }
 	if (st != 0) { labels[n] = "Mark as Unread"; act[n++] = B_UNREAD; }
-	if ((k = muse_pick_run(a, heading, labels, n)) < 0) return;
+	if (!g_muse_abs) { labels[n] = "Delete Book"; act[n++] = B_DEL; }
+	if ((k = muse_pick_run(a, heading, labels, n)) < 0) return false;
 	switch (act[k]) {
 	case B_DLCANCEL: abs_download_cancel(); muse_toast("Download cancelled"); break;
 	case B_DLDEL:    abs_delete_book(al);   muse_toast("Download deleted"); break;
@@ -15318,7 +15370,19 @@ static void muse_book_menu(app *a, int al)
 		if (act[k] == B_DONE) book_finish(al); else book_unread(al);
 		muse_toast(act[k] == B_DONE ? "Marked as complete" : "Marked as unread");
 		break;
+	case B_DEL: {
+		bool ok;
+
+		if (!confirm_panel(a, "Delete Book", g_muse.albums[al].name, "Delete")) break;
+		if (muse_playing_album(NULL) == al) musec_stop();
+		wait_panel(a, "Delete Book", "Deleting...");
+		ok = book_delete(al);
+		rescan_all(a);
+		muse_toast(ok ? "Book deleted" : "Some files could not be deleted");
+		return true;
 	}
+	}
+	return false;
 }
 
 /* A server's download under way, for the line under the cover. */
@@ -15527,7 +15591,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		if (!g_muse_pod && !ts->pl && ts->album >= 0 && g_muse.albums[ts->album].book &&
 		    a->in.pressed[IN_X]) {
-			muse_book_menu(a, ts->album);
+			if (muse_book_menu(a, ts->album)) { how = MUSE_REBUILT; break; }
 			continue;
 		}
 		/* A playlist's own keys (owner): X is the track's menu - Add to
@@ -16681,7 +16745,7 @@ static muse_exit muse_book_list(app *a, int which)
 			if (in_repeat(&a->in, IN_R1))   sel = gl_page_step(sel, c.n, g.rows, +1);
 			gl_scroll_apply(&gs, &sel, c.n);
 			if (a->in.pressed[IN_X]) {
-				muse_book_menu(a, al[sel]);
+				if (muse_book_menu(a, al[sel])) { how = MUSE_REBUILT; break; }
 				ui_redraw_now();
 				continue;
 			}
@@ -17408,7 +17472,11 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (a->in.pressed[IN_X] && albums && n > 0 && !g_muse_pod && v->album &&
 		    g_muse.albums[v->album[v->cursor]].book) {
-			muse_book_menu(a, v->album[v->cursor]);
+			if (muse_book_menu(a, v->album[v->cursor])) {
+				if (!(v = muse_shelf_refind(a))) break;
+				synced = -1;
+				muse_artists_build();
+			}
 			ui_redraw_now();
 			continue;
 		}
