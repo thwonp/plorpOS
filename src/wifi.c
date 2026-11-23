@@ -203,6 +203,23 @@ static void dhcp_after_join(void)
 }
 #endif
 
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
+/* Network time on BaseOS (plorpos-2wl.25): its own ntpd supervisor, switched
+ * with Wi-Fi. A never-set clock reads 1970 and every https download fails
+ * until it is right; with Wi-Fi off nothing is left waking every 5 s for a
+ * route. timedatectl keeps the choice in /data, and BaseOS starts it again at
+ * the next boot. In the background: the menu never waits on it. The Zero 40
+ * has no timedatectl, so there it does nothing. */
+static void net_time(bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"/usr/bin/timedatectl set-ntp true > /dev/null 2>&1 &"
+		: (char *)"/usr/bin/timedatectl set-ntp false > /dev/null 2>&1 &", NULL };
+
+	if (access("/usr/bin/timedatectl", X_OK) == 0) run(argv, NULL, 0);
+}
+#endif
+
 bool wifi_up(void)
 {
 	char out[128];
@@ -283,6 +300,7 @@ bool wifi_up(void)
 		    strstr(out, "PONG")) {
 #if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40)
 			dhcp_after_join();
+			net_time(true);
 #else
 			/* The scan can finish before auto-association. Start the vendor
 			 * DHCP client now; its retries wait for the link without a UI poll. */
@@ -322,6 +340,7 @@ void wifi_down(void)
 
 	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
 	lease_drop();
+	net_time(false);
 #if defined(PLATFORM_ROTATE)
 	/* And the radio with it: wlan0 down is what stops the firmware - 188 mA
 	 * connected and idle, 121 mA down, and unloading the driver as well only

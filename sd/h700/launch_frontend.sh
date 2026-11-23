@@ -49,6 +49,12 @@ echo "plorpOS on $BASEOS_MODEL, BaseOS $BASEOS_VERSION, uptime $(cut -d' ' -f1 /
 WIFI=0
 [ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
 WPA_CONF=$TORTOS_USERDATA/wpa_supplicant.conf
+# Network time with Wi-Fi (plorpos-2wl.25): BaseOS's ntpd supervisor waits for
+# the link itself. A never-set clock reads 1970, and every https download fails
+# until it is right. Off with Wi-Fi off; the launcher switches it with Wi-Fi.
+if [ -x /usr/bin/timedatectl ]; then
+	if [ "$WIFI" = 1 ]; then timedatectl set-ntp true; else timedatectl set-ntp false; fi > /dev/null 2>&1 &
+fi
 if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	(
 		i=0
