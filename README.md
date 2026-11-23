@@ -132,7 +132,7 @@ The PIN is new every time you open Over The Hare.
 | **L1/R1** | Jump a screenful |
 | **MENU** | Settings for the device, or for the shelf you're in |
 | **SELECT** | Muse+, the music and audiobook player. Press it again to close |
-| **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's or Mini Flip's lid is a tap (Flip: **Lid Close** in System Settings turns that off) |
+| **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's, RG34xxSP's, RG35XX SP's or Mini Flip's lid is a tap (Flip: **Lid Close** in System Settings turns that off) |
 
 **In a game,** MENU opens the in-game menu and holding it opens the game switcher. SELECT in that menu opens Muse+. A tap of POWER saves and sleeps; holding it saves and turns the device off.
 

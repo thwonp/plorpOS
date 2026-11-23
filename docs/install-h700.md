@@ -159,7 +159,7 @@ Native PICO-8 has no save states or rewind.
   Time, or secure downloads fail (Splore's carts, for one).
 - **USB DACs** work on every model. BaseOS on the RG35XX H and RG35XX SP has no
   USB audio driver, so plorpOS loads its own when it starts.
-- **The lid** (RG SP, RG34xxSP): closing it sleeps, like a tap of POWER, and opening it wakes
+- **The lid** (RG SP, RG34xxSP, RG35XX SP): closing it sleeps, like a tap of POWER, and opening it wakes
   the device from that sleep. Once it has gone on into a deep sleep, only
   POWER wakes it.
 - **Logs** are in `.userdata/<device>/logs/` on the plorpOS card.
