@@ -390,6 +390,11 @@ Audiobookshelf).
 | **Y** | the play mode (music) |
 | **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
 
+**Now-Playing Layout** in Playback Settings picks how the screen is laid out.
+`Longer Titles` (the default) puts the title, artist and album across the top,
+the title on up to two lines, with the cover and the progress bar under them.
+`Original` keeps the words beside the cover, sliding when they are too long.
+
 L1, R1, L2, R2, the D-pad and a stick's directions can be changed under
 **Hotkeys** in Playback Settings: each takes Play/Pause, Skip Forward, Skip
 Backward, Next Track, Previous Track or None, and several buttons can share

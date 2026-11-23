@@ -58,6 +58,7 @@ slots-0            --screen games --slots 0
 slots-wide         --screen games --slots 2 1.78
 nowplaying         --nowplaying 0 1 30
 nowplaying-paused  --nowplaying 0 1 30 --paused
+nowplaying-orig    --nowplaying 0 1 30 --np-original
 EOF
 # More, one per line in the same form (SHOT_EXTRA="name args\n...").
 [ -z "${SHOT_EXTRA:-}" ] || printf '%s\n' "$SHOT_EXTRA" >> "$OUT/.list"

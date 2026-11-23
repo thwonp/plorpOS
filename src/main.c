@@ -10258,6 +10258,16 @@ static bool auto_rewind_on(void)
 	return g_auto_rewind;
 }
 
+/* Playback Settings' Now-Playing Layout (plorpos-5eq.24), db "muse.nplayout":
+ * 0 Longer Titles, the default; 1 Original. Read once. */
+static int g_np_long = -1;
+
+static bool np_layout_long(void)
+{
+	if (g_np_long < 0) g_np_long = db_get_int(db_dev(), "muse.nplayout", 0) == 0;
+	return g_np_long;
+}
+
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
 {
@@ -10291,8 +10301,10 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	rows[5] = (menu_row){ "Hotkeys", NULL, true };
-	return 6;
+	/* Now Playing's two layouts (owner, plorpos-5eq.24). */
+	rows[5] = (menu_row){ "Now-Playing Layout", np_layout_long() ? "Longer Titles" : "Original", true };
+	rows[6] = (menu_row){ "Hotkeys", NULL, true };
+	return 7;
 }
 
 /* Hotkeys, from Playback Settings (owner, plorpos-5eq.6): a row a button
@@ -10392,7 +10404,11 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
-	if (sel == 5 && key == IN_ACCEPT) muse_hotkeys_screen(a);
+	if (sel == 5 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		g_np_long = !np_layout_long();
+		db_set_int(db_dev(), "muse.nplayout", !g_np_long);
+	}
+	if (sel == 6 && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -13760,13 +13776,40 @@ static void chapter_label(int i, char *out, size_t n)
 	else            snprintf(out, n, "Chapter %d", i + 1);
 }
 
+/* `s` broken at spaces onto up to `max` lines of `w`; what the last line
+ * cannot hold ends in dots (ui_fit_text). Returns the lines used. */
+static int np_wrap(TTF_Font *f, const char *s, int w, char out[][200], int max)
+{
+	int n = 0;
+
+	while (n < max) {
+		size_t len = strlen(s), cut = 0, i;
+		char tmp[256];
+
+		if (n == max - 1 || ui_text_width(f, s) <= w) {
+			ui_fit_text(f, s, out[n++], 200, w);
+			break;
+		}
+		for (i = 1; i < len && i < sizeof tmp; i++) {
+			if (s[i] != ' ') continue;
+			snprintf(tmp, sizeof tmp, "%.*s", (int)i, s);
+			if (ui_text_width(f, tmp) > w) break;
+			cut = i;
+		}
+		if (!cut) { ui_fit_text(f, s, out[n++], 200, w); break; }   /* one long word */
+		snprintf(out[n++], 200, "%.*s", (int)cut, s);
+		s += cut + 1;
+	}
+	return n;
+}
+
 /* One line of the words, sliding when it is wider than the column. */
-static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int y,
+static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int tw, int y,
                     unsigned phase, SDL_Color col, unsigned *wait)
 {
-	unsigned w = ui_pingpong_wait(ui_text_width(f, s) - NP_TW, phase);
+	unsigned w = ui_pingpong_wait(ui_text_width(f, s) - tw, phase);
 
-	ui_text_marquee(r, f, s, NP_TX, y, NP_TW, phase, col);
+	ui_text_marquee(r, f, s, x, y, tw, phase, col);
 	if (w < *wait) *wait = w;
 }
 
@@ -13812,6 +13855,89 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
 	char t0[16], t1[16], line[200], fit[200];
 	int y, bar, fill, left, right;
+	/* Where things go, by Playback Settings' Now-Playing Layout (owner,
+	 * plorpos-5eq.24).
+	 *
+	 * Original: the cover with the words beside it - under it in portrait -
+	 * each on one line, sliding when it is too long for its half.
+	 *
+	 * Longer Titles: title, artist and album centered across the top, the
+	 * battery's width as margin either side; the title on up to two lines,
+	 * artist and album on one, cut with dots. Under them the cover on the
+	 * left half and beside it a stack - the count and mode, the Source, the
+	 * bar, Next on up to three lines - centered on the cover's height. In
+	 * portrait the stack goes under the cover instead. */
+	bool lng = np_layout_long();
+	int tx = NP_TX, tw = NP_TW;          /* the three lines */
+	int cx = NP_TX, cw = NP_TW;          /* the stack's column */
+	int ly, ty, sx, sy, ny;              /* label, title, Source, Next */
+	char wl[3][2][200], chap[128];
+	int wn[3] = { 1, 1, 1 };
+	/* A chapter with a title of its own is what is playing; one that is
+	 * only a number leaves the book's title there. */
+	const char *top = mn->title;
+
+	if (musec_is_book() && musec_chapters() > 1) {
+		chapter_label(musec_chapter_now() < 0 ? 0 : musec_chapter_now(), chap, sizeof chap);
+		if (strncmp(chap, "Chapter ", 8) != 0) top = chap;
+	}
+
+	if (!lng) {
+		sx = cov.x;
+		sy = cov.y + cov.h + NP_SRC_GAP;
+		if (UI_PORTRAIT) {
+			ly = sy + ui_font_line(UI_F_META) + 28;
+			ty = ly + ui_font_line(UI_F_META) + 24;
+			bar = ty + ui_font_line(UI_F_TITLE) + 10 + 2 * ui_font_line(UI_F_MENU) + 36;
+			ny = bar + 16 + ui_font_line(UI_F_META) + 24;
+		} else {
+			ly = NP_Y + 36;
+			ty = ly + ui_font_line(UI_F_META) + 24;
+			bar = NP_Y + NP_SIDE - 132;
+			ny = NP_Y + NP_SIDE - ui_font_height(UI_F_META);
+		}
+	} else {
+		int m = 10 + 2 * (ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6);  /* draw_battery's disc and its gap */
+		int lm = ui_font_line(UI_F_META);
+		/* Next's three lines are always allowed for, so the stack stays put. */
+		int stack = 6 * lm + UI_BAR_H + 16 + 28 + 16 + 24;
+		int words, ctop, room, side;
+
+		tx = m;
+		tw = TORTOS_SCREEN_W - 2 * m;
+		wn[0] = np_wrap(ui_font(UI_F_TITLE), top, tw, wl[0], 2);
+		wn[1] = np_wrap(ui_font(UI_F_MENU), mn->artist, tw, wl[1], 1);
+		wn[2] = np_wrap(ui_font(UI_F_MENU), mn->album, tw, wl[2], 1);
+		words = wn[0] * ui_font_line(UI_F_TITLE) + 10 + 2 * ui_font_line(UI_F_MENU);
+		/* The cover's place allows for the title's two lines always, so it
+		 * is one size on every track. */
+		ctop = 20 + 2 * ui_font_line(UI_F_TITLE) + 10 + 2 * ui_font_line(UI_F_MENU) + 24;
+		if (UI_PORTRAIT) {
+			/* Above the buttons' two lines there (np_help). */
+			room = NP_HELP_Y - lm - 4 - 28 - ctop;
+			side = NP_SIDE;
+			if (side + 28 + stack > room) side = room - 28 - stack;
+			cov = (SDL_Rect){ (TORTOS_SCREEN_W - side) / 2,
+			                  ctop + (room - side - 28 - stack) / 2, side, side };
+			cx = cov.x;
+			cw = side;
+			ly = cov.y + side + 28;
+		} else {
+			room = NP_HELP_Y - 28 - ctop;
+			side = TORTOS_SCREEN_W / 2 - m - 28;
+			if (side > room) side = room;
+			cov = (SDL_Rect){ m, ctop + (room - side) / 2, side, side };
+			cx = m + side + 56;
+			cw = TORTOS_SCREEN_W - m - cx;
+			ly = cov.y + (side - stack) / 2;
+		}
+		/* The words centered between the screen's top and the cover's. */
+		ty = (cov.y - words) / 2;
+		sx = cx;
+		sy = ly + lm + 16;
+		bar = sy + lm + 28;
+		ny = bar + 16 + lm + 24;
+	}
 
 	/* A book played to its end says so, rather than that it stopped. */
 	if (mn->state == MU_STOPPED && book >= 0 && g_book_done && g_book_done[book])
@@ -13840,7 +13966,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	/* Title, artist and album slide together when they are too long, on one
 	 * clock that starts over with each track. */
 	phase = mq_phase(MQ_NP, mn->index, (int)strlen(mn->title));
-	y = UI_PORTRAIT ? cov.y + cov.h + NP_SRC_GAP + ui_font_line(UI_F_META) + 28 : NP_Y + 36;
+	y = ly;
 	/* Where the track comes from, under the cover at its left edge (owner,
 	 * plorpos-1lw.10): the playing track's own source, not the one being
 	 * browsed - a Plex queue keeps playing when Source goes back to Local.
@@ -13852,7 +13978,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		ui_text(r, fs, plex_is_path(src) ? "Source: Plex"
 		               : abs_is_path(src) ? "Source: Audiobookshelf"
 		               : pod_is_path(src) ? "Source: Podcasts" : "Source: Local",
-		        cov.x, cov.y + cov.h + NP_SRC_GAP, -1, UI_TEXT_DIM);
+		        sx, sy, -1, UI_TEXT_DIM);
 	}
 	{
 		/* Where in the queue, and the mode it is playing in beside it. The
@@ -13866,7 +13992,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		 * depth below the baseline that "1 of 12" never uses, so its middle
 		 * sat the mark 3.5px low on the device. Cap height from 'H', as the
 		 * Wi-Fi panel does. */
-		int th = ui_font_height(UI_F_META), gs = th * 3 / 2, gx = NP_TX;
+		int th = ui_font_height(UI_F_META), gs = th * 3 / 2, gx = cx;
 		/* No mark on a book: it plays in order, whatever the mode. */
 		int g = musec_is_book() ? -1 : MUSE_MODES[musec_mode()].glyph;
 		int asc = fs ? ui_font_ascent(fs) : th;
@@ -13875,12 +14001,12 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		if (musec_is_book() && musec_chapters() > 1) {
 			snprintf(line, sizeof line, "Chapter %d of %d",
 			         musec_chapter_now() + 1, musec_chapters());
-			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
+			gx += ui_text(r, fs, line, cx, y, -1, UI_TEXT_DIM) + 18;
 		} else if (mn->count > 1) {
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
 			/* Not tabular: it changes with the track, not every second,
 			 * and a 1 in a fixed-width cell read as "1 of  14". */
-			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
+			gx += ui_text(r, fs, line, cx, y, -1, UI_TEXT_DIM) + 18;
 		}
 		if (g >= 0) {
 			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
@@ -13906,41 +14032,44 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
-	y += ui_font_line(UI_F_META) + 24;
-	{
-		/* A chapter with a title of its own is what is playing; one that
-		 * is only a number leaves the book's title there. */
-		char chap[128];
-		const char *top = mn->title;
+	y = ty;
+	if (!lng) {
+		np_line(r, ui_font(UI_F_TITLE), top, tx, tw, y, phase, UI_TEXT, &wait);
+		y += ui_font_line(UI_F_TITLE) + 10;
+		np_line(r, ui_font(UI_F_MENU), mn->artist, tx, tw, y, phase, UI_TEXT_SOFT, &wait);
+		y += ui_font_line(UI_F_MENU);
+		np_line(r, ui_font(UI_F_MENU), mn->album, tx, tw, y, phase, UI_TEXT_DIM, &wait);
+	} else {
+		static const ui_font_role WF[3] = { UI_F_TITLE, UI_F_MENU, UI_F_MENU };
+		const SDL_Color wc[3] = { UI_TEXT, UI_TEXT_SOFT, UI_TEXT_DIM };
+		int i, j;
 
-		if (musec_is_book() && musec_chapters() > 1) {
-			chapter_label(musec_chapter_now() < 0 ? 0 : musec_chapter_now(), chap, sizeof chap);
-			if (strncmp(chap, "Chapter ", 8) != 0) top = chap;
+		(void)phase;
+		for (i = 0; i < 3; i++) {
+			for (j = 0; j < wn[i]; j++) {
+				ui_text(r, ui_font(WF[i]), wl[i][j], tx + tw / 2, y, 0, wc[i]);
+				y += ui_font_line(WF[i]);
+			}
+			if (i == 0) y += 10;
 		}
-		np_line(r, ui_font(UI_F_TITLE), top, y, phase, UI_TEXT, &wait);
 	}
-	y += ui_font_line(UI_F_TITLE) + 10;
-	np_line(r, ui_font(UI_F_MENU), mn->artist, y, phase, UI_TEXT_SOFT, &wait);
-	y += ui_font_line(UI_F_MENU);
-	np_line(r, ui_font(UI_F_MENU), mn->album, y, phase, UI_TEXT_DIM, &wait);
 
 	/* Where in the track. What is left rather than the whole length on the
 	 * right, because the question is usually how long until the next one. */
-	bar = UI_PORTRAIT ? y + ui_font_line(UI_F_MENU) + 36 : NP_Y + NP_SIDE - 132;
-	ui_round_rect(r, &(SDL_Rect){ NP_TX, bar, NP_TW, UI_BAR_H }, UI_BAR_H / 2,
+	ui_round_rect(r, &(SDL_Rect){ cx, bar, cw, UI_BAR_H }, UI_BAR_H / 2,
 	              (SDL_Color){ 255, 255, 255, 34 });
-	fill = (int)(NP_TW * (k < 0 ? 0 : k > 1 ? 1 : k) + 0.5);
+	fill = (int)(cw * (k < 0 ? 0 : k > 1 ? 1 : k) + 0.5);
 	if (fill > 0)
-		ui_round_rect(r, &(SDL_Rect){ NP_TX, bar, fill, UI_BAR_H }, UI_BAR_H / 2,
+		ui_round_rect(r, &(SDL_Rect){ cx, bar, fill, UI_BAR_H }, UI_BAR_H / 2,
 		              state ? ui_fade(acc, 0.45f) : acc);
 	/* Tabular, so the clock ticking does not move what sits beside it. */
 	mmss(t0, sizeof t0, mn->at);
-	left = NP_TX + ui_text_tabular(r, fs, t0, NP_TX, bar + 16, -1, UI_TEXT_SOFT);
-	right = NP_TX + NP_TW;
+	left = cx + ui_text_tabular(r, fs, t0, cx, bar + 16, -1, UI_TEXT_SOFT);
+	right = cx + cw;
 	if (mn->len > 0) {
 		mmss(t1, sizeof t1, mn->len > mn->at ? mn->len - mn->at : 0);
 		snprintf(line, sizeof line, "-%s", t1);
-		right -= ui_text_tabular(r, fs, line, NP_TX + NP_TW, bar + 16, 1, UI_TEXT_SOFT);
+		right -= ui_text_tabular(r, fs, line, cx + cw, bar + 16, 1, UI_TEXT_SOFT);
 	}
 	/* Between the two times rather than on the column's middle, which a book's
 	 * hours pushed them into: "16:54:47Stopped". */
@@ -13948,11 +14077,16 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 
 	if (next && next[0]) {
 		snprintf(line, sizeof line, "Next: %s", next);
-		ui_fit_text(fs, line, fit, sizeof fit, NP_TW);
-		ui_text(r, fs, fit, NP_TX,
-		        UI_PORTRAIT ? bar + 16 + ui_font_line(UI_F_META) + 24
-		                    : NP_Y + NP_SIDE - ui_font_height(UI_F_META), -1,
-		        UI_TEXT_DIM);
+		if (!lng) {
+			ui_fit_text(fs, line, fit, sizeof fit, cw);
+			ui_text(r, fs, fit, cx, ny, -1, UI_TEXT_DIM);
+		} else {
+			char nl[3][200];
+			int i, n = np_wrap(fs, line, cw, nl, 3);
+
+			for (i = 0; i < n; i++)
+				ui_text(r, fs, nl[i], cx, ny + i * ui_font_line(UI_F_META), -1, UI_TEXT_DIM);
+		}
 	}
 
 	/* The buttons as Hotkeys has them: pairs that change track, pairs that
@@ -22078,7 +22212,7 @@ static const char *shot_kb_title = "Wi-Fi password";
 static int shot_slots, shot_slot_sel;
 static int shot_jump;               /* letter-jumps to apply before drawing */
 /* --nowplaying ALBUM [TRACK [SECONDS]], and --paused with it. */
-static int   shot_np = -1, shot_np_track, shot_np_paused;
+static int   shot_np = -1, shot_np_track, shot_np_paused, shot_np_original;
 static float shot_np_at = 83.0f;
 /* --mode NAME plays whatever the shot shows in that play mode: the mark beside
  * the track count is drawn from it. */
@@ -22142,6 +22276,12 @@ static void np_shot(app *a)
 	char next[128] = "";
 	int ar, t;
 
+	/* The boot scan runs behind the shelf now: a shot waits for it. */
+	if (g_walk_thread) {
+		SDL_WaitThread(g_walk_thread, NULL);
+		g_walk_thread = NULL;
+		muse_install(a);
+	}
 	if (shot_np < 0 || shot_np >= g_muse.nalbums) return;
 	al = &g_muse.albums[shot_np];
 	t = shot_np_track < al->n ? shot_np_track : al->n - 1;
@@ -22172,6 +22312,7 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
+	if (shot_np_original) g_np_long = 0;
 	np_draw(a, &mn, next, muse_hold());
 }
 
@@ -22867,6 +23008,7 @@ int main(int argc, char *argv[])
 				shot_np_at = (float)atof(argv[++i]);
 		}
 		else if (!strcmp(argv[i], "--paused")) shot_np_paused = 1;
+		else if (!strcmp(argv[i], "--np-original")) shot_np_original = 1;   /* Now-Playing Layout: Original */
 		else if (!strcmp(argv[i], "--mode") && i + 1 < argc) shot_mode = argv[++i];
 		else if (!strcmp(argv[i], "--gamelist") && i + 1 < argc) shot_gl = argv[++i];
 		else if (!strcmp(argv[i], "--sysmove") && i + 1 < argc)
