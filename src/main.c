@@ -7645,6 +7645,40 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 	}
 }
 
+#if defined(PLATFORM_ROTATE)
+/* session.sh put a new device tree on /boot (plorpos-5eq.25), which U-Boot
+ * reads only at boot: say so, then restart once to take it. launch.sh turns
+ * TORTOS_REBOOT_FLAG into the reboot, as it does the power-off flag. */
+#define SYSTEM_UPDATED "/run/plorpos/system-updated"
+#define TORTOS_REBOOT_FLAG "/tmp/tortos_reboot"
+
+static void restart_if_updated(app *a)
+{
+	menu_row rows[1];
+	unsigned t0 = plat_now_ms();
+	ui_pace pace = {0};
+	FILE *f;
+
+	if (unlink(SYSTEM_UPDATED) != 0) return;
+	rows[0] = MENU_NOTE("Restarting…");
+	fprintf(stderr, "system: updated, restarting\n");
+	while (plat_now_ms() - t0 < 2000) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) break;
+		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
+		draw_shelf(a);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
+		SDL_RenderFillRect(a->r, NULL);
+		menu_draw(a, "System updated", rows, 1, -1, 0, MENU_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	if ((f = fopen(TORTOS_REBOOT_FLAG, "w"))) fclose(f);
+	a->running = false;
+}
+#endif
+
 /* ---- the menu runner (ADR-0001) --------------------------------------- */
 
 /* Wi-Fi is the largest menu: the switch, WIFI_MAX_NETS networks, a rule and a
@@ -24022,7 +24056,13 @@ int main(int argc, char *argv[])
 		if (screen_draw_due(&a, &pace, 0)) {
 			tick_tint(&a);
 			render(&a);
-			if (!first_frame) { t_mark("first frame"); first_frame = true; }
+			if (!first_frame) {
+				t_mark("first frame");
+				first_frame = true;
+#if defined(PLATFORM_ROTATE)
+				restart_if_updated(&a);
+#endif
+			}
 			if (g_ft) {
 				bool sys = a.screen == SCREEN_SYSTEMS;
 				ft_frame(sys ? "systems" : a.sys.systems[a.sys_cursor].name, ft0, ft1, ft_us(),

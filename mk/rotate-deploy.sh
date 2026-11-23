@@ -43,6 +43,10 @@ stage() {
 	cp "$B/tortos.elf" "$S/"
 	[ -f "$DIATOM" ] && cp "$DIATOM" "$S/diatom"
 	cp "$ROOT/sd/rotate/session.sh" "$ROOT/sd/rotate/launch.sh" "$ROOT/sd/rotate/sway.conf" "$S/rotate/"
+	# base618's device tree, which session.sh puts on /boot over the one every
+	# card so far shipped (plorpos-5eq.25: the swivel wakes from deep sleep).
+	mkdir -p "$S/rotate/boot"
+	cp "$ROOT/sd/rotate/boot/ums512-rg-rotate.dtb" "$S/rotate/boot/"
 	cp "$ROOT/sd/rotate/portmaster/"* "$S/rotate/portmaster/"
 	# PortMaster itself, unpacked on first use (plorpos-3yv.86.4; mk/fetch-vendor.sh).
 	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
