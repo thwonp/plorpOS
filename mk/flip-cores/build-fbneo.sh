@@ -27,7 +27,7 @@ if [ -n "$SUB" ]; then
 	dk "src/$D" "make $A generate-files" > "$W/logs/fbneo-$SUB-generate.log" 2>&1 || true
 	grep -q . "$W/src/$D/../../dep/generated/driverlist.h"
 	# Which sets this family core plays, for the launcher's set -> core map
-	# (res/nano/maps/fbneo-family.txt = sort -u of the two out/*.sets files).
+	# (sd/miyoo/fbneo-family.txt = sort -u of the two out/*.sets files).
 	awk -F'|' -v f="$SUB" 'NF > 3 { n = $2; st = $3; gsub(/ /, "", n); gsub(/ /, "", st)
 		if (n != "" && n != "name" && st !~ /X/) print n ".zip\t" f }' "$W/src/fbneo/gamelist.txt" > "$W/out/fbneo_$SUB.sets"
 fi

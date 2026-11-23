@@ -5,8 +5,8 @@ cd "$(dirname "$0")"
 W=../../build/flip-cores
 mkdir -p "$W/logs"
 : > "$W/logs/all.out"
-for c in fbalpha2012 fbalpha2012_neogeo mednafen_pce_fast gambatte \
-         picodrive snes9x2005_plus fceumm gpsp fake08 race mednafen_ngp mednafen_supafaust mame2000 pcsx dropbear \
+for c in mednafen_pce_fast gambatte \
+         picodrive snes9x2005_plus fceumm gpsp fake08 race mednafen_ngp mednafen_supafaust pcsx dropbear \
          fbneo fbneo:cps12 fbneo:neogeo; do
   s=$(date +%s)
   # name:arg = one script, one argument (FBNeo's family cores)

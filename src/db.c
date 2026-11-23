@@ -143,6 +143,12 @@ static const db_default library_defaults[] = {
 	 * A game with no BIOS dipswitch keeps its own default BIOS - FBNeo hides
 	 * the option for it. */
 	{ "coreopt.NEOGEO.fbneo-neogeo-mode", "AES_EUR" },
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's FBNeo runs the 68000 on Cyclone (ARM assembly; the core's default is its C emulator): CPS-1 and
+	 * CPS-2 hold full speed with it and not without. On from the first FBNeo release there, because a state made
+	 * with one 68000 crashes the other and nothing in the state says which made it (plorpos-f1p.95.7, .12). */
+	{ "coreopt..fbneo-cyclone", "enabled" },
+#endif
 #if defined(PLATFORM_GKD)
 	/* PlayStation 3D at twice the resolution, on the GKD only: a 1600-wide
 	 * panel shows the difference and its A72s can afford it. The Brick's

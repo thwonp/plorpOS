@@ -77,11 +77,9 @@ The PIN is new every time you open Over The Hare.
 | Game Boy Advance | gpSP |
 | Genesis, Master System, Game Gear, Sega CD, 32X | PicoDrive |
 | TurboGrafx-16 | Beetle PCE Fast |
-| Neo Geo | FB Alpha 2012 Neo Geo |
+| Arcade, Neo Geo | FinalBurn Neo |
 | Neo Geo Pocket, Neo Geo Pocket Color | RACE, or Beetle NeoPop per game |
 | PlayStation | PCSX ReARMed |
-| Arcade (FBA 2012) | FB Alpha 2012 |
-| Arcade (MAME 2000) | MAME 2000 |
 | Pico-8 | fake-08, or PICO-8 itself (see "Native PICO-8") |
 
 A shelf with two cores has a **Core** row in its shelf menu, set per game: it
@@ -170,11 +168,12 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 
 ## Limits
 
-- **Arcade** is two shelves, each its own folder: `Arcade (FBA 2012)` (the
-  FBA 2012 core: CPS1, CPS2 and more) and `Arcade (MAME 2000)` (MAME 0.37 sets;
-  on the test card 122 of 152 loaded, the rest being BIOS archives, Neo Geo and
-  newer boards that core predates). A ROM set must match its core's version.
-- **Neo Geo** runs on the small FBA 2012 Neo Geo core.
+- **Arcade** and **Neo Geo** run on FinalBurn Neo; ROM sets must match it.
+  Arcade games go in `Roms/Arcade`. Earlier releases had `Arcade (FBA 2012)` and
+  `Arcade (MAME 2000)` shelves: those folders are no longer read, so move the
+  sets you want to `Roms/Arcade`. Save states from the old cores do not load.
+- The largest Neo Geo sets (The King of Fighters '98 and up) need more memory
+  than the Flip has and do not start.
 - **PlayStation** is **experimental**: it held full speed in testing, but only
   one game (Ace Combat 2) was checked at length, and memory is tight, so other
   titles may not run as well. Rewind is not offered for it.
