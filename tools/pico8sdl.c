@@ -42,6 +42,19 @@ int SDL_InitSubSystem(uint32_t flags)
 	return real ? real(flags & ~SDL_INIT_SENSOR) : -1;
 }
 
+/* The Raspberry Pi build sets SDL_VIDEODRIVER=rpi for -pixel_perfect 0 (the
+ * Aspect mode): "forcing driver to rpi for pixel_perfect:0". No SDL of ours
+ * has that driver, and SDL_Init failed with "rpi not available"
+ * (plorpos-2wl.16). Leaving it unset keeps SDL's own pick, the launcher's. */
+int setenv(const char *name, const char *value, int overwrite)
+{
+	static int (*real)(const char *, const char *, int);
+
+	if (!strcmp(name, "SDL_VIDEODRIVER") && !strcmp(value, "rpi")) return 0;
+	if (!real) real = (int (*)(const char *, const char *, int))dlsym(RTLD_NEXT, "setenv");
+	return real ? real(name, value, overwrite) : -1;
+}
+
 /* SDL2's SDL_AudioSpec, which this file does without the headers for. */
 typedef struct {
 	int      freq;
