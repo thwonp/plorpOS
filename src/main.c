@@ -13865,7 +13865,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * battery's width as margin either side; the title on up to two lines,
 	 * artist and album on one, cut with dots. Under them the cover on the
 	 * left half and beside it a stack - the count and mode, the Source, the
-	 * bar, Next on up to three lines - centered on the cover's height. In
+	 * bar, Next on up to two lines - centered on the cover's height. In
 	 * portrait the stack goes under the cover instead. */
 	bool lng = np_layout_long();
 	int tx = NP_TX, tw = NP_TW;          /* the three lines */
@@ -13899,8 +13899,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	} else {
 		int m = 10 + 2 * (ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6);  /* draw_battery's disc and its gap */
 		int lm = ui_font_line(UI_F_META);
-		/* Next's three lines are always allowed for, so the stack stays put. */
-		int stack = 6 * lm + UI_BAR_H + 16 + 28 + 16 + 24;
+		/* Next's two lines are always allowed for, so the stack stays put. */
+		int stack = 5 * lm + UI_BAR_H + 16 + 28 + 16 + 24;
 		int words, ctop, room, side;
 
 		tx = m;
@@ -14081,8 +14081,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			ui_fit_text(fs, line, fit, sizeof fit, cw);
 			ui_text(r, fs, fit, cx, ny, -1, UI_TEXT_DIM);
 		} else {
-			char nl[3][200];
-			int i, n = np_wrap(fs, line, cw, nl, 3);
+			char nl[2][200];
+			int i, n = np_wrap(fs, line, cw, nl, 2);
 
 			for (i = 0; i < n; i++)
 				ui_text(r, fs, nl[i], cx, ny + i * ui_font_line(UI_F_META), -1, UI_TEXT_DIM);
