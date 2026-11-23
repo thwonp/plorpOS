@@ -2193,6 +2193,41 @@ int plex_album_downloaded(int al)
 	return n;
 }
 
+/* Offline Mode's lists (plorpos-5tm.16): which albums have any track on the
+ * card, from the manifest - each copy it names looked at once, so the cost
+ * is the downloads, not the library. out: n flags, one per album. */
+void plex_albums_local(unsigned char *out, int n)
+{
+	char p[700], line[200], copy[1024];
+	FILE *in;
+
+	memset(out, 0, (size_t)n);
+	manifest_path(p, sizeof p);
+	pthread_mutex_lock(&g_man_mu);           /* rewritten by rename: this one stays whole */
+	in = fopen(p, "r");
+	pthread_mutex_unlock(&g_man_mu);
+	if (!in) return;
+	LOCK();
+	while (fgets(line, sizeof line, in)) {
+		int i = tab_find(&g_tab, atoi(line)), al = i >= 0 ? g_tab.tr[i].album : -1;
+
+		if (al >= 0 && al < n && !out[al] && local_copy(&g_tab.tr[i], copy, sizeof copy)) out[al] = 1;
+	}
+	UNLOCK();
+	fclose(in);
+}
+
+bool plex_track_local(int t)
+{
+	char p[1024];
+	bool yes;
+
+	LOCK();
+	yes = t >= 0 && t < g_tab.ntr && local_copy(&g_tab.tr[t], p, sizeof p);
+	UNLOCK();
+	return yes;
+}
+
 void plex_download_album(int al)
 {
 	int i;

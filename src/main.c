@@ -1324,6 +1324,31 @@ static const char *muse_net_why(void)
 	return net_online() ? NULL : "Device is offline";
 }
 
+static bool muse_offline_has(int al);
+static bool muse_offline_any(void);
+static muse_src muse_src_shown(void);
+static void muse_toast(const char *msg);
+
+/* An empty list's line, or in Offline Mode with nothing on the card, how to
+ * get some (owner). */
+static const char *muse_empty(const char *usual)
+{
+	return muse_src_offline() && !muse_offline_any() ? "Disable offline mode to download content" : usual;
+}
+
+/* "Offline Mode" for two seconds when Muse opens on a Source in it, or one
+ * is switched to - not again on reopening Muse on the same one (owner). */
+static void muse_offline_note(void)
+{
+	static int toasted = -1;
+	int s = (int)muse_src_shown();
+
+	if (!muse_src_offline()) { toasted = -1; return; }
+	if (toasted == s) return;
+	toasted = s;
+	muse_toast("Offline Mode");
+}
+
 /* No Plex on the Miyoo Flip (owner, 2026-11-21): a big library does not fit
  * its 103 MB next to the launcher - 47k tracks got it OOM-killed
  * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music. */
@@ -5040,6 +5065,15 @@ static void draw_systems(app *a)
 		 * kind the card has none of left out. */
 		int albums = ml_count(&g_muse, false), books = ml_count(&g_muse, true);
 		char al[32] = "", bk[32] = "";
+
+		if (muse_src_offline()) {          /* Offline Mode: what is on the card (5tm.16) */
+			albums = books = 0;
+			for (int i = 0; i < g_muse.nalbums; i++)
+				if (g_muse.albums[i].n > 0 && muse_offline_has(i)) {
+					if (g_muse.albums[i].book) books++;
+					else albums++;
+				}
+		}
 
 		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
 		if (books)  snprintf(bk, sizeof bk, g_muse_pod ? "%d episode%s" : "%d book%s", books, books == 1 ? "" : "s");
@@ -10973,7 +11007,10 @@ static menu_result abs_set_key(app *a, void *ctx, in_button key, int sel)
 
 	if (sel == AX_OFFLINE && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
 		muse_offline_set(MSRC_ABS, !abs_offline());
-		return MENU_STAY;
+		if (!g_muse_abs) return MENU_STAY;
+		muse_source_reload(a);             /* its lists, on the card or whole */
+		u->rebuilt = true;
+		return MENU_DONE;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
@@ -11182,7 +11219,10 @@ static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
 
 	if (sel == PDX_OFFLINE && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
 		muse_offline_set(MSRC_PODCASTS, !pod_offline());
-		return MENU_STAY;
+		if (!g_muse_pod) return MENU_STAY;
+		muse_source_reload(a);             /* its lists, on the card or whole */
+		u->rebuilt = true;
+		return MENU_DONE;
 	}
 	if (sel == PDX_AUTODEL && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
 		int v = pod_autodel();
@@ -11378,6 +11418,7 @@ static bool muse_source_pick(app *a)
 		}
 	}
 	muse_source_reload(a);
+	muse_offline_note();
 	return true;
 }
 
@@ -11552,7 +11593,13 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 	plex_set_ui *u = ctx;
 	int d = key == IN_LEFT ? -1 : key == IN_RIGHT || key == IN_ACCEPT ? 1 : 0;
 
-	if (sel == PX_OFFLINE && d) { muse_offline_set(MSRC_PLEX, !plex_offline()); return MENU_STAY; }
+	if (sel == PX_OFFLINE && d) {
+		muse_offline_set(MSRC_PLEX, !plex_offline());
+		if (!g_muse_plex) return MENU_STAY;
+		muse_source_reload(a);             /* its lists, on the card or whole */
+		u->rebuilt = true;
+		return MENU_DONE;
+	}
 	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_AHEAD && d) {
@@ -15035,6 +15082,13 @@ static void muse_playlists_load(void)
 	if (g_npls >= 0) return;
 	muse_pl_dir(d, sizeof d);
 	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
+	if (g_muse_plex && plex_offline()) {      /* Offline Mode: downloaded ones (5tm.16) */
+		int kept = 0;
+
+		for (int i = 0; i < g_npls; i++)
+			if (plex_pl_downloaded(g_pls[i].name)) g_pls[kept++] = g_pls[i];
+		g_npls = kept;
+	}
 	for (int i = 0; i < g_npls; i++)
 		snprintf(g_pl_val[i], sizeof g_pl_val[i], "%d", g_pls[i].n);
 }
@@ -15802,14 +15856,16 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 {
 	const ml_album *al;
 	muse_tset ts;
-	int *trk, i;
+	int *trk, i, n;
 	muse_exit how;
 
 	if (album < 0 || album >= g_muse.nalbums || g_muse.nartists == 0) return MUSE_BACK;
 	al = &g_muse.albums[album];
 	if (!(trk = calloc((size_t)al->n + 1, sizeof *trk))) return MUSE_BACK;
-	for (i = 0; i < al->n; i++) trk[i] = al->first + i;
-	ts = (muse_tset){ trk, al->n, album, al->name,
+	/* Offline Mode: a Plex album's tracks on the card only (owner). */
+	for (i = n = 0; i < al->n; i++)
+		if (!g_muse_plex || !plex_offline() || plex_track_local(al->first + i)) trk[n++] = al->first + i;
+	ts = (muse_tset){ trk, n, album, al->name,
 	                  g_muse.artists[muse_artist_of(album)].name, NULL, NULL };
 	how = muse_tset_run(a, &ts, now);
 	free(trk);
@@ -15910,6 +15966,7 @@ static void muse_src_follow(app *a)
 	muse_playlists_forget();
 	wait_panel(a, "Muse+", "Loading...");
 	muse_refresh(a);
+	muse_offline_note();
 	muse_adopt_orphan();            /* its files are the queue again, now that they are here */
 }
 
@@ -15924,7 +15981,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
 	if (g_muse_plex) plex_pass_note(a);
-	abs_progress_refresh();         /* places moved elsewhere, before a book opens */
+	if (!abs_offline()) abs_progress_refresh();   /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */
 	g_muse_sw = false;
@@ -15963,6 +16020,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
 	 * one left, whatever is playing (owner, plorpos-era.9). */
+	muse_offline_note();                /* "Offline Mode", once per Source (5tm.16) */
 #if defined(PLATFORM_RGDS)
 	/* From the secondary: Now Playing whenever something is queued, the
 	 * albums when nothing is (owner, plorpos-rgds.18.3). */
@@ -16052,11 +16110,13 @@ static sysview *muse_shelf_refind(app *a)
 		g_pod_view = -1;
 		muse_order_view(&a->view[muse]);
 	}
-	if (muse < 0 || a->view[muse].list.count <= 0) return NULL;
+	/* Offline Mode with nothing on the card: Muse still, empty, saying how to
+	 * get some (owner, plorpos-5tm.16). */
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline())) return NULL;
 	a->sys_cursor = muse;
 	a->screen = SCREEN_GAMES;
 	v = &a->view[muse];
-	if (v->cursor >= v->list.count) v->cursor = v->list.count - 1;
+	if (v->cursor >= v->list.count) v->cursor = v->list.count > 0 ? v->list.count - 1 : 0;
 	cf_reset(&v->cf, v->cursor);
 	return v;
 }
@@ -16269,14 +16329,16 @@ static void muse_tab_set(int t)
 
 /* The artists of the kind shown, with their album counts. Built again when
  * the library or the kind changes. */
-static struct { int *ix; char (*val)[12]; int n, gen; bool books; } g_mar;
+static struct { int *ix; char (*val)[12]; int n, gen; unsigned card_gen; bool books, off; } g_mar;
 
 static void muse_artists_build(void)
 {
-	bool books = muse_books_shown();
+	bool books = muse_books_shown(), off = muse_src_offline();
 	int i, cnt = 0;
 
-	if (g_mar.ix && g_mar.gen == g_muse_gen && g_mar.books == books) return;
+	if (g_mar.ix && g_mar.gen == g_muse_gen && g_mar.books == books && g_mar.off == off &&
+	    (!off || g_mar.card_gen == g_muse_card_gen))
+		return;
 	free(g_mar.ix);
 	free(g_mar.val);
 	memset(&g_mar, 0, sizeof g_mar);
@@ -16286,12 +16348,23 @@ static void muse_artists_build(void)
 	g_mar.val = calloc((size_t)cnt + 1, sizeof *g_mar.val);
 	if (!g_mar.ix || !g_mar.val) return;
 	for (i = 0; i < g_muse.nartists; i++) {
-		if (g_muse.artists[i].n <= 0 || g_muse.artists[i].book != books) continue;
-		snprintf(g_mar.val[g_mar.n], sizeof g_mar.val[0], "%d", g_muse.artists[i].n);
+		const ml_artist *r = &g_muse.artists[i];
+		int n = r->n;
+
+		if (r->n <= 0 || r->book != books) continue;
+		/* Offline Mode: what of theirs is on the card, and nobody with none. */
+		if (off) {
+			n = 0;
+			for (int k = r->first; k < r->first + r->n; k++) n += muse_offline_has(k);
+			if (!n) continue;
+		}
+		snprintf(g_mar.val[g_mar.n], sizeof g_mar.val[0], "%d", n);
 		g_mar.ix[g_mar.n++] = i;
 	}
 	g_mar.gen = g_muse_gen;
+	g_mar.card_gen = g_muse_card_gen;
 	g_mar.books = books;
+	g_mar.off = off;
 }
 
 static int muse_artist_row(int ar)
@@ -16373,6 +16446,42 @@ static bool muse_album_on_card(int al)
 		seen[al] = yes ? 2 : 1;
 	}
 	return seen[al] == 2;
+}
+
+/* Offline Mode's lists (plorpos-5tm.16): album al is shown when some of it is
+ * on the card - a Plex album with even one track (the rest left out of its
+ * list, owner), an Audiobookshelf book, a podcast episode. Looked at once a
+ * library and card change. */
+static unsigned char *g_off_has;
+static int g_off_any;
+
+static void muse_offline_look(void)
+{
+	static unsigned gen, card_gen;
+	static int n;
+
+	if (g_off_has && gen == g_muse_gen && card_gen == g_muse_card_gen && n == g_muse.nalbums) return;
+	free(g_off_has);
+	g_off_any = 0;
+	gen = g_muse_gen;
+	card_gen = g_muse_card_gen;
+	n = g_muse.nalbums;
+	if (!(g_off_has = calloc((size_t)n + 1, 1))) return;
+	if (g_muse_plex) plex_albums_local(g_off_has, n);
+	else for (int i = 0; i < n; i++) g_off_has[i] = muse_album_on_card(i);
+	for (int i = 0; i < n; i++) g_off_any += g_off_has[i];
+}
+
+static bool muse_offline_has(int al)
+{
+	muse_offline_look();
+	return g_off_has && al >= 0 && al < g_muse.nalbums && g_off_has[al];
+}
+
+static bool muse_offline_any(void)
+{
+	muse_offline_look();
+	return g_off_any > 0;
 }
 
 static int mal_mark(void *ctx, int i)
@@ -16613,6 +16722,7 @@ static int bpl_scan_books(bpl_book **out)
 		char id[LIB_PATH];
 
 		if (!g_muse.albums[i].book) continue;
+		if (muse_src_offline() && !muse_offline_has(i)) continue;   /* Offline Mode */
 		tl_book_id(i, id, sizeof id);
 		b[nb].al = i;
 		b[nb].id = strdup(id);
@@ -16753,7 +16863,7 @@ static void bl_describe(bl_ctx *c, int which, int sel, gl_list *L, gl_geom *g)
 	L->art = bl_art;
 	L->help = BL_HELP;
 	L->nhelp = 1;
-	L->empty = which == BPL_COMPLETED ? "No finished books yet" : "No books started yet";
+	L->empty = muse_empty(which == BPL_COMPLETED ? "No finished books yet" : "No books started yet");
 	gl_geometry(g, L);
 	L->cur = sel;
 	L->phase = mq_phase(MQ_SHELF, -5, sel);
@@ -17138,7 +17248,7 @@ static int pod_up_next(int done)
 	for (int k = 0; k < q; k++) {
 		int al = pod_queue_album(k);
 
-		if (al >= 0 && al != done) return al;
+		if (al >= 0 && al != done && (!pod_offline() || muse_offline_has(al))) return al;
 	}
 	return -1;
 }
@@ -17231,7 +17341,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->cur = asel;
 		L->title = mar_title;
 		L->value = mar_value;
-		L->empty = g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some." : "Nothing here";
+		L->empty = muse_empty(g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some." : "Nothing here");
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
 		if (g_muse_pod) L->art = mar_pod_art;
 		return;
@@ -17256,7 +17366,8 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->fav = mpl_fav;
 		L->dl = mpl_dl;
 		L->lead = mpl_lead;
-		L->empty = "No playlists yet. X on a track adds one.";
+		L->empty = muse_empty(plex_offline() && g_muse_plex ? "No downloaded playlists"
+		                                                    : "No playlists yet. X on a track adds one.");
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -17265,6 +17376,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	L->header = ar >= 0 ? g_muse.artists[ar].name
 	          : g_muse_pod ? muse_tab_name(tab)
 	          : tab == MT_FAVORITES ? (books ? "Favorite Books" : "Favorite Albums")
+	          : tab == MT_COVERFLOW ? "Coverflow"        /* shown as a list only when empty */
 	          : books ? "Books" : "Albums";
 	L->n = tab == MT_FAVORITES && !g_muse_favs ? 0 : v->list.count;
 	L->cur = v->cursor;
@@ -17288,6 +17400,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	         : tab != MT_FAVORITES ? "Nothing here"
 	         : books ? "No favorite books yet. Y on a book marks it."
 	         : "No favorite albums yet. Y on an album marks it.";
+	L->empty = muse_empty(L->empty);
 	L->phase = title_phase(a);
 	/* As the track list: a long artist's name runs over the cover to the
 	 * battery, and the cover sits between the header and the footer (owner,
@@ -17435,7 +17548,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	gl_scroll gs = { 0 };
 	while (!want_quit && a->running) {
 		int tab = muse_tab(), drilled = muse_artist_filter() >= 0;
-		bool cover = tab == MT_COVERFLOW && !g_muse_pod, favs = tab == MT_FAVORITES;
+		/* Nothing on it (Offline Mode, nothing on the card): the list, which
+		 * says why, not the shelf's empty coverflow (plorpos-5tm.16). */
+		bool cover = tab == MT_COVERFLOW && !g_muse_pod && v->list.count > 0, favs = tab == MT_FAVORITES;
 		bool albums = cover || favs || tab == MT_ALBUMS || (tab == MT_ARTISTS && drilled) ||
 		              (g_muse_pod && tab != MT_ARTISTS);
 		bool artists = tab == MT_ARTISTS && !drilled;
@@ -17747,7 +17862,7 @@ static void muse_shelf_screen(app *a, bool now)
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
-	if (muse < 0 || a->view[muse].list.count <= 0) return;
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline())) return;
 
 	a->sys_cursor = muse;
 	enter_system(a);                      /* the screen, the coverflow, the window */
@@ -21842,6 +21957,13 @@ static void muse_order_view(sysview *v)
 					v->album[kept++] = al;
 			}
 		}
+		v->list.count = kept;
+	}
+	if (muse_src_offline()) {                 /* Offline Mode: what is on the card (5tm.16) */
+		int kept = 0;
+
+		for (k = 0; k < v->list.count; k++)
+			if (muse_offline_has(v->album[k])) v->album[kept++] = v->album[k];
 		v->list.count = kept;
 	}
 	for (k = 0; k < v->list.count; k++) {
