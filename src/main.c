@@ -5005,6 +5005,8 @@ static unsigned rail_sys_hue(void *ctx, int i)
  * placed against the cards moves with them. 0 on the Brick. */
 #define STAGE_Y ((TORTOS_SCREEN_H - CF_STAGE_H) / 2)
 #define GL_PAD (TORTOS_SCREEN_W / 40)
+/* Portrait: the band under the header that a list's art and its lines take. */
+#define GL_ART_BAND (TORTOS_SCREEN_H * 36 / 100)
 
 static void draw_systems(app *a)
 {
@@ -5570,7 +5572,7 @@ static void gl_geometry(gl_geom *g, const gl_list *L)
 	 * header, the column beneath at the full width (owner, plorpos-auv). */
 	if (L->art && UI_PORTRAIT) {
 		g->art_top = g->top;
-		g->art_h = TORTOS_SCREEN_H * 36 / 100;
+		g->art_h = GL_ART_BAND;
 		g->top = g->art_top + g->art_h + GL_PAD / 2;
 		g->rows = (g->bottom - g->top) / g->row_h;
 		if (g->rows < 1) g->rows = 1;
@@ -5778,6 +5780,9 @@ static void gl_draw(app *a, const gl_list *L)
 		char l1[192];
 		size_t k = strlen(L->empty), c = k;
 
+		/* Portrait: a tab without art (Artists, Playlists) puts it where its
+		 * neighbours with art do, under their band (owner, plorpos-5tm.16.6). */
+		if (UI_PORTRAIT && !L->art && L->ntabs > 0) y += GL_ART_BAND + GL_PAD / 2;
 		if (k < sizeof l1 && ui_text_width(fm, L->empty) > room) {
 			char *sp;
 
