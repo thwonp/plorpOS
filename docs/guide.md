@@ -629,6 +629,19 @@ in Muse+'s menu under Podcast Settings (X on one cancels it).
 **Auto-Delete** in Podcast Settings removes a download when it is played, or
 a day after; favorites are never deleted.
 
+### Offline Mode
+
+*Coming in the next release.*
+
+**Offline Mode**, at the top of Plex Settings, Audiobookshelf Settings and
+Podcast Settings, keeps that Source off the network: only what is downloaded
+shows, and nothing is asked of the server. Muse+ says *Offline Mode* when it
+opens on that Source.
+
+Audiobookshelf places and Plex plays made meanwhile wait on the card and go
+to the server once Offline Mode is off and there is Wi-Fi. A place moved on
+another device since is kept, not overwritten.
+
 ## The shelf
 
 A single row of cards in perspective, with reflections - Cover Flow, carried
