@@ -13864,8 +13864,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * Longer Titles: title, artist and album centered across the top, the
 	 * battery's width as margin either side; the title on up to two lines,
 	 * artist and album on one, cut with dots. Under them the cover on the
-	 * left half and beside it a stack - the count and mode, the bar, the
-	 * Source, Next on up to two lines - centered on the cover's height. In
+	 * left half and beside it a stack - the count and mode with the quality
+	 * at the line's end, the bar, the Source, Next on up to two lines - centered on the cover's height. In
 	 * portrait the stack goes under the cover instead. */
 	bool lng = np_layout_long();
 	int tx = NP_TX, tw = NP_TW;          /* the three lines */
@@ -13956,7 +13956,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	/* What is playing, as the file or stream is - "FLAC 16/44.1", "OPUS 128" -
 	 * on a dark pill in the cover's bottom-left corner, readable on any art
 	 * (plorpos-1lw.9). The words come once per track, with META. */
-	if (mn->codec[0] && fs) {
+	if (mn->codec[0] && fs && !lng) {
 		int th = ui_font_height(UI_F_META), pw = ui_text_width(fs, mn->codec) + 28;
 		SDL_Rect pill = { cov.x + 14, cov.y + cov.h - 14 - (th + 6), pw, th + 6 };
 
@@ -14029,7 +14029,12 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		/* The Mute Switch down in muse button lock: what the buttons will
 		 * do once the screen goes dark, which is nothing. Only while it is
 		 * down, as an iPod shows its hold. TortOS-7cv. */
-		if (lock) ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc);
+		if (lock) { ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc); gx += gs + 12; }
+		/* Longer Titles: what is playing, as the file or stream is, at the
+		 * line's right end in the count's own type (owner, plorpos-5eq.24) -
+		 * unless the marks before it have run that far. */
+		if (lng && mn->codec[0] && gx + 6 <= cx + cw - ui_text_width(fs, mn->codec))
+			ui_text(r, fs, mn->codec, cx + cw, y, 1, UI_TEXT_DIM);
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
@@ -22214,6 +22219,7 @@ static int shot_slots, shot_slot_sel;
 static int shot_jump;               /* letter-jumps to apply before drawing */
 /* --nowplaying ALBUM [TRACK [SECONDS]], and --paused with it. */
 static int   shot_np = -1, shot_np_track, shot_np_paused, shot_np_original;
+static const char *shot_np_codec;
 static float shot_np_at = 83.0f;
 /* --mode NAME plays whatever the shot shows in that play mode: the mark beside
  * the track count is drawn from it. */
@@ -22313,6 +22319,12 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
+	if (shot_np_codec) {
+		char *c;
+
+		snprintf(mn.codec, sizeof mn.codec, "%s", shot_np_codec);
+		for (c = mn.codec; *c; c++) if (*c == '_') *c = ' ';
+	}
 	if (shot_np_original) g_np_long = 0;
 	np_draw(a, &mn, next, muse_hold());
 }
@@ -23010,6 +23022,7 @@ int main(int argc, char *argv[])
 		}
 		else if (!strcmp(argv[i], "--paused")) shot_np_paused = 1;
 		else if (!strcmp(argv[i], "--np-original")) shot_np_original = 1;   /* Now-Playing Layout: Original */
+		else if (!strcmp(argv[i], "--np-codec") && i + 1 < argc) shot_np_codec = argv[++i];   /* the quality words, _ for a space */
 		else if (!strcmp(argv[i], "--mode") && i + 1 < argc) shot_mode = argv[++i];
 		else if (!strcmp(argv[i], "--gamelist") && i + 1 < argc) shot_gl = argv[++i];
 		else if (!strcmp(argv[i], "--sysmove") && i + 1 < argc)
