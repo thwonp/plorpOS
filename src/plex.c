@@ -2196,7 +2196,8 @@ void plex_download_album(int al)
 	dl_start();
 }
 
-/* Remove a copy and the folders it leaves empty, up to Music/Plex. */
+/* Remove a copy and the folders it leaves empty, up to Music/Plex, with the
+ * covers Local Music cached for them (plorpos-5tm.14). */
 static void remove_copy(const char *path)
 {
 	char d[1024], stop[600], *s;
@@ -2219,8 +2220,9 @@ static void remove_copy(const char *path)
 		if (!music) { char cov[1100]; snprintf(cov, sizeof cov, "%s/cover.jpg", d); unlink(cov); }
 		snprintf(d, sizeof d, "%s", path);
 	}
-	while ((s = strrchr(d, '/')) && (*s = '\0', strcmp(d, stop) && strlen(d) > strlen(stop)))
-		if (rmdir(d) != 0) break;
+	if ((s = strrchr(d, '/')) && (*s = '\0', strcmp(d, stop) && strlen(d) > strlen(stop)) &&
+	    rmdir(d) == 0)
+		ml_prune_up(d, stop);
 }
 
 void plex_delete_album(int al)

@@ -15288,8 +15288,8 @@ static void muse_tracks_under_draw(app *a, void *ctx)
 
 /* Delete Book (plorpos-5tm.13): a Local Books book off the card. Its files,
  * then its folder and whatever else is in it (cover art) unless another
- * book's folder is inside it, then an author's folder it leaves empty - never
- * Audiobooks itself. Its place and its finish go too; a server's copy keeps
+ * book's folder is inside it, then its cached cover and an author's folder
+ * that leaves empty (ml_prune_up) - never Audiobooks itself. Its place and its finish go too; a server's copy keeps
  * its own. False when a file would not go. */
 static bool book_delete(int al)
 {
@@ -15325,10 +15325,7 @@ static bool book_delete(int al)
 	snprintf(top, sizeof top, "%s/Audiobooks", g_muse_root);
 	if (!inner && strncmp(dir, top, strlen(top)) == 0 && strcmp(dir, top) != 0) {
 		if (nftw(dir, rm_one, 8, FTW_DEPTH | FTW_PHYS) != 0) ok = false;
-		if ((slash = strrchr(dir, '/'))) {
-			*slash = '\0';
-			if (strcmp(dir, top) != 0) rmdir(dir);     /* only when empty */
-		}
+		else ml_prune_up(dir, top);                 /* its cover, an author left empty */
 	}
 	fprintf(stderr, "muse: deleted book %s%s\n", b->name, ok ? "" : " (some files stayed)");
 	return ok;

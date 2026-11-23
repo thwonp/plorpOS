@@ -82,6 +82,13 @@ int ml_album_of(const ml_lib *l, const char *track);
  * is never taken for an album. "" for an album with no tracks. */
 void ml_cover_base(const char *root, const ml_lib *l, int al, char *out, size_t n);
 
+/* A folder that has gone takes its cover with it (plorpos-5tm.14): the one
+ * ml_cover_base keeps beside it, <parent>/.media/<name>.jpg|png, and the
+ * .media once that empties it. Then the parent goes if that left it empty,
+ * and its cover, on up - but never `stop` (Audiobooks, Music/Plex) or above.
+ * Nothing else is removed: those two names and empty folders only. */
+void ml_prune_up(const char *dir, const char *stop);
+
 /* A picture kept in album `al`'s own folder: cover or folder, .jpg or .png,
  * in any case, and failing those the folder's only picture - a book is often
  * a folder of files and one image named after the book. For an album whose

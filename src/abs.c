@@ -6,6 +6,7 @@
  * /api/me/progress/<id>. Measured against server 2.37.2, 2026-11-20. */
 #include "abs.h"
 #include "coverq.h"
+#include "muselib.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -1874,13 +1875,15 @@ void abs_download_cancel(void)
 
 void abs_delete_book(int al)
 {
-	char dir[600];
+	char dir[600], top[400];
 
 	LOCK();
 	if (!book_id(al)) { UNLOCK(); return; }
 	book_dir(al, dir, sizeof dir);
 	UNLOCK();
 	rm_tree(dir);
+	snprintf(top, sizeof top, "%.300s/Audiobooks", g_card);
+	if (!exists(dir)) ml_prune_up(dir, top);   /* its cover, an author left empty (5tm.14) */
 	g_dl_changed = 1;
 }
 
