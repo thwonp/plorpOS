@@ -1,0 +1,76 @@
+--- a/src/cpu/tms34_intf.cpp
++++ b/src/cpu/tms34_intf.cpp
+@@ -39,7 +39,9 @@
+ 	pTMS34010ScanlineRender scanlineRenderCallback;
+ };
+ 
+-static TMS34010MemoryMap MapStore[MAX_CPUS];
++/* One map per CPU, allocated at its init: a static MapStore[MAX_CPUS] was 32 MB of
++ * BSS in every build, which a 128 MB device cannot map at load (plorpOS). */
++static TMS34010MemoryMap *MapStore[MAX_CPUS];
+ static TMS34010MemoryMap *g_mmap = NULL;
+ static INT32 active_cpu = -1;
+ static INT32 total_cpus = 0;
+@@ -64,7 +66,7 @@
+ 		bprintf(PRINT_ERROR, _T("TMS34010Open(%d); when cpu already open.\n"), nCpu);
+ 	}
+ 
+-	g_mmap = &MapStore[nCpu];
++	g_mmap = MapStore[nCpu];
+ 	active_cpu = nCpu;
+ 
+ 	if (g_mmap->context) {
+@@ -136,9 +138,9 @@
+ 		bprintf(PRINT_ERROR, _T("TMS34010Init_Internal: Bad cpu nType specified.\n"));
+ 	}
+ 
+-	if (nCpu == 0) {
+-		memset(&MapStore, 0, sizeof(MapStore));
+-	}
++	if (nCpu >= MAX_CPUS) return;
++	if (MapStore[nCpu] == NULL) MapStore[nCpu] = (TMS34010MemoryMap*)malloc(sizeof(TMS34010MemoryMap));
++	memset(MapStore[nCpu], 0, sizeof(TMS34010MemoryMap));
+ 
+ 	total_cpus = nCpu + 1;
+ 
+@@ -188,6 +190,8 @@
+ 		tms34010_exit();
+ 		BurnFree(g_mmap->context);
+ 		TMS34010Close();
++		free(MapStore[i]);
++		MapStore[i] = NULL;
+ 	}
+ 
+ 	total_cpus = 0;
+--- a/src/cpu/e132xs/e132xs.cpp
++++ b/src/cpu/e132xs/e132xs.cpp
+@@ -215,7 +215,8 @@
+ #include "e132xs.h"
+ #include "e132xs_intf.h"
+ 
+-static UINT8 *mem[2][0x100000];
++/* Allocated at init: a static table was 8 MB of BSS in every build (plorpOS). */
++static UINT8 *(*mem)[0x100000] = NULL;
+ 
+ static void (*write_byte_handler)(UINT32,UINT8);
+ static void (*write_word_handler)(UINT32,UINT16);
+@@ -4690,7 +4691,8 @@
+ 
+ void E132XSInit(INT32 , INT32 type, INT32 )
+ {
+-	memset (mem, 0, sizeof(mem));
++	if (mem == NULL) mem = (UINT8 *(*)[0x100000])malloc(2 * sizeof(*mem));
++	memset (mem, 0, 2 * sizeof(*mem));
+ 
+ 	write_byte_handler = NULL;
+ 	write_word_handler = NULL;
+@@ -4829,7 +4831,8 @@
+ 
+ void E132XSExit()
+ {
+-
++	free(mem);
++	mem = NULL;
+ }
+ 
+ INT64 E132XSTotalCycles()
