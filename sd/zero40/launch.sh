@@ -60,6 +60,10 @@ grep -q '^axs15205 ' /proc/modules ||
 TZNAME=$TIMEZONE
 if [ -n "$TZNAME" ] && [ -f "/usr/share/zoneinfo/$TZNAME" ]; then
 	ln -sf "/usr/share/zoneinfo/$TZNAME" /tmp/localtime
+elif [ -n "$TZRULE" ]; then
+	# oakMOSS ships only Shanghai's zone file: the zone's rule from boot.env,
+	# for Diatom and everything else started here (plorpos-5tm.11).
+	export TZ="$TZRULE"
 fi
 
 if [ "$WIFI" = "1" ] || [ -f "$TORTOS_DIR/.devwifi" ]; then

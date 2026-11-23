@@ -39,6 +39,11 @@ void clock_label(time_t t, char *out, size_t n);
 typedef struct {
 	const char *id;     /* the zone database's name, which TZ takes */
 	const char *city;   /* what the row shows */
+	/* The zone's current rule as a POSIX TZ string, for a device without the
+	 * zone database (oakMOSS on the Zero 40 ships only Asia/Shanghai, and a
+	 * TZ it cannot find is UTC: plorpos-5tm.11). Each is the footer of
+	 * tzdata 2026c's file for `id`; a country changing its DST changes it. */
+	const char *posix;
 } clock_zone;
 
 extern const clock_zone CLOCK_ZONES[];

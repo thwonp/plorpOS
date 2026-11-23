@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0 */
 #include "atomic.h"
 #include "btnmap.h"
+#include "clock.h"   /* CLOCK_ZONES[].posix: plat_clock_zone without a zone file */
 #include "db.h"
 #include "platform.h"
 #include "audioout.h"
@@ -2974,8 +2975,16 @@ bool plat_clock_set(time_t t)
 
 void plat_clock_zone(const char *id)
 {
+	char path[128];
+	int z;
+
 	if (!id || !id[0]) return;
-	setenv("TZ", id, 1);
+	/* No zone file (the Zero 40's oakMOSS has one, Shanghai's): the zone's
+	 * rule instead, or glibc shows UTC (plorpos-5tm.11). Muse and the games
+	 * inherit TZ, so they agree. */
+	snprintf(path, sizeof path, "/usr/share/zoneinfo/%s", id);
+	z = clock_zone_find(id);
+	setenv("TZ", access(path, R_OK) != 0 && z >= 0 ? CLOCK_ZONES[z].posix : id, 1);
 	tzset();
 }
 
