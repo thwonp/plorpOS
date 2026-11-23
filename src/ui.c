@@ -816,6 +816,9 @@ void ui_fit_text(TTF_Font *f, const char *src, char *dst, size_t dstn,
 		n--;
 		while (n > 0 && ((unsigned char)dst[n] & 0xC0) == 0x80) n--;
 		if (n + 3 >= dstn) continue;
+		/* The dots take the place of a space or of dots the text ends on
+		 * there: "Tides... ..." read as a mistake (plorpos-5eq.24). */
+		while (n > 0 && (dst[n - 1] == ' ' || dst[n - 1] == '.')) n--;
 		memcpy(dst + n, "...", 4);
 		if (ui_text_width(f, dst) <= maxw) return;
 		dst[n] = '\0';
