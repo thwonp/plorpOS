@@ -29,5 +29,13 @@ typedef enum {
 bool     ts_on(void);
 bool     ts_set(bool on);
 ts_state ts_status(char *ip, size_t ipn, char *url, size_t urln);
+/* On the tailnet now: safe from any thread, asks the daemon at most every 2 s.
+ * Always false where there is no Tailscale. */
+bool     ts_connected(void);
+/* Whether a server address ("http://host:port", "host:port") is a tailnet one:
+ * 100.64.0.0/10, fd7a:115c:a1e0::/48, *.ts.net, or a name that resolves to one
+ * of those (MagicDNS). Looks the name up: not on the UI thread. Always false
+ * where there is no Tailscale. */
+bool     ts_tailnet_addr(const char *address);
 
 #endif

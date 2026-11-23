@@ -38,6 +38,9 @@ void abs_init(const char *card, const char *shared);
 
 bool abs_signed_in(void);
 const char *abs_server(void);
+/* The tailnet address (plorpos-dpy), "" when none: used instead of the server
+ * while Tailscale is connected. Signing in at a tailnet address sets it. */
+const char *abs_tailnet(void);
 const char *abs_user(void);
 const char *abs_library_name(void);
 void abs_sign_out(void);
@@ -47,6 +50,10 @@ void abs_sign_out(void);
 void abs_check_start(const char *address);   /* is it an Audiobookshelf? */
 void abs_login_start(const char *user, const char *password);
 int  abs_auth_poll(char *why, size_t n);
+/* Signed in: set Server or the Tailnet Server; "" clears it (not both).
+ * Polled with abs_auth_poll; on 1, `why` may still say something - saved
+ * without an answer from there. */
+void abs_addr_start(bool tailnet, const char *address);
 /* The address the last check settled on ("http://host:port"). */
 const char *abs_checked_address(void);
 

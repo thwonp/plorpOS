@@ -11052,7 +11052,7 @@ static bool abs_setup(app *a)
 	if (abs_signed_in()) return true;
 	if (!net_online()) { plex_say(a, "Audiobookshelf needs Wi-Fi"); return false; }
 	{
-		const char *sv = abs_server(), *sch = strstr(sv, "://");
+		const char *sv = abs_server()[0] ? abs_server() : abs_tailnet(), *sch = strstr(sv, "://");
 
 		snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : sv);   /* the last one, to edit */
 	}
@@ -11104,7 +11104,39 @@ static void muse_offline_set(muse_src s, bool on)
 
 static const char *on_off(bool on) { return on ? "On" : "Off"; }
 
-enum { AX_OFFLINE, AX_SERVER, AX_ACCOUNT, AX_LIBRARY, AX_CHECK, AX_SYNC, AX_SIGNOUT, AX_ROWS };
+/* An address as its row shows it: no "http://", which only took room. */
+static const char *abs_addr_shown(const char *addr)
+{
+	const char *sch = strstr(addr, "://");
+
+	return !addr[0] ? "none" : sch && !strncmp(addr, "http://", 7) ? sch + 3 : addr;
+}
+
+/* Server or Tailnet Server, once signed in (plorpos-dpy): the account's token
+ * is tried there, and an empty one clears it. */
+static void abs_addr_edit(app *a, bool tailnet)
+{
+	char addr[256], why[96];
+	const char *cur = tailnet ? abs_tailnet() : abs_server(), *sch = strstr(cur, "://");
+	kb_result kr;
+	int r;
+
+	snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : cur);
+	kr = kb_prompt_hint(a->r, &a->in, tailnet ? "Tailnet Server Address" : "Server Address",
+	                    tailnet ? "e.g. 100.10.0.0:13378" : "e.g. 192.168.1.2:13378",
+	                    addr, (int)sizeof addr, MUSE_ACCENT, abs_kb_backdrop, power_due_ctx, a);
+	if (kr == KB_POWER) { power_off(a); return; }
+	if (kr != KB_ACCEPT) return;
+	abs_addr_start(tailnet, addr);
+	r = src_wait(a, "Audiobookshelf", abs_msg_check, abs_poll_auth);
+	if (r == 0) return;
+	abs_auth_poll(why, sizeof why);
+	if (why[0]) plex_say(a, why);
+}
+
+/* Tailnet Server only where Tailscale is (plorpos-dpy). */
+enum { AX_OFFLINE, AX_SERVER, AX_TAILNET, AX_ACCOUNT = AX_TAILNET + TS_ROWS, AX_LIBRARY, AX_CHECK,
+       AX_SYNC, AX_SIGNOUT, AX_ROWS };
 /* ok_until: "Up to date" on Check for Updates until then - a toast is a
  * list's and was never seen over this menu (plorpos-i8d.7). */
 typedef struct { bool rebuilt; char sync[48]; Uint32 ok_until; } abs_set_ui;
@@ -11125,7 +11157,10 @@ static int abs_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	else u->sync[0] = '\0';
 	/* Offline Mode: what needs the server is greyed (owner). */
 	rows[AX_OFFLINE] = (menu_row){ "Offline Mode", on_off(off), true };
-	rows[AX_SERVER]  = (menu_row){ "Server", abs_server()[0] ? abs_server() : "none", false };
+	rows[AX_SERVER]  = (menu_row){ "Server", abs_addr_shown(abs_server()), in && !off };
+#if TS_ROWS
+	rows[AX_TAILNET] = (menu_row){ "Tailnet Server", abs_addr_shown(abs_tailnet()), in && !off };
+#endif
 	rows[AX_ACCOUNT] = (menu_row){ "Account", in ? abs_user() : "Sign In", !in && !off };
 	rows[AX_LIBRARY] = (menu_row){ "Library", abs_library_name()[0] ? abs_library_name() : "none", false };
 	rows[AX_CHECK]   = (menu_row){ "Check for Updates",
@@ -11147,6 +11182,10 @@ static menu_result abs_set_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_DONE;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (sel == AX_SERVER || (TS_ROWS && sel == AX_TAILNET)) {
+		abs_addr_edit(a, sel != AX_SERVER);
+		return MENU_STAY;
+	}
 	switch (sel) {
 	case AX_ACCOUNT:
 		if (!abs_setup(a)) return MENU_STAY;
