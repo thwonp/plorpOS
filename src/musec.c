@@ -81,6 +81,10 @@ static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
  * (plorpos-9rf.9): shown as playing, sent once musec_resume_release says. */
 static bool   (*g_resume_hold)(const char *rel);
 static bool     g_held;
+/* Play on a stopped queue, asked first (musec_on_play_stopped): true when
+ * the launcher played something else instead - a finished book from its
+ * beginning (plorpos-5tm.18). */
+static bool   (*g_play_stopped)(void);
 static bool     g_restored;         /* the queue came from the card and has not played */
 static char     g_orphan[LIB_PATH * 2 + 8]; /* what Muse plays, outside that queue (adopt) */
 /* See musec_set_remote. g_len_fixed: the length the resolver gave, which a
@@ -1064,11 +1068,12 @@ void musec_toggle(void)
 		rewind_resume();
 		sendf("RESUME");
 	}
-	else if (g_qn > 0) play_current();
+	else if (g_qn > 0 && !(g_play_stopped && g_play_stopped())) play_current();
 }
 
 void musec_on_before_heard(void (*fn)(void)) { g_before_heard = fn; }
 void musec_on_resume(bool (*hold)(const char *rel)) { g_resume_hold = hold; }
+void musec_on_play_stopped(bool (*fn)(void)) { g_play_stopped = fn; }
 
 void musec_resume_release(int index, double at)
 {
