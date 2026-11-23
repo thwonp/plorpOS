@@ -15371,7 +15371,8 @@ static bool muse_book_menu(app *a, int al)
 		bool ok;
 
 		if (!confirm_panel(a, "Delete Book", g_muse.albums[al].name, "Delete")) break;
-		if (muse_playing_album(NULL) == al) musec_stop();
+		/* Playing, paused or stopped on it: let go of it whole (5tm.15). */
+		if (muse_playing_album(NULL) == al) musec_forget();
 		wait_panel(a, "Delete Book", "Deleting...");
 		ok = book_delete(al);
 		rescan_all(a);

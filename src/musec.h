@@ -161,6 +161,10 @@ void musec_next(void);
 void musec_prev(void);
 void musec_seek_by(double delta);
 void musec_stop(void);
+/* Stopped with nothing in the player, as before anything was played: the
+ * queue and the names on show go, so a toggle has nothing to start again -
+ * for a book deleted from under it (plorpos-5tm.15). */
+void musec_forget(void);
 
 const mu_now *musec_now(void);
 
