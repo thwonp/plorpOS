@@ -1205,17 +1205,69 @@ static void pull_progress(void)
 }
 
 /* Places the server did not take - offline, a downloaded book played with
- * no Wi-Fi or no server: sent again once it answers (plorpos-ps8.15). One
- * per book, the latest; lost with the launcher, as the next play sends one. */
+ * no Wi-Fi or no server, Offline Mode: sent again once it answers
+ * (plorpos-ps8.15). One per book, the latest. Kept on the card too
+ * (unsent.tsv, plorpos-5tm.16.3), so a spell offline outlives a restart:
+ * at once for a pause or a stop, at most once a minute while it plays. */
 #define UNSENT 16
+#define UNSENT_MS (60 * 1000)
 static struct { char id[64]; double cur, dur; bool fin, now; long long known; } g_unsent[UNSENT];
 static int g_nunsent;
+static bool g_unsent_dirty;
+static unsigned g_unsent_saved, g_unsent_last;
+
+static void unsent_path(char *out, size_t n) { snprintf(out, n, "%s/unsent.tsv", g_dir); }
+
+/* Locked. */
+static void unsent_save(bool now)
+{
+	char p[700], tmp[720];
+	FILE *f;
+
+	if (!g_unsent_dirty || (!now && now_ms() - g_unsent_saved < UNSENT_MS)) return;
+	unsent_path(p, sizeof p);
+	g_unsent_dirty = false;
+	g_unsent_saved = now_ms();
+	if (!g_nunsent) { unlink(p); return; }
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	if (!(f = fopen(tmp, "w"))) return;
+	for (int i = 0; i < g_nunsent; i++)
+		fprintf(f, "%s\t%.2f\t%.2f\t%d\t%d\t%lld\n", g_unsent[i].id, g_unsent[i].cur, g_unsent[i].dur,
+		        g_unsent[i].fin, g_unsent[i].now, g_unsent[i].known);
+	if (fclose(f) == 0) rename(tmp, p);
+}
+
+static void unsent_load(void)
+{
+	char p[700], line[200];
+	FILE *f;
+
+	unsent_path(p, sizeof p);
+	if (!(f = fopen(p, "r"))) return;
+	while (g_nunsent < UNSENT && fgets(line, sizeof line, f)) {
+		int fin, now;
+
+		if (sscanf(line, "%63[^\t]\t%lf\t%lf\t%d\t%d\t%lld", g_unsent[g_nunsent].id,
+		           &g_unsent[g_nunsent].cur, &g_unsent[g_nunsent].dur, &fin, &now,
+		           &g_unsent[g_nunsent].known) != 6)
+			continue;
+		g_unsent[g_nunsent].fin = fin;
+		g_unsent[g_nunsent].now = now;
+		g_nunsent++;
+	}
+	fclose(f);
+	if (g_nunsent) fprintf(stderr, "abs: %d places kept offline, to send\n", g_nunsent);
+}
 
 /* Book `id` out of the unsent list (sent, or a newer place on its way). Locked. */
 static void unsent_drop(const char *id)
 {
 	for (int i = 0; i < g_nunsent; i++)
-		if (!strcmp(g_unsent[i].id, id)) { g_unsent[i] = g_unsent[--g_nunsent]; return; }
+		if (!strcmp(g_unsent[i].id, id)) {
+			g_unsent[i] = g_unsent[--g_nunsent];
+			g_unsent_dirty = true;
+			return;
+		}
 }
 
 static void unsent_keep(const job *j)
@@ -1242,6 +1294,8 @@ static void unsent_keep(const job *j)
 			g_unsent[g_nunsent].known = pr && pr->last > seen ? pr->last : seen;
 		}
 		g_nunsent++;
+		g_unsent_dirty = true;
+		unsent_save(j->b[0] == 'n');
 	}
 	UNLOCK();
 }
@@ -1315,12 +1369,12 @@ static void queue_push(const char *id, double cur, double dur, bool fin, bool no
 
 void abs_unsent_retry(void)
 {
-	static unsigned last;
 	unsigned now = now_ms();
 
 	LOCK();
-	if (!g_nunsent || (last && now - last < 30000u)) { UNLOCK(); return; }
-	last = now;
+	unsent_save(false);                        /* what changed while it played */
+	if (!g_nunsent || (g_unsent_last && now - g_unsent_last < 30000u)) { UNLOCK(); return; }
+	g_unsent_last = now;
 	UNLOCK();
 	if (!net_online() || g_offline) return;
 	LOCK();
@@ -1340,6 +1394,9 @@ void abs_unsent_retry(void)
 		push(j, false);
 		LOCK();
 	}
+	/* Each is on its way: one the server does not take comes back. */
+	g_unsent_dirty = true;
+	unsent_save(true);
 	UNLOCK();
 }
 
@@ -1608,6 +1665,7 @@ void abs_init(const char *card, const char *shared)
 		snprintf(g_rel_base, sizeof g_rel_base, ".userdata/shared/abs");
 	cfg_load();
 	seen_load();
+	unsent_load();
 	if (pthread_create(&th, NULL, api_main, NULL) == 0) pthread_detach(th);
 	/* The table off the boot path, for places of downloaded books too. */
 	if (C.lib_id[0] && (j = job_new(J_LOAD))) push(j, false);
@@ -1887,6 +1945,7 @@ void abs_set_offline(bool on)
 	g_offline = on;
 	fprintf(stderr, "abs: Offline Mode %s\n", on ? "on" : "off");
 	if (on) abs_download_cancel();
+	else g_unsent_last = 0;                    /* places kept offline go at once */
 }
 
 bool abs_offline(void) { return g_offline; }
