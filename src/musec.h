@@ -82,6 +82,9 @@ typedef struct {
 	 * replace them, nor give an album: a podcast's MP3 can carry the
 	 * network's legal notice as its artist (plorpos-7ni.19). */
 	bool names;
+	/* Not on the card, and its Source is in Offline Mode (plorpos-5tm.16):
+	 * not tried, as with no network, and said so. */
+	bool offline;
 } musec_remote;
 /* `failed`: the daemon could not open a remote track; true to have it tried
  * once more (the resolver will look for its server again) - else skipped. */

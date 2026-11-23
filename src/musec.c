@@ -256,7 +256,7 @@ static void play_current(void)
 		g_names_remote = remote && r.names;
 		g_now.codec[0] = '\0';
 
-		if (remote && g_online && !g_online() && (r.wait || strstr(r.url, "://"))) {
+		if (remote && (r.offline || (g_online && !g_online() && (r.wait || strstr(r.url, "://"))))) {
 			/* A stream, or a track fetched first, with no network: not
 			 * tried - it would wait out a timeout and say nothing - and
 			 * said so (musec_take_net_fail). What played before stops, as
@@ -273,7 +273,7 @@ static void play_current(void)
 			g_now.count = g_qn;
 			g_wait_remote = false;
 			g_asked = false;
-			g_net_fail = 1;
+			g_net_fail = r.offline ? 3 : 1;
 			memset(r.url, 0, sizeof r.url);
 			return;
 		}

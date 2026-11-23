@@ -266,6 +266,10 @@ static void tmpfile_for(const char *tag, char *out, size_t n)
 
 /* GET/POST with Plex's headers, the reply into memory (NUL-terminated).
  * Returns the HTTP status, 0 for no answer, -1 when it could not run. */
+/* Offline Mode (plorpos-5tm.16): nothing goes to a server. Every fetch comes
+ * back as if no network answered; a track plays from the card or not at all. */
+static volatile bool g_offline;
+
 static int plex_req_c(const char *method, const char *url, bool with_token,
                       char **body, size_t *len, int connect_s, int timeout_s)
 {
@@ -286,9 +290,9 @@ static int plex_req_c(const char *method, const char *url, bool with_token,
 	/* Plex's relay drops about one TLS handshake in three at once (curl 35,
 	 * measured 2026-11-17): an answer that failed that fast is asked again. */
 	t0 = now_ms();
-	code = net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
+	code = g_offline ? 0 : net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
 	if (code == 0 && now_ms() - t0 < 1500)
-		code = net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
+		code = g_offline ? 0 : net_fetch(url, method, h, nh, tmp, connect_s, timeout_s, NULL);
 	if (body) {
 		*body = code >= 200 && code < 300 ? slurp(tmp, len) : NULL;
 		if (code >= 200 && code < 300 && !*body) code = -1;
@@ -667,7 +671,7 @@ static bool cover_fetch(const char *thumb, const char *b)
 		snprintf(d, sizeof d, "%s", dest);
 		if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
 	}
-	code = net_fetch(url, "GET", h, 1, part, 5, 30, NULL);
+	code = g_offline ? 0 : net_fetch(url, "GET", h, 1, part, 5, 30, NULL);
 	if (code == 200 && rename(part, dest) == 0) return true;
 	unlink(part);
 	if (code == 0) base_failed();
@@ -1409,11 +1413,11 @@ static int fetch_track(const char *base, const px_track *t, int kbps, const char
 	if (kbps) {
 		stream_url(base, t, kbps, true, url, sizeof url, "decision");
 		tmpfile_for("dec", tmp, sizeof tmp);
-		net_fetch(url, "GET", NULL, 0, tmp, 5, 30, cancel);
+		if (!g_offline) net_fetch(url, "GET", NULL, 0, tmp, 5, 30, cancel);
 		unlink(tmp);
 	}
 	stream_url(base, t, kbps, true, url, sizeof url, "start");
-	code = net_fetch(url, "GET", NULL, 0, part, 5, 0, cancel);
+	code = g_offline ? 0 : net_fetch(url, "GET", NULL, 0, part, 5, 0, cancel);
 	if (code != 200 || !exists(part) || rename(part, dest) != 0) {
 		unlink(part);
 		if (code == 200) code = -1;
@@ -1421,7 +1425,7 @@ static int fetch_track(const char *base, const px_track *t, int kbps, const char
 	if (kbps) {
 		stream_url(base, t, kbps, true, url, sizeof url, "stop");
 		tmpfile_for("stop", tmp, sizeof tmp);
-		net_fetch(url, "GET", NULL, 0, tmp, 5, 10, NULL);
+		if (!g_offline) net_fetch(url, "GET", NULL, 0, tmp, 5, 10, NULL);
 		unlink(tmp);
 	}
 	if (code == 0) base_failed();
@@ -1481,7 +1485,7 @@ static bool download_one(int key, char reason)
 			         base, COVER_PX, COVER_PX, enc);
 			snprintf(hdr, sizeof hdr, "X-Plex-Token: %s", C.token);
 			snprintf(part, sizeof part, "%s.part", cov);
-			if (net_fetch(url, "GET", h, 1, part, 5, 30, &g_dl_cancel) != 200 || rename(part, cov) != 0)
+			if (g_offline || net_fetch(url, "GET", h, 1, part, 5, 30, &g_dl_cancel) != 200 || rename(part, cov) != 0)
 				unlink(part);
 		}
 	}
@@ -2018,6 +2022,11 @@ bool plex_resolve(const char *rel, musec_remote *out)
 	         t.artist && t.artist[0] ? t.artist : g_tab.ar[g_tab.al[t.album].artist].name);
 	out->len = t.dur_ms / 1000.0;
 	if (local_copy(&t, out->url, sizeof out->url)) { UNLOCK(); return true; }
+	if (g_offline) {                             /* a pre-fetched copy plays too */
+		if (!cache_file(&t, out->url, sizeof out->url)) out->offline = true;
+		UNLOCK();
+		return true;
+	}
 	if (!g_base[0]) {
 		/* No connection known (a fresh start, or the last one stopped
 		 * answering): one is found off this thread, the queue's, and the
@@ -2358,6 +2367,16 @@ enum { PLE_ADD, PLE_DEL, PLE_MOVE, PLE_RENAME, PLE_DELETE };
 
 int plex_pl_gen(void) { return g_pl_gen; }
 void plex_set_pl_mirror(bool on) { g_pl_mirror = on; }
+
+void plex_set_offline(bool on)
+{
+	if (on == g_offline) return;
+	g_offline = on;
+	fprintf(stderr, "plex: Offline Mode %s\n", on ? "on" : "off");
+	if (on) plex_download_cancel();
+}
+
+bool plex_offline(void) { return g_offline; }
 
 static void pls_file(char *out, size_t n)
 {

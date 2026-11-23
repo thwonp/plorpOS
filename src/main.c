@@ -1304,6 +1304,26 @@ static bool g_pod_stale;
 static int  g_pod_added;
 static int *g_pod_stamp;
 
+/* Offline Mode (plorpos-5tm.16), one per server Source: only what is on the
+ * card shown, and nothing asked of the network. */
+static const char *const MSRC_OFFLINE_KEY[MSRC_COUNT] = {
+	[MSRC_PLEX] = "plex.offline", [MSRC_ABS] = "abs.offline", [MSRC_PODCASTS] = "pod.offline",
+};
+
+static bool muse_src_offline(void)
+{
+	return (g_muse_plex && plex_offline()) || (g_muse_abs && abs_offline()) ||
+	       (g_muse_pod && pod_offline());
+}
+
+/* Why the Source shown cannot reach its server now, for a toast; NULL when
+ * it can. */
+static const char *muse_net_why(void)
+{
+	if (muse_src_offline()) return "Offline Mode is on";
+	return net_online() ? NULL : "Device is offline";
+}
+
 /* No Plex on the Miyoo Flip (owner, 2026-11-21): a big library does not fit
  * its 103 MB next to the launcher - 47k tracks got it OOM-killed
  * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music. */
@@ -1752,7 +1772,8 @@ static void muse_poll(void)
 
 		if (plex_download_take_failed() | abs_download_take_failed() | pod_download_take_failed())
 			if (!nf) nf = net_online() ? 2 : 1;
-		if (nf) muse_toast(nf == 1 ? "Device is offline" : "Could not reach the server");
+		if (nf) muse_toast(nf == 1 ? "Device is offline" : nf == 3 ? "Offline Mode is on"
+		                                                   : "Could not reach the server");
 	}
 	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
 	          mn->at, mn->len);
@@ -10898,7 +10919,24 @@ static bool abs_setup(app *a)
 	}
 }
 
-enum { AX_SERVER, AX_ACCOUNT, AX_LIBRARY, AX_CHECK, AX_SYNC, AX_SIGNOUT, AX_ROWS };
+/* Offline Mode switched for Source s (plorpos-5tm.16): kept, told to the
+ * backend, and when it goes off with a network the server is asked at once
+ * (owner) - the library, and Audiobookshelf's places. */
+static void muse_offline_set(muse_src s, bool on)
+{
+	db_set_int(db_dev(), MSRC_OFFLINE_KEY[s], on);
+	if (s == MSRC_PLEX) plex_set_offline(on);
+	else if (s == MSRC_ABS) abs_set_offline(on);
+	else pod_set_offline(on);
+	if (on || !net_online()) return;
+	if (s == MSRC_PLEX) plex_sync_start(false);
+	else if (s == MSRC_ABS) { abs_sync_start(false); abs_progress_refresh(); abs_unsent_retry(); }
+	else pod_sync_start();
+}
+
+static const char *on_off(bool on) { return on ? "On" : "Off"; }
+
+enum { AX_OFFLINE, AX_SERVER, AX_ACCOUNT, AX_LIBRARY, AX_CHECK, AX_SYNC, AX_SIGNOUT, AX_ROWS };
 /* ok_until: "Up to date" on Check for Updates until then - a toast is a
  * list's and was never seen over this menu (plorpos-i8d.7). */
 typedef struct { bool rebuilt; char sync[48]; Uint32 ok_until; } abs_set_ui;
@@ -10906,7 +10944,7 @@ typedef struct { bool rebuilt; char sync[48]; Uint32 ok_until; } abs_set_ui;
 static int abs_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	abs_set_ui *u = ctx;
-	bool in = abs_signed_in();
+	bool in = abs_signed_in(), off = abs_offline();
 	int d, t, st;
 
 	(void)max;
@@ -10917,12 +10955,14 @@ static int abs_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
+	/* Offline Mode: what needs the server is greyed (owner). */
+	rows[AX_OFFLINE] = (menu_row){ "Offline Mode", on_off(off), true };
 	rows[AX_SERVER]  = (menu_row){ "Server", abs_server()[0] ? abs_server() : "none", false };
-	rows[AX_ACCOUNT] = (menu_row){ "Account", in ? abs_user() : "Sign In", !in };
+	rows[AX_ACCOUNT] = (menu_row){ "Account", in ? abs_user() : "Sign In", !in && !off };
 	rows[AX_LIBRARY] = (menu_row){ "Library", abs_library_name()[0] ? abs_library_name() : "none", false };
 	rows[AX_CHECK]   = (menu_row){ "Check for Updates",
-	                               SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, in && st != 1 };
-	rows[AX_SYNC]    = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, in && st != 1 };
+	                               SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, in && st != 1 && !off };
+	rows[AX_SYNC]    = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, in && st != 1 && !off };
 	rows[AX_SIGNOUT] = (menu_row){ "Sign Out", NULL, in };
 	return AX_ROWS;
 }
@@ -10931,6 +10971,10 @@ static menu_result abs_set_key(app *a, void *ctx, in_button key, int sel)
 {
 	abs_set_ui *u = ctx;
 
+	if (sel == AX_OFFLINE && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
+		muse_offline_set(MSRC_ABS, !abs_offline());
+		return MENU_STAY;
+	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case AX_ACCOUNT:
@@ -11046,7 +11090,7 @@ static int pod_autodel(void)
 
 static void pod_autodel_day(void);
 
-enum { PDX_CHECK, PDX_SEARCH, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
+enum { PDX_OFFLINE, PDX_CHECK, PDX_SEARCH, PDX_IMPORT, PDX_AUTODEL, PDX_ROWS };
 /* The search's results, in Muse's long list (defined with it). */
 static int pod_pick_hits(app *a, const char *header, char (*title)[128], char (*value)[48], int n);
 /* A row's word for a few seconds - "Up to date", "Added 16" - since a toast is
@@ -11062,15 +11106,17 @@ static int pod_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	pod_set_ui *u = ctx;
 	int d, t, st = pod_sync_state(&d, &t);
 	Uint32 now = SDL_GetTicks();
+	bool off = pod_offline();
 
 	(void)max;
 	*heading = "Podcast Settings";
 	if (u->rebuilt) return 0;
 	if (st == 1 && t > 0) snprintf(u->check, sizeof u->check, "%d of %d", d, t), u->check_until = now + 1000;
+	rows[PDX_OFFLINE] = (menu_row){ "Offline Mode", on_off(off), true };
 	rows[PDX_CHECK]  = (menu_row){ "Check for Updates", now < u->check_until ? u->check : NULL,
-	                              st != 1 && pod_show_count() > 0 };
-	rows[PDX_SEARCH] = (menu_row){ "Search Podcasts", now < u->search_until ? u->search : NULL, true };
-	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, true };
+	                              st != 1 && pod_show_count() > 0 && !off };
+	rows[PDX_SEARCH] = (menu_row){ "Search Podcasts", now < u->search_until ? u->search : NULL, !off };
+	rows[PDX_IMPORT] = (menu_row){ "Import OPML", now < u->import_until ? u->import : NULL, !off };
 	rows[PDX_AUTODEL] = (menu_row){ "Auto-Delete", POD_AUTODEL[pod_autodel()], true };
 	return PDX_ROWS;
 }
@@ -11134,6 +11180,10 @@ static menu_result pod_set_key(app *a, void *ctx, in_button key, int sel)
 {
 	pod_set_ui *u = ctx;
 
+	if (sel == PDX_OFFLINE && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
+		muse_offline_set(MSRC_PODCASTS, !pod_offline());
+		return MENU_STAY;
+	}
 	if (sel == PDX_AUTODEL && (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT)) {
 		int v = pod_autodel();
 
@@ -11199,7 +11249,7 @@ static void pod_auto_sync(void)
 	static unsigned last;
 	unsigned now = plat_now_ms();
 
-	if (!g_muse_pod || !net_online() || (last && now - last < 30u * 60u * 1000u)) return;
+	if (!g_muse_pod || !net_online() || pod_offline() || (last && now - last < 30u * 60u * 1000u)) return;
 	last = now ? now : 1;
 	pod_sync_start();
 }
@@ -11254,7 +11304,7 @@ static void abs_main_poll(app *a)
 		return;
 	}
 	g_abs_stale = g_abs_stale && muse_src_saved() == MSRC_ABS;
-	if (g_muse_abs && (int)(now - next_check) >= 0 && net_online()) {
+	if (g_muse_abs && (int)(now - next_check) >= 0 && net_online() && !abs_offline()) {
 		if (next_check) abs_sync_start(false);
 		abs_progress_refresh();
 		next_check = now + 60u * 60u * 1000u;            /* an hour */
@@ -11431,14 +11481,14 @@ static void muse_dlq_screen(app *a)
 	         dlq_build, dlq_key, &u);
 }
 
-enum { PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
+enum { PX_OFFLINE, PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_FAVS, PX_SIGNOUT, PX_ROWS };   /* Download Queue: Muse's own menu now (ps8.8) */
 typedef struct { bool rebuilt; char sync[48], ahead[8]; Uint32 ok_until; } plex_set_ui;
 
 static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	plex_set_ui *u = ctx;
-	bool in = plex_signed_in(), ready = plex_ready();
+	bool in = plex_signed_in(), ready = plex_ready(), off = plex_offline();
 	int d, t, st;
 
 	(void)max;
@@ -11449,18 +11499,19 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
+	rows[PX_OFFLINE]  = (menu_row){ "Offline Mode", on_off(off), true };
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
-	                                              : "Sign In", !in };
+	                                              : "Sign In", !in && !off };
 	/* A server with no Plex Pass says so here (plorpos-5eq.9). */
 	{
 		static char srv[160];
 
 		snprintf(srv, sizeof srv, "%s%s", plex_server_name()[0] ? plex_server_name() : "Choose",
 		         plex_server_name()[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
-		rows[PX_SERVER] = (menu_row){ "Server", srv, in };
+		rows[PX_SERVER] = (menu_row){ "Server", srv, in && !off };
 	}
 	rows[PX_LIBRARY]  = (menu_row){ "Library", plex_library_name()[0] ? plex_library_name() : "Choose",
-	                                in && plex_server_name()[0] };
+	                                in && plex_server_name()[0] && !off };
 	/* A transcode needs Plex Pass on the server: without one it is the
 	 * file as it is, and there is nothing to choose (plorpos-5eq.9). */
 	if (plex_pass() == 0) {
@@ -11475,8 +11526,8 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
 	                                plex_fetches_first() };
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
-	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 };
-	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 };
+	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 && !off };
+	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 && !off };
 	/* Playlists follow the server at every sync either way; this is whether
 	 * a downloaded one's copies do too (plorpos-5eq.7; it replaced Download
 	 * Favorite Tracks - a playlist is downloaded from the Playlists tab). */
@@ -11501,6 +11552,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 	plex_set_ui *u = ctx;
 	int d = key == IN_LEFT ? -1 : key == IN_RIGHT || key == IN_ACCEPT ? 1 : 0;
 
+	if (sel == PX_OFFLINE && d) { muse_offline_set(MSRC_PLEX, !plex_offline()); return MENU_STAY; }
 	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
 	if (sel == PX_AHEAD && d) {
@@ -11516,7 +11568,7 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 
 		db_set_int(db_dev(), "plex.plmirror", on);
 		plex_set_pl_mirror(on);
-		if (on && net_online()) plex_playlists_sync();
+		if (on && net_online() && !plex_offline()) plex_playlists_sync();
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
@@ -11598,7 +11650,7 @@ static void plex_main_poll(app *a)
 		return;
 	}
 	g_plex_stale = g_plex_stale && muse_source_saved_plex();
-	if (g_muse_plex && (int)(now - next_check) >= 0 && net_online()) {
+	if (g_muse_plex && (int)(now - next_check) >= 0 && net_online() && !plex_offline()) {
 		plex_sync_start(false);
 		next_check = now + 60u * 60u * 1000u;            /* an hour */
 	}
@@ -15101,7 +15153,7 @@ static bool muse_pl_editable(const char *name)
 {
 	if (!g_muse_plex || !strcmp(name, PLEX_FAVS)) return true;
 	if (plex_pl_smart(name)) { muse_toast("A Plex smart playlist cannot be changed"); return false; }
-	if (!net_online()) { muse_toast("Device is offline"); return false; }
+	if (muse_net_why()) { muse_toast(muse_net_why()); return false; }
 	return true;
 }
 
@@ -15407,7 +15459,7 @@ static bool muse_book_menu(app *a, int al)
 	case B_DLCANCEL: abs_download_cancel(); muse_toast("Download cancelled"); break;
 	case B_DLDEL:    abs_delete_book(al);   muse_toast("Download deleted"); break;
 	case B_DL:
-		if (!net_online()) { muse_toast("Device is offline"); break; }
+		if (muse_net_why()) { muse_toast(muse_net_why()); break; }
 		abs_download_book(al);
 		muse_toast("Downloading");
 		break;
@@ -15469,7 +15521,7 @@ static void muse_plex_album_menu(app *a, int al, int trk)
 		plex_download_cancel_album(al);
 		muse_toast("Download cancelled");
 	} else if (k == dl) {
-		if (!net_online()) { muse_toast("Device is offline"); return; }
+		if (muse_net_why()) { muse_toast(muse_net_why()); return; }
 		if (plex_allow_sync() == 0) { muse_toast(PLEX_NO_SYNC); return; }
 		plex_download_album(al);
 		muse_toast("Downloading");
@@ -17152,7 +17204,7 @@ static void muse_pod_ep_menu(app *a, sysview *v, int al)
 	case E_QADD:     pod_queue_add(al);     muse_toast("Added to Queue"); break;
 	case E_QDEL:     pod_queue_remove(al);  muse_toast("Removed from Queue"); break;
 	case E_DL:
-		if (!net_online()) { muse_toast("Device is offline"); break; }
+		if (muse_net_why()) { muse_toast(muse_net_why()); break; }
 		pod_download(al);
 		muse_toast("Downloading");
 		break;
@@ -17596,7 +17648,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (g_muse_plex) opts[2] = dled ? "Remove Download" : "Download Playlist";
 			k = muse_pick_run(a, name, opts, g_muse_plex ? 3 : 2);
 			if (k == 2) {
-				if (!dled && !net_online()) muse_toast("Device is offline");
+				if (!dled && muse_net_why()) muse_toast(muse_net_why());
 				else if (!dled && plex_allow_sync() == 0) muse_toast(PLEX_NO_SYNC);
 				else {
 					plex_pl_download(name, !dled);
@@ -23807,6 +23859,10 @@ int main(int argc, char *argv[])
 			plex_set_pl_mirror(db_get_int(db_dev(), "plex.plmirror", 1) != 0);
 			abs_init(P_CARD, P_SHARED);
 			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
+			/* Offline Mode (plorpos-5tm.16): before anything is asked of a server. */
+			plex_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_PLEX], 0) != 0);
+			abs_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_ABS], 0) != 0);
+			pod_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_PODCASTS], 0) != 0);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_set_online(net_online);
 			musec_set_auto_rewind(db_get_int(db_dev(), "muse.autorewind", 0) != 0);

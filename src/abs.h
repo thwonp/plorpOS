@@ -127,6 +127,10 @@ void abs_download_cancel(void);
 int  abs_download_queue(int *al, bool *now, int max);
 void abs_download_cancel_book(int al);
 void abs_delete_book(int al);
+/* Offline Mode (plorpos-5tm.16): no request leaves; downloads under way
+ * stop. Places wait as for no network. */
+void abs_set_offline(bool on);
+bool abs_offline(void);
 /* A line for the screen while downloads run ("Downloading 3 of 12"). */
 bool abs_download_status(char *out, size_t n);
 /* True once after a download finished or a copy went: Audiobooks changed. */

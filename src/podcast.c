@@ -346,6 +346,10 @@ static int cmp_item(const void *pa, const void *pb)
 
 /* One show: its feed fetched and its index written. -1 failed, else how many
  * episodes are new to it (0 on a first fetch: nothing is "new" yet). */
+/* Offline Mode (plorpos-5tm.16): no feed, art, episode or search fetched -
+ * each comes back as if no network answered. */
+static volatile bool g_offline;
+
 static int sync_one(int k)
 {
 	char url[1024], sid[12], tmp[128], p[700], *body, (*old)[16];
@@ -359,7 +363,7 @@ static int sync_one(int k)
 	cpy(sid, sizeof sid, g_subs[k].sid);
 	UNLOCK();
 	tmp_for("feed", tmp, sizeof tmp);
-	code = net_fetch(url, "GET", NULL, 0, tmp, 10, 60, NULL);
+	code = g_offline ? 0 : net_fetch(url, "GET", NULL, 0, tmp, 10, 60, NULL);
 	if (code != 200 || !(body = slurp(tmp, &len))) {
 		unlink(tmp);
 		fprintf(stderr, "pod: feed %s: HTTP %d\n", sid, code);
@@ -753,6 +757,7 @@ bool pod_resolve(const char *rel, musec_remote *out)
 		return true;
 	}
 	source_locked(al, out->url, sizeof out->url);
+	out->offline = g_offline && !g_tab.e[al].dl;
 	cpy(out->title, sizeof out->title, g_tab.e[al].title);
 	if (g_tab.e[al].show >= 0 && g_tab.e[al].show < g_tab.nshows) {
 		for (int i = 0; i < g_nsubs; i++)
@@ -996,7 +1001,7 @@ static void do_cover(job *j)
 	snprintf(part, sizeof part, "%s.part", j->b);
 	snprintf(d, sizeof d, "%s", j->b);
 	if ((s = strrchr(d, '/'))) { *s = '\0'; mkdirs(d); }
-	code = net_fetch(j->a, "GET", NULL, 0, part, 10, 60, NULL);
+	code = g_offline ? 0 : net_fetch(j->a, "GET", NULL, 0, part, 10, 60, NULL);
 	if (code != 200) { unlink(part); asked_set(j->b, -1); fprintf(stderr, "pod: art HTTP %d\n", code); return; }
 	if (g_shrink) g_shrink(part);        /* in place; PNG when it shrank */
 	if ((f = fopen(part, "rb"))) { if (fread(m, 1, 4, f) != 4) m[0] = 0; fclose(f); }
@@ -1125,7 +1130,7 @@ static bool dl_one(const char *key)
 	mkdirs(stage);
 	snprintf(g_dl_part, sizeof g_dl_part, "%.600s/%.15s%.7s.part", stage, eid, ext);
 	unlink(POD_DL_HDR);
-	code = net_fetch_hdr(url, g_dl_part, POD_DL_HDR, 15, &g_dl_cancel);
+	code = g_offline ? 0 : net_fetch_hdr(url, g_dl_part, POD_DL_HDR, 15, &g_dl_cancel);
 	unlink(POD_DL_HDR);
 	/* A cancel that came as the last bytes did still wins: it was said.
 	 * Past here the copy is landing, and a cancel says it was too late. */
@@ -1225,6 +1230,7 @@ static void dl_enqueue(const char *key)
 	pthread_t th;
 	int al, i;
 
+	if (g_offline) return;                     /* Offline Mode: nothing fetched */
 	LOCK();
 	if ((al = album_of_key_locked(key)) < 0 || g_tab.e[al].dl || !strcmp(g_dl_key, key)) { UNLOCK(); return; }
 	for (i = 0; i < g_dl_n; i++) if (!strcmp(g_dl_q[i], key)) { UNLOCK(); return; }
@@ -1262,6 +1268,21 @@ bool pod_download_cancel(int al)
 	g_dl_changed = 1;
 	return hit;
 }
+
+void pod_set_offline(bool on)
+{
+	if (on == g_offline) return;
+	g_offline = on;
+	fprintf(stderr, "pod: Offline Mode %s\n", on ? "on" : "off");
+	if (!on) return;
+	LOCK();                                    /* downloads waiting and under way stop */
+	g_dl_n = 0;
+	if (g_dl_key[0] && !g_dl_landing) g_dl_cancel = 1;
+	UNLOCK();
+	g_dl_changed = 1;
+}
+
+bool pod_offline(void) { return g_offline; }
 
 int pod_download_queue(int *al, bool *now, int max)
 {
@@ -1380,7 +1401,7 @@ static void do_search(job *j)
 	snprintf(url, sizeof url, "https://itunes.apple.com/search?media=podcast&entity=podcast&limit=%d&term=%s",
 	         HITS, j->a);
 	tmp_for("search", tmp, sizeof tmp);
-	code = net_fetch(url, "GET", NULL, 0, tmp, 10, 20, NULL);
+	code = g_offline ? 0 : net_fetch(url, "GET", NULL, 0, tmp, 10, 20, NULL);
 	body = code == 200 ? slurp(tmp, &len) : NULL;
 	unlink(tmp);
 	if (!body || !(h = calloc(HITS, sizeof *h))) {

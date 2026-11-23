@@ -106,6 +106,10 @@ int  pod_download_state(int al);     /* 0 none, 1 waiting, 2 downloading */
 void pod_download(int al);
 /* False when there was nothing to stop: it had landed already. */
 bool pod_download_cancel(int al);
+/* Offline Mode (plorpos-5tm.16): no feed, art, episode or search fetched;
+ * downloads waiting and under way stop. */
+void pod_set_offline(bool on);
+bool pod_offline(void);
 /* The episodes on their way, the one downloading first: album and whether it
  * is that one. Their count (plorpos-ps8.8). */
 int pod_download_queue(int *al, bool *now, int max);

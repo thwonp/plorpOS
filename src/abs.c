@@ -226,6 +226,11 @@ static bool parse_tokens(const char *body, size_t len)
 /* A new access token for the one `used`, unless another thread got one
  * already. False when the refresh token is refused (then signed out) or the
  * server did not answer. */
+/* Offline Mode (plorpos-5tm.16): nothing goes to the server. Every request
+ * comes back as if no network answered, so each caller does what it does
+ * offline - a place is kept unsent, a sync fails, a book plays its copy. */
+static volatile bool g_offline;
+
 static bool refresh_tokens(const char *used)
 {
 	char url[400], hdr[1100], tmp[128], ref[sizeof C.refresh];
@@ -246,7 +251,7 @@ static bool refresh_tokens(const char *used)
 	h[0] = hdr;
 	h[1] = "Content-Type: application/json";
 	tmpfile_for("ref", tmp, sizeof tmp);
-	code = net_fetch_body(url, "POST", h, 2, "{}", tmp, 5, 15, NULL);
+	code = g_offline ? 0 : net_fetch_body(url, "POST", h, 2, "{}", tmp, 5, 15, NULL);
 	if (code == 200 && (body = slurp(tmp, &len))) {
 		ok = parse_tokens(body, len);
 		free(body);
@@ -273,6 +278,7 @@ static int req(const char *method, const char *path, const char *json,
 	int code = -1, nh, attempt;
 
 	if (body) *body = NULL;
+	if (g_offline) return 0;                       /* as no answer */
 	for (attempt = 0; attempt < 2; attempt++) {
 		LOCK();
 		snprintf(url, sizeof url, "%s%s", C.server, path);
@@ -358,7 +364,7 @@ static void do_check(job *j)
 
 	snprintf(url, sizeof url, "%s/status", j->a);
 	tmpfile_for("chk", tmp, sizeof tmp);
-	code = net_fetch(url, "GET", h, 1, tmp, 5, 10, NULL);
+	code = g_offline ? 0 : net_fetch(url, "GET", h, 1, tmp, 5, 10, NULL);
 	body = code == 200 ? slurp(tmp, &len) : NULL;
 	unlink(tmp);
 	if (!body) { auth_fail(code == 0 ? "No answer at that address" : "Not an Audiobookshelf server"); return; }
@@ -416,7 +422,7 @@ static void do_login(job *j)
 	snprintf(body_s, sizeof body_s, "{\"username\":\"%s\",\"password\":\"%s\"}", ue, pe);
 	memset(pe, 0, sizeof pe);
 	tmpfile_for("login", tmp, sizeof tmp);
-	code = net_fetch_body(url, "POST", h, 3, body_s, tmp, 5, 15, NULL);
+	code = g_offline ? 0 : net_fetch_body(url, "POST", h, 3, body_s, tmp, 5, 15, NULL);
 	memset(body_s, 0, sizeof body_s);
 	body = code == 200 ? slurp(tmp, &len) : NULL;
 	unlink(tmp);
@@ -1022,6 +1028,7 @@ bool abs_resolve(const char *rel, musec_remote *out)
 	snprintf(out->artist, sizeof out->artist, "%s", g_tab.b[b].author);
 	out->len = g_tab.f[g_tab.b[b].first + k].dur;
 	if (local_copy(b, k, out->url, sizeof out->url)) { UNLOCK(); return true; }
+	out->offline = g_offline;
 	/* The account's long-lived token where the server still gives one: an
 	 * access token lasts an hour, and a seek in a long file asks again. */
 	tok = C.legacy[0] ? C.legacy : C.access;
@@ -1315,7 +1322,7 @@ void abs_unsent_retry(void)
 	if (!g_nunsent || (last && now - last < 30000u)) { UNLOCK(); return; }
 	last = now;
 	UNLOCK();
-	if (!net_online()) return;
+	if (!net_online() || g_offline) return;
 	LOCK();
 	while (g_nunsent) {
 		job *j = job_new(J_PUSH);
@@ -1464,7 +1471,8 @@ bool abs_resume_hold(const char *track)
 	char id[64];
 	job *j;
 
-	if (!abs_signed_in() || !item_of(track, id, sizeof id) || !(j = job_new(J_PLACE))) return false;
+	if (g_offline || !abs_signed_in() || !item_of(track, id, sizeof id) || !(j = job_new(J_PLACE)))
+		return false;                          /* offline: the device's place, at once */
 	snprintf(j->a, sizeof j->a, "%s", id);
 	LOCK();
 	snprintf(g_rc_id, sizeof g_rc_id, "%s", id);
@@ -1712,7 +1720,7 @@ static bool dl_one(const char *id)
 		snprintf(path, sizeof path, "%s/%s", stage, f);
 		if (exists(path)) continue;                     /* from an earlier try */
 		snprintf(au, sizeof au, "%s.part", path);
-		code = net_fetch(url, "GET", h, 1, au, 10, 0, &g_dl_cancel);
+		code = g_offline ? 0 : net_fetch(url, "GET", h, 1, au, 10, 0, &g_dl_cancel);
 		if (code == 401 && !C.legacy[0]) {               /* an access token that ran out */
 			char used[sizeof C.access];
 			LOCK(); snprintf(used, sizeof used, "%s", C.access); UNLOCK();
@@ -1872,6 +1880,16 @@ void abs_download_cancel(void)
 	if (g_dl_id[0]) g_dl_cancel = 1;
 	UNLOCK();
 }
+
+void abs_set_offline(bool on)
+{
+	if (on == g_offline) return;
+	g_offline = on;
+	fprintf(stderr, "abs: Offline Mode %s\n", on ? "on" : "off");
+	if (on) abs_download_cancel();
+}
+
+bool abs_offline(void) { return g_offline; }
 
 void abs_delete_book(int al)
 {
