@@ -8123,6 +8123,96 @@ static void wifi_backdrop(void *ctx)
 	draw_battery(a->r);   /* the keyboard draws over this and presents itself */
 }
 
+#if TS_ROWS
+#include "qrcodegen.h"
+
+/* Tailscale's sign-in (plorpos-8ns): the link as a QR code for a phone, and
+ * as text. Asks the daemon twice a second and closes by itself once the
+ * device is on the tailnet. X turns Tailscale off, B leaves it waiting. */
+static void ts_signin_screen(app *a)
+{
+	static uint8_t qr[qrcodegen_BUFFER_LEN_MAX], tmp[qrcodegen_BUFFER_LEN_MAX];
+	char url[256] = "", shown[256] = "", line[96];
+	unsigned asked = 0;
+	ts_state st = TS_STARTING;
+	bool have_qr = false;
+	TTF_Font *ft = ui_font(UI_F_TITLE), *fm = ui_font(UI_F_MENU), *fs = ui_font(UI_F_META);
+	SDL_Color white = { 255, 255, 255, 255 };
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (!want_quit && a->running) {
+		unsigned now = plat_now_ms();
+		int W = TORTOS_SCREEN_W, H = TORTOS_SCREEN_H, y = GL_PAD;
+
+		if (!asked || now - asked >= 500u) {
+			asked = now;
+			st = ts_status(NULL, 0, url, sizeof url);
+			if (st == TS_RUNNING || st == TS_OFF) break;
+			if (strcmp(url, shown)) {
+				snprintf(shown, sizeof shown, "%s", url);
+				have_qr = url[0] && qrcodegen_encodeText(url, tmp, qr, qrcodegen_Ecc_LOW,
+				                    qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
+				                    qrcodegen_Mask_AUTO, true);
+			}
+		}
+
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; return; }
+		if (power_check(a) == PWR_POWEROFF) { power_off(a); return; }
+		if (a->in.pressed[IN_X]) { ts_set(false); break; }
+		if (menu_leaving(a)) break;
+		vol_keys(&a->in);
+
+		tick_tint(a);
+		draw_shelf(a);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 235);
+		SDL_RenderFillRect(a->r, NULL);
+		ui_text(a->r, ft, "Sign In to Tailscale", GL_PAD, y, -1, UI_TEXT);
+		y += ui_font_line(UI_F_TITLE) + GL_PAD;
+		if (st == TS_LOGIN && have_qr) {
+			/* White, with the four-module quiet zone a reader needs. */
+			int n = qrcodegen_getSize(qr), cells = n + 8;
+			int room = (W < H - y - 5 * ui_font_line(UI_F_MENU) ? W : H - y - 5 * ui_font_line(UI_F_MENU)) * 85 / 100;
+			int px = room / cells > 1 ? room / cells : 2, side = cells * px, x0 = (W - side) / 2, i, j;
+			const char *u = !strncmp(url, "https://", 8) ? url + 8 : url;
+
+			SDL_SetRenderDrawColor(a->r, 255, 255, 255, 255);
+			SDL_RenderFillRect(a->r, &(SDL_Rect){ x0, y, side, side });
+			SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+			for (j = 0; j < n; j++)
+				for (i = 0; i < n; i++)
+					if (qrcodegen_getModule(qr, i, j))
+						SDL_RenderFillRect(a->r, &(SDL_Rect){ x0 + (i + 4) * px, y + (j + 4) * px, px, px });
+			y += side + GL_PAD;
+			ui_text(a->r, fm, "Scan with a phone, or open", W / 2, y, 0, UI_TEXT);
+			y += ui_font_line(UI_F_MENU);
+			/* The link wraps at its last '/' when it is wider than the screen. */
+			if (ui_text_width(fm, u) > W - 2 * GL_PAD && strrchr(u, '/')) {
+				size_t k = (size_t)(strrchr(u, '/') - u) + 1;
+
+				snprintf(line, sizeof line, "%.*s", (int)k, u);
+				ui_text(a->r, fm, line, W / 2, y, 0, white);
+				y += ui_font_line(UI_F_MENU);
+				ui_text(a->r, fm, u + k, W / 2, y, 0, white);
+			} else {
+				ui_text(a->r, fm, u, W / 2, y, 0, white);
+			}
+		} else {
+			ui_text(a->r, fm, st == TS_LOGIN ? "Approve this device in Tailscale"
+			                                 : "Starting... (needs Wi-Fi)", W / 2, H / 2, 0, UI_TEXT);
+		}
+		ui_text(a->r, fs, "X: turn off   B: back", W / 2, H - GL_PAD - ui_font_line(UI_F_META), 0, UI_TEXT_DIM);
+		draw_chrome(a->r);
+		plat_present(a->r);
+		SDL_Delay(16);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+#endif
+
 static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 {
 	wifi_ui *w = ctx;
@@ -8175,6 +8265,22 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
 		return MENU_STAY;
 	}
+
+#if TS_ROWS
+	/* Tailscale: on the tailnet, A turns it off (no confirm, like SSH);
+	 * otherwise A turns it on if need be and shows the sign-in, which closes
+	 * by itself when no sign-in is wanted. */
+	if (sel == WIFI_ROW_TS) {
+		if (w->ts == TS_RUNNING) {
+			if (ts_set(false)) { w->ts = TS_OFF; w->ts_ip[0] = '\0'; }
+			return MENU_STAY;
+		}
+		if (w->ts == TS_OFF && !ts_set(true)) return MENU_STAY;
+		ts_signin_screen(a);
+		w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
+		return MENU_STAY;
+	}
+#endif
 
 	/* The switch. Saved on every change rather than on the way out: the way out
 	 * of a handheld is often the power button. */

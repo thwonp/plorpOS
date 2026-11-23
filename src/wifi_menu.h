@@ -9,6 +9,7 @@
 #define TORTOS_WIFI_MENU_H
 
 #include "menu.h"
+#include "tailscale.h"
 #include "wifi.h"
 
 typedef struct {
@@ -22,16 +23,20 @@ typedef struct {
 	bool     connected;  /* associated with an address: Over The Hare can run */
 	char     conn[WIFI_SSID_MAX + 72]; /* "<ssid> · <ip>" while connected, else empty */
 	char     st_ui[72];  /* Syncthing's web UI, "<ip>:8384", while connected */
+	int      ts;         /* ts_state, asked once a second where TS_ROWS (plorpos-8ns) */
+	char     ts_ip[48];  /* the device's tailnet address while TS_RUNNING */
 } wifi_ui;
 
 /* The Network Services rows above the network list (plorpos-z0d.1): the radio,
  * then what the network is for - the services a device lets you switch
- * (WIFI_SVC_ROWS of them, from WIFI_ROW_SVC) among them. Fixed, so a scan
+ * (WIFI_SVC_ROWS of them, from WIFI_ROW_SVC) and Tailscale (TS_ROWS) among
+ * them. Fixed, so a scan
  * changing the list's length never moves them, and the key handler finds a
  * network at WIFI_TOP_ROWS + i. */
 enum {
 	WIFI_ROW_SWITCH, WIFI_ROW_SVC,
-	WIFI_ROW_XFER = WIFI_ROW_SVC + WIFI_SVC_ROWS, WIFI_TOP_ROWS
+	WIFI_ROW_TS = WIFI_ROW_SVC + WIFI_SVC_ROWS,
+	WIFI_ROW_XFER = WIFI_ROW_TS + TS_ROWS, WIFI_TOP_ROWS
 };
 
 /* Signal as a word. dBm is the honest number and it is also jargon; the list is

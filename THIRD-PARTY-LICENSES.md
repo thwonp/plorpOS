@@ -233,10 +233,11 @@ is plorpOS's own (`tools/adbroot.c`).
   otherwise put to commercial use - the same restriction the noncommercial
   cores above already put on it. Everything else in plorpOS is MIT.
 
-## Disc hashing, linked into the launcher (`third_party/`)
+## Disc hashing and QR codes, linked into the launcher (`third_party/`)
 
-The launcher identifies a CD game for RetroAchievements with RA's own code and
-reads CHD images with libchdr; both are compiled into `tortos.elf`. Sources and
+The launcher identifies a CD game for RetroAchievements with RA's own code,
+reads CHD images with libchdr and draws the Tailscale sign-in link as a QR code
+with Nayuki's library; all are compiled into `tortos.elf`. Sources and
 pinned versions: `third_party/README.md`.
 
 - **rcheevos** (rhash only) - Copyright (c) 2018 RetroAchievements.org -
@@ -247,6 +248,8 @@ pinned versions: `third_party/README.md`.
 - **LZMA SDK** (decoder, bundled with libchdr) - Igor Pavlov - **public domain**.
 - **miniz** (inflate, bundled with libchdr) - Rich Geldreich and contributors -
   **Unlicense** (public domain).
+- **QR Code generator library (C)** 1.8.0 - Copyright (c) Project Nayuki -
+  **MIT**. Full text below.
 
 ## Shaders (`res/shaders/`, shipped as `plorpOS/shaders/`)
 
@@ -391,6 +394,31 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### QR Code generator library (MIT)
+
+```
+QR Code generator library (C)
+
+Copyright (c) Project Nayuki. (MIT License)
+https://www.nayuki.io/page/qr-code-generator-library
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+- The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+- The Software is provided "as is", without warranty of any kind, express or
+  implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose and noninfringement. In no event shall the
+  authors or copyright holders be liable for any claim, damages or other
+  liability, whether in an action of contract, tort or otherwise, arising from,
+  out of or in connection with the Software or the use or other dealings in the
+  Software.
 ```
 
 ### libchdr (BSD-3-Clause)

@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* Signal as a word. dBm is the honest number and it is also jargon; the list
  * is sorted strongest first anyway, so the word only has to separate "this
@@ -118,6 +119,22 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 		ADD((menu_row){ "Syncthing", !w->svc[WIFI_SYNCTHING] ? "off"
 		                : w->st_ui[0] ? w->st_ui : "on", true });
 	}
+#if TS_ROWS
+	/* Tailscale (plorpos-8ns): what the daemon says, asked once a second
+	 * (a socket round trip, not a fork). On the tailnet it reads as the
+	 * address to type into another machine. */
+	{
+		static time_t asked;
+		time_t now = time(NULL);
+
+		if (now != asked) {
+			asked = now;
+			w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
+		}
+		ADD((menu_row){ "Tailscale", w->ts == TS_OFF ? "off" : w->ts == TS_LOGIN ? "sign in"
+		                : w->ts == TS_STARTING ? "starting" : w->ts_ip[0] ? w->ts_ip : "on", true });
+	}
+#endif
 	ADD((menu_row){ "Over The Hare",
 	                            w->connected ? NULL : "needs Wi-Fi", w->connected });
 	for (i = 0; i < w->n && nrows < max - 3; i++)
