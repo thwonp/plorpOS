@@ -11,6 +11,7 @@
  *
  * No SDL, no daemon, no device.
  */
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -364,6 +365,79 @@ static void plex(void)
 	ml_free(&l);
 }
 
+static bool there(const char *rel)
+{
+	char p[512];
+	struct stat st;
+
+	snprintf(p, sizeof p, "%s/%s", root, rel);
+	return stat(p, &st) == 0;
+}
+
+static void gone(const char *rel)
+{
+	char p[512];
+
+	snprintf(p, sizeof p, "%s/%s", root, rel);
+	rmdir(p);
+}
+
+/* A deleted book or album takes its cover and the folders it empties
+ * (plorpos-5tm.14). */
+static void prune(void)
+{
+	char d[512], top[512], plex[512];
+
+	printf("prune: a deleted folder's cover and the folders it empties\n");
+	snprintf(top, sizeof top, "%s/P/Audiobooks", root);
+	snprintf(plex, sizeof plex, "%s/P/Music/Plex", root);
+	dir("P"); dir("P/Audiobooks"); dir("P/Audiobooks/.media");
+	dir("P/Audiobooks/King"); dir("P/Audiobooks/King/.media"); dir("P/Audiobooks/King/It");
+	touch("P/Audiobooks/King/.media/Carrie.jpg"); touch("P/Audiobooks/King/.media/It.png");
+	touch("P/Audiobooks/.media/Solo.jpg"); touch("P/Audiobooks/.media/Other.jpg");
+	dir("P/Audiobooks/Wilde"); dir("P/Audiobooks/Wilde/.media");
+	touch("P/Audiobooks/Wilde/.media/Gone.jpg"); touch("P/Audiobooks/Wilde/notes.txt");
+
+	/* Carrie gone, It still there: only Carrie's cover goes. */
+	snprintf(d, sizeof d, "%s/King/Carrie", top); ml_prune_up(d, top);
+	CHECK(!there("P/Audiobooks/King/.media/Carrie.jpg"), "Carrie's cover stays");
+	CHECK(there("P/Audiobooks/King/.media/It.png"), "It's cover went");
+	CHECK(there("P/Audiobooks/King/It"), "the other book went");
+
+	/* It gone too: cover, .media and King go; Audiobooks stays. */
+	gone("P/Audiobooks/King/It");
+	snprintf(d, sizeof d, "%s/King/It", top); ml_prune_up(d, top);
+	CHECK(!there("P/Audiobooks/King"), "an emptied author stays");
+	CHECK(there("P/Audiobooks"), "Audiobooks went");
+
+	/* A book straight under Audiobooks: its cover only, Audiobooks/.media
+	 * kept while another cover is in it. */
+	snprintf(d, sizeof d, "%s/Solo", top); ml_prune_up(d, top);
+	CHECK(!there("P/Audiobooks/.media/Solo.jpg"), "Solo's cover stays");
+	CHECK(there("P/Audiobooks/.media/Other.jpg"), "another cover went");
+
+	/* Something not ours in the author's folder keeps it. */
+	snprintf(d, sizeof d, "%s/Wilde/Gone", top); ml_prune_up(d, top);
+	CHECK(!there("P/Audiobooks/Wilde/.media"), "an emptied .media stays");
+	CHECK(there("P/Audiobooks/Wilde/notes.txt"), "a stray file went");
+
+	/* Outside stop, or a name stop is only a prefix of: nothing. */
+	dir("P/AudiobooksX"); dir("P/AudiobooksX/.media"); touch("P/AudiobooksX/.media/A.jpg");
+	snprintf(d, sizeof d, "%s/P/AudiobooksX/A", root); ml_prune_up(d, top);
+	CHECK(there("P/AudiobooksX/.media/A.jpg"), "a folder outside stop was touched");
+	ml_prune_up(top, top);
+	CHECK(there("P/Audiobooks/.media/Other.jpg"), "stop itself was pruned");
+
+	/* Plex: album and artist both empty out, each with its cover; Music/Plex stays. */
+	dir("P/Music"); dir("P/Music/Plex"); dir("P/Music/Plex/.media");
+	dir("P/Music/Plex/Art"); dir("P/Music/Plex/Art/.media");
+	touch("P/Music/Plex/Art/.media/Alb.jpg"); touch("P/Music/Plex/.media/Art.jpg");
+	snprintf(d, sizeof d, "%s/Art/Alb", plex); ml_prune_up(d, plex);
+	CHECK(!there("P/Music/Plex/Art"), "an emptied artist stays");
+	CHECK(!there("P/Music/Plex/.media"), "the artist's picture stays");
+	CHECK(there("P/Music/Plex"), "Music/Plex went");
+}
+
 int main(void)
 {
 	char cmd[300];
@@ -377,6 +451,7 @@ int main(void)
 	orders();
 	card();
 	plex();
+	prune();
 
 	snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
 	if (system(cmd) != 0) { }

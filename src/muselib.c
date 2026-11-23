@@ -9,6 +9,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /* What FFmpeg on the device was measured playing (BACKLOG, the Muse spike),
  * plus the containers those codecs arrive in. */
@@ -89,6 +90,21 @@ void ml_cover_base(const char *root, const ml_lib *l, int al, char *out, size_t 
 	/* p[0..cut) is the parent with its slash, p[cut..d) the album's name. */
 	snprintf(out, n, "%s/%.*s.media/%.*s", root, (int)cut, p,
 	         (int)(d - cut), p + cut);
+}
+
+void ml_prune_up(const char *dir, const char *stop)
+{
+	char d[1024], p[1100], *s;
+	size_t sn = strlen(stop);
+
+	if (snprintf(d, sizeof d, "%s", dir) >= (int)sizeof d) return;
+	while (!strncmp(d, stop, sn) && d[sn] == '/' && (s = strrchr(d, '/'))) {
+		*s = '\0';                                  /* d the parent, s + 1 the name */
+		snprintf(p, sizeof p, "%s/.media/%s.jpg", d, s + 1); unlink(p);
+		snprintf(p, sizeof p, "%s/.media/%s.png", d, s + 1); unlink(p);
+		snprintf(p, sizeof p, "%s/.media", d); rmdir(p);
+		if (!strcmp(d, stop) || rmdir(d) != 0) break;
+	}
 }
 
 /* ---- a small growable list of names, sorted ------------------------------- */
