@@ -4614,7 +4614,7 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
-/* Playback Settings' Screen Off, in seconds; 0 is Never, -1 Follow Sleep -
+/* Playback Settings' Auto Screen Off, in seconds; 0 is Never, -1 Follow Sleep Value -
  * the system's Auto Sleep, or Auto Off with sleep off - the default
  * (plorpos-i8d.3; 10 s before). See idle_due. */
 static const int MUSE_SCREEN_OFF[] = { -1, 5, 10, 15, 30, 60, 0 };
@@ -10203,7 +10203,7 @@ typedef struct {
  * which reads it - and how long music plays untouched before the screen goes
  * off - see idle_due. */
 static const char *const MUSE_SCREEN_OFF_LABEL[] =
-	{ "Follow Sleep", "5s", "10s", "15s", "30s", "1m", "Never" };
+	{ "Follow Sleep Value", "5s", "10s", "15s", "30s", "1m", "Never" };
 
 static int muse_screen_off_at(void)
 {
@@ -10277,7 +10277,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	rows[0] = (menu_row){ "Wake Screen On Press",
 	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
 	                      true };
-	rows[1] = (menu_row){ "Screen Off",
+	rows[1] = (menu_row){ "Auto Screen Off",
 	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
 	/* Sleep Button Lock (gkd.34, plorpos-uvs.2): on every device, while the
 	 * screen is off during Muse playback the face and shoulder buttons do
