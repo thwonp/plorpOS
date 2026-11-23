@@ -9,7 +9,8 @@
 #   build-fbneo.sh neogeo     Neo Geo only          -> fbneo_neogeo_libretro.so
 #
 # The family cores load in a fraction of the time (plorpos-f1p.95.13): the
-# full core is 60 MB to map. -O2: the same speed as -O3 here, and smaller.
+# full core is 50 MB to map. -O2: the same speed as -O3 here, and smaller.
+# A family build also writes out/fbneo_<family>.sets, the sets it plays.
 SUB=$1
 CORE=fbneo
 . "$(dirname "$0")/common.sh"
@@ -25,6 +26,10 @@ if [ -n "$SUB" ]; then
 	# the image, so that step's failure is expected.
 	dk "src/$D" "make $A generate-files" > "$W/logs/fbneo-$SUB-generate.log" 2>&1 || true
 	grep -q . "$W/src/$D/../../dep/generated/driverlist.h"
+	# Which sets this family core plays, for the launcher's set -> core map
+	# (res/nano/maps/fbneo-family.txt = sort -u of the two out/*.sets files).
+	awk -F'|' -v f="$SUB" 'NF > 3 { n = $2; st = $3; gsub(/ /, "", n); gsub(/ /, "", st)
+		if (n != "" && n != "name" && st !~ /X/) print n ".zip\t" f }' "$W/src/fbneo/gamelist.txt" > "$W/out/fbneo_$SUB.sets"
 fi
 mk "fbneo${SUB:+-$SUB}" "$D" $A
 check_so "src/$D/fbneo${SUB:+_$SUB}_libretro.so" "fbneo${SUB:+_$SUB}_libretro.so"

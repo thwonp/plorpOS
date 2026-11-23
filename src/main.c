@@ -946,6 +946,25 @@ static const char *shelf_core(app *a, int sys, const char *file)
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
+#if defined(PLATFORM_MIYOO)
+	/* The Flip's FBNeo is three cores (plorpos-f1p.95.13): the whole of it is 50 MB to load, and the CPS-1/CPS-2 and
+	 * Neo Geo builds are 8 MB each - Marvel vs. Capcom starts in 3.6 s, not 4.8. res/maps/fbneo-family.txt names each
+	 * family set's build (mk/flip-cores/build-fbneo.sh writes it); any other set plays on the full core, and so does
+	 * every set when the family core is not on the card. A set always has the same core, so its states stay its own:
+	 * one build does not load another's. */
+	if (k < 0 && file && !strcmp(s->core, "fbneo")) {
+		static char fam[CFG_STR];
+		char path[CFG_STR * 2];
+		const char *base = strrchr(file, '/'), *f;
+
+		snprintf(path, sizeof path, "%s/res/maps/fbneo-family.txt", P_ROOT);
+		if ((f = setmap_title(path, base ? base + 1 : file))) {
+			snprintf(fam, sizeof fam, "fbneo_%s", f);
+			snprintf(path, sizeof path, "%s/cores/%s_libretro.so", P_ROOT, fam);
+			if (access(path, R_OK) == 0) return fam;
+		}
+	}
+#endif
 	if (k < 0) return s->core;
 	if (ALT_CORES[k].per_game) {
 		char key[LIB_PATH + 32], name[CFG_STR];

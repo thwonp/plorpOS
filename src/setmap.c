@@ -10,7 +10,7 @@
 typedef struct { const char *set, *title; } ent;
 typedef struct { char path[512]; bool tried; char *buf; ent *e; int n; } map;
 
-#define MAPS 2
+#define MAPS 3   /* mame2000, fbalpha2012, and the Flip's FBNeo family map */
 static map g_maps[MAPS];
 
 const char *setmap_path(const char *res_dir, const char *core, char *buf, size_t n)
