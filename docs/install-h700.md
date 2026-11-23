@@ -155,8 +155,9 @@ Native PICO-8 has no save states or rewind.
   `rgsp` on the RG SP, `rg34xx` on the RG34xxSP, `rg35xx` on the RG35XX H
   and RG35XX SP), with their passwords.
 - **Brightness:** hold Menu and press Volume +/-.
-- **A new device's clock** starts at 1970. Set it in System Settings > Date &
-  Time, or secure downloads fail (Splore's carts, for one).
+- **The clock** sets itself from the network while Wi-Fi is on. A new device
+  without Wi-Fi starts at 1970: set it in System Settings > Date & Time, or
+  secure downloads fail (Splore's carts, for one).
 - **USB DACs** work on every model. BaseOS on the RG35XX H and RG35XX SP has no
   USB audio driver, so plorpOS loads its own when it starts.
 - **The lid** (RG SP, RG34xxSP, RG35XX SP): closing it sleeps, like a tap of POWER, and opening it wakes
