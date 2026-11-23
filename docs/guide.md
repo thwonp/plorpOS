@@ -446,8 +446,8 @@ d-pad's sides do what they do on Now Playing.
 
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
-plays, how soon the screen goes off is **Screen Off** in Playback Settings:
-**Follow Sleep** (the default) uses Auto Sleep's time, or Auto Off's when sleep
+plays, how soon the screen goes off is **Auto Screen Off** in Playback Settings:
+**Follow Sleep Value** (the default) uses Auto Sleep's time, or Auto Off's when sleep
 is off; or pick 5s to 1m, or Never.
 
 In the dark the volume keys change the volume and a headset's buttons work,
