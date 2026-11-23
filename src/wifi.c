@@ -208,15 +208,26 @@ static void dhcp_after_join(void)
  * with Wi-Fi. A never-set clock reads 1970 and every https download fails
  * until it is right; with Wi-Fi off nothing is left waking every 5 s for a
  * route. timedatectl keeps the choice in /data, and BaseOS starts it again at
- * the next boot. In the background: the menu never waits on it. The Zero 40
- * has no timedatectl, so there it does nothing. */
+ * the next boot. In the background: the menu never waits on it.
+ *
+ * oakMOSS on the Zero 40 runs no time daemon (plorpos-5tm.9): one BusyBox
+ * ntpd -q a join sets the clock and the RTC (UTC) and exits, as radio.sh does
+ * at boot and after a sleep; Wi-Fi off stops one still waiting for an answer. */
 static void net_time(bool on)
 {
+#if defined(PLATFORM_ZERO40)
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"(/usr/sbin/ntpd -n -q -p pool.ntp.org && /sbin/hwclock -w -u) > /dev/null 2>&1 &"
+		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
+
+	run(argv, NULL, 0);
+#else
 	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
 		? (char *)"/usr/bin/timedatectl set-ntp true > /dev/null 2>&1 &"
 		: (char *)"/usr/bin/timedatectl set-ntp false > /dev/null 2>&1 &", NULL };
 
 	if (access("/usr/bin/timedatectl", X_OK) == 0) run(argv, NULL, 0);
+#endif
 }
 #endif
 
