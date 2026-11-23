@@ -1192,6 +1192,18 @@ void musec_stop(void)
 	sendf("STOP");
 }
 
+void musec_forget(void)
+{
+	musec_stop();
+	queue_set(NULL, 0, 0, 0, false, 1.0, "", "");
+	g_asked = g_held = false;
+	g_now.state = MU_STOPPED;                 /* the daemon says so a moment later */
+	g_now.title[0] = g_now.artist[0] = g_now.album[0] = g_now.codec[0] = '\0';
+	g_title_wait[0] = '\0';
+	g_now.index = g_now.count = 0;
+	g_now.at = g_now.len = 0;
+}
+
 bool musec_cover_ask(const char *track, const char *base)
 {
 	if (strpbrk(track, "\t\n") || strpbrk(base, "\t\n")) return false;
