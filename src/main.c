@@ -24440,17 +24440,18 @@ int main(int argc, char *argv[])
 	wait_for_boot_anim();
 
 	/* Swallow the input noise a boot produces -- replayed wake presses, the
-	 * bursts input devices emit as they come up -- before honoring anything. */
-	{
-		Uint32 grace = SDL_GetTicks() + 350;
-		while (SDL_GetTicks() < grace) { plat_input_poll(&a.in); SDL_Delay(8); }
-		memset(&a.in, 0, sizeof a.in);
-	}
+	 * bursts input devices emit as they come up -- before honoring anything.
+	 * The shelf draws meanwhile: the loop below drops what it reads until
+	 * grace_until. Waiting it out before the first frame held the shelf back
+	 * 350 ms on every boot (plorpos-f1p.97.1). */
+	Uint32 grace_until = SDL_GetTicks() + 350;
 
 	/* Straight back into the game, before the shelf is ever drawn. After the
-	 * input grace above, so a wake press replayed by the boot does not land in
-	 * the menu that is about to open. */
+	 * input grace, waited out here, so a wake press replayed by the boot does
+	 * not land in the menu that is about to open. */
 	if (a.resume_menu && a.running) {
+		while (SDL_GetTicks() < grace_until) { plat_input_poll(&a.in); SDL_Delay(8); }
+		memset(&a.in, 0, sizeof a.in);
 		a.screen = SCREEN_GAMES;
 		launch(&a);
 	}
@@ -24470,6 +24471,12 @@ int main(int argc, char *argv[])
 
 		/* A game list scrolls under the finger (plorpos-3yv.110). */
 		gl_poll(&a, &g_shelf_scroll, a.screen == SCREEN_GAMES && gl_active(&a));
+		if (grace_until && SDL_GetTicks() < grace_until) {   /* the boot's input grace, above */
+			memset(&a.in, 0, sizeof a.in);
+			memset(&g_shelf_scroll, 0, sizeof g_shelf_scroll);
+		} else {
+			grace_until = 0;
+		}
 		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
 
