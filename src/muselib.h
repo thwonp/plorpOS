@@ -36,8 +36,10 @@ typedef struct { char name[128]; char path[LIB_PATH]; } ml_track;
  * Music/.media/Singles.png. */
 typedef struct { char name[128]; int first, n; bool book, singles; } ml_album;  /* tracks[first..] */
 #define ML_SINGLES "Singles"
-/* Music/Plex: albums downloaded from Plex, <artist>/<album> under it (plorpos-1lw). */
-#define ML_PLEX "Plex"
+/* Music/Plex, Music/Jellyfin: albums downloaded from a music server,
+ * <artist>/<album> under it (plorpos-1lw, plorpos-vgr.13). */
+#define ML_PLEX     "Plex"
+#define ML_JELLYFIN "Jellyfin"
 typedef struct { char name[128]; int first, n; bool book; } ml_artist; /* albums[first..] */
 
 typedef struct {
@@ -85,7 +87,7 @@ void ml_cover_base(const char *root, const ml_lib *l, int al, char *out, size_t 
 /* A folder that has gone takes its cover with it (plorpos-5tm.14): the one
  * ml_cover_base keeps beside it, <parent>/.media/<name>.jpg|png, and the
  * .media once that empties it. Then the parent goes if that left it empty,
- * and its cover, on up - but never `stop` (Audiobooks, Music/Plex) or above.
+ * and its cover, on up - but never `stop` (Audiobooks, Music/<server>) or above.
  * Nothing else is removed: those two names and empty folders only. */
 void ml_prune_up(const char *dir, const char *stop);
 

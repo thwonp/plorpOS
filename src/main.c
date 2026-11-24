@@ -1287,7 +1287,7 @@ static bool g_muse_books;
 static msrv *g_srv;
 static muse_src g_srv_src;
 static bool g_srv_stale;     /* a sync wrote a new index: load it when idle */
-static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle */
+static bool g_local_stale;   /* downloads changed Music/<server>: rescan when idle */
 static unsigned g_muse_card_gen;
 /* A download finished or a copy went (Audiobookshelf, Plex): the Local
  * source rescans when idle, and the rows' on-the-card marks are looked at

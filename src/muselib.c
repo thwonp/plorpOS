@@ -238,10 +238,12 @@ static bool scan_into(ml_lib *out, caps *c, const char *root, const char *prefix
 		snprintf(dir, sizeof dir, "%s/%s", root, top.v[i]);
 		if (prefix[0]) snprintf(top_rel, sizeof top_rel, "%s/%s", prefix, top.v[i]);
 		else           snprintf(top_rel, sizeof top_rel, "%s", top.v[i]);
-		/* Music/Plex/<artist>/<album>/: what Muse downloaded from Plex
-		 * (plorpos-1lw), a level deeper so it never mixes into a folder of
-		 * the card's own. Its artists are artists like any other's. */
-		if (!book && !strcmp(top.v[i], ML_PLEX) && strcmp(prefix, "") &&
+		/* Music/Plex|Jellyfin/<artist>/<album>/: what Muse downloaded from
+		 * a server (plorpos-1lw, plorpos-vgr.13), a level deeper so it never
+		 * mixes into a folder of the card's own. Its artists are artists like
+		 * any other's. */
+		if (!book && (!strcmp(top.v[i], ML_PLEX) || !strcmp(top.v[i], ML_JELLYFIN)) &&
+		    strcmp(prefix, "") &&
 		    !strchr(prefix, '/')) {
 			scan_into(out, c, dir, top_rel, book);
 			continue;
@@ -287,10 +289,11 @@ bool ml_scan(const char *root, ml_lib *out)
 }
 
 /* Artists by name - music, then books - with one artist for a name found in
- * two places: Music/<artist> and Music/Plex/<artist>, whose scan put the
- * Plex ones at "P" (plorpos-1lw.14). Albums move with their artist; a
- * merged artist's albums go by name. A card without Music/Plex comes out as
- * it went in: its folders were already in this order. */
+ * more than one place: Music/<artist>, Music/Plex/<artist> and
+ * Music/Jellyfin/<artist>, whose scan put the servers' ones at "P" and "J"
+ * (plorpos-1lw.14). Albums move with their artist; a merged artist's albums
+ * go by name. A card without a server's folder comes out as it went in: its
+ * folders were already in this order. */
 static const ml_lib *g_sort_lib;
 
 static int cmp_artist(const void *a, const void *b)

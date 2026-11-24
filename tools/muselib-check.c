@@ -365,6 +365,53 @@ static void plex(void)
 	ml_free(&l);
 }
 
+/* Music/Jellyfin/<artist>/<album>: Jellyfin's downloads, read as Plex's, and
+ * one artist with the card's own and Plex's (plorpos-vgr.13). */
+static void jellyfin(void)
+{
+	char c[300];
+	ml_lib l;
+	int al;
+
+	printf("Jellyfin downloads under Music/Jellyfin\n");
+	dir("jcard");
+	dir("jcard/Music");
+	dir("jcard/Music/Blur");
+	dir("jcard/Music/Blur/Parklife");
+	touch("jcard/Music/Blur/Parklife/01 Girls And Boys.mp3");
+	dir("jcard/Music/Plex");
+	dir("jcard/Music/Plex/Blur");
+	dir("jcard/Music/Plex/Blur/13");
+	touch("jcard/Music/Plex/Blur/13/01 Tender.opus");
+	dir("jcard/Music/Jellyfin");
+	dir("jcard/Music/Jellyfin/blur");
+	dir("jcard/Music/Jellyfin/blur/Think Tank");
+	touch("jcard/Music/Jellyfin/blur/Think Tank/01 Ambulance.opus");
+	dir("jcard/Music/Jellyfin/Low");
+	dir("jcard/Music/Jellyfin/Low/Things We Lost in the Fire");
+	touch("jcard/Music/Jellyfin/Low/Things We Lost in the Fire/02 Sunflower.opus");
+	touch("jcard/Music/Jellyfin/Low/Things We Lost in the Fire/01 Medicine Magic.opus");
+	snprintf(c, sizeof c, "%s/jcard", root);
+	CHECK(ml_scan_card(c, &l), "a card with Music/Jellyfin scans");
+	CHECK(l.nartists == 2, "Blur, Low - no Jellyfin, no Plex, one Blur: %d", l.nartists);
+	if (l.nartists == 2) {
+		CHECK(!strcmp(l.artists[0].name, "Blur") && !strcmp(l.artists[1].name, "Low"),
+		      "artists by name: %s, %s", l.artists[0].name, l.artists[1].name);
+		CHECK(l.artists[0].n == 3, "Blur's card, Plex and Jellyfin albums together: %d",
+		      l.artists[0].n);
+	}
+	al = album_named(&l, "Things We Lost in the Fire");
+	CHECK(al >= 0 && l.albums[al].n == 2, "the downloaded album and its tracks");
+	if (al >= 0)
+		CHECK(!strcmp(l.tracks[l.albums[al].first].path,
+		              "Music/Jellyfin/Low/Things We Lost in the Fire/01 Medicine Magic.opus"),
+		      "paths keep the Jellyfin level: %s", l.tracks[l.albums[al].first].path);
+	CHECK(album_named(&l, "Think Tank") >= 0, "a Jellyfin album of a card artist");
+	CHECK(album_named(&l, "Jellyfin") < 0 && album_named(&l, "Low") < 0,
+	      "no Jellyfin artist, no artist folder as an album");
+	ml_free(&l);
+}
+
 static bool there(const char *rel)
 {
 	char p[512];
@@ -451,6 +498,7 @@ int main(void)
 	orders();
 	card();
 	plex();
+	jellyfin();
 	prune();
 
 	snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
