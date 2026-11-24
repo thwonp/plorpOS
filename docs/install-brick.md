@@ -51,6 +51,9 @@ plorpOS.
 
 ## Updating from an earlier version
 
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+
 Copy everything in the new zip onto the card, replacing what's there. Your
 settings, saves, play time and achievements live in `.userdata/` and `Saves/`
 and stay as they are.
@@ -140,6 +143,9 @@ Output is set to Speaker. A speaker override with the jack inserted has not
 worked with the firmware's exposed audio controls.
 
 ## Updating from an earlier version
+
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
 
 Copy everything in the new zip onto the card, replacing what's there. Your
 settings, saves, play time and achievements live in `.userdata/` and `Saves/`

@@ -103,6 +103,9 @@ running GKD is one ROCKNIX fills with empty system folders. If this happened to 
 
 ## Updating from an earlier version
 
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+
 Copy everything inside the new `copy_to_sd/` onto the card, replacing what's
 there. Your settings, saves, play time and achievements live in `.userdata/`
 and `Saves/` and stay as they are. Leave the `system.d/` files alone.

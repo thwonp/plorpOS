@@ -60,7 +60,7 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **SSH** and **Samba** switches on the GKD and RG DS, **SSH** on the RG Rotate, Zero 40 and Miyoo Mini Flip; **Syncthing** and **Tailscale** (see below) on every device with Wi-Fi but the Flip; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **SSH** and **Samba** switches on the GKD and RG DS, **SSH** on the RG Rotate, Zero 40 and Miyoo Mini Flip; **Syncthing** and **Tailscale** (see below) on every device with Wi-Fi but the Flip; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none; **Check for update** (see below). The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget. Not on the Miyoo Mini Flip |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse+). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing`. **Rotate (Closed)** (RG Rotate): what turning the screen closed does - `nothing`, `sleep`, or `open Muse+` (Now Playing, or the Muse+ tabs when nothing is playing), in a game too. **Rotate (Open)** (RG Rotate): what turning it open does - `wake only`, `main shelf`, `recents` or `resume last game`. Opening always wakes a sleeping Rotate. **Rotate Open Always Resumes Game** (RG Rotate): `on` to start, so with a game running, opening goes back to the game from its menu or from Muse+, and only `recents` acts on the game itself (the game switcher). `off`, Rotate (Open) is done as written with a game running too: `main shelf` ends the game (saved as Quit saves it; a port or PICO-8 just closes) and `recents` opens the switcher |
@@ -223,6 +223,27 @@ with your other devices. On, the row shows the address of its web page, like
 - Its Syncthing ID lives on the card, so reinstalling plorpOS keeps it.
 - Anyone on the same network can sign in with that password too. Switch it
   off on networks you don't trust.
+
+### Check for update
+
+*Coming in the next release.* On every device with Wi-Fi.
+
+**MENU > Network Services > Check for update** looks for a newer plorpOS on
+GitHub. If there is one, it asks before downloading it, then asks to restart.
+The update goes in during that restart. Pick **Cancel** at that point and it
+goes in at the next restart instead.
+
+- It needs room on the card for the download and what it unpacks to, about
+  four times the download. It says so if there isn't.
+- **B** stops a download. Unpacking can't be stopped; it takes a minute or two
+  on the Bricks.
+- Your settings, saves, games and anything you added to `plorpOS/` stay.
+- If the new version won't start, the device goes back to the one it had and
+  leaves a note in `plorpOS/update-failed.log`.
+- On the Anbernic H700 devices, Restart restarts plorpOS, not the device.
+- Only full releases are offered, not pre-releases. A release that needs a
+  new card image (the RG Rotate's or RG DS's system, say) isn't offered;
+  flash that one.
 
 ## Audio
 
