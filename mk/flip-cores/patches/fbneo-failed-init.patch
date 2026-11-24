@@ -1,0 +1,81 @@
+plorpOS (plorpos-f1p.95.15): a set that fails to load in the resident Diatom
+(too big for the Flip's memory) shows FBNeo's error screen and leaves the
+emulator usable for the next game.
+- neo_run.cpp: NeoInit cleared 'recursing' on success only. A failed ROM load
+  left it set, NeoExit then freed nothing and the next Neo Geo game skipped its
+  hardware init (uPD4990A clock never set -> divide by zero on frame 1).
+- retro_input.cpp: with no driver loaded, set_controller_port_device used the
+  previous game's input count against no driver (SIGSEGV).
+- ugui_tools.c: the error screen's buffer was allocated on every failed load
+  and never freed, and drawn into unchecked.
+
+--- a/src/burn/drv/neogeo/neo_run.cpp
++++ b/src/burn/drv/neogeo/neo_run.cpp
+@@ -4300,6 +4300,10 @@
+ 
+ 	recursing = true;
+ 
++	// plorpOS: a failed load must not leave recursing set. It made the next game
++	// in the same process (a resident emulator) skip the hardware init and
++	// divide by zero on its first frame, and NeoExit free nothing (plorpos-f1p.95.15).
++
+ 	nNeoSystemType = NEO_SYS_CART;
+ 
+ 	if ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNK_DEDICATED_PCB) {
+@@ -4321,6 +4325,7 @@
+ 				NeoCallbackActive = &NeoCallback[nNeoActiveSlot];
+ 
+ 				if (BurnDrvCartridgeSetup(CART_INIT_START)) {
++					recursing = false;
+ 					return 1;
+ 				}
+ 
+@@ -4351,11 +4356,13 @@
+ 		nBurnDrvActive = nDriver;
+ 
+ 		if (BurnDrvCartridgeSetup(CART_INIT_END)) {
++			recursing = false;
+ 			return 1;
+ 		}
+ 
+ 	} else {
+ 		if (LoadRoms()) {
++			recursing = false;
+ 			return 1;
+ 		}
+ 	}
+--- a/src/burner/libretro/retro_input.cpp
++++ b/src/burner/libretro/retro_input.cpp
+@@ -3634,6 +3634,12 @@
+ void retro_set_input_poll(retro_input_poll_t cb) { poll_cb = cb; }
+ void retro_set_controller_port_device(unsigned port, unsigned device)
+ {
++	// plorpOS: no driver (its load failed) means no controllers. Going on used
++	// the previous game's input count against no driver and crashed the
++	// resident emulator (plorpos-f1p.95.15).
++	if (nBurnDrvActive == ~0U)
++		return;
++
+ 	// Retroarch is ignoring what i want, so let's force valid values
+ 	if (nBurnDrvActive != ~0U)
+ 	{
+--- a/src/burner/libretro/ugui_tools.c
++++ b/src/burner/libretro/ugui_tools.c
+@@ -32,6 +32,7 @@
+ 
+ static void UserPixelSetFunction(UG_S16 x, UG_S16 y, UG_COLOR c)
+ {
++   if (!frame_buf) return;   /* plorpOS: no memory left for it (plorpos-f1p.95.15) */
+    frame_buf[width * y + x] = c;
+ }
+ 
+@@ -39,6 +40,9 @@
+ {
+    width     = w;
+    height    = h;
++   /* plorpOS: one buffer, not a new one per failed game - the resident
++    * emulator lives across games (plorpos-f1p.95.15). */
++   free(frame_buf);
+    frame_buf = (unsigned*)calloc(width * height, bpp);
+ 
+    Fbneodevice.x_dim = width;

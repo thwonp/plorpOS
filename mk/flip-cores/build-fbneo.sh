@@ -7,6 +7,9 @@
 # made with it off refuse each other instead of crashing (plorpos-f1p.95.12).
 # patches/fbneo-family-cyclone.patch gives the family cores Cyclone, which
 # FBNeo's subset makefiles leave out (plorpos-f1p.95.14).
+# patches/fbneo-failed-init.patch: a set that fails to load (too big for
+# memory) shows FBNeo's error screen instead of crashing the resident Diatom,
+# and no longer breaks the next Neo Geo game it runs (plorpos-f1p.95.15).
 #
 #   build-fbneo.sh            every driver          -> fbneo_libretro.so
 #   build-fbneo.sh cps12      CPS-1 and CPS-2 only  -> fbneo_cps12_libretro.so
@@ -23,6 +26,7 @@ fetch fbneo finalburnneo/FBNeo a836e52198aa5ce1f54be7b050e44872a1223797 a04fdb75
 (cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-lazy-cpu-maps.patch)
 (cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-cyclone-state.patch)
 (cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-family-cyclone.patch)
+(cd "$R" && git apply --directory=build/flip-cores/src/fbneo mk/flip-cores/patches/fbneo-failed-init.patch)
 D=fbneo/src/burner/libretro
 A="platform=rpi2 $XCW"
 if [ -n "$SUB" ]; then
