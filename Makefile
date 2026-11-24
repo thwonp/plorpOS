@@ -531,7 +531,7 @@ build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscr
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
 	      -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/urlenc.c src/fbneodat.c src/setmap.c
+	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/tailscale.c src/urlenc.c src/fbneodat.c src/setmap.c
 
 # Replace fetches over a cover rather than deleting it first. The real scraper
 # against a stubbed network, so a hit and a miss are both pinned with no device
@@ -567,10 +567,10 @@ build-native/rahash-check: tools/rahash-check.c src/rahash.c src/rahash.h src/ch
 check-raset: build-native/raset-check
 	@python3 tools/raset-check.py
 
-build-native/raset-check: tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/atomic.c src/db.c $(TP_OBJ) FORCE
+build-native/raset-check: tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/tailscale.c src/atomic.c src/db.c $(TP_OBJ) FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -DTORTOS_VERSION='"check"' $(TP_CFLAGS) \
-	      -o $@ tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/atomic.c src/db.c $(TP_OBJ)
+	      -o $@ tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/tailscale.c src/atomic.c src/db.c $(TP_OBJ)
 
 # Whether this build can reach ScreenScraper, and whether an account survives
 # a restart. The live half needs a network and .screenscraper.env, and skips
@@ -578,12 +578,12 @@ build-native/raset-check: tools/raset-check.c src/rafetch.c src/rajson.c src/rah
 check-ss: build-native/ss-check
 	@./build-native/ss-check
 
-build-native/ss-check: tools/ss-check.c src/ss.c src/ss.h src/ssfetch.c src/ssfetch.h src/db.c src/net.c src/urlenc.c src/rajson.c FORCE
+build-native/ss-check: tools/ss-check.c src/ss.c src/ss.h src/ssfetch.c src/ssfetch.h src/db.c src/net.c src/tailscale.c src/urlenc.c src/rajson.c FORCE
 	@mkdir -p build-native
 	@$(MAKE) -f mk/native.mk creds
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Ibuild-native \
 	      -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/ss-check.c src/ss.c src/ssfetch.c src/db.c src/net.c src/urlenc.c src/rajson.c
+	      -o $@ tools/ss-check.c src/ss.c src/ssfetch.c src/db.c src/net.c src/tailscale.c src/urlenc.c src/rajson.c
 
 # One-time: the cross-compiler image. Pinned by digest, so it does not drift.
 toolchain:

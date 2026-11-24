@@ -79,6 +79,7 @@ static struct {
 
 	st     state;
 	char   path[PATH_MAX_];
+	char   proxy[64];                 /* a stream's HTTP proxy, from its PLAY, or "" */
 	double heard, len, speed;
 	/* What the file says about itself, copied out when it opens so the
 	 * socket thread never reaches into the decoder the player thread is
@@ -105,7 +106,7 @@ static struct {
  * So repeats of the SAME verb still merge, where the newest is the only one
  * that means anything - SEEK, SPEED, SINK - and everything else waits its turn. */
 #define QCAP 16
-typedef struct { cmd c; char path[PATH_MAX_]; char dev[128]; double at, speed; } qcmd;
+typedef struct { cmd c; char path[PATH_MAX_]; char dev[128]; char proxy[64]; double at, speed; } qcmd;
 static qcmd Q[QCAP];
 static int  q_head, q_len;               /* under S.mu */
 
@@ -170,7 +171,7 @@ static int reopen(double at)
 	char err[160];
 
 	dec_close(g_dec);
-	g_dec = dec_open(S.path, at, S.speed, err, sizeof err);
+	g_dec = dec_open(S.path, S.proxy, at, S.speed, err, sizeof err);
 	if (!g_dec) { fail(err); return 0; }
 	S.len = dec_len(g_dec);
 	S.heard = at;
@@ -222,6 +223,7 @@ static void handle(const qcmd *q)
 		break;
 	case C_PLAY:
 		snprintf(S.path, sizeof S.path, "%s", q->path);
+		snprintf(S.proxy, sizeof S.proxy, "%s", q->proxy);
 		/* A PLAY with no speed means normal speed. It used to mean "whatever
 		 * the last one was", and speed is a property of a book, not of the
 		 * daemon: a 1.5x set for one audiobook played every song after it
@@ -599,6 +601,7 @@ static void command(int fd, const char *line)
 		arg(line, "path", q.path, sizeof q.path);
 		arg(line, "at", v, sizeof v);    q.at = atof(v);
 		arg(line, "speed", v, sizeof v); q.speed = atof(v);
+		arg(line, "proxy", q.proxy, sizeof q.proxy);
 		if (q.path[0]) q.c = C_PLAY;
 	} else if (!strncmp(line, "PAUSE", 5))  q.c = C_PAUSE;
 	else if (!strncmp(line, "RESUME", 6))   q.c = C_RESUME;

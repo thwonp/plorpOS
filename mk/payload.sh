@@ -79,7 +79,9 @@ cp "$ROOT/sd/tortos/folder-move.sh" "$P/"   # TortOS/ -> plorpOS/ on an updated 
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
 if [ "$PLATFORM" = gkd ]; then
 	cp "$B/musectl" "$P/"
-	cp "$ROOT/sd/gkd/launch.sh" "$P/"
+	cp "$ROOT/sd/gkd/launch.sh" "$ROOT/sd/gkd/tailscale.sh" "$P/"
+	[ -f "$B/tailscaled" ] || { echo "no $B/tailscaled; run mk/build-tailscale.sh gkd" >&2; exit 1; }
+	cp "$B/tailscaled" "$B/LICENSE-tailscale.md" "$P/"   # Tailscale switch (plorpos-8ns.5)
 	# Drop-ins from before the rename start TortOS/launch.sh (plorpos-nzi).
 	mkdir -p "$CARD/TortOS"
 	cp "$ROOT/sd/gkd/tortos-launch.sh" "$CARD/TortOS/launch.sh"
@@ -271,7 +273,7 @@ done
 
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
-gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" "$P/tailscaled" "$P/tailscale.sh" ;;
 zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$P/tailscaled" "$P/tailscale.sh" "$OUT/.tmp_update/updater"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )

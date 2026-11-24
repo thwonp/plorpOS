@@ -22,8 +22,10 @@ typedef struct dec dec;
 
 /* Open `path` and position it at `at` seconds, playing at `speed` (1.0 is
  * normal; 0.5-2.0 is what anyone uses, and atempo changes it without changing
- * pitch). NULL on failure, with the reason in `err`. */
-dec *dec_open(const char *path, double at, double speed, char *err, size_t errn);
+ * pitch). `proxy`, when not NULL or "", is the HTTP proxy a stream goes
+ * through (tailscaled's, plorpos-8ns.5). NULL on failure, with the reason in
+ * `err`. */
+dec *dec_open(const char *path, const char *proxy, double at, double speed, char *err, size_t errn);
 
 /* Up to `max` frames into `buf` (a frame is one sample per channel). Returns
  * how many, 0 at the end of the file, <0 on an error the file cannot recover

@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <sys/socket.h>
@@ -15,9 +16,9 @@
 #include <unistd.h>
 
 #include "db.h"
+#include "platform.h"
 #include "rajson.h"
 
-#define TS_SCRIPT "/mnt/SDCARD/plorpOS/tailscale.sh"
 #define TS_SOCK   "/tmp/tailscaled.sock"
 
 bool ts_on(void)
@@ -25,41 +26,59 @@ bool ts_on(void)
 	return db_get_int(db_dev(), "tailscale", 0) != 0;
 }
 
-/* Saved first, so a reboot agrees with the switch even if the script fails. */
-bool ts_set(bool on)
+/* plorpOS/tailscale.sh start|stop. It backgrounds the daemon and the
+ * sign-in, so it returns at once. */
+static bool run_script(const char *verb)
 {
+	char script[256];
 	pid_t pid;
 
-	if (!db_set_int(db_dev(), "tailscale", on ? 1 : 0)) return false;
-	db_write_boot_env();
+	snprintf(script, sizeof script, "%s/tailscale.sh", P_ROOT);
 	if ((pid = fork()) == 0) {
-		execl("/bin/sh", "sh", TS_SCRIPT, on ? "start" : "stop", (char *)NULL);
+		execl("/bin/sh", "sh", script, verb, (char *)NULL);
 		_exit(127);
 	}
-	/* The script backgrounds the daemon and the sign-in, so it returns at once. */
 	if (pid > 0) waitpid(pid, NULL, 0);
 	return pid > 0;
 }
 
-/* GET /localapi/v0/status over the socket, as HTTP/1.0 so the reply is not
+/* Saved first, so a reboot agrees with the switch even if the script fails. */
+bool ts_set(bool on)
+{
+	if (!db_set_int(db_dev(), "tailscale", on ? 1 : 0)) return false;
+	db_write_boot_env();
+	return run_script(on ? "start" : "stop");
+}
+
+/* The Zero 40's launch.sh starts it from boot.env, before the launcher; the
+ * GKD's boots straight into the launcher. The script does nothing if the
+ * daemon is already up, as it is after a launcher restart. */
+void ts_boot(void)
+{
+#if defined(PLATFORM_GKD)
+	if (ts_on()) run_script("start");
+#endif
+}
+
+/* GET a LocalAPI path over the socket, as HTTP/1.0 so the reply is not
  * chunked: it ends when the daemon closes. Bounded by a short timeout, since
  * the menu waits on it. */
-static int localapi_status(char *buf, size_t cap)
+static int localapi_get(const char *path, char *buf, size_t cap)
 {
-	static const char req[] = "GET /localapi/v0/status?peers=false HTTP/1.0\r\n"
-	                          "Host: local-tailscaled.sock\r\n\r\n";
+	char req[160];
 	struct sockaddr_un sa = { .sun_family = AF_UNIX };
 	struct timeval tv = { 0, 300 * 1000 };
 	size_t got = 0;
 	ssize_t r;
-	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	int fd, rn = snprintf(req, sizeof req, "GET %s HTTP/1.0\r\nHost: local-tailscaled.sock\r\n\r\n", path);
 
-	if (fd < 0) return -1;
+	if (rn <= 0 || rn >= (int)sizeof req || (fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0)
+		return -1;
 	snprintf(sa.sun_path, sizeof sa.sun_path, "%s", TS_SOCK);
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
 	if (connect(fd, (struct sockaddr *)&sa, sizeof sa) != 0 ||
-	    write(fd, req, sizeof req - 1) != (ssize_t)(sizeof req - 1)) {
+	    write(fd, req, (size_t)rn) != (ssize_t)rn) {
 		close(fd);
 		return -1;
 	}
@@ -80,7 +99,7 @@ ts_state ts_status(char *ip, size_t ipn, char *url, size_t urln)
 	if (ip && ipn) ip[0] = '\0';
 	if (url && urln) url[0] = '\0';
 	if (!ts_on()) return TS_OFF;
-	if ((n = localapi_status(buf, sizeof buf)) <= 0 || !(body = strstr(buf, "\r\n\r\n")))
+	if ((n = localapi_get("/localapi/v0/status?peers=false", buf, sizeof buf)) <= 0 || !(body = strstr(buf, "\r\n\r\n")))
 		return TS_STARTING;
 	body += 4;
 	root = js_root(body, (size_t)(buf + n - body));
@@ -123,7 +142,7 @@ bool ts_connected(void)
 	/* BackendState comes early in the reply, well inside the first 4 KB -
 	 * which may be cut mid-object, so it is found by hand, not parsed. The
 	 * daemon indents its JSON. */
-	v = localapi_status(buf, sizeof buf) > 0 ? strstr(buf, "\"BackendState\"") : NULL;
+	v = localapi_get("/localapi/v0/status?peers=false", buf, sizeof buf) > 0 ? strstr(buf, "\"BackendState\"") : NULL;
 	if (v) v += strspn(v + 14, " \t:") + 14;
 	up = v && !strncmp(v, "\"Running\"", 9);
 	asked = now;
@@ -145,6 +164,28 @@ static bool tailnet_ip(const struct sockaddr *sa)
 	return false;
 }
 
+/* A MagicDNS short name ("illmatic"): one of the tailnet's devices, by the
+ * first label of its DNSName. Asked of the daemon, since where Tailscale runs
+ * in userspace (TS_PROXY) the system resolver has never heard of it. */
+static bool tailnet_peer(const char *host)
+{
+	enum { CAP = 256 * 1024 };
+	char *buf = malloc(CAP);
+	const char *p;
+	size_t hl = strlen(host);
+	bool yes = false;
+
+	if (!buf) return false;
+	if (localapi_get("/localapi/v0/status?peers=true", buf, CAP) > 0)
+		for (p = buf; !yes && (p = strstr(p, "\"DNSName\"")); ) {
+			p += 9;
+			p += strspn(p, " \t:");
+			yes = *p == '"' && !strncmp(p + 1, host, hl) && p[1 + hl] == '.';
+		}
+	free(buf);
+	return yes;
+}
+
 bool ts_tailnet_addr(const char *address)
 {
 	const char *s = strstr(address, "://");
@@ -163,13 +204,24 @@ bool ts_tailnet_addr(const char *address)
 	if (n && host[n - 1] == '.') host[--n] = '\0';
 	if (!n) return false;
 	if (n > 7 && !strcmp(host + n - 7, ".ts.net")) return true;
+	if (!strchr(host, '.') && !strchr(host, ':') && tailnet_peer(host)) return true;
 	if (getaddrinfo(host, NULL, &hints, &res) != 0) return false;
 	for (r = res; r && !yes; r = r->ai_next) yes = tailnet_ip(r->ai_addr);
 	freeaddrinfo(res);
 	return yes;
 }
 
+const char *ts_proxy(void)
+{
+#ifdef TS_PROXY
+	return ts_connected() ? TS_PROXY : NULL;
 #else
+	return NULL;
+#endif
+}
+#else
+const char *ts_proxy(void) { return NULL; }
+void     ts_boot(void) {}
 bool     ts_on(void) { return false; }
 bool     ts_connected(void) { return false; }
 bool     ts_tailnet_addr(const char *address) { (void)address; return false; }
