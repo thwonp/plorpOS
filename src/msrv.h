@@ -106,10 +106,12 @@ typedef struct {
 	int  (*kbps_stream)(void);                 /* 0: the file as it is */
 	int  (*kbps_download)(void);
 
-	/* The sync: the library's change stamp (-1 failed), every track (the
-	 * count, -1 failed), and what changed since `since` with the server's
-	 * track count (false: read it all). */
-	long (*stamp)(msrv *m);
+	/* The sync: the library's change stamp (-1 failed) - given the index's
+	 * own (old: its stamp, -1 without one; since: its newest change; total:
+	 * the server's track count then), for a server that keeps none - every
+	 * track (the count, -1 failed), and what changed since `since` with the
+	 * server's track count (false: read it all). */
+	long (*stamp)(msrv *m, long old, long since, long total);
 	long (*sync_full)(msrv *m, msrv_set *out);
 	bool (*changed)(msrv *m, long since, const msrv_table *t, msrv_set *ch, long *total);
 

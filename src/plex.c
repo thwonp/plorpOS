@@ -549,14 +549,14 @@ static int scrobble(msrv *m, int key)
 
 /* ---- the library sync ------------------------------------------------------------ */
 
-static long stamp(msrv *m)
+static long stamp(msrv *m, long old, long since, long total_then)
 {
 	char *b = NULL;
 	size_t len;
 	jsv root, mc, dirs, it = { 0 }, d;
 	long s = -1;
 
-	(void)m;
+	(void)m; (void)old; (void)since; (void)total_then;
 	if (server_get("/library/sections", &b, &len, 15) != 200 || !b) return -1;
 	root = js_root(b, len);
 	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Directory", &dirs))

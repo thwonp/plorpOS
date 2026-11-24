@@ -697,7 +697,7 @@ static void *sync_main(void *arg)
 {
 	msrv *m = arg;
 	msrv_set s = { 0 };
-	long stamp, since, was_total, total = 0;
+	long stamp, old, since, was_total, total = 0;
 	char p[700], tmp[720];
 	unsigned t0 = now_ms();
 	int i, changed = -1;
@@ -705,9 +705,10 @@ static void *sync_main(void *arg)
 	FILE *f;
 
 	m->sync_done = 0; m->sync_total = 0;
-	stamp = m->o->stamp(m);
+	old = index_head(m, &since, &was_total);
+	stamp = m->o->stamp(m, old, since, was_total);
 	if (stamp < 0) { m->sync_failed = 1; goto out; }
-	if (!m->sync_force && stamp == index_head(m, &since, &was_total)) { m->sync_last = 1; goto out; }
+	if (!m->sync_force && stamp == old) { m->sync_last = 1; goto out; }
 	if (!m->sync_force && since > 0 && was_total >= 0) {
 		inc = sync_incremental(m, since, was_total, &s, &total, &changed);
 		if (!inc) { sset_free(&s); changed = -1; }

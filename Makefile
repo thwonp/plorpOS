@@ -52,7 +52,7 @@ endif
 # had to be remembered by name, which is a suite in the same sense that a list
 # of good intentions is a plan. A check nobody runs is a check that does not
 # exist, and check-menus was about to join eight others in that state.
-CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
+CHECKS = check-jellyfin check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
@@ -436,6 +436,15 @@ build-native/cheevos-check: tools/cheevos-check.c src/cheevos.c src/cheevos.h \
 # path cannot climb out of a root; this proves the routes actually ask it, and
 # that they are behind the lock - separate claims, and the ones that regress
 # when an endpoint is added.
+check-jellyfin: build-native/jellyfin-check
+	@./build-native/jellyfin-check
+
+# Jellyfin's replies read into tracks, and ids kept as keys (plorpos-vgr.2).
+build-native/jellyfin-check: tools/jellyfin-check.c src/jfparse.c src/rajson.c FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -Wno-unused-parameter -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/jellyfin-check.c src/jfparse.c src/rajson.c
+
 check-hare: build-native/hare-check
 	@./build-native/hare-check
 
