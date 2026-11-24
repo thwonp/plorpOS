@@ -704,14 +704,18 @@ static void timeline(msrv *m, int key, const char *state, long at_ms, long len_m
 	g_pos = at_ms;
 }
 
+/* A play made offline. With datePlayed the server adds one to the play
+ * count; without it, it only marks the track played (plorpos-vgr.5). The
+ * queue keeps no time, so the play is dated when it is sent. */
 static int scrobble(msrv *m, int key)
 {
-	char id[48], path[200];
+	char id[48], path[240], iso[32];
 	int code;
 
 	(void)m;
 	if (!id_of_key(key, id, sizeof id)) return 200;      /* not ours to send: dropped */
-	snprintf(path, sizeof path, "/UserPlayedItems/%s?userId=%s", id, C.user_id);
+	jf_iso((long)time(NULL), iso, sizeof iso);
+	snprintf(path, sizeof path, "/UserPlayedItems/%s?userId=%s&datePlayed=%s", id, C.user_id, iso);
 	code = server_req("POST", path, NULL, NULL, NULL, 10);
 	return code >= 200 && code < 300 ? 200 : code;
 }
