@@ -137,6 +137,10 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 #endif
 	ADD((menu_row){ "Over The Hare",
 	                            w->connected ? NULL : "needs Wi-Fi", w->connected });
+#if OTA_ROWS
+	/* A new release of this port's plorpOS, from GitHub (plorpos-koo). */
+	ADD((menu_row){ "Check for update", w->connected ? NULL : "needs Wi-Fi", w->connected });
+#endif
 	for (i = 0; i < w->n && nrows < max - 3; i++)
 		ADD((menu_row){ w->nets[i].ssid, w->vals[i], true });
 

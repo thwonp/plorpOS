@@ -143,4 +143,11 @@ void net_urlencode(const char *in, char *out, size_t outn);
  * into something the menu can explain. */
 bool net_online(void);
 
+/* A GET of its own, outside the one async slot above, for a download that runs
+ * for minutes alongside whatever box art is doing (the update, plorpos-koo).
+ * The same request as every other - certificates, proxy, redirects, `fail` -
+ * written to `cfg` and the body to `out`. Returns curl's pid, or -1: the
+ * caller waitpid()s it and unlinks `cfg`. */
+int net_spawn_get(const char *url, const char *out, const char *cfg, int timeout_s);
+
 #endif

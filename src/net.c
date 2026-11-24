@@ -563,6 +563,24 @@ int net_async_http(void)
 int net_async_ms(void)   { return g_async_ms; }
 int net_async_exit(void) { return g_async_exit; }
 
+int net_spawn_get(const char *url, const char *out, const char *cfg, int timeout_s)
+{
+	const char *bin = curl_bin();
+	pid_t pid;
+
+	if (!bin || !write_get_config(cfg, url, out, timeout_s)) return -1;
+	pid = vfork();      /* not fork: see fetch() */
+	if (pid == 0) {
+		int fd = open("/dev/null", O_RDWR);
+
+		if (fd >= 0) { dup2(fd, 0); dup2(fd, 1); }
+		execl(bin, bin, "-K", cfg, (char *)NULL);
+		_exit(127);
+	}
+	if (pid < 0) { unlink(cfg); return -1; }
+	return pid;
+}
+
 bool net_online(void)
 {
 	struct ifaddrs *ifa, *p;

@@ -7796,7 +7796,6 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
  * reads only at boot: say so, then restart once to take it. launch.sh turns
  * TORTOS_REBOOT_FLAG into the reboot, as it does the power-off flag. */
 #define SYSTEM_UPDATED "/run/plorpos/system-updated"
-#define TORTOS_REBOOT_FLAG "/tmp/tortos_reboot"
 
 static void restart_if_updated(app *a)
 {
@@ -7894,6 +7893,9 @@ typedef struct {
 	/* The row the cursor starts on: 0, the top, unless a list opens on the
 	 * entry already chosen (the in-game Shader list). */
 	int      start;
+	/* Muse's passing word (muse_toast) over the panel: Network Services says
+	 * how a Check for update ended that way (plorpos-koo). */
+	bool     toasts;
 } menu_style;
 
 /* SELECT: Muse, over whatever is on screen. Declared here, after menu_style,
@@ -8079,6 +8081,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		}
 		menu_draw(a, heading, rows, n, sel, st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
+		if (st->toasts && muse_toast_now()) toast_draw(a, muse_toast_now(), st->accent);
 		draw_chrome(a->r);
 		plat_present(a->r);
 	}
@@ -8214,6 +8217,114 @@ static void ts_signin_screen(app *a)
 }
 #endif
 
+#if OTA_ROWS
+/* Check for update (plorpos-koo): ask GitHub, offer what it has, download
+ * it, have ota.sh unpack it, and restart into it. Every way out but the
+ * restart says how it ended in a toast on Network Services. B stops the check
+ * and the download; unpacking runs to its end (a minute or two on the Brick's
+ * card) and says so. */
+static const char *ota_error_text(const ota_job *j, char *buf, size_t n)
+{
+	if (!strcmp(j->err, "space"))
+		snprintf(buf, n, "Not enough free space (needs %d MB)", ota_need_mb(j));
+	else if (!strcmp(j->err, "checksum"))
+		snprintf(buf, n, "The download was damaged. Try again.");
+	else if (!strcmp(j->err, "fetch"))
+		snprintf(buf, n, "Failed to fetch update");
+	else
+		snprintf(buf, n, "The update could not be installed");
+	return buf;
+}
+
+static void ota_restart(app *a)
+{
+	FILE *f;
+
+	fprintf(stderr, "ota: restarting to install\n");
+	plat_leds_off();
+	remember_place(a);
+	book_keep(true);
+	if (g_queue_file[0]) musec_queue_save(g_queue_file);
+	if ((f = fopen(TORTOS_REBOOT_FLAG, "w"))) fclose(f);
+	plat_screen(false);
+	a->running = false;
+}
+
+static void ota_screen(app *a)
+{
+	static ota_job j;
+	const char *head = "Check for Update";
+	char l1[96], l2[96], msg[192], err[96];
+	menu_row rows[4];
+	ui_pace pace = {0};
+	int n;
+
+	ota_check(&j);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	while (a->running && !want_quit) {
+		ota_poll(&j);
+		if (j.phase == OTA_UPTODATE) { muse_toast("No updates available"); break; }
+		if (j.phase == OTA_ERROR) { muse_toast(ota_error_text(&j, err, sizeof err)); break; }
+		if (j.phase == OTA_FOUND) {
+			snprintf(msg, sizeof msg, "Install plorpOS v%s (%lld MB)?", j.ver, (j.size + 524288) / 1048576);
+			if (!confirm_panel(a, head, msg, "Download")) break;
+			ota_download(&j);
+			continue;
+		}
+		if (j.phase == OTA_READY) {
+			snprintf(msg, sizeof msg, "Restart to install v%s?", j.ver);
+			if (confirm_panel(a, head, msg, "Restart")) ota_restart(a);
+			else muse_toast("It installs at the next restart");
+			break;
+		}
+
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { ota_cancel(&j); a->running = false; break; }
+		if (power_check(a) == PWR_POWEROFF) {
+			if (j.phase != OTA_STAGING) ota_cancel(&j);
+			power_off(a);
+			break;
+		}
+		vol_keys(&a->in);
+		if (j.phase != OTA_STAGING && menu_leaving(a)) {
+			bool dl = j.phase == OTA_FETCHING;
+
+			ota_cancel(&j);
+			if (dl) muse_toast("Update cancelled");
+			break;
+		}
+
+		n = 0;
+		if (j.phase == OTA_CHECKING) {
+			rows[n++] = MENU_NOTE("Checking for updates...");
+		} else if (j.phase == OTA_FETCHING) {
+			snprintf(l1, sizeof l1, "Downloading plorpOS v%s", j.ver);
+			snprintf(l2, sizeof l2, "%lld of %lld MB", j.got / 1048576, (j.size + 524288) / 1048576);
+			rows[n++] = MENU_NOTE(l1);
+			rows[n++] = MENU_NOTE(l2);
+		} else if (j.phase == OTA_STAGING) {
+			snprintf(l1, sizeof l1, j.verifying ? "Checking the download..." : "Unpacking... %d%%",
+			         j.total > 0 ? j.done * 100 / j.total : 0);
+			rows[n++] = MENU_NOTE(l1);
+		}
+		rows[n++] = MENU_RULE;
+		rows[n++] = MENU_NOTE(j.phase == OTA_STAGING ? "Please wait" : "B: cancel");
+		if (!screen_draw_due(a, &pace, menu_fingerprint(head, rows, n, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
+		tick_tint(a);
+		shelf_dim_cached(a, 120);
+		menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
+		draw_chrome(a->r);
+		plat_present(a->r);
+	}
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+#endif
+
 static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 {
 	wifi_ui *w = ctx;
@@ -8294,6 +8405,9 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 	 * of a handheld is often the power button. */
 	/* Over The Hare, which moved here from the plorpOS menu (plorpos-z0d.1). */
 	if (sel == WIFI_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
+#if OTA_ROWS
+	if (sel == WIFI_ROW_OTA) { ota_screen(a); return MENU_STAY; }
+#endif
 
 	if (sel == WIFI_ROW_SWITCH) {
 		if (w->on) {
@@ -8373,7 +8487,7 @@ static void wifi_screen(app *a)
 	if (w.on) wifi_begin_scan(&w);
 
 	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
-	                           .fixed_w = menu_std_width(a) },
+	                           .fixed_w = menu_std_width(a), .toasts = true },
 	         wifi_build, wifi_key, &w);
 }
 
@@ -24603,6 +24717,8 @@ int main(int argc, char *argv[])
 #if defined(PLATFORM_ROTATE)
 				restart_if_updated(&a);
 #endif
+				/* An update this boot installed has started: its old copy goes. */
+				ota_boot();
 			}
 			if (g_ft) {
 				bool sys = a.screen == SCREEN_SYSTEMS;
