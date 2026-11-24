@@ -57,7 +57,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
-         check-playlist check-podfeed
+         check-playlist check-podfeed check-ota
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -865,6 +865,10 @@ build-native/museart-check: tools/museart-check.c src/museart.c src/museart.h \
 
 check-backlog:
 	@python3 tools/backlog-check.py
+
+# sd/tortos/ota.sh on a fake card (plorpos-koo)
+check-ota:
+	@sh tools/ota-check.sh
 
 payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh

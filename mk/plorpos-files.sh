@@ -63,6 +63,7 @@ plorpos_files() {
 	# Without this, every HTTPS request fails verification and achievements never
 	# arrive, with an error that reads like the network being down.
 	cp "$ROOT/res/ssl/cacert.pem" "$_p/"
+	cp "$ROOT/sd/tortos/ota.sh" "$_p/"         # Check for update: unpack, swap, roll back (plorpos-koo)
 	cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$_p/"  # MIT, and which files are not (NOTICE)
 	cp -r "$ROOT/LICENSES" "$_p/"            # PolyForm Noncommercial, for the NextUI-derived parts
 	cp "$ROOT/THIRD-PARTY-LICENSES.md" "$_p/"  # notices for the redistributed software
