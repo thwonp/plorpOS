@@ -5,9 +5,12 @@
 # MagicDNS, routes from subnet routers, direct UDP. No log upload, no Tailscale
 # SSH, Serve or Taildrop. The GKD, whose kernel has no TUN, runs it in
 # userspace networking and adds the outbound HTTP proxy plorpOS's own
-# requests go through (plorpos-8ns.5).
-#   mk/build-tailscale.sh [PORT]   PORT zero40 (default) or gkd; GOARCH=arm64 (default)
-# Output: build/<PORT>/tailscaled and LICENSE-tailscale.md
+# requests go through (plorpos-8ns.5). The Rotate and the RG DS run
+# systemd-resolved, which MagicDNS has to go through rather than around.
+#   mk/build-tailscale.sh [PORT]   PORT zero40 (default), gkd, brick, h700, rotate
+#                                  or rgds; GOARCH=arm64 (default)
+# Output: build/<PORT>/tailscaled and LICENSE-tailscale.md (build/ for the
+# Brick, whose build lives there)
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)
 PORT=${1:-zero40}
@@ -20,7 +23,12 @@ GC=${GOCACHE_DIR:-$HOME/.cache/plorpos-go}   # module + build cache: big, not tm
 W=$R/build/$PORT/tailscale-src
 F=$DL/tailscale-$VER.tar.gz
 KEEP=cli,osrouter,nattraversal,udptransport,dns,linuxdnsfight,iptables,portmapper,ipnbus,health,useroutes,netstack
-[ "$PORT" = gkd ] && KEEP=$KEEP,outboundproxy
+case $PORT in
+gkd) KEEP=$KEEP,outboundproxy ;;
+rotate | rgds) KEEP=$KEEP,resolved ;;
+esac
+O=$R/build/$PORT
+[ "$PORT" = brick ] && O=$R/build
 
 mkdir -p "$DL" "$GC"
 [ -s "$F" ] || curl -sSfL --max-time 300 -o "$F" "https://github.com/tailscale/tailscale/archive/refs/tags/v$VER.tar.gz"
@@ -36,8 +44,9 @@ tags=\$(GOOS= GOARCH= go run ./cmd/featuretags --min --add=$KEEP)
 go build -tags=\"\$tags\" -trimpath \
 	-ldflags '-w -s -X tailscale.com/version.longStamp=$VER-plorpos -X tailscale.com/version.shortStamp=$VER' \
 	-o tailscaled ./cmd/tailscaled"
-cp "$W/tailscaled" "$R/build/$PORT/tailscaled"
+mkdir -p "$O"
+cp "$W/tailscaled" "$O/tailscaled"
 # Its BSD-3 text, then its own list of the Go packages linked in and theirs.
-{ cat "$W/LICENSE"; echo; cat "$W/licenses/tailscale.md"; } > "$R/build/$PORT/LICENSE-tailscale.md"
+{ cat "$W/LICENSE"; echo; cat "$W/licenses/tailscale.md"; } > "$O/LICENSE-tailscale.md"
 rm -rf "$W"
-ls -l "$R/build/$PORT/tailscaled"
+ls -l "$O/tailscaled"

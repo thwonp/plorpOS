@@ -79,9 +79,7 @@ cp "$ROOT/sd/tortos/folder-move.sh" "$P/"   # TortOS/ -> plorpOS/ on an updated 
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
 if [ "$PLATFORM" = gkd ]; then
 	cp "$B/musectl" "$P/"
-	cp "$ROOT/sd/gkd/launch.sh" "$ROOT/sd/gkd/tailscale.sh" "$P/"
-	[ -f "$B/tailscaled" ] || { echo "no $B/tailscaled; run mk/build-tailscale.sh gkd" >&2; exit 1; }
-	cp "$B/tailscaled" "$B/LICENSE-tailscale.md" "$P/"   # Tailscale switch (plorpos-8ns.5)
+	cp "$ROOT/sd/gkd/launch.sh" "$P/"
 	# Drop-ins from before the rename start TortOS/launch.sh (plorpos-nzi).
 	mkdir -p "$CARD/TortOS"
 	cp "$ROOT/sd/gkd/tortos-launch.sh" "$CARD/TortOS/launch.sh"
@@ -119,13 +117,11 @@ elif [ "$PLATFORM" = rgds ]; then
 	touch "$CARD/Roms/Pico-8/.disable_splore"
 elif [ "$PLATFORM" = zero40 ]; then
 	cp "$B/musectl" "$P/"
-	cp "$ROOT/sd/zero40/launch.sh" "$ROOT/sd/zero40/radio.sh" "$ROOT/sd/zero40/ssh.sh" "$ROOT/sd/zero40/tailscale.sh" "$P/"
+	cp "$ROOT/sd/zero40/launch.sh" "$ROOT/sd/zero40/radio.sh" "$ROOT/sd/zero40/ssh.sh" "$P/"
 	[ -f "$B/dropbearmulti" ] || { echo "no $B/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
 	cp "$B/dropbearmulti" "$P/"           # ssh: oakMOSS has no server (sd/zero40/ssh.sh)
 	[ -f "$B/curl" ] || { echo "no $B/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
 	cp "$B/curl" "$P/"                    # oakMOSS has no curl: net.c finds this one beside cacert.pem
-	[ -f "$B/tailscaled" ] || { echo "no $B/tailscaled; run mk/build-tailscale.sh zero40" >&2; exit 1; }
-	cp "$B/tailscaled" "$B/LICENSE-tailscale.md" "$P/"   # Tailscale switch (plorpos-8ns)
 	mkdir -p "$OUT/.tmp_update"
 	cp "$ROOT/sd/zero40/updater" "$OUT/.tmp_update/"   # oakMOSS's hand-off (runmagicx.sh)
 	# Muse's FFmpeg: oakMOSS has none (TrimUI's firmware carries the Brick's).
@@ -250,6 +246,7 @@ else
 	if [ "$PLATFORM" = h700 ]; then plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 	else plorpos_files "$P" "$ROOT/vendor/cores"; fi
 fi
+plorpos_tailscale "$P" "$B" || exit 1
 cp "$DIATOM_ELF" "$P/diatom"
 
 
@@ -273,8 +270,8 @@ done
 
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
-gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" "$P/tailscaled" "$P/tailscale.sh" ;;
-zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$P/tailscaled" "$P/tailscale.sh" "$OUT/.tmp_update/updater"
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;

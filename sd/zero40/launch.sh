@@ -45,7 +45,6 @@ mkdir -p "$BIOS_PATH" "$ROMS_PATH" "$SAVES_PATH" "$USERDATA_PATH" "$LOGS_PATH" \
 # What the launcher saved for the next boot (db_write_boot_env).
 WIFI=0
 SSH=0
-TAILSCALE=0
 TIMEZONE=America/New_York
 BOOT_ENV=$USERDATA_PATH/boot.env
 [ -f "$BOOT_ENV" ] && . "$BOOT_ENV"
@@ -88,7 +87,6 @@ LOG=$LOGS_PATH/tortos.log
 ) &
 
 [ -x "$TORTOS_DIR/ssh.sh" ] && [ "$SSH" = "1" ] && sh "$TORTOS_DIR/ssh.sh" start &
-[ -x "$TORTOS_DIR/tailscale.sh" ] && [ "$TAILSCALE" = "1" ] && sh "$TORTOS_DIR/tailscale.sh" start &
 
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {

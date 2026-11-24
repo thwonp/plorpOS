@@ -55,7 +55,7 @@ case $WHAT in elf)
 	# it is switched off and on.
 	if [ -f "$ROOT/build/gkd/tailscaled" ]; then
 		swap "$ROOT/build/gkd/tailscaled" tailscaled
-		put "$ROOT/sd/gkd/tailscale.sh" "$ROOT/build/gkd/LICENSE-tailscale.md" "$GKD:$P/"
+		put "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/gkd/LICENSE-tailscale.md" "$GKD:$P/"
 		echo "  + tailscaled, tailscale.sh"
 	fi
 esac

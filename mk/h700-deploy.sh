@@ -95,7 +95,15 @@ case $MODE in muse|all)
 		adb push "$ROOT/build/h700/$f" "$CARD/plorpOS/$f.new" > /dev/null
 		adb shell "chmod +x $CARD/plorpOS/$f.new && mv -f $CARD/plorpOS/$f.new $CARD/plorpOS/$f"
 	done
-	echo "deployed muse $(md5sum "$ROOT/build/h700/muse" | cut -c1-8)" ;;
+	echo "deployed muse $(md5sum "$ROOT/build/h700/muse" | cut -c1-8)"
+	# Tailscale (plorpos-8ns.7), around a running daemon, which keeps the old
+	# binary until it is switched off and on.
+	if [ -f "$ROOT/build/h700/tailscaled" ]; then
+		adb push "$ROOT/build/h700/tailscaled" "$CARD/plorpOS/tailscaled.new" > /dev/null
+		adb shell "chmod +x $CARD/plorpOS/tailscaled.new && mv -f $CARD/plorpOS/tailscaled.new $CARD/plorpOS/tailscaled"
+		adb push "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/h700/LICENSE-tailscale.md" "$CARD/plorpOS/" > /dev/null
+		echo "deployed tailscaled"
+	fi ;;
 esac
 [ "$MODE" = muse ] && { adb shell 'killall muse 2>/dev/null; true'; echo "muse restarted on the launcher's next ask"; exit 0; }
 case $MODE in diatom|all)

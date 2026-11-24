@@ -307,7 +307,7 @@ GPL core is that tarball plus the patches named there), by
 | `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
 | `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
 
-## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40, Tailscale on the Zero 40 and GKD too)
+## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40, Tailscale on every Wi-Fi device but the Flip)
 
 - `plorpOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
@@ -319,7 +319,7 @@ GPL core is that tarball plus the patches named there), by
   Off until switched on in Network Services; login plorpos / plorpos or a key.
 - `plorpOS/dropbearmulti` (MagicX Zero 40 only) - the same **Dropbear SSH** source and licence, built for
   aarch64 by `mk/build-dropbear-zero40.sh`. Off until switched on in Network Services; key login only.
-- `plorpOS/tailscaled` (MagicX Zero 40, GKD) - **Tailscale 1.104.7** (BSD-3-Clause, Tailscale Inc &
+- `plorpOS/tailscaled` (every device with Wi-Fi but the Miyoo Mini Flip) - **Tailscale 1.104.7** (BSD-3-Clause, Tailscale Inc &
   contributors), one static binary with the `tailscale` CLI built in, from the release tarball pinned
   by sha256 in `mk/build-tailscale.sh`. Its licence and the licences of the Go packages linked into it
   are in `LICENSE-tailscale.md`. Off until switched on in Network Services.
