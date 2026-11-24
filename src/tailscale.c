@@ -26,16 +26,31 @@ bool ts_on(void)
 	return db_get_int(db_dev(), "tailscale", 0) != 0;
 }
 
-/* plorpOS/tailscale.sh start|stop. It backgrounds the daemon and the
- * sign-in, so it returns at once. */
-static bool run_script(const char *verb)
+/* The device's name on the tailnet: the build's, but a Brick Pro's own. */
+static const char *ts_hostname(void)
+{
+#if defined(PLATFORM_BRICK)
+	if (plat_is_brick_pro()) return "plorpos-brickpro";
+#endif
+	return TS_HOST;
+}
+
+/* plorpOS/tailscale.sh start HOSTNAME [userspace] | stop. It backgrounds the
+ * daemon and the sign-in, so it returns at once. */
+static bool run_script(bool start)
 {
 	char script[256];
+#ifdef TS_PROXY
+	const char *mode = "userspace";
+#else
+	const char *mode = NULL;
+#endif
 	pid_t pid;
 
 	snprintf(script, sizeof script, "%s/tailscale.sh", P_ROOT);
 	if ((pid = fork()) == 0) {
-		execl("/bin/sh", "sh", script, verb, (char *)NULL);
+		if (start) execl("/bin/sh", "sh", script, "start", ts_hostname(), mode, (char *)NULL);
+		else       execl("/bin/sh", "sh", script, "stop", (char *)NULL);
 		_exit(127);
 	}
 	if (pid > 0) waitpid(pid, NULL, 0);
@@ -46,18 +61,12 @@ static bool run_script(const char *verb)
 bool ts_set(bool on)
 {
 	if (!db_set_int(db_dev(), "tailscale", on ? 1 : 0)) return false;
-	db_write_boot_env();
-	return run_script(on ? "start" : "stop");
+	return run_script(on);
 }
 
-/* The Zero 40's launch.sh starts it from boot.env, before the launcher; the
- * GKD's boots straight into the launcher. The script does nothing if the
- * daemon is already up, as it is after a launcher restart. */
 void ts_boot(void)
 {
-#if defined(PLATFORM_GKD)
-	if (ts_on()) run_script("start");
-#endif
+	if (ts_on()) run_script(true);
 }
 
 /* GET a LocalAPI path over the socket, as HTTP/1.0 so the reply is not

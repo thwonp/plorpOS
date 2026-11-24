@@ -10,6 +10,15 @@
 #   P            the plorpOS folder being built, its systems.cfg already in it
 #   COREDIRS     folders to take cores from, the first that has one wins
 #   EXTRA_CORES  cores no shelf names but the launcher can switch to (ALT_CORES)
+# plorpos_tailscale P B - Tailscale (plorpos-8ns): the one start script every
+# port shares and the tailscaled built for this one (mk/build-tailscale.sh),
+# with its licences. Every card with Wi-Fi but the Flip's, for now.
+plorpos_tailscale() {
+	[ -f "$2/tailscaled" ] || { echo "no $2/tailscaled; run mk/build-tailscale.sh <port>" >&2; return 1; }
+	cp "$ROOT/sd/tortos/tailscale.sh" "$2/tailscaled" "$2/LICENSE-tailscale.md" "$1/"
+	chmod +x "$1/tailscale.sh" "$1/tailscaled"
+}
+
 plorpos_files() {
 	_p=$1 _dirs=$2 _extra=${3:-}
 	mkdir -p "$_p/cards" "$_p/cores" "$_p/res/web" "$_p/shaders"

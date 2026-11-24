@@ -20,6 +20,11 @@ CPU := -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
 endif
 CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 $(CPU) -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
           -I$(SYSROOT)/usr/include/SDL2 -D_GNU_SOURCE
+# The Brick's own name: until Tailscale (plorpos-8ns.7), it was simply the
+# build with none of the others, which a host tool or the Nano also is.
+ifeq ($(PLATFORM),brick)
+CFLAGS += -DPLATFORM_BRICK
+endif
 ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
 # host stubs on the GKD until it has radio code of its own (gkd.9, gkd.10).

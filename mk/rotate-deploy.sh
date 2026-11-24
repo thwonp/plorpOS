@@ -58,6 +58,7 @@ stage() {
 	# Its own cores first (vendor/cores-rotate). PokeDaisy DS is no shelf's core
 	# but the Nintendo DS shelf's Core row switches to it (main.c ALT_CORES).
 	plorpos_files "$S" "$ROOT/vendor/cores-rotate $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
+	plorpos_tailscale "$S" "$B"
 }
 if [ "$MODE" = stage ]; then
 	[ -n "${ROTATE_STAGE:-}" ] || { echo "stage: set ROTATE_STAGE" >&2; exit 1; }
@@ -87,4 +88,10 @@ if [ "$MODE" = boot ]; then
 		< "$ROOT/sd/rotate/plorpos.service"
 fi
 put "$B/tortos.elf" tortos.elf
+# Tailscale (plorpos-8ns.7), which "all" brings with the rest of the folder.
+if [ "$MODE" = elf ] && [ -f "$B/tailscaled" ]; then
+	put "$B/tailscaled" tailscaled
+	put "$ROOT/sd/tortos/tailscale.sh" tailscale.sh
+	put "$B/LICENSE-tailscale.md" LICENSE-tailscale.md
+fi
 echo "deployed ($MODE) to $HOST:$P"

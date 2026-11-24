@@ -748,15 +748,6 @@ bool db_write_boot_env(void)
 	}
 #endif
 #if defined(PLATFORM_ZERO40)
-	/* The Tailscale switch (plorpos-8ns): launch.sh starts tailscaled. */
-	{
-		int m = snprintf(body + n, sizeof body - (size_t)n, "TAILSCALE='%d'\n",
-		                 db_get_int(g_dev, "tailscale", 0) ? 1 : 0);
-		if (m < 0 || m >= (int)sizeof body - n) return false;
-		n += m;
-	}
-#endif
-#if defined(PLATFORM_ZERO40)
 	/* The zone's rule (plorpos-5tm.11): oakMOSS has no zone file for it, and
 	 * launch.sh starts Diatom, which would otherwise keep Shanghai's. */
 	{

@@ -182,7 +182,8 @@ volume, so the line says what it is without a glyph or a number on it.
 
 ### Tailscale
 
-*Coming in the next release.* On the Zero 40 and the GKD for now.
+*Coming in the next release.* On every device with Wi-Fi except the Miyoo
+Mini Flip, for now.
 
 **MENU > Network Services > Tailscale** puts the device on your tailnet. The
 first time, A shows a QR code: scan it with a phone, or open the link under
@@ -190,8 +191,12 @@ it, and sign in. The screen closes by itself once the device is on, and the
 row shows its tailnet address, the one to type into SSH on another machine.
 It signs back in by itself after that, a reboot included.
 
-It joins as `plorpos-zero40` or `plorpos-gkd`, can reach MagicDNS names, and
-uses routes from your subnet routers. A on the row turns it off.
+It joins as `plorpos-` and the device: `plorpos-brick`, `plorpos-brickpro`,
+`plorpos-h700` (every H700 model), `plorpos-rotate`, `plorpos-rgds`,
+`plorpos-gkd` or `plorpos-zero40`. A second device with the same name gets a
+number after it; rename any of them in Tailscale's admin console. It can reach
+MagicDNS names and uses routes from your subnet routers. A on the row turns it
+off.
 
 **On the GKD, only plorpOS's own traffic uses the tailnet.** Its kernel has no
 driver for a network tunnel, so Tailscale runs without one:
@@ -607,7 +612,7 @@ network.
 - **Audiobookshelf Settings** has Check for Updates (only what changed),
   Resync Library (everything) and Sign Out. Muse+ checks every hour by itself.
   **Server** changes the address.
-- **Away from home, with [Tailscale](#tailscale)** (Zero 40 and GKD for now): put the
+- **Away from home, with [Tailscale](#tailscale)**: put the
   server's tailnet address (such as `100.10.0.0:13378`) in **Tailnet Server**.
   Muse+ uses it while Tailscale is connected and the home address otherwise.
   Signing in at a tailnet address fills in Tailnet Server; add the home

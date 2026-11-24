@@ -30,6 +30,12 @@ case $WHAT in elf)
 	cat "$ROOT/config/systems.cfg" "$ROOT/config/systems-rotate.cfg" | ssh $SSH_OPTS "$RGDS" "cat > $P/systems.cfg"
 	swap "$ROOT/build/rgds/muse" muse
 	swap "$ROOT/build/rgds/musectl" musectl
+	# Tailscale (plorpos-8ns.7): a running daemon keeps the old binary until
+	# it is switched off and on.
+	if [ -f "$ROOT/build/rgds/tailscaled" ]; then
+		swap "$ROOT/build/rgds/tailscaled" tailscaled
+		put "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/rgds/LICENSE-tailscale.md" "$RGDS:$P/"
+	fi
 	$S "mkdir -p $P/rgds/portmaster"
 	put "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
 	    "${VENDOR:-$ROOT/vendor}/portmaster/PortMaster.zip" "$ROOT/build/rgds/portfullscreen.so" "$RGDS:$P/rgds/portmaster/"

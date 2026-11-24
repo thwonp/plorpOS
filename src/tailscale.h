@@ -2,9 +2,9 @@
 /* Tailscale (plorpos-8ns): the Network Services switch and what the daemon is
  * doing, for the row and the sign-in screen.
  *
- * The switch is the "tailscale" setting, which boot.env carries to launch.sh
- * so the daemon is back after a reboot; plorpOS/tailscale.sh starts and stops
- * it. The state is read from tailscaled's LocalAPI over its socket - a few
+ * The switch is the "tailscale" setting; plorpOS/tailscale.sh (one script for
+ * every port) starts and stops the daemon, and the launcher starts it again at
+ * boot when the switch is on (ts_boot). The state is read from tailscaled's LocalAPI over its socket - a few
  * milliseconds, so the menu can ask every second without forking the CLI.
  */
 #ifndef TORTOS_TAILSCALE_H
@@ -13,21 +13,38 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#if defined(PLATFORM_ZERO40) || defined(PLATFORM_GKD)
-#define TS_ROWS 1
-#else
-#define TS_ROWS 0
-#endif
-
+/* Which build this is, for Tailscale (plorpos-8ns): its name on the tailnet.
+ * Mind the overlaps - the RG DS build also defines PLATFORM_GKD, the Rotate's
+ * and the Flip's PLATFORM_H700 - so the order matters. No name, no Tailscale:
+ * the Flip (not yet), the Nano and the TrimUI (no Wi-Fi), host tools. */
+#if defined(PLATFORM_RGDS)
+#define TS_HOST "plorpos-rgds"
+#elif defined(PLATFORM_GKD)
+#define TS_HOST "plorpos-gkd"
 /* The GKD's vendor kernel has no TUN driver (plorpos-8ns.4: a tun.ko of our
  * own could not be shown to match it), so tailscaled runs in userspace
  * networking there and nothing else on the device sees the tailnet. plorpOS's
  * own requests - curl in net.c, Muse's streams - go through tailscaled's HTTP
  * proxy instead, all of them while it is connected: it reaches tailnet peers
  * by MagicDNS name or 100.x address and sends everything else out as it
- * would have gone. */
-#if defined(PLATFORM_GKD)
+ * would have gone. Every other port runs it in the kernel (TUN), where the
+ * whole device is on the tailnet. */
 #define TS_PROXY "http://127.0.0.1:1055"
+#elif defined(PLATFORM_ZERO40)
+#define TS_HOST "plorpos-zero40"
+#elif defined(PLATFORM_ROTATE)
+#define TS_HOST "plorpos-rotate"
+#elif defined(PLATFORM_MIYOO)
+#elif defined(PLATFORM_H700)
+#define TS_HOST "plorpos-h700"    /* RG SP, 34XX SP, 35XX SP/H: one build, one name */
+#elif defined(PLATFORM_BRICK)
+#define TS_HOST "plorpos-brick"   /* plorpos-brickpro on a Brick Pro (ts_hostname) */
+#endif
+
+#ifdef TS_HOST
+#define TS_ROWS 1
+#else
+#define TS_ROWS 0
 #endif
 
 typedef enum {
@@ -51,8 +68,8 @@ bool     ts_tailnet_addr(const char *address);
 /* The proxy plorpOS's own HTTP goes through now: TS_PROXY while connected,
  * else NULL (always NULL where Tailscale is the kernel's). Any thread. */
 const char *ts_proxy(void);
-/* At launcher start: the daemon back if the switch is on, where no boot
- * script has started it (the GKD). */
+/* At launcher start: the daemon back if the switch is on. The script does
+ * nothing if it is already up, as after a launcher restart. */
 void     ts_boot(void);
 
 #endif

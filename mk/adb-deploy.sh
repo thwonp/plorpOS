@@ -65,6 +65,13 @@ case $WHAT in elf|all)
 		$A push "$ROOT/sysroot-h700/usr/lib/$t" "$P/lib/" > /dev/null
 	done
 	$A push "$ROOT/build/musectl"           "$P/" > /dev/null
+	# Tailscale (plorpos-8ns.7), around a running daemon, which keeps the old
+	# binary until it is switched off and on.
+	if [ -f "$ROOT/build/tailscaled" ]; then
+		$A push "$ROOT/build/tailscaled" "$P/tailscaled.new" > /dev/null
+		$A shell "mv -f $P/tailscaled.new $P/tailscaled"
+		$A push "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/LICENSE-tailscale.md" "$P/" > /dev/null
+	fi
 	$A push "$ROOT/build/btplayer"          "$P/" > /dev/null
 	$A push "$ROOT/build/pico8sdl.so"       "$P/" > /dev/null
 	# systems.cfg only. tortos.cfg, coreopts.cfg and turbo.cfg are compiled
