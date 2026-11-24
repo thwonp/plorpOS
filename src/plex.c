@@ -998,6 +998,7 @@ static const msrv_ops OPS = {
 };
 
 void plex_init(const char *card, const char *shared) { P = msrv_new(&OPS, card, shared); }
+msrv *plex_src(void) { return P; }
 
 bool plex_signed_in(void) { return signed_in(); }
 bool plex_ready(void) { return ready(); }

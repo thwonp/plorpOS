@@ -1278,11 +1278,14 @@ static void  year_fill(void);
  * card and a Show row in its menu, rather than a card for books beside it -
  * two ways into one player read as two players. Kept across restarts. */
 static bool g_muse_books;
-/* Muse's source (plorpos-1lw): the card's Music folder, or Plex - the library
- * g_muse holds. Kept as part of "muse.src" (below); Plex only when it is set up
- * and its index is on the card, otherwise the card's. */
-static bool g_muse_plex;
-static bool g_plex_stale;    /* a sync wrote a new index: load it when idle */
+/* Muse's source (plorpos-1lw): the card's Music folder, or a music server's
+ * (Plex; Jellyfin, plorpos-vgr) - the library g_muse holds. Kept as part of
+ * "muse.src" (below); a server only when it is set up and its index is on the
+ * card, otherwise the card's. g_srv is that server's shared core (msrv), NULL
+ * for every other Source, and g_srv_src which Source it is. */
+static msrv *g_srv;
+static muse_src g_srv_src;
+static bool g_srv_stale;     /* a sync wrote a new index: load it when idle */
 static bool g_local_stale;   /* downloads changed Music/Plex: rescan when idle */
 static unsigned g_muse_card_gen;
 /* A download finished or a copy went (Audiobookshelf, Plex): the Local
@@ -1310,9 +1313,15 @@ static const char *const MSRC_OFFLINE_KEY[MSRC_COUNT] = {
 	[MSRC_PLEX] = "plex.offline", [MSRC_ABS] = "abs.offline", [MSRC_PODCASTS] = "pod.offline",
 };
 
+/* The music server behind Source s, or NULL when s is not one. */
+static msrv *srv_of(muse_src s)
+{
+	return s == MSRC_PLEX ? plex_src() : NULL;
+}
+
 static bool muse_src_offline(void)
 {
-	return (g_muse_plex && plex_offline()) || (g_muse_abs && abs_offline()) ||
+	return (g_srv && msrv_get_offline(g_srv)) || (g_muse_abs && abs_offline()) ||
 	       (g_muse_pod && pod_offline());
 }
 
@@ -1394,7 +1403,7 @@ static void muse_src_save(muse_src v)
 	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
 }
 
-static bool muse_source_saved_plex(void) { return muse_src_saved() == MSRC_PLEX; }
+static bool muse_source_saved_srv(void) { return srv_of(muse_src_saved()) != NULL; }
 
 /* Muse's favorites (plorpos-3yv.98): Y on an album marks it, and the
  * Favorites tab (plorpos-era.13) shows only the marked ones. A mark is the card's
@@ -1451,7 +1460,7 @@ static bool muse_books_shown(void)
 /* The Source the shelf really shows: a server's only once its index is in. */
 static muse_src muse_src_shown(void)
 {
-	if (g_muse_plex) return MSRC_PLEX;
+	if (g_srv) return g_srv_src;
 	if (g_muse_abs) return MSRC_ABS;
 	if (g_muse_pod) return MSRC_PODCASTS;
 	return muse_books_shown() ? MSRC_BOOKS : MSRC_MUSIC;
@@ -2791,7 +2800,7 @@ static void muse_show(sysview *v, bool books)
 {
 	g_muse_books = books;
 	g_muse_artist = -1;
-	if (!g_muse_plex && !g_muse_abs) muse_src_save(books ? MSRC_BOOKS : MSRC_MUSIC);
+	if (!g_srv && !g_muse_abs) muse_src_save(books ? MSRC_BOOKS : MSRC_MUSIC);
 	/* On the Favorites tab, the new kind's favorites (none ends it again). */
 	g_muse_favs = g_muse_list_up && muse_tab() == MT_FAVORITES;
 	free_view_textures(v);
@@ -10989,33 +10998,61 @@ static int plex_wait(app *a, const char *(*msg)(void), int (*poll)(void))
 
 static const char *plex_msg_servers(void)   { return "Finding your servers..."; }
 static const char *plex_msg_libraries(void) { return "Reading the libraries..."; }
-static const char *plex_msg_sync(void)
+
+/* ---- music servers: Plex, Jellyfin (plorpos-vgr) ----------------------------- */
+
+/* The server's name as its rows and panels say it ("" before one). */
+static const char *srv_server_name(muse_src s)
+{
+	return s == MSRC_PLEX ? plex_server_name() : "";
+}
+
+static const char *srv_account_name(muse_src s)
+{
+	return s == MSRC_PLEX ? plex_account_name() : "";
+}
+
+/* "<Plex> needs Wi-Fi" and the like, until A or B. */
+static void srv_say(app *a, msrv *m, const char *what)
+{
+	char msg[96];
+
+	snprintf(msg, sizeof msg, "%s %s", msrv_name(m), what);
+	plex_say(a, msg);
+}
+
+static muse_src g_wait_src;   /* the Source srv_sync_screen's panel asks */
+
+static const char *srv_msg_sync(void)
 {
 	static char m[96];
 	int d, t;
 
-	plex_sync_state(&d, &t);
+	msrv_sync_state(srv_of(g_wait_src), &d, &t);
 	if (t > 0) snprintf(m, sizeof m, "Syncing %d of %d tracks...", d, t);
-	else snprintf(m, sizeof m, "Asking %s...", plex_server_name());
+	else snprintf(m, sizeof m, "Asking %s...", srv_server_name(g_wait_src));
 	return m;
 }
-static int plex_poll_sync(void)
+static int srv_poll_sync(void)
 {
-	int st = plex_sync_state(NULL, NULL);
+	int st = msrv_sync_state(srv_of(g_wait_src), NULL, NULL);
 
 	return st == 1 ? 0 : st == 0 ? 1 : -1;
 }
 
-/* The library's index, read again from the server (`force`) or only when it
- * changed. True when it finished; B leaves it running in the background. */
-static bool plex_sync_screen(app *a, bool force)
+/* Server Source s's index, read again from the server (`force`) or only
+ * when it changed. True when it finished; B leaves it running in the
+ * background. */
+static bool srv_sync_screen(app *a, muse_src s, bool force)
 {
+	msrv *m = srv_of(s);
 	int r;
 
-	if (!net_online()) { plex_say(a, "Plex needs Wi-Fi"); return false; }
-	plex_sync_start(force);
-	r = plex_wait(a, plex_msg_sync, plex_poll_sync);
-	if (r < 0) plex_say(a, "Plex did not answer");
+	if (!net_online()) { srv_say(a, m, "needs Wi-Fi"); return false; }
+	msrv_sync_start(m, force);
+	g_wait_src = s;
+	r = src_wait(a, msrv_name(m), srv_msg_sync, srv_poll_sync);
+	if (r < 0) srv_say(a, m, "did not answer");
 	return r > 0;
 }
 
@@ -11112,6 +11149,27 @@ static bool plex_setup(app *a)
 	if (!plex_server_name()[0] && !plex_choose_server(a)) return false;
 	if (!plex_library_name()[0] && !plex_choose_library(a)) return false;
 	return plex_ready();
+}
+
+/* Server Source s set up: signed in, a server, a library. True when ready. */
+static bool srv_setup(app *a, muse_src s)
+{
+	return s == MSRC_PLEX ? plex_setup(a) : false;
+}
+
+static bool srv_choose_server(app *a, muse_src s)
+{
+	return s == MSRC_PLEX ? plex_choose_server(a) : false;
+}
+
+static bool srv_choose_library(app *a, muse_src s)
+{
+	return s == MSRC_PLEX ? plex_choose_library(a) : false;
+}
+
+static void srv_sign_out(muse_src s)
+{
+	if (s == MSRC_PLEX) plex_sign_out();
 }
 
 /* Read the card again for the source now saved: Muse's library from it. */
@@ -11215,11 +11273,11 @@ static bool abs_setup(app *a)
 static void muse_offline_set(muse_src s, bool on)
 {
 	db_set_int(db_dev(), MSRC_OFFLINE_KEY[s], on);
-	if (s == MSRC_PLEX) plex_set_offline(on);
+	if (srv_of(s)) msrv_set_offline(srv_of(s), on);
 	else if (s == MSRC_ABS) abs_set_offline(on);
 	else pod_set_offline(on);
 	if (on || !net_online()) return;
-	if (s == MSRC_PLEX) plex_sync_start(false);
+	if (srv_of(s)) msrv_sync_start(srv_of(s), false);
 	else if (s == MSRC_ABS) { abs_sync_start(false); abs_progress_refresh(); abs_unsent_retry(); }
 	else pod_sync_start();
 }
@@ -11620,7 +11678,7 @@ static void pod_apply_sync(app *a)
 	ui_redraw_now();
 }
 
-/* From the shelf's own loop, as plex_main_poll: a sync that wrote a new
+/* From the shelf's own loop, as srv_main_poll: a sync that wrote a new
  * index, downloads that changed Audiobooks, and now and then the server's
  * library and places. */
 static void abs_main_poll(app *a)
@@ -11684,12 +11742,12 @@ static bool muse_source_pick(app *a)
 	if (to == was && to == muse_src_shown()) return false;
 	switch (to) {
 	case MSRC_PLEX:
-		if (!plex_setup(a)) return false;
+		if (!srv_setup(a, to)) return false;
 		muse_src_save(to);
 		/* The first time, the whole library: a minute or so. B stops
-		 * waiting; Muse switches by itself once it is in (plex_main_poll). */
-		if (!plex_lib_cached() && !plex_sync_screen(a, false)) return false;
-		plex_sync_take();
+		 * waiting; Muse switches by itself once it is in (srv_main_poll). */
+		if (!msrv_lib_cached(srv_of(to)) && !srv_sync_screen(a, to, false)) return false;
+		msrv_sync_take(srv_of(to));
 		break;
 	case MSRC_ABS:
 		if (!abs_setup(a)) return false;
@@ -11707,7 +11765,7 @@ static bool muse_source_pick(app *a)
 	default:
 		muse_src_save(to);
 		/* The card's library is in already: only the kind shown changes. */
-		if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
+		if (!g_srv && !g_muse_abs && !g_muse_pod) {
 			muse_show(&a->view[a->sys_cursor], to == MSRC_BOOKS);
 			return true;
 		}
@@ -11722,7 +11780,7 @@ static bool muse_source_pick(app *a)
  * downloading first, one row each; X cancels that one. */
 #define DLQ_MAX 48
 typedef struct {
-	plex_queued q[DLQ_MAX];
+	msrv_queued q[DLQ_MAX];
 	int al[DLQ_MAX], n;
 	bool now[DLQ_MAX];
 	char val[DLQ_MAX][24], foot[160];
@@ -11735,8 +11793,8 @@ static int muse_dlq_list(dlq_ui *u)
 	int i;
 
 	u->n = 0;
-	if (s == MSRC_PLEX) {
-		u->n = plex_download_queue(u->q, DLQ_MAX);
+	if (srv_of(s)) {
+		u->n = msrv_download_queue(srv_of(s), u->q, DLQ_MAX);
 		for (i = 0; i < u->n; i++) { u->al[i] = u->q[i].al; u->now[i] = u->q[i].now; }
 	} else if (s == MSRC_ABS) {
 		u->n = abs_download_queue(u->al, u->now, DLQ_MAX);
@@ -11753,7 +11811,7 @@ static const char *muse_dlq_label(void)
 	static dlq_ui u;
 	static char lab[32];
 	muse_src s = muse_src_shown();
-	const char *one = s == MSRC_PLEX ? "album" : s == MSRC_ABS ? "book" : "episode";
+	const char *one = srv_of(s) ? "album" : s == MSRC_ABS ? "book" : "episode";
 	int n = muse_dlq_list(&u);
 
 	if (!n) return NULL;
@@ -11770,25 +11828,25 @@ static int dlq_build(void *ctx, menu_row *rows, int max, const char **heading)
 	*heading = "Download Queue";
 	if (k > max - 3) k = max - 3;
 	for (i = 0; i < k; i++) {
-		const char *t = s == MSRC_PLEX ? u->q[i].title
+		const char *t = srv_of(s) ? u->q[i].title
 		              : u->al[i] >= 0 && u->al[i] < g_muse.nalbums ? g_muse.albums[u->al[i]].name : "";
 
 		if (u->now[i] && s == MSRC_PODCASTS && pod_download_permille() >= 0)
 			snprintf(u->val[i], sizeof u->val[i], "%d%%", pod_download_permille() / 10);
 		else if (u->now[i]) snprintf(u->val[i], sizeof u->val[i], "downloading");
-		else if (s == MSRC_PLEX)
+		else if (srv_of(s))
 			snprintf(u->val[i], sizeof u->val[i], u->q[i].tracks == 1 ? "1 track" : "%d tracks", u->q[i].tracks);
 		else snprintf(u->val[i], sizeof u->val[i], "waiting");
 		rows[n++] = (menu_row){ t, u->val[i], true };
 	}
 	if (!k) return 0;                    /* all done or cancelled: back */
-	if (!(s == MSRC_PLEX ? plex_download_status(u->foot, sizeof u->foot)
+	if (!(srv_of(s) ? msrv_download_status(srv_of(s), u->foot, sizeof u->foot)
 	      : s == MSRC_ABS ? abs_download_status(u->foot, sizeof u->foot)
 	      : pod_download_status(u->foot, sizeof u->foot)))
 		u->foot[0] = '\0';
 	rows[n++] = MENU_RULE;
 	rows[n++] = MENU_NOTE(u->foot);
-	rows[n++] = MENU_NOTE(s == MSRC_PLEX ? "X: cancel the album" : s == MSRC_ABS ? "X: cancel the book"
+	rows[n++] = MENU_NOTE(srv_of(s) ? "X: cancel the album" : s == MSRC_ABS ? "X: cancel the book"
 	                                     : "X: cancel the episode");
 	return n;
 }
@@ -11800,7 +11858,7 @@ static menu_result dlq_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)a;
 	if (key == IN_X && sel >= 0 && sel < u->n) {
-		if (s == MSRC_PLEX) plex_download_cancel_album(u->al[sel]);
+		if (srv_of(s)) msrv_download_cancel_album(srv_of(s), u->al[sel]);
 		else if (s == MSRC_ABS) abs_download_cancel_book(u->al[sel]);
 		else pod_download_cancel(u->al[sel]);
 		muse_toast("Download cancelled");
@@ -11819,48 +11877,60 @@ static void muse_dlq_screen(app *a)
 
 enum { PX_OFFLINE, PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_FAVS, PX_SIGNOUT, PX_ROWS };   /* Download Queue: Muse's own menu now (ps8.8) */
-typedef struct { bool rebuilt; char sync[48], ahead[8]; Uint32 ok_until; } plex_set_ui;
+/* Keep Playlists Synced, per server Source. */
+static const char *const SRV_PLMIRROR_KEY[MSRC_COUNT] = { [MSRC_PLEX] = "plex.plmirror" };
 
-static int plex_set_build(void *ctx, menu_row *rows, int max, const char **heading)
+typedef struct {
+	muse_src s;
+	msrv *m;
+	bool rebuilt;
+	char head[40], sync[48], ahead[8];
+	Uint32 ok_until;
+} srv_set_ui;
+
+/* "<Plex> Settings": one screen for every server Source, its rows the same;
+ * what differs is how Account, Server and the qualities are had. */
+static int srv_set_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
-	plex_set_ui *u = ctx;
-	bool in = plex_signed_in(), ready = plex_ready(), off = plex_offline();
+	srv_set_ui *u = ctx;
+	bool plex = u->s == MSRC_PLEX;
+	bool in = msrv_signed_in(u->m), ready = msrv_ready(u->m), off = msrv_get_offline(u->m);
+	const char *acct = srv_account_name(u->s), *sv = srv_server_name(u->s), *lib = msrv_library(u->m);
 	int d, t, st;
 
 	(void)max;
-	*heading = "Plex Settings";
+	snprintf(u->head, sizeof u->head, "%s Settings", msrv_name(u->m));
+	*heading = u->head;
 	if (u->rebuilt) return 0;
-	st = plex_sync_state(&d, &t);
+	st = msrv_sync_state(u->m, &d, &t);
 	if (st == 1 && t > 0) snprintf(u->sync, sizeof u->sync, "%d of %d", d, t);
 	else if (st == 1) snprintf(u->sync, sizeof u->sync, "starting");
 	else if (st < 0) snprintf(u->sync, sizeof u->sync, "failed");
 	else u->sync[0] = '\0';
 	rows[PX_OFFLINE]  = (menu_row){ "Offline Mode", on_off(off), true };
-	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (plex_account_name()[0] ? plex_account_name() : "signed in")
-	                                              : "Sign In", !in && !off };
+	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (acct[0] ? acct : "signed in") : "Sign In", !in && !off };
 	/* A server with no Plex Pass says so here (plorpos-5eq.9). */
 	{
 		static char srv[160];
 
-		snprintf(srv, sizeof srv, "%s%s", plex_server_name()[0] ? plex_server_name() : "Choose",
-		         plex_server_name()[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
+		snprintf(srv, sizeof srv, "%s%s", sv[0] ? sv : "Choose",
+		         plex && sv[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
 		rows[PX_SERVER] = (menu_row){ "Server", srv, in && !off };
 	}
-	rows[PX_LIBRARY]  = (menu_row){ "Library", plex_library_name()[0] ? plex_library_name() : "Choose",
-	                                in && plex_server_name()[0] && !off };
-	/* A transcode needs Plex Pass on the server: without one it is the
+	rows[PX_LIBRARY]  = (menu_row){ "Library", lib[0] ? lib : "Choose", in && sv[0] && !off };
+	/* A Plex transcode needs Plex Pass on the server: without one it is the
 	 * file as it is, and there is nothing to choose (plorpos-5eq.9). */
-	if (plex_pass() == 0) {
+	if (plex && plex_pass() == 0) {
 		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", "Original", false };
 		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", "Original", false };
 	} else {
-		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(plex_stream_kbps()), true };
-		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(plex_download_kbps()), true };
+		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(msrv_stream_kbps(u->m)), true };
+		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(msrv_download_kbps(u->m)), true };
 	}
 	/* plorpos-1lw.22: only where a track is fetched before it plays. */
-	snprintf(u->ahead, sizeof u->ahead, "%d", plex_ahead());
-	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", plex_fetches_first() ? u->ahead : "streams",
-	                                plex_fetches_first() };
+	snprintf(u->ahead, sizeof u->ahead, "%d", msrv_ahead(u->m));
+	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", msrv_fetches_first() ? u->ahead : "streams",
+	                                msrv_fetches_first() };
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
 	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 && !off };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 && !off };
@@ -11868,7 +11938,7 @@ static int plex_set_build(void *ctx, menu_row *rows, int max, const char **headi
 	 * a downloaded one's copies do too (plorpos-5eq.7; it replaced Download
 	 * Favorite Tracks - a playlist is downloaded from the Playlists tab). */
 	rows[PX_FAVS]     = (menu_row){ "Keep Playlists Synced",
-	                                db_get_int(db_dev(), "plex.plmirror", 1) ? "On" : "Off", in };
+	                                db_get_int(db_dev(), SRV_PLMIRROR_KEY[u->s], 1) ? "On" : "Off", in };
 	rows[PX_SIGNOUT]  = (menu_row){ "Sign Out", NULL, in };
 	return PX_ROWS;
 }
@@ -11883,75 +11953,78 @@ static int quality_step(int kbps, int d)
 	return plex_quality_at(i);
 }
 
-static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
+static menu_result srv_set_key(app *a, void *ctx, in_button key, int sel)
 {
-	plex_set_ui *u = ctx;
+	srv_set_ui *u = ctx;
+	msrv *m = u->m;
 	int d = key == IN_LEFT ? -1 : key == IN_RIGHT || key == IN_ACCEPT ? 1 : 0;
 
 	if (sel == PX_OFFLINE && d) {
-		muse_offline_set(MSRC_PLEX, !plex_offline());
-		if (!g_muse_plex) return MENU_STAY;
+		muse_offline_set(u->s, !msrv_get_offline(m));
+		if (g_srv != m) return MENU_STAY;
 		muse_source_reload(a);             /* its lists, on the card or whole */
 		u->rebuilt = true;
 		return MENU_DONE;
 	}
-	if (sel == PX_STREAM && d) { plex_set_stream_kbps(quality_step(plex_stream_kbps(), d)); return MENU_STAY; }
-	if (sel == PX_DOWNLOAD && d) { plex_set_download_kbps(quality_step(plex_download_kbps(), d)); return MENU_STAY; }
+	if (sel == PX_STREAM && d) { msrv_set_stream_kbps(m, quality_step(msrv_stream_kbps(m), d)); return MENU_STAY; }
+	if (sel == PX_DOWNLOAD && d) { msrv_set_download_kbps(m, quality_step(msrv_download_kbps(m), d)); return MENU_STAY; }
 	if (sel == PX_AHEAD && d) {
 		static const int AHEAD[] = { 1, 3, 5, 10 };
 		int i;
 
-		for (i = 0; i < 4 && AHEAD[i] != plex_ahead(); i++) {}
-		plex_set_ahead(AHEAD[((i == 4 ? 0 : i) + d + 4) % 4]);
+		for (i = 0; i < 4 && AHEAD[i] != msrv_ahead(m); i++) {}
+		msrv_set_ahead(m, AHEAD[((i == 4 ? 0 : i) + d + 4) % 4]);
 		return MENU_STAY;
 	}
 	if (sel == PX_FAVS && d) {
-		bool on = !db_get_int(db_dev(), "plex.plmirror", 1);
+		bool on = !db_get_int(db_dev(), SRV_PLMIRROR_KEY[u->s], 1);
 
-		db_set_int(db_dev(), "plex.plmirror", on);
-		plex_set_pl_mirror(on);
-		if (on && net_online() && !plex_offline()) plex_playlists_sync();
+		db_set_int(db_dev(), SRV_PLMIRROR_KEY[u->s], on);
+		msrv_set_pl_mirror(m, on);
+		if (on && net_online() && !msrv_get_offline(m)) msrv_playlists_sync(m);
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PX_ACCOUNT:
-		plex_setup(a);
+		srv_setup(a, u->s);
 		return MENU_STAY;
 	case PX_SERVER:
 	case PX_LIBRARY:
-		if (sel == PX_SERVER && !plex_choose_server(a)) return MENU_STAY;
-		if (!plex_choose_library(a)) return MENU_STAY;
-		if (!g_muse_plex) return MENU_STAY;
+		if (sel == PX_SERVER && !srv_choose_server(a, u->s)) return MENU_STAY;
+		if (!srv_choose_library(a, u->s)) return MENU_STAY;
+		if (g_srv != m) return MENU_STAY;
 		/* Another library under the source: read it, then show it. */
-		plex_sync_screen(a, false);
-		plex_sync_take();
+		srv_sync_screen(a, u->s, false);
+		msrv_sync_take(m);
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_CHECK:                       /* plorpos-1lw.24: only what changed */
-		if (!plex_sync_screen(a, false)) return MENU_STAY;
-		if (plex_sync_outcome() != 2) { u->ok_until = SDL_GetTicks() + 3000; return MENU_STAY; }
+		if (!srv_sync_screen(a, u->s, false)) return MENU_STAY;
+		if (msrv_sync_outcome(m) != 2) { u->ok_until = SDL_GetTicks() + 3000; return MENU_STAY; }
 		muse_toast("Library updated");
-		plex_sync_take();
-		if (!g_muse_plex) return MENU_STAY;
+		msrv_sync_take(m);
+		if (g_srv != m) return MENU_STAY;
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_SYNC:
-		if (!plex_sync_screen(a, true)) return MENU_STAY;
-		plex_sync_take();
-		if (!g_muse_plex) return MENU_STAY;
+		if (!srv_sync_screen(a, u->s, true)) return MENU_STAY;
+		msrv_sync_take(m);
+		if (g_srv != m) return MENU_STAY;
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
 	case PX_SIGNOUT: {
 		static const char *const YN[] = { "Sign Out", "Cancel" };
+		char q[48];
 
-		if (muse_pick_run(a, "Sign out of Plex?", YN, 2) != 0) return MENU_STAY;
-		plex_sign_out();
+		snprintf(q, sizeof q, "Sign out of %s?", msrv_name(m));
+		if (muse_pick_run(a, q, YN, 2) != 0) return MENU_STAY;
+		srv_sign_out(u->s);
 		muse_src_save(MSRC_MUSIC);
-		if (!g_muse_plex) return MENU_STAY;
+		if (g_srv != m) return MENU_STAY;
 		muse_source_reload(a);
 		u->rebuilt = true;
 		return MENU_DONE;
@@ -11960,40 +12033,42 @@ static menu_result plex_set_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-/* True when the library was rebuilt underneath (the caller's menu goes). */
-static bool plex_settings_screen(app *a)
+/* Server Source s's settings. True when the library was rebuilt underneath
+ * (the caller's menu goes). */
+static bool srv_settings_screen(app *a, muse_src s)
 {
-	plex_set_ui u = { 0 };
+	srv_set_ui u = { .s = s, .m = srv_of(s) };
 
+	if (!u.m) return false;
 	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
-	         plex_set_build, plex_set_key, &u);
+	         srv_set_build, srv_set_key, &u);
 	return u.rebuilt;
 }
 
 /* From the shelf's own loop - never inside Muse or a menu, since it can
  * rebuild the library: a sync that wrote a new index, or downloads that
- * changed Music/Plex under the Local source. And now and then, whether the
- * library changed on the server. */
-static void plex_main_poll(app *a)
+ * changed Music/<server> under the Local source. And now and then, whether
+ * the library changed on the server. */
+static void srv_main_poll(app *a)
 {
 	static unsigned next_check;
 	unsigned now = plat_now_ms();
 
-	if (plex_sync_take()) g_plex_stale = true;
+	if (plex_sync_take()) g_srv_stale = true;
 	if (g_walk_thread) return;
-	if ((g_plex_stale && muse_source_saved_plex()) ||
-	    (g_local_stale && !g_muse_plex && !g_muse_abs && !plex_download_status(NULL, 0) &&
+	if ((g_srv_stale && muse_source_saved_srv()) ||
+	    (g_local_stale && !g_srv && !g_muse_abs && !plex_download_status(NULL, 0) &&
 	     !abs_download_status(NULL, 0))) {
-		g_plex_stale = g_local_stale = false;
+		g_srv_stale = g_local_stale = false;
 		fprintf(stderr, "plex: reading the library again\n");
 		muse_playlists_forget();
 		rescan_all(a);
 		ui_redraw_now();
 		return;
 	}
-	g_plex_stale = g_plex_stale && muse_source_saved_plex();
-	if (g_muse_plex && (int)(now - next_check) >= 0 && net_online() && !plex_offline()) {
-		plex_sync_start(false);
+	g_srv_stale = g_srv_stale && muse_source_saved_srv();
+	if (g_srv && (int)(now - next_check) >= 0 && net_online() && !msrv_get_offline(g_srv)) {
+		msrv_sync_start(g_srv, false);
 		next_check = now + 60u * 60u * 1000u;            /* an hour */
 	}
 }
@@ -12524,7 +12599,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
 				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
 				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
-				if (id == SMM_PLEX) return plex_settings_screen(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_PLEX) return srv_settings_screen(a, muse_src_shown()) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
@@ -13901,7 +13976,7 @@ static bool cover_file(int al, char *out, size_t n)
 	if (c->st == COV_ASKED && now - c->asked_ms < 5000) {
 		/* Drawn and still waiting: up the queue, so what is on screen comes
 		 * before what a fast scroll passed (plorpos-ps8.9). */
-		if (g_muse_plex) plex_cover_bump(base);
+		if (g_srv) msrv_cover_bump(g_srv, base);
 		else if (g_muse_abs) abs_cover_bump(base);
 		return false;
 	}
@@ -13910,9 +13985,9 @@ static bool cover_file(int al, char *out, size_t n)
 	if (file_nonempty(out)) { c->st = COV_JPG; return true; }
 	snprintf(out, n, "%s.png", base);
 	if (file_nonempty(out)) { c->st = COV_PNG; return true; }
-	if (g_muse_plex || g_muse_abs || g_muse_pod) {
+	if (g_srv || g_muse_abs || g_muse_pod) {
 		/* The server's art, fetched to <base>.jpg; cover_answers hears it land. */
-		if (g_muse_plex ? plex_cover_want(al, base) : g_muse_abs ? abs_cover_want(al, base)
+		if (g_srv ? msrv_cover_want(g_srv, al, base) : g_muse_abs ? abs_cover_want(al, base)
 		    : pod_cover_want(al, base)) {
 			c->st = COV_ASKED;
 			c->asked_ms = now;
@@ -13985,7 +14060,7 @@ static bool cover_answers(void)
 		landed = true;
 		/* Only the albums waiting for one: every album's base was 3527
 		 * snprintfs per cover on the Brick's Plex library (ps8.9). */
-		for (i = 0; g_cov && (g_muse_plex || g_muse_abs) && i < g_muse.nalbums; i++) {
+		for (i = 0; g_cov && (g_srv || g_muse_abs) && i < g_muse.nalbums; i++) {
 			if (g_cov[i].st != COV_ASKED) continue;
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (!strcmp(b, base)) { g_cov[i].st = COV_JPG; break; }
@@ -14064,7 +14139,7 @@ static void year_fill(void)
 	unsigned now = plat_now_ms();
 	int al, y, i;
 
-	if (!g_year || g_muse_plex || g_muse_abs) return;
+	if (!g_year || g_srv || g_muse_abs) return;
 	if (musec_year_take(track, sizeof track, &y)) {
 		al = ml_album_of(&g_muse, track);
 		if (al >= 0 && g_year[al] < 0) {
@@ -14203,8 +14278,8 @@ static void muse_cover_ahead(const sysview *v)
 {
 	int n = v->list.count, d, k;
 
-	if (!v->album || n <= CF_WINDOW || !(g_muse_plex || g_muse_abs)) return;
-	if (!(g_muse_plex ? plex_covers_idle() : abs_covers_idle())) return;
+	if (!v->album || n <= CF_WINDOW || !(g_srv || g_muse_abs)) return;
+	if (!(g_srv ? msrv_covers_idle(g_srv) : abs_covers_idle())) return;
 	for (k = CF_HALF_WINDOW + 1; k <= CF_HALF_WINDOW + CF_WINDOW; k++)
 		for (d = 1; d >= -1; d -= 2) {
 			int i = ((v->cursor + d * k) % n + n) % n, al = v->album[i];
@@ -15376,7 +15451,7 @@ static void muse_pl_dir(char *out, size_t n)
 	/* The source's own - by the Source saved, not only the library in: while
 	 * Plex's index was still on its way the card's playlists showed under
 	 * Plex, and A could not read them (plorpos-1lw.29). */
-	if (g_muse_plex || src == MSRC_PLEX) { plex_pl_dir(out, n); return; }
+	if (g_srv || srv_of(src)) { msrv_pl_dir(g_srv ? g_srv : srv_of(src), out, n); return; }
 	if (g_muse_abs || src == MSRC_ABS) { abs_pl_dir(out, n); return; }
 	snprintf(out, n, "%s/" PL_DIR_REL, P_CARD);
 }
@@ -15390,11 +15465,11 @@ static void muse_playlists_load(void)
 	if (g_npls >= 0) return;
 	muse_pl_dir(d, sizeof d);
 	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
-	if (g_muse_plex && plex_offline()) {      /* Offline Mode: downloaded ones (5tm.16) */
+	if (g_srv && msrv_get_offline(g_srv)) {   /* Offline Mode: downloaded ones (5tm.16) */
 		int kept = 0;
 
 		for (int i = 0; i < g_npls; i++)
-			if (plex_pl_downloaded(g_pls[i].name)) g_pls[kept++] = g_pls[i];
+			if (msrv_pl_downloaded(g_srv, g_pls[i].name)) g_pls[kept++] = g_pls[i];
 		g_npls = kept;
 	}
 	for (int i = 0; i < g_npls; i++)
@@ -15421,8 +15496,8 @@ static const char *muse_toast_now(void)
 static int muse_track_by_path(const char *path)
 {
 	/* 47k Plex tracks and a playlist of hundreds: by key, not by scan. */
-	if (g_muse_plex && plex_is_path(path)) {
-		int t = plex_track_index(path);
+	if (g_srv && msrv_is_path(g_srv, path)) {
+		int t = msrv_track_index(g_srv, path);
 		return t >= 0 && t < g_muse.ntracks && !strcmp(g_muse.tracks[t].path, path) ? t : -1;
 	}
 	for (int t = 0; t < g_muse.ntracks; t++)
@@ -15513,8 +15588,14 @@ static int muse_pl_find(const char *dir, const char *name, const char *path)
  * this device's own. */
 static bool muse_pl_editable(const char *name)
 {
-	if (!g_muse_plex || !strcmp(name, PLEX_FAVS)) return true;
-	if (plex_pl_smart(name)) { muse_toast("A Plex smart playlist cannot be changed"); return false; }
+	if (!g_srv || !strcmp(name, MSRV_FAVS)) return true;
+	if (msrv_pl_smart(g_srv, name)) {
+		char m[64];
+
+		snprintf(m, sizeof m, "A %s smart playlist cannot be changed", msrv_name(g_srv));
+		muse_toast(m);
+		return false;
+	}
 	if (muse_net_why()) { muse_toast(muse_net_why()); return false; }
 	return true;
 }
@@ -15529,16 +15610,16 @@ static void muse_add_to_playlist(app *a, int t)
 	muse_playlists_load();
 	muse_pl_dir(d, sizeof d);
 	labels[n] = "New Playlist..."; map[n++] = -1;
-	/* On Plex, Favorite Tracks first (the pak's Y): adds the track, or takes
-	 * it out when it is in already. */
-	if (g_muse_plex) {
+	/* On a server, Favorite Tracks first (the pak's Y): adds the track, or
+	 * takes it out when it is in already. */
+	if (g_srv) {
 		fav_at = muse_pl_find(d, PLEX_FAVS, g_muse.tracks[t].path);
 		fav = n;
 		labels[n] = fav_at >= 0 ? "Remove from " PLEX_FAVS : PLEX_FAVS; map[n++] = -1;
 	}
 	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) {
-		if (g_muse_plex && !strcmp(g_pls[i].name, PLEX_FAVS)) continue;
-		if (g_muse_plex && plex_pl_smart(g_pls[i].name)) continue;   /* the server's rule fills it */
+		if (g_srv && !strcmp(g_pls[i].name, MSRV_FAVS)) continue;
+		if (g_srv && msrv_pl_smart(g_srv, g_pls[i].name)) continue;   /* the server's rule fills it */
 		labels[n] = g_pls[i].name; map[n++] = i;
 	}
 	k = muse_pick_run(a, "Add to Playlist", labels, n);
@@ -15560,7 +15641,7 @@ static void muse_add_to_playlist(app *a, int t)
 	if (!muse_pl_editable(name)) return;
 	if (pl_add(d, name, g_muse.tracks[t].path)) {
 		snprintf(msg, sizeof msg, "Added to %s", name);
-		if (g_muse_plex) plex_pl_added(name, g_muse.tracks[t].path);
+		if (g_srv) msrv_pl_added(g_srv, name, g_muse.tracks[t].path);
 	}
 	else snprintf(msg, sizeof msg, "Could not add to %s", name);
 	g_npls = -1;
@@ -15637,7 +15718,7 @@ static const char *muse_name_noyear(const char *name, int year)
 {
 	const char *p = name;
 
-	if (!g_muse_plex && year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
+	if (!g_srv && year > 0 && isdigit((unsigned char)p[0]) && isdigit((unsigned char)p[1]) &&
 	    isdigit((unsigned char)p[2]) && isdigit((unsigned char)p[3]) && p[4] == ' ' &&
 	    atoi(p) == year) {
 		p += 5;
@@ -15680,7 +15761,7 @@ static void muse_tracks_paint(app *a, const muse_tset *ts, int sel,
 	L.header = ts->album >= 0 ? muse_name_noyear(ts->head, g_year ? g_year[ts->album] : 0) : ts->head;
 	L.wide_header = true;
 	if (ts->pl) { L.help = MTL_HELP_PL; L.nhelp = 3; }
-	else if (g_muse_plex && ts->album >= 0) { L.help = MTL_HELP_PLEXM; L.nhelp = 2; }
+	else if (g_srv && ts->album >= 0) { L.help = MTL_HELP_PLEXM; L.nhelp = 2; }
 	else if (g_muse_abs && ts->album >= 0) { L.help = MTL_HELP_PLEX; L.nhelp = 3; }
 	else if (mtl_music(ts)) { L.help = MTL_HELP_MUSIC; L.nhelp = 2; }
 	else { L.help = MTL_HELP; L.nhelp = 2; }
@@ -15851,25 +15932,25 @@ static bool muse_book_menu(app *a, int al)
 /* A server's download under way, for the line under the cover. */
 static bool muse_download_status(char *out, size_t n)
 {
-	if (g_muse_plex) return plex_download_status(out, n);
+	if (g_srv) return msrv_download_status(g_srv, out, n);
 	if (g_muse_abs) return abs_download_status(out, n);
 	if (g_muse_pod) return pod_download_status(out, n);
 	return false;
 }
 
-/* Plex: download album `al`, or delete its copy. */
+/* A music server: download album `al`, or delete its copy. */
 /* trk: the track under the cursor in the album's track list, whose Add to
  * Playlist leads the menu (plorpos-5eq.18); -1 on an album in a list. */
-static void muse_plex_album_menu(app *a, int al, int trk)
+static void muse_srv_album_menu(app *a, int al, int trk)
 {
 	const char *labels[4];
-	int k, n = 0, have = plex_album_downloaded(al), of = g_muse.albums[al].n, dl = -1, del = -1;
+	int k, n = 0, have = msrv_album_downloaded(g_srv, al), of = g_muse.albums[al].n, dl = -1, del = -1;
 	int add = -1, stop = -1;
 	char head[96];
 
 	snprintf(head, sizeof head, "%d of %d downloaded", have, of);
 	if (trk >= 0) { add = n; labels[n++] = "Add to Playlist"; }
-	if (plex_album_downloading(al)) {
+	if (msrv_album_downloading(g_srv, al)) {
 		stop = n; labels[n++] = "Cancel Download";
 	} else {
 		if (have < of) { dl = n; labels[n++] = have ? "Download the Rest" : "Download Album"; }
@@ -15880,15 +15961,15 @@ static void muse_plex_album_menu(app *a, int al, int trk)
 	if (k == add) {
 		muse_add_to_playlist(a, trk);
 	} else if (k == stop) {
-		plex_download_cancel_album(al);
+		msrv_download_cancel_album(g_srv, al);
 		muse_toast("Download cancelled");
 	} else if (k == dl) {
 		if (muse_net_why()) { muse_toast(muse_net_why()); return; }
-		if (plex_allow_sync() == 0) { muse_toast(PLEX_NO_SYNC); return; }
-		plex_download_album(al);
+		if (g_srv_src == MSRC_PLEX && plex_allow_sync() == 0) { muse_toast(PLEX_NO_SYNC); return; }
+		msrv_download_album(g_srv, al);
 		muse_toast("Downloading");
 	} else if (k == del) {
-		plex_delete_album(al);
+		msrv_delete_album(g_srv, al);
 		muse_toast("Download deleted");
 	}
 }
@@ -15967,7 +16048,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			snprintf(note, sizeof note, "%s", g_muse_toast);
 			rows[n++] = MENU_RULE;
 			rows[n++] = MENU_NOTE(note);
-		} else if (g_muse_plex && plex_download_status(dlnote, sizeof dlnote)) {
+		} else if (g_srv && msrv_download_status(g_srv, dlnote, sizeof dlnote)) {
 			snprintf(note, sizeof note, "Downloading %s", dlnote);
 			rows[n++] = MENU_RULE;
 			rows[n++] = MENU_NOTE(note);
@@ -16043,8 +16124,8 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		/* Plex: X in an album is the track's Add to Playlist and the album's
 		 * download, or the copy's deletion. */
-		if (g_muse_plex && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
-			muse_plex_album_menu(a, ts->album, items > 0 ? ts->trk[sel] : -1);
+		if (g_srv && !ts->pl && ts->album >= 0 && a->in.pressed[IN_X]) {
+			muse_srv_album_menu(a, ts->album, items > 0 ? ts->trk[sel] : -1);
 			continue;
 		}
 		/* The card's music, outside a playlist: X is Add to Playlist. */
@@ -16077,7 +16158,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 			if (pl_remove_at(d, ts->pl, ts->ent[sel])) {
 				int gone = ts->ent[sel];
 
-				if (g_muse_plex) plex_pl_removed(ts->pl, g_muse.tracks[ts->trk[sel]].path);
+				if (g_srv) msrv_pl_removed(g_srv, ts->pl, g_muse.tracks[ts->trk[sel]].path);
 
 				for (i = sel; i + 1 < ts->n; i++) {
 					ts->trk[i] = ts->trk[i + 1];
@@ -16106,8 +16187,8 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 					ts->trk[sel] = ts->trk[j];
 					ts->trk[j] = t;
 					sel = j;
-					if (g_muse_plex)
-						plex_pl_moved(ts->pl, g_muse.tracks[ts->trk[sel]].path,
+					if (g_srv)
+						msrv_pl_moved(g_srv, ts->pl, g_muse.tracks[ts->trk[sel]].path,
 						              sel > 0 ? g_muse.tracks[ts->trk[sel - 1]].path : NULL);
 					ui_redraw_now();
 				} else {
@@ -16172,7 +16253,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 	if (!(trk = calloc((size_t)al->n + 1, sizeof *trk))) return MUSE_BACK;
 	/* Offline Mode: a Plex album's tracks on the card only (owner). */
 	for (i = n = 0; i < al->n; i++)
-		if (!g_muse_plex || !plex_offline() || plex_track_local(al->first + i)) trk[n++] = al->first + i;
+		if (!g_srv || !msrv_get_offline(g_srv) || msrv_track_local(g_srv, al->first + i)) trk[n++] = al->first + i;
 	ts = (muse_tset){ trk, n, album, al->name,
 	                  g_muse.artists[muse_artist_of(album)].name, NULL, NULL };
 	how = muse_tset_run(a, &ts, now);
@@ -16288,7 +16369,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
-	if (g_muse_plex) plex_pass_note(a);
+	if (g_srv && g_srv_src == MSRC_PLEX) plex_pass_note(a);
 	if (!abs_offline()) abs_progress_refresh();   /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */
@@ -16736,7 +16817,7 @@ static bool muse_album_on_card(int al)
 
 	if (al < 0 || al >= g_muse.nalbums) return false;
 	if (g_muse_pod) return pod_downloaded(al, NULL, 0);
-	if (!g_muse_abs && !g_muse_plex) return false;
+	if (!g_muse_abs && !g_srv) return false;
 	/* g_muse_card_gen: a download finished or a copy went (plorpos-5tm.12) -
 	 * looked at again then, not only at the next Source. */
 	if (!seen || gen != g_muse_gen || card_gen != g_muse_card_gen || n != g_muse.nalbums) {
@@ -16749,7 +16830,7 @@ static bool muse_album_on_card(int al)
 	}
 	if (!seen[al]) {
 		bool yes = g_muse_abs ? abs_book_downloaded(al) > 0
-		         : g_muse.albums[al].n > 0 && plex_album_downloaded(al) >= g_muse.albums[al].n;
+		         : g_muse.albums[al].n > 0 && msrv_album_downloaded(g_srv, al) >= g_muse.albums[al].n;
 
 		seen[al] = yes ? 2 : 1;
 	}
@@ -16775,7 +16856,7 @@ static void muse_offline_look(void)
 	card_gen = g_muse_card_gen;
 	n = g_muse.nalbums;
 	if (!(g_off_has = calloc((size_t)n + 1, 1))) return;
-	if (g_muse_plex) plex_albums_local(g_off_has, n);
+	if (g_srv) msrv_albums_local(g_srv, g_off_has, n);
 	else for (int i = 0; i < n; i++) g_off_has[i] = muse_album_on_card(i);
 	for (int i = 0; i < n; i++) g_off_any += g_off_has[i];
 }
@@ -17337,9 +17418,9 @@ static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; 
 static int mpl_lead(void *ctx, int i)
 {
 	(void)ctx;
-	return !g_muse_plex && !g_muse_abs && !strncmp(g_pls[i].name, "Plex ", 5) ? 5 : 0;
+	return !g_srv && !g_muse_abs && !strncmp(g_pls[i].name, "Plex ", 5) ? 5 : 0;
 }
-static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_muse_plex && plex_pl_downloaded(g_pls[i].name); }
+static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_srv && msrv_pl_downloaded(g_srv, g_pls[i].name); }
 
 /* ---- Podcasts: episode rows (plorpos-7ni.4) ---------------------------------- */
 
@@ -17676,8 +17757,8 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->fav = mpl_fav;
 		L->dl = mpl_dl;
 		L->lead = mpl_lead;
-		L->empty = muse_empty(plex_offline() && g_muse_plex ? "No downloaded playlists"
-		                                                    : "No playlists yet. X on a track adds one.");
+		L->empty = muse_empty(g_srv && msrv_get_offline(g_srv) ? "No downloaded playlists"
+		                                                       : "No playlists yet. X on a track adds one.");
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -17738,7 +17819,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	}
 	/* The header is wide, so a passing word goes under the cover - or a
 	 * Plex download under way, looked at again twice a second while it runs. */
-	if ((g_muse_plex || g_muse_abs || g_muse_pod) && L->nunder < 3) {
+	if ((g_srv || g_muse_abs || g_muse_pod) && L->nunder < 3) {
 		char line[200];
 
 		memcpy(line, "Downloading ", 12);
@@ -17990,9 +18071,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		if (a->in.pressed[IN_Y] && albums && n > 0) muse_fav_tap(v);
 		/* Plex: X on an album downloads it or deletes the copy, on every
 		 * album view - not only inside its track list (plorpos-1lw.12). */
-		if (a->in.pressed[IN_X] && albums && n > 0 && g_muse_plex && v->album &&
+		if (a->in.pressed[IN_X] && albums && n > 0 && g_srv && v->album &&
 		    !g_muse.albums[v->album[v->cursor]].book) {
-			muse_plex_album_menu(a, v->album[v->cursor], -1);
+			muse_srv_album_menu(a, v->album[v->cursor], -1);
 			ui_redraw_now();
 			continue;
 		}
@@ -18067,16 +18148,16 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 
 			muse_pl_dir(d, sizeof d);
 			snprintf(name, sizeof name, "%s", g_pls[g_mls_psel].name);
-			/* On Plex a third: its tracks copied to the card, and kept in
-			 * step (plorpos-5eq.7). */
-			dled = g_muse_plex && plex_pl_downloaded(name);
-			if (g_muse_plex) opts[2] = dled ? "Remove Download" : "Download Playlist";
-			k = muse_pick_run(a, name, opts, g_muse_plex ? 3 : 2);
+			/* On a server a third: its tracks copied to the card, and kept
+			 * in step (plorpos-5eq.7). */
+			dled = g_srv && msrv_pl_downloaded(g_srv, name);
+			if (g_srv) opts[2] = dled ? "Remove Download" : "Download Playlist";
+			k = muse_pick_run(a, name, opts, g_srv ? 3 : 2);
 			if (k == 2) {
 				if (!dled && muse_net_why()) muse_toast(muse_net_why());
-				else if (!dled && plex_allow_sync() == 0) muse_toast(PLEX_NO_SYNC);
+				else if (!dled && g_srv_src == MSRC_PLEX && plex_allow_sync() == 0) muse_toast(PLEX_NO_SYNC);
 				else {
-					plex_pl_download(name, !dled);
+					msrv_pl_download(g_srv, name, !dled);
 					muse_toast(dled ? "Download removed" : "Downloading");
 				}
 			} else if (k >= 0 && !muse_pl_editable(name)) {
@@ -18086,7 +18167,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 				if (confirm_panel(a, "Delete Playlist", msg, "Delete")) {
 					bool ok = pl_delete(d, name);
 
-					if (ok && g_muse_plex) plex_pl_deleted(name);
+					if (ok && g_srv) msrv_pl_deleted(g_srv, name);
 					muse_toast(ok ? "Deleted" : "Could not delete");
 					g_npls = -1;
 					muse_playlists_load();
@@ -18097,7 +18178,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 				if (muse_name_prompt(a, "Rename Playlist", to, (int)sizeof to) && strcmp(to, name)) {
 					if (pl_rename(d, name, to)) {
 						snprintf(msg, sizeof msg, "Renamed to %s", to);
-						if (g_muse_plex) plex_pl_renamed(name, to);
+						if (g_srv) msrv_pl_renamed(g_srv, name, to);
 					}
 					else snprintf(msg, sizeof msg, "%s already exists", to);
 					g_npls = -1;
@@ -22546,7 +22627,7 @@ static int muse_walk(void *unused)
 	unsigned t0 = plat_now_ms();
 
 	(void)unused;
-	g_walk_ok = g_muse_plex ? plex_lib_load(&g_walk_lib)
+	g_walk_ok = g_srv ? msrv_lib_load(g_srv, &g_walk_lib)
 	          : g_muse_abs ? abs_lib_load(&g_walk_lib)
 	          : g_muse_pod ? pod_lib_load(&g_walk_lib) : ml_scan_card(g_muse_root, &g_walk_lib);
 	g_walk_ms = plat_now_ms() - t0;
@@ -22643,7 +22724,7 @@ static void muse_install(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	if (g_muse_plex || g_muse_abs || g_muse_pod) {
+	if (g_srv || g_muse_abs || g_muse_pod) {
 		/* The queue kept from before was restored ahead of this library:
 		 * its track's title and length are known only now. */
 		musec_retitle();
@@ -22652,7 +22733,7 @@ static void muse_install(app *a)
 		free(g_year);
 		if ((g_year = malloc(sizeof *g_year * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
 			for (i = 0; i < g_muse.nalbums; i++)
-				g_year[i] = g_muse_plex ? plex_album_year(i) : g_muse_abs ? abs_album_year(i) : 0;
+				g_year[i] = g_srv ? msrv_album_year(g_srv, i) : g_muse_abs ? abs_album_year(i) : 0;
 		free(g_pod_stamp);
 		g_pod_stamp = NULL;
 		if (g_muse_pod && (g_pod_stamp = malloc(sizeof *g_pod_stamp * (size_t)(g_muse.nalbums ? g_muse.nalbums : 1))))
@@ -22710,7 +22791,9 @@ static void build_muse_shelf(app *a, bool bg)
 	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
 	muse_tidy_singles();
 	src = muse_src_saved();
-	g_muse_plex = src == MSRC_PLEX && plex_lib_cached();
+	g_srv = srv_of(src);
+	if (g_srv && !msrv_lib_cached(g_srv)) g_srv = NULL;
+	g_srv_src = src;
 	g_muse_abs = src == MSRC_ABS && abs_lib_cached();
 	g_muse_pod = src == MSRC_PODCASTS && pod_lib_cached();
 	/* The playlists are the Source's (muse_pl_dir), and which Source is in
@@ -22718,11 +22801,11 @@ static void build_muse_shelf(app *a, bool bg)
 	 * "Loading..." panel of a Source change - was the last Source's, shown
 	 * under the new one where A could not read it (plorpos-5eq.20). */
 	muse_playlists_forget();
-	if (!g_muse_plex && src == MSRC_PLEX)
-		plex_sync_start(false);      /* set up, never synced: on its way */
+	if (!g_srv && srv_of(src))
+		msrv_sync_start(srv_of(src), false);   /* set up, never synced: on its way */
 	if (!g_muse_abs && src == MSRC_ABS)
 		abs_sync_start(false);
-	if (!g_muse_plex && !g_muse_abs && !g_muse_pod) {
+	if (!g_srv && !g_muse_abs && !g_muse_pod) {
 		char dir[sizeof g_muse_root + 16];
 
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
@@ -22735,7 +22818,7 @@ static void build_muse_shelf(app *a, bool bg)
 		}
 	}
 	muse_tabs_load();
-	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_muse_plex;
+	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_srv;
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
 	s = &a->sys.systems[i];
@@ -24623,7 +24706,7 @@ int main(int argc, char *argv[])
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
 		muse_walk_poll(&a);
-		plex_main_poll(&a);
+		srv_main_poll(&a);
 		abs_main_poll(&a);
 		pod_main_poll();
 		if (cover_answers()) ui_redraw_now();

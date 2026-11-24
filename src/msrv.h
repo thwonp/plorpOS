@@ -222,6 +222,10 @@ void msrv_set_pl_mirror(msrv *m, bool on);
 
 void msrv_set_offline(msrv *m, bool on);
 bool msrv_get_offline(msrv *m);
+bool msrv_signed_in(msrv *m);
+bool msrv_ready(msrv *m);          /* signed in, library chosen */
+const char *msrv_library(msrv *m); /* the library's name, "" before one is chosen */
+const char *msrv_name(msrv *m);   /* "Plex", "Jellyfin": its downloads' folder, and what the user is told */
 void msrv_plays_retry(msrv *m);
 
 #endif

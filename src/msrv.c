@@ -1750,6 +1750,10 @@ void msrv_set_offline(msrv *m, bool on)
 }
 
 bool msrv_get_offline(msrv *m) { return m->offline; }
+const char *msrv_name(msrv *m) { return m->o->music; }
+bool msrv_signed_in(msrv *m) { return m->o->signed_in(); }
+bool msrv_ready(msrv *m) { return m->o->ready(); }
+const char *msrv_library(msrv *m) { return m->o->library(); }
 
 static void pls_file(msrv *m, char *out, size_t n)
 {

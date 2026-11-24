@@ -7,6 +7,7 @@
 
 #include "muselib.h"
 #include "musec.h"
+#include "msrv.h"
 
 /* Plex as Muse's second source (plorpos-1lw), ported from the owner's
  * PlexMusicPak for NextUI.
@@ -37,6 +38,7 @@
  * (0600) and in the URLs the daemon is handed, and is written nowhere else. */
 
 void plex_init(const char *card, const char *shared);
+msrv *plex_src(void);   /* the shared core's instance: Muse asks it through msrv_* */
 
 /* ---- account, server, library ----------------------------------------------- */
 
