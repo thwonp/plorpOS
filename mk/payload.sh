@@ -247,6 +247,7 @@ else
 	else plorpos_files "$P" "$ROOT/vendor/cores"; fi
 fi
 plorpos_tailscale "$P" "$B" || exit 1
+plorpos_syncthing "$P" || exit 1
 cp "$DIATOM_ELF" "$P/diatom"
 
 

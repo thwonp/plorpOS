@@ -75,12 +75,13 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap);
 /* Drop a saved network and forget its credential. */
 bool wifi_forget(const char *ssid);
 
-/* The network services a device lets you switch: SSH, Samba and Syncthing on
- * the GKD, where ROCKNIX runs them, SSH alone on the Rotate (off on a fresh
+/* The network services a device lets you switch: SSH and Samba on the GKD,
+ * where ROCKNIX runs them, SSH alone on the Rotate (off on a fresh
  * card, plorpos-3yv.13.4) and on the Miyoo Mini Flip (plorpOS's own
  * dropbear, off on a fresh card, plorpos-f1p.62.2), and none on the Brick. On/off is the system's own
- * setting, so it survives a reboot. */
-typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_SYNCTHING, WIFI_NSVC } wifi_svc;
+ * setting, so it survives a reboot. Syncthing is plorpOS's own on every
+ * port (syncthing.h). */
+typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_NSVC } wifi_svc;
 #ifdef PLATFORM_GKD
 #define WIFI_SVC_ROWS WIFI_NSVC
 #elif defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)
@@ -90,5 +91,9 @@ typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_SYNCTHING, WIFI_NSVC } wifi_svc;
 #endif
 bool wifi_svc_on(wifi_svc s);
 bool wifi_svc_set(wifi_svc s, bool on);
+#ifdef PLATFORM_GKD
+/* ROCKNIX's own Syncthing switched off for good; true if it was on. */
+bool wifi_rocknix_syncthing_handover(void);
+#endif
 
 #endif

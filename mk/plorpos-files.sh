@@ -19,6 +19,16 @@ plorpos_tailscale() {
 	chmod +x "$1/tailscale.sh" "$1/tailscaled"
 }
 
+# plorpos_syncthing P - Syncthing (plorpos-5jh): its start script and the one
+# arm64 build every card with Wi-Fi but the Flip's runs (mk/build-syncthing.sh),
+# with its licences.
+plorpos_syncthing() {
+	_st=$ROOT/build/syncthing-arm64
+	[ -f "$_st/syncthing" ] || { echo "no $_st/syncthing; run mk/build-syncthing.sh" >&2; return 1; }
+	cp "$ROOT/sd/tortos/syncthing.sh" "$_st/syncthing" "$_st/LICENSE-syncthing.md" "$1/"
+	chmod +x "$1/syncthing.sh" "$1/syncthing"
+}
+
 plorpos_files() {
 	_p=$1 _dirs=$2 _extra=${3:-}
 	mkdir -p "$_p/cards" "$_p/cores" "$_p/res/web" "$_p/shaders"

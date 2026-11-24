@@ -180,11 +180,13 @@ Native PICO-8 has no save states or rewind.
 Only the three `plorpos.conf` files in `/storage/.config/system.d/`. They
 replace nothing: each adds to one of ROCKNIX's services. The first two do
 nothing when plorpOS isn't on the card; the third keeps ROCKNIX from creating
-empty system folders on any card. plorpOS's Wi-Fi, SSH, Samba and Syncthing
-switches change ROCKNIX's own settings, the ones EmulationStation shows.
+empty system folders on any card. plorpOS's Wi-Fi, SSH and Samba switches
+change ROCKNIX's own settings, the ones EmulationStation shows. Syncthing is
+plorpOS's own, as on every other device; ROCKNIX's stays off.
 
-SSH and Syncthing's web page (port 8384) both sign in as `root` with ROCKNIX's
-root password, `rocknix` unless you've changed it.
+SSH signs in as `root` with ROCKNIX's root password, `rocknix` unless you've
+changed it. Syncthing's web page (port 8384) signs in as `plorpos` /
+`plorpos`.
 
 ## Removing plorpOS
 

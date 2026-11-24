@@ -60,7 +60,7 @@ than any one console:
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; on the GKD, **SSH**, **Samba** and **Syncthing** switches, on the RG Rotate and Miyoo Mini Flip **SSH**, and on the Zero 40 **SSH** and **Tailscale** (see below); **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
+| **Network Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **SSH** and **Samba** switches on the GKD and RG DS, **SSH** on the RG Rotate, Zero 40 and Miyoo Mini Flip; **Syncthing** and **Tailscale** (see below) on every device with Wi-Fi but the Flip; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget. Not on the Miyoo Mini Flip |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off** (not on the RG Rotate or Miyoo Mini Flip): how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse+). **Sleep Poweroff** (Miyoo Mini Flip, in place of Auto Off): how long a sleeping Flip waits before it powers off, 30 s to 10 min, 2 min to start. **Lid Close** (Miyoo Mini Flip): `sleep` or `nothing`. **Rotate (Closed)** (RG Rotate): what turning the screen closed does - `nothing`, `sleep`, or `open Muse+` (Now Playing, or the Muse+ tabs when nothing is playing), in a game too. **Rotate (Open)** (RG Rotate): what turning it open does - `wake only`, `main shelf`, `recents` or `resume last game`. Opening always wakes a sleeping Rotate. **Rotate Open Always Resumes Game** (RG Rotate): `on` to start, so with a game running, opening goes back to the game from its menu or from Muse+, and only `recents` acts on the game itself (the game switcher). `off`, Rotate (Open) is done as written with a game running too: `main shelf` ends the game (saved as Quit saves it; a port or PICO-8 just closes) and `recents` opens the switcher |
@@ -207,6 +207,22 @@ driver for a network tunnel, so Tailscale runs without one:
   Samba and the Syncthing web page.
 - Anything else started on the GKD can't reach tailnet devices: SSH or ping
   from the GKD, Syncthing syncing with a tailnet-only device, ports.
+
+### Syncthing
+
+*Coming in the next release.* On every device with Wi-Fi except the Miyoo
+Mini Flip, for now.
+
+**MENU > Network Services > Syncthing** keeps your **Saves** folder in sync
+with your other devices. On, the row shows the address of its web page, like
+`192.168.0.55:8384`. Open it in a browser on the same network and sign in as
+`plorpos` / `plorpos`. Add your other devices there and share Saves with them.
+
+- It shares Saves and nothing else.
+- It starts again after a reboot until you switch it off.
+- Its Syncthing ID lives on the card, so reinstalling plorpOS keeps it.
+- Anyone on the same network can sign in with that password too. Switch it
+  off on networks you don't trust.
 
 ## Audio
 

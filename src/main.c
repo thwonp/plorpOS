@@ -8259,13 +8259,20 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 
 	if (key != IN_ACCEPT) return MENU_STAY;
 
-	/* SSH, Samba and Syncthing, where the device has them. No confirm on turning SSH off,
+	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
 	 * though it may be the only way in: the owner's call (gkd.10). */
 	if (sel >= WIFI_ROW_SVC && sel < WIFI_ROW_SVC + WIFI_SVC_ROWS) {
 		wifi_svc s = (wifi_svc)(sel - WIFI_ROW_SVC);
 		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
 		return MENU_STAY;
 	}
+
+#if SYNC_ROWS
+	if (sel == WIFI_ROW_ST) {
+		if (st_set(!w->st)) w->st = !w->st;
+		return MENU_STAY;
+	}
+#endif
 
 #if TS_ROWS
 	/* Tailscale: on the tailnet, A turns it off (no confirm, like SSH);
@@ -8357,6 +8364,7 @@ static void wifi_screen(app *a)
 	int i;
 
 	for (i = 0; i < WIFI_SVC_ROWS; i++) w.svc[i] = wifi_svc_on((wifi_svc)i);
+	w.st = st_on();
 
 	/* Entering does not switch the radio on. It used to, which made the screen
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and
@@ -24152,8 +24160,8 @@ int main(int argc, char *argv[])
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
 		net_set_ca_path(cp);
-		/* Tailscale back on where no boot script starts it (the GKD). */
-		if (!shot_path) ts_boot();
+		/* Tailscale and Syncthing back on, when their switches are. */
+		if (!shot_path) { ts_boot(); st_boot(); }
 		ra_creds_load();
 		ss_creds_load();
 		{
