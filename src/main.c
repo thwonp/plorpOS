@@ -1359,6 +1359,17 @@ static bool srv_cover_take(char *base, size_t n)
 	return false;
 }
 
+/* A server's library sync is running (plorpos-vgr.10): Auto Sleep waits for
+ * it, as Auto Off waits for Over The Hare's bytes. A suspend mid-sync lost
+ * the whole sync - a first Jellyfin one is ~12 min for 47k tracks - and
+ * nothing started it again until the library was next read. */
+static bool muse_syncing(void)
+{
+	for (int i = 0; i < g_nsrv; i++)
+		if (msrv_sync_state(g_srvs[i], NULL, NULL) == 1) return true;
+	return abs_sync_state(NULL, NULL) == 1;
+}
+
 static bool srv_downloading(void)
 {
 	for (int i = 0; i < g_nsrv; i++)
@@ -4826,9 +4837,12 @@ static bool idle_due(app *a)
 #if defined(PLATFORM_MIYOO)
 	/* The charger does not hold the idle clock on the Flip: a charging unit
 	 * sleeps and powers off like any other (f1p.56). */
-	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, false);
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, !musec_playing() && muse_syncing());
 #else
-	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, keep_awake());
+	/* A sync holds it as the charger does - not while music plays, when the
+	 * clock only turns the screen off (music_dark waits for the sync). */
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
+	                  keep_awake() || (!musec_playing() && muse_syncing()));
 #endif
 }
 
@@ -19586,7 +19600,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		 * the speaker and left it there until a wake (2026-10-06). */
 		if (musec_heard()) aout_apply(false);
 		now = plat_now_ms();
-		if (musec_playing())               stopped = 0;
+		if (musec_playing() || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
 		else if (!stopped)                 stopped = now ? now : 1;
 		else if (now - stopped >= grace)   break;
 		plat_input_poll(&a->in);

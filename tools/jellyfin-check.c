@@ -60,6 +60,39 @@ static void items(void)
 	CHECK(!strcmp(t[2].ext, "mp3"), "MP3 lower-cased: %s", t[2].ext);
 }
 
+/* A real Jellyfin 12.4.0 reply (2026-11-24) to the sync's own query - no
+ * Fields=, EnableUserData=false - ids made up, the shape as it came: the
+ * defaults carry Container, AlbumPrimaryImageTag and AlbumArtists. */
+static const char REAL[] =
+	"{\"Items\":[{\"Name\":\"Drove Through Ghosts to Get Here\",\"ServerId\":\"00000000000000000000000000000000\","
+	"\"Id\":\"11111111111111111111111111111111\",\"HasLyrics\":false,\"Container\":\"flac\","
+	"\"PremiereDate\":\"2009-01-01T00:00:00.0000000Z\",\"ChannelId\":null,\"RunTimeTicks\":2650400000,"
+	"\"ProductionYear\":2009,\"IndexNumber\":1,\"ParentIndexNumber\":1,\"IsFolder\":false,\"Type\":\"Audio\","
+	"\"Artists\":[\"65daysofstatic\"],\"ArtistItems\":[{\"Name\":\"65daysofstatic\",\"Id\":\"22222222222222222222222222222222\"}],"
+	"\"Album\":\"Escape From New York\",\"AlbumId\":\"33333333333333333333333333333333\","
+	"\"AlbumPrimaryImageTag\":\"44444444444444444444444444444444\",\"AlbumArtist\":\"65daysofstatic\","
+	"\"AlbumArtists\":[{\"Name\":\"65daysofstatic\",\"Id\":\"22222222222222222222222222222222\"}],"
+	"\"ImageTags\":{\"Primary\":\"55555555555555555555555555555555\"},\"ImageBlurHashes\":{\"Primary\":{"
+	"\"55555555555555555555555555555555\":\"WB8;mhof00of\"}},\"BackdropImageTags\":[],"
+	"\"LocationType\":\"FileSystem\",\"MediaType\":\"Audio\",\"NormalizationGain\":-8.13}],"
+	"\"TotalRecordCount\":1,\"StartIndex\":0}";
+
+static void real(void)
+{
+	jsv root = js_root(REAL, sizeof REAL - 1), arr, it = { 0 }, e;
+	jf_track t;
+
+	CHECK(js_member(root, "Items", &arr) && js_next(arr, &it, &e) && jf_track_parse(e, &t), "real: no track");
+	CHECK(!strcmp(t.title, "Drove Through Ghosts to Get Here") && !strcmp(t.album, "Escape From New York"),
+	      "real: %s / %s", t.title, t.album);
+	CHECK(!strcmp(t.artist, "65daysofstatic") && !strcmp(t.artist_id, "22222222222222222222222222222222") &&
+	      !t.tartist[0], "real: artist %s / %s / %s", t.artist, t.artist_id, t.tartist);
+	CHECK(!strcmp(t.thumb, "33333333333333333333333333333333/44444444444444444444444444444444"),
+	      "real: thumb %s", t.thumb);
+	CHECK(t.dur_ms == 265040 && t.year == 2009 && t.disc == 1 && t.idx == 1 && !strcmp(t.ext, "flac"),
+	      "real: dur %d year %d disc %d idx %d ext %s", t.dur_ms, t.year, t.disc, t.idx, t.ext);
+}
+
 static void ext_iso(void)
 {
 	char b[32];
@@ -97,6 +130,7 @@ static void keys(void)
 int main(void)
 {
 	items();
+	real();
 	ext_iso();
 	keys();
 	if (fails) { printf("jellyfin-check: %d failed\n", fails); return 1; }
