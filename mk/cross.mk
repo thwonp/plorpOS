@@ -145,8 +145,9 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 # by an rpath beside muse - not LD_LIBRARY_PATH, which would hand the lean
 # build to every port that wants the firmware's - and DT_RPATH (not RUNPATH),
 # so the libraries find each other there too. The Zero 40 has the same five
-# on its LD_LIBRARY_PATH (sd/zero40/launch.sh).
-ifeq ($(PLATFORM),brick)
+# on its LD_LIBRARY_PATH (sd/zero40/launch.sh). The GKD on the BasedOS fork
+# (gkdb) finds them by the same rpath: BasedOS has no FFmpeg.
+ifneq ($(filter brick gkdb,$(PLATFORM)),)
 MUSE_LDFLAGS := -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/lib'
 endif
 MUSE_SRC := $(wildcard src/muse/*.c)
