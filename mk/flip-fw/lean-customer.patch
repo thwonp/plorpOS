@@ -1,0 +1,93 @@
+--- a/main
++++ b/main
+@@ -74,7 +74,10 @@ mkdir -p /var/run
+ export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
+ /customer/app/axp_test poweron
+ 
+-init_lcd 1
++# plorpOS (plorpos-f1p.38): no 1 s settle. The LCD is initialised by init_lcd's
++# `cat /proc/ls`; the sleep and the two sdldisplay splash draws below cost
++# ~4 s of boot before the SD card's updater could start.
++init_lcd 0
+ 
+ if [ -f ${CUSTOMER_DIR}/exit_on_stage2 ] ; then
+     exit 0
+@@ -83,14 +86,15 @@ fi
+ #wait for SDCARD mounted
+ mounted=`cat /proc/mounts | grep SDCARD`
+ cnt=0
+-/customer/app/sdldisplay /customer/app/skin/icon-wait-tf-card_flipped.png
+-while [ "$mounted" == "" ] && [ $cnt -lt 16 ] ; do
++#plorpOS: skipped, ~2 s each: /customer/app/sdldisplay /customer/app/skin/icon-wait-tf-card_flipped.png
++# plorpOS (plorpos-f1p.97): look every 0.1 s, not 0.5 s (same 8 s limit).
++while [ "$mounted" == "" ] && [ $cnt -lt 80 ] ; do
+    echo "wait for sdcard $cnt $mounted"
+-   sleep 0.5
++   sleep 0.1
+    cnt=`expr $cnt + 1`
+    mounted=`cat /proc/mounts | grep SDCARD`
+ done
+-/customer/app/sdldisplay /customer/app/skin/app_loading_bg_flipped.png
++#plorpOS: skipped, ~2 s each: /customer/app/sdldisplay /customer/app/skin/app_loading_bg_flipped.png
+ if [ "$mounted" != "" ] ; then
+    insmod /mnt/SDCARD/8188fu.ko
+    for f in `ls /mnt/SDCARD/boot/*.ko` ; do
+@@ -98,11 +102,18 @@ if [ "$mounted" != "" ] ; then
+    done
+ fi
+ 
+-networktime=`/customer/app/jsonval usenetworktime` 
++# plorpOS (plorpos-f1p.97): read the two settings with sed. jsonval's first
++# run pages ~20 libraries (SDL, freetype, mi_*) in from flash; same answers,
++# empty when the key is missing.
++settings_value(){
++   f=/appconfigs/system.json; [ -f $f ] || f=/mnt/SDCARD/system.json
++   sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",}[:space:]]*\).*/\1/p' $f 2>/dev/null | head -n 1
++}
++networktime=`settings_value usenetworktime`
+ if [ "$networktime" != "0" ] ; then
+    /customer/ntpd.sh start
+ fi 
+-timezone=`/customer/app/jsonval timezone`
++timezone=`settings_value timezone`
+ if [ "$timezone" != "" ] && [ -d /mnt/SDCARD/miyoo285/zoneinfo ] ; then
+    ln -sf /mnt/SDCARD/miyoo285/zoneinfo/$timezone /tmp/localtime
+ else
+--- a/demo.sh
++++ b/demo.sh
+@@ -1,24 +1,24 @@
+-insmod /config/modules/4.9.84/cifs.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/cifs.ko
+ insmod /config/modules/4.9.84/nls_utf8.ko
+-insmod /config/modules/4.9.84/grace.ko
+-insmod /config/modules/4.9.84/sunrpc.ko
+-insmod /config/modules/4.9.84/lockd.ko
+-insmod /config/modules/4.9.84/nfs.ko
+-insmod /config/modules/4.9.84/nfsv2.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/grace.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/sunrpc.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/lockd.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/nfs.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/nfsv2.ko
+ insmod /config/modules/4.9.84/mmc_core.ko
+ insmod /config/modules/4.9.84/mmc_block.ko
+ insmod /config/modules/4.9.84/kdrv_sdmmc.ko
+ insmod /config/modules/4.9.84/fat.ko
+ insmod /config/modules/4.9.84/msdos.ko
+ insmod /config/modules/4.9.84/vfat.ko
+-insmod /config/modules/4.9.84/ntfs.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/ntfs.ko
+ insmod /config/modules/4.9.84/usb-common.ko
+ insmod /config/modules/4.9.84/usbcore.ko
+ insmod /config/modules/4.9.84/ehci-hcd.ko
+-insmod /config/modules/4.9.84/scsi_mod.ko
+-insmod /config/modules/4.9.84/usb-storage.ko
+-insmod /config/modules/4.9.84/usbhid.ko
+-insmod /config/modules/4.9.84/sd_mod.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/scsi_mod.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/usb-storage.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/usbhid.ko
++#plorpOS (plorpos-f1p.97), not used: insmod /config/modules/4.9.84/sd_mod.ko
+ insmod /config/modules/4.9.84/mdrv_crypto.ko
+ #kernel_mod_list
+ insmod /config/modules/4.9.84/mhal.ko

@@ -337,10 +337,11 @@ GPL core is that tarball plus the patches named there), by
 
 ## Miyoo firmware component (optional fast-boot image, Flip only)
 
-- The separate "fast boot" download's `miyoo285_fw.img` is a customer-only update image: the `/customer`
-  partition of Miyoo's own firmware for the Mini Flip (build 202510011046, as published by Miyoo on its firmware
-  page) with a single script, `/customer/main`, changed (`mk/flip-fw/lean-main.patch`). It contains Miyoo's
-  binaries and fonts, which are **not covered by this project's licence** and whose terms were not checked
+- The separate "fast boot" download's `miyoo285_fw.img` is an update image holding the `/customer` and
+  `miservice` partitions of Miyoo's own firmware for the Mini Flip (build 202510011046, as published by Miyoo
+  on its firmware page) with two scripts changed (`/customer/main`, `/customer/demo.sh`:
+  `mk/flip-fw/lean-customer.patch`) and one byte of `mi_sys.ko` changed (`mk/flip-fw/build-lean.sh`). It
+  contains Miyoo's binaries, drivers and fonts, which are **not covered by this project's licence** and whose terms were not checked
   here; the community already redistributes the same firmware. It is not affiliated with or endorsed by Miyoo
   and is not part of the release zip. It will be removed if Miyoo objects. `mk/flip-fw/build-lean.sh` rebuilds
   it from the user's own copy of the stock firmware.
