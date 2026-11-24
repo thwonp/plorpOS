@@ -850,7 +850,6 @@ bool wifi_svc_set(wifi_svc s, bool on)
 #define CM_PROFILE "/storage/.cache/connman/wifi.config"
 #define SYSTEMCTL  "/usr/bin/systemctl"
 #define SSHD_MARK  "/storage/.cache/services/sshd.conf"  /* sshd.service's condition */
-#define SAVES_DIR  "/storage/games-external/Saves"
 
 #ifndef PLATFORM_RGDS   /* no ConnMan there: nm() below */
 static int cm(char *out, size_t cap, const char *a, const char *b, const char *c)
@@ -1309,37 +1308,12 @@ bool wifi_forget(const char *ssid)
 	return true;
 }
 
-static const char *const svc_key[WIFI_NSVC] = {
-	"ssh.enabled", "samba.enabled", "syncthing.enabled"
-};
+static const char *const svc_key[WIFI_NSVC] = { "ssh.enabled", "samba.enabled" };
 
 bool wifi_svc_on(wifi_svc s)
 {
 	char v[8];
 	return cfg_get(svc_key[s], v, sizeof v) && !strcmp(v, "1");
-}
-
-/* Syncthing shares Saves and nothing else (plorpos-gkd.42): its own "Default
- * Folder" (/storage/Sync) goes, and Saves comes in under a fixed id, so a
- * second switch-on finds it there and changes nothing. Which other devices get
- * it is chosen in Syncthing's web UI - the GKD cannot know them. Each step
- * runs only when needed, since a refused one shows as a warning in the web UI.
- * Automatic upgrades go off: the binary is in ROCKNIX's read-only image, so one
- * can only fail. (The web UI still offers one; only STNOUPGRADE in syncthing's
- * environment hides that.) All of this goes through the running instance, which
- * takes seconds to come up, so it waits for it in the background, detached
- * from the menu. */
-#define ST_CLI "/usr/bin/syncthing cli --home=/storage/.config/syncthing config"
-static void syncthing_share_saves(void)
-{
-	char *argv[] = { (char *)"/bin/sh", (char *)"-c", (char *)
-		"( i=0; while [ $i -lt 30 ] && ! L=$(" ST_CLI " folders list); do i=$((i+1)); sleep 1; done; "
-		"echo \"$L\" | grep -qx default && " ST_CLI " folders default delete; "
-		"echo \"$L\" | grep -qx plorpos-saves || "
-		ST_CLI " folders add --id plorpos-saves --label Saves --path " SAVES_DIR "; "
-		ST_CLI " options auto-upgrade-intervalh set 0"
-		" ) >/dev/null 2>&1 &", NULL };
-	run(argv, NULL, 0);
 }
 
 /* The setting, then what ROCKNIX's 099-networkservices would do with it at the
@@ -1349,7 +1323,6 @@ bool wifi_svc_set(wifi_svc s, bool on)
 	char *verb = on ? (char *)"start" : (char *)"stop";
 	char *ssh[]   = { (char *)SYSTEMCTL, verb, (char *)"sshd", NULL };
 	char *samba[] = { (char *)SYSTEMCTL, verb, (char *)"nmbd", (char *)"smbd", NULL };
-	char *st[]    = { (char *)SYSTEMCTL, verb, (char *)"syncthing", NULL };
 
 	if (!cfg_set(svc_key[s], on ? "1" : "0")) return false;
 	switch (s) {
@@ -1361,13 +1334,23 @@ bool wifi_svc_set(wifi_svc s, bool on)
 			unlink(SSHD_MARK);
 		}
 		return run(ssh, NULL, 0) == 0;
-	case WIFI_SYNCTHING:
-		if (run(st, NULL, 0) != 0) return false;
-		if (on) syncthing_share_saves();
-		return true;
 	default:
 		return run(samba, NULL, 0) == 0;
 	}
+}
+
+/* ROCKNIX's Syncthing ran the GKD's Syncthing row (plorpos-gkd.42) until
+ * plorpOS shipped its own (plorpos-5jh). Its 099-networkservices starts it at
+ * boot from this setting, and two would fight over port 8384. */
+bool wifi_rocknix_syncthing_handover(void)
+{
+	char v[8];
+	char *stop[] = { (char *)SYSTEMCTL, (char *)"stop", (char *)"syncthing", NULL };
+
+	if (!cfg_get("syncthing.enabled", v, sizeof v) || strcmp(v, "1")) return false;
+	cfg_set("syncthing.enabled", "0");
+	run(stop, NULL, 0);
+	return true;
 }
 
 #endif /* PLATFORM_GKD */

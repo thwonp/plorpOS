@@ -9,6 +9,7 @@
 #define TORTOS_WIFI_MENU_H
 
 #include "menu.h"
+#include "syncthing.h"
 #include "tailscale.h"
 #include "wifi.h"
 
@@ -19,7 +20,8 @@ typedef struct {
 	bool     on;
 	bool     scanning;   /* a scan is running; the list is provisional */
 	bool     scanned;    /* a scan has finished at least once this visit */
-	bool     svc[WIFI_NSVC];   /* SSH, Samba, Syncthing; read on entry, only where WIFI_SVC_ROWS */
+	bool     svc[WIFI_NSVC];   /* SSH, Samba; read on entry, only where WIFI_SVC_ROWS */
+	bool     st;         /* the Syncthing switch, read on entry where SYNC_ROWS (plorpos-5jh) */
 	bool     connected;  /* associated with an address: Over The Hare can run */
 	char     conn[WIFI_SSID_MAX + 72]; /* "<ssid> · <ip>" while connected, else empty */
 	char     st_ui[72];  /* Syncthing's web UI, "<ip>:8384", while connected */
@@ -29,13 +31,14 @@ typedef struct {
 
 /* The Network Services rows above the network list (plorpos-z0d.1): the radio,
  * then what the network is for - the services a device lets you switch
- * (WIFI_SVC_ROWS of them, from WIFI_ROW_SVC) and Tailscale (TS_ROWS) among
- * them. Fixed, so a scan
+ * (WIFI_SVC_ROWS of them, from WIFI_ROW_SVC), Syncthing (SYNC_ROWS) and
+ * Tailscale (TS_ROWS) among them. Fixed, so a scan
  * changing the list's length never moves them, and the key handler finds a
  * network at WIFI_TOP_ROWS + i. */
 enum {
 	WIFI_ROW_SWITCH, WIFI_ROW_SVC,
-	WIFI_ROW_TS = WIFI_ROW_SVC + WIFI_SVC_ROWS,
+	WIFI_ROW_ST = WIFI_ROW_SVC + WIFI_SVC_ROWS,
+	WIFI_ROW_TS = WIFI_ROW_ST + SYNC_ROWS,
 	WIFI_ROW_XFER = WIFI_ROW_TS + TS_ROWS, WIFI_TOP_ROWS
 };
 

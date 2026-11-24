@@ -112,13 +112,13 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	/* Not tied to the radio: they serve whatever network the device is on. */
 	if (WIFI_SVC_ROWS)
 		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
-	if (WIFI_SVC_ROWS > WIFI_SAMBA) {
+	if (WIFI_SVC_ROWS > WIFI_SAMBA)
 		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
-		/* On, it reads as where to manage it: the web UI, signed into as
-		 * root with ROCKNIX's root password. */
-		ADD((menu_row){ "Syncthing", !w->svc[WIFI_SYNCTHING] ? "off"
-		                : w->st_ui[0] ? w->st_ui : "on", true });
-	}
+#if SYNC_ROWS
+	/* On, it reads as where to manage it: the web UI, signed into as
+	 * plorpos / plorpos (plorpos-5jh). */
+	ADD((menu_row){ "Syncthing", !w->st ? "off" : w->st_ui[0] ? w->st_ui : "on", true });
+#endif
 #if TS_ROWS
 	/* Tailscale (plorpos-8ns): what the daemon says, asked once a second
 	 * (a socket round trip, not a fork). On the tailnet it reads as the
