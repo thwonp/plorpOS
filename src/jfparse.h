@@ -27,6 +27,9 @@ typedef struct {
 /* False for an element that is not a playable track (no Id or AlbumId). */
 bool jf_track_parse(jsv item, jf_track *t);
 
+/* A favorite from an /Items element (Filters=IsFavorite, plorpos-vgr.6): 1 a
+ * track, 2 an album, 0 anything else; its Id into `id`. */
+int  jf_fav_parse(jsv item, char *id, size_t n);
 /* A file extension from Jellyfin's Container ("flac", "mp3", "mov,mp4,m4a,..."):
  * the first token that is an audio extension we know, else "flac". */
 void jf_ext(const char *container, char *out, size_t n);

@@ -62,6 +62,16 @@ void jf_iso(long t, char *out, size_t n)
 	strftime(out, n, "%Y-%m-%dT%H:%M:%SZ", &tm);
 }
 
+int jf_fav_parse(jsv item, char *id, size_t n)
+{
+	char type[32];
+
+	jstr(item, "Id", id, n);
+	jstr(item, "Type", type, sizeof type);
+	if (!id[0]) return 0;
+	return !strcmp(type, "Audio") ? 1 : !strcmp(type, "MusicAlbum") ? 2 : 0;
+}
+
 bool jf_track_parse(jsv item, jf_track *t)
 {
 	jsv v, it = { 0 }, e;

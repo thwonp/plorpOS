@@ -720,6 +720,64 @@ static int scrobble(msrv *m, int key)
 	return code >= 200 && code < 300 ? 200 : code;
 }
 
+/* ---- favorites (plorpos-vgr.6) ----------------------------------------------------- */
+
+static bool push_key(int **v, int *n, int *cap, int k)
+{
+	if (*n == *cap) {
+		int c = *cap ? *cap * 2 : 64, *nv = realloc(*v, sizeof *nv * (size_t)c);
+
+		if (!nv) return false;
+		*v = nv;
+		*cap = c;
+	}
+	(*v)[(*n)++] = k;
+	return true;
+}
+
+/* The user's favorite tracks and albums in this library, by key. An id with
+ * no key is not in the index, so not one of ours. */
+static int fav_list(msrv *m, int **tracks, int *nt, int **albums, int *na)
+{
+	char path[400], id[40], *b = NULL;
+	size_t len;
+	jsv items, it = { 0 }, e;
+	int ct = 0, ca = 0;
+
+	(void)m;
+	*tracks = *albums = NULL;
+	*nt = *na = 0;
+	snprintf(path, sizeof path, "/Items?userId=%s&Recursive=true&IncludeItemTypes=Audio,MusicAlbum&Filters=IsFavorite"
+	         "&EnableImages=false&EnableUserData=false%s%s", C.user_id, C.view[0] ? "&ParentId=" : "", C.view);
+	if (server_req("GET", path, NULL, &b, &len, 60) != 200 || !b) { free(b); return -1; }
+	if (js_member(js_root(b, len), "Items", &items))
+		while (js_next(items, &it, &e)) {
+			int kind = jf_fav_parse(e, id, sizeof id), k;
+
+			if (!kind) continue;
+			pthread_mutex_lock(&g_kmu);
+			k = jf_key_find(g_keys, id);
+			pthread_mutex_unlock(&g_kmu);
+			if (k > 0 && !(kind == 1 ? push_key(tracks, nt, &ct, k) : push_key(albums, na, &ca, k))) {
+				free(b); free(*tracks); free(*albums);
+				*tracks = *albums = NULL;
+				return -1;
+			}
+		}
+	free(b);
+	return 0;
+}
+
+static int fav_set(msrv *m, int key, bool album, bool on)
+{
+	char id[48], path[200];
+
+	(void)m; (void)album;
+	if (!id_of_key(key, id, sizeof id)) return 404;
+	snprintf(path, sizeof path, "/UserFavoriteItems/%s?userId=%s", id, C.user_id);
+	return server_req(on ? "POST" : "DELETE", path, NULL, NULL, NULL, 10);
+}
+
 /* ---- playlists -------------------------------------------------------------------- */
 
 static int pl_list(msrv *m, msrv_spl *out, int max)
@@ -876,6 +934,7 @@ static const msrv_ops OPS = {
 	.stream_url = stream_url, .fetch_track = fetch_track, .cover_get = cover_get, .owns_url = owns_url,
 	.timeline = timeline, .scrobble = scrobble,
 	.pl_list = pl_list, .pl_items = pl_items, .pl_create = pl_create, .pl_edit = pl_edit,
+	.fav_list = fav_list, .fav_set = fav_set,
 	.job = job,
 };
 

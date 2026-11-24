@@ -547,6 +547,58 @@ static int scrobble(msrv *m, int key)
 	return server_get(path, NULL, NULL, 10);
 }
 
+/* ---- favorites (plorpos-vgr.14) -------------------------------------------------- */
+
+/* A favorite on Plex is a love: rated 10, as Plexamp does it. */
+static int loved(int type, int **out, int *n)
+{
+	char path[200], *b = NULL;
+	size_t len;
+	jsv mc, md, it = { 0 }, e;
+	int cap = 0;
+
+	*out = NULL;
+	*n = 0;
+	snprintf(path, sizeof path, "/library/sections/%d/all?type=%d&userRating=10", C.section, type);
+	if (server_get(path, &b, &len, 30) != 200 || !b) { free(b); return -1; }
+	if (js_member(js_root(b, len), "MediaContainer", &mc) && js_member(mc, "Metadata", &md))
+		while (js_next(md, &it, &e)) {
+			int k = (int)jnum(e, "ratingKey");
+
+			if (k <= 0) continue;
+			if (*n == cap) {
+				int c = cap ? cap * 2 : 64, *v = realloc(*out, sizeof *v * (size_t)c);
+
+				if (!v) { free(b); free(*out); *out = NULL; return -1; }
+				*out = v;
+				cap = c;
+			}
+			(*out)[(*n)++] = k;
+		}
+	free(b);
+	return 0;
+}
+
+static int fav_list(msrv *m, int **tracks, int *nt, int **albums, int *na)
+{
+	(void)m;
+	*albums = NULL;
+	*na = 0;
+	if (loved(10, tracks, nt) < 0) return -1;
+	if (loved(9, albums, na) < 0) { free(*tracks); *tracks = NULL; return -1; }
+	return 0;
+}
+
+/* Loved, or the rating cleared (-1). */
+static int fav_set(msrv *m, int key, bool album, bool on)
+{
+	char path[200];
+
+	(void)m; (void)album;
+	snprintf(path, sizeof path, "/:/rate?key=%d&identifier=com.plexapp.plugins.library&rating=%d", key, on ? 10 : -1);
+	return server_send("PUT", path, NULL, NULL);
+}
+
 /* ---- the library sync ------------------------------------------------------------ */
 
 static long stamp(msrv *m, long old, long since, long total_then)
@@ -994,6 +1046,7 @@ static const msrv_ops OPS = {
 	.stream_url = stream_url, .fetch_track = fetch_track, .cover_get = cover_get, .owns_url = owns_url,
 	.timeline = timeline, .scrobble = scrobble,
 	.pl_list = pl_list, .pl_items = pl_items, .pl_create = pl_create, .pl_edit = pl_edit,
+	.fav_list = fav_list, .fav_set = fav_set,
 	.job = job,
 };
 

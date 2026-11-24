@@ -136,6 +136,11 @@ typedef struct {
 	 * comes after (0: first). */
 	int  (*pl_edit)(msrv *m, int op, const char *id, const char *b, int key, int akey);
 
+	/* Favorites (plorpos-vgr.6): the server's favorite tracks and albums by
+	 * key (-1: no answer), and one set or cleared (the status). NULL: none. */
+	int  (*fav_list)(msrv *m, int **tracks, int *nt, int **albums, int *na);
+	int  (*fav_set)(msrv *m, int key, bool album, bool on);
+
 	void (*job)(msrv *m, msrv_job *j);         /* kinds >= MSRV_J_BACKEND */
 } msrv_ops;
 
@@ -216,6 +221,15 @@ void msrv_pl_removed(msrv *m, const char *name, const char *track);
 void msrv_pl_moved(msrv *m, const char *name, const char *track, const char *after);
 void msrv_pl_renamed(msrv *m, const char *from, const char *to);
 void msrv_pl_deleted(msrv *m, const char *name);
+
+/* Favorites both ways (plorpos-vgr.6): Favorite Tracks (through the
+ * msrv_pl_added/removed hooks) and the albums hearted are the server's
+ * favorites; a change made with no server goes when it answers again. */
+bool msrv_favs_on(msrv *m);                              /* the backend has favorites */
+bool msrv_fav_album_is(msrv *m, const char *dir);       /* dir: an album folder of this source */
+bool msrv_fav_album_set(msrv *m, const char *dir, bool on);    /* false: not an album of its library */
+void msrv_favs_retry(msrv *m);                          /* each frame: a change waiting, sent */
+bool msrv_fav_apply(msrv *m);                           /* UI thread: Favorite Tracks in step; true if rewritten */
 int  msrv_pl_gen(msrv *m);
 void msrv_set_pl_mirror(msrv *m, bool on);
 

@@ -53,6 +53,10 @@
 typedef struct { int key; char reason; } dl_item;
 typedef struct { char name[96]; char id[48]; bool smart, dl; } ms_pl;
 
+/* A favorite as this device has it (l) and as the server had it at the last
+ * word from it (b). Both 0: no entry. */
+typedef struct { int key; unsigned char album, l, b; } ms_fav;
+
 struct msrv {
 	const msrv_ops *o;
 	pthread_mutex_t mu;
@@ -116,6 +120,16 @@ struct msrv {
 	bool pls_in;
 	volatile int pl_mirror;
 	volatile int pl_gen;
+	volatile unsigned rel_gen;         /* rel_root changes */
+	/* favorites both ways (plorpos-vgr.6): under fav_mu, never taken with mu held */
+	pthread_mutex_t fav_mu;
+	ms_fav *fav; int nfav, fav_cap;    /* by (album, key) */
+	unsigned fav_gen;                  /* the rel_gen they were read for, +1 */
+	char fav_root[400];                /* that rel_root */
+	bool fav_fresh;                    /* no favs.tsv yet: the first reconcile merges */
+	volatile bool fav_busy, fav_dirty; /* dirty: a change not sent yet */
+	volatile int fav_m3u;              /* Favorite Tracks wants bringing in step (UI thread) */
+	unsigned fav_last;
 };
 
 #define LOCK()   pthread_mutex_lock(&m->mu)
@@ -276,6 +290,7 @@ void msrv_rel_root_set(msrv *m)
 		snprintf(m->rel_root, sizeof m->rel_root, "%s/%s", m->rel_base, id);
 	else
 		m->rel_root[0] = '\0';
+	m->rel_gen++;
 }
 
 void msrv_cfg_save(msrv *m)
@@ -332,8 +347,10 @@ void msrv_set_download_kbps(msrv *m, int kbps) { m->download_kbps = kbps; msrv_c
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_TIMELINE = 1, J_PLS, J_PLDL, J_PLEDIT, J_PICK, J_PLAYS };
+enum { J_TIMELINE = 1, J_PLS, J_PLDL, J_PLEDIT, J_PICK, J_PLAYS, J_FAVS, J_FAVSET };
 static void do_pls(msrv *m);
+static void do_favs(msrv *m);
+static void do_favset(msrv *m, msrv_job *j);
 static void do_pl_downloads(msrv *m);
 static void do_pl_edit(msrv *m, msrv_job *j);
 
@@ -353,6 +370,17 @@ void msrv_push(msrv *m, msrv_job *j, bool front)
 	m->njobs++;
 	pthread_cond_signal(&m->api_cv);
 	UNLOCK();
+}
+
+/* The favorites reconcile asked for: after a library sync, and whenever the
+ * index is read in - a Source chosen with its index already here gets no
+ * sync, and a first sync ends before its index is in (plorpos-vgr.6.1). */
+static void fav_kick(msrv *m)
+{
+	msrv_job *j;
+
+	if (!m->o->fav_list || m->fav_busy || m->offline || !m->o->signed_in() || !net_online()) return;
+	if ((j = msrv_job_new(J_FAVS))) { m->fav_busy = true; msrv_push(m, j, false); }
 }
 
 static void do_pick(msrv *m)
@@ -456,6 +484,8 @@ static void *api_main(void *arg)
 		case J_PLEDIT:   do_pl_edit(m, j); break;
 		case J_PICK:     do_pick(m); break;
 		case J_PLAYS:    do_plays(m); break;
+		case J_FAVS:     do_favs(m); break;
+		case J_FAVSET:   do_favset(m, j); break;
 		default:         if (j->kind >= MSRV_J_BACKEND) m->o->job(m, j); break;
 		}
 		free(j);
@@ -1132,6 +1162,7 @@ msrv *msrv_new(const msrv_ops *ops, const char *card, const char *shared)
 	pthread_mutex_init(&m->mu, NULL);
 	pthread_mutex_init(&m->plays_mu, NULL);
 	pthread_mutex_init(&m->man_mu, NULL);
+	pthread_mutex_init(&m->fav_mu, NULL);
 	pthread_cond_init(&m->api_cv, NULL);
 	pthread_cond_init(&m->dl_cv, NULL);
 	pthread_cond_init(&m->cache_cv, NULL);
@@ -1200,6 +1231,7 @@ bool msrv_lib_load(msrv *m, ml_lib *out)
 	m->tab = t;
 	UNLOCK();
 	fprintf(stderr, "%s: %d artists, %d albums, %d tracks from the index\n", m->o->tag, t.nar, t.nal, t.ntr);
+	fav_kick(m);
 	return true;
 }
 
@@ -1752,7 +1784,7 @@ void msrv_set_offline(msrv *m, bool on)
 	m->offline = on;
 	fprintf(stderr, "%s: Offline Mode %s\n", m->o->tag, on ? "on" : "off");
 	if (on) msrv_download_cancel(m);
-	else m->plays_last = 0;                        /* plays made offline go at once */
+	else m->plays_last = m->fav_last = 0;          /* plays and favorites made offline go at once */
 }
 
 bool msrv_get_offline(msrv *m) { return m->offline; }
@@ -2178,6 +2210,7 @@ void msrv_playlists_sync(msrv *m)
 	msrv_job *j = msrv_job_new(J_PLS);
 
 	if (j) msrv_push(m, j, false);
+	fav_kick(m);
 }
 
 /* An edit made here, sent: by track key, not by place - the server's list
@@ -2238,14 +2271,22 @@ static int rel_key(msrv *m, const char *rel)
 	return sl && msrv_is_path(m, rel) ? atoi(sl + 1) : 0;
 }
 
+static void fav_change(msrv *m, int key, bool album, bool on);
+
+/* Favorite Tracks is the server's favorites (plorpos-vgr.6): a track put in
+ * or taken out is one favorite more or less. */
 void msrv_pl_added(msrv *m, const char *name, const char *track)
 {
-	if (strcmp(name, MSRV_FAVS) && rel_key(m, track)) pl_edit(m, MSRV_PLE_ADD, name, NULL, rel_key(m, track));
+	if (!rel_key(m, track)) return;
+	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_ADD, name, NULL, rel_key(m, track));
+	else fav_change(m, rel_key(m, track), false, true);
 }
 
 void msrv_pl_removed(msrv *m, const char *name, const char *track)
 {
-	if (strcmp(name, MSRV_FAVS) && rel_key(m, track)) pl_edit(m, MSRV_PLE_DEL, name, NULL, rel_key(m, track));
+	if (!rel_key(m, track)) return;
+	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_DEL, name, NULL, rel_key(m, track));
+	else fav_change(m, rel_key(m, track), false, false);
 }
 
 void msrv_pl_moved(msrv *m, const char *name, const char *track, const char *after)
@@ -2266,3 +2307,369 @@ void msrv_pl_deleted(msrv *m, const char *name)
 {
 	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_DELETE, name, NULL, 0);
 }
+
+/* ---- favorites both ways (plorpos-vgr.6) ------------------------------------------ */
+
+/* Favorite Tracks and the albums hearted are the server's favorites. Each
+ * is kept twice - as this device has it (l) and as the server had it the
+ * last time it said (b) - in <rel_root>/favs.tsv, so a change made with no
+ * server (Offline Mode, no network, a request that failed) is the
+ * difference between the two and goes when the server answers again. The
+ * reconcile is a three-way merge per favorite: the side that changed since
+ * b wins, and when both did they agree (a favorite is on or off). The first
+ * one, with no file yet, is the union of both. */
+
+static int fav_cmp(const void *a, const void *b)
+{
+	const ms_fav *x = a, *y = b;
+
+	if (x->album != y->album) return x->album < y->album ? -1 : 1;
+	return x->key < y->key ? -1 : x->key > y->key;
+}
+
+/* Under fav_mu: where (key, album) is or goes. */
+static int fav_at(msrv *m, int key, bool album)
+{
+	ms_fav k = { .key = key, .album = album };
+	int lo = 0, hi = m->nfav;
+
+	while (lo < hi) {
+		int mid = (lo + hi) / 2;
+
+		if (fav_cmp(&m->fav[mid], &k) < 0) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
+
+static ms_fav *fav_find(msrv *m, int key, bool album)
+{
+	int i = fav_at(m, key, album);
+
+	return i < m->nfav && m->fav[i].key == key && m->fav[i].album == album ? &m->fav[i] : NULL;
+}
+
+/* The entry, made (both 0) when missing. */
+static ms_fav *fav_get(msrv *m, int key, bool album)
+{
+	int i = fav_at(m, key, album);
+
+	if (i < m->nfav && m->fav[i].key == key && m->fav[i].album == album) return &m->fav[i];
+	if (m->nfav == m->fav_cap) {
+		int cap = m->fav_cap ? m->fav_cap * 2 : 64;
+		ms_fav *n = realloc(m->fav, sizeof *n * (size_t)cap);
+
+		if (!n) return NULL;
+		m->fav = n;
+		m->fav_cap = cap;
+	}
+	memmove(&m->fav[i + 1], &m->fav[i], sizeof *m->fav * (size_t)(m->nfav - i));
+	m->fav[i] = (ms_fav){ .key = key, .album = album };
+	m->nfav++;
+	return &m->fav[i];
+}
+
+/* Entries off on both sides go; dirty: one not sent yet. */
+static void fav_tidy(msrv *m)
+{
+	int i, o = 0;
+	bool dirty = false;
+
+	for (i = 0; i < m->nfav; i++) {
+		if (!m->fav[i].l && !m->fav[i].b) continue;
+		if (m->fav[i].l != m->fav[i].b) dirty = true;
+		m->fav[o++] = m->fav[i];
+	}
+	m->nfav = o;
+	m->fav_dirty = dirty;
+}
+
+static void fav_save(msrv *m)
+{
+	char p[1000], tmp[1010];
+	FILE *f;
+	int i;
+
+	if (!m->fav_root[0]) return;
+	snprintf(p, sizeof p, "%s/%s/favs.tsv", m->card, m->fav_root);
+	snprintf(tmp, sizeof tmp, "%s.new", p);
+	if (!(f = fopen(tmp, "w"))) return;
+	for (i = 0; i < m->nfav; i++)
+		fprintf(f, "%c %d %d %d\n", m->fav[i].album ? 'a' : 't', m->fav[i].key, m->fav[i].l, m->fav[i].b);
+	if (fclose(f) == 0) rename(tmp, p);
+	else unlink(tmp);
+}
+
+/* Under fav_mu: this library's favorites, read when the library is new. With
+ * no file yet, this device's Favorite Tracks so far are its own favorites,
+ * to be merged with the server's. */
+static void fav_ensure(msrv *m)
+{
+	char p[1000], line[64];
+	FILE *f;
+
+	if (m->fav_gen == m->rel_gen + 1) return;
+	LOCK();
+	m->fav_gen = m->rel_gen + 1;
+	snprintf(m->fav_root, sizeof m->fav_root, "%s", m->rel_root);
+	UNLOCK();
+	m->nfav = 0;
+	m->fav_fresh = false;
+	if (!m->fav_root[0]) { fav_tidy(m); return; }
+	snprintf(p, sizeof p, "%s/%s/favs.tsv", m->card, m->fav_root);
+	if ((f = fopen(p, "r"))) {
+		while (fgets(line, sizeof line, f)) {
+			char kind;
+			int key, l, b;
+			ms_fav *e;
+
+			if (sscanf(line, "%c %d %d %d", &kind, &key, &l, &b) != 4 || key <= 0 || (kind != 't' && kind != 'a'))
+				continue;
+			if ((e = fav_get(m, key, kind == 'a'))) { e->l = l != 0; e->b = b != 0; }
+		}
+		fclose(f);
+	} else {
+		int *k, n = pl_file_keys(m, MSRV_FAVS, &k), i;
+		ms_fav *e;
+
+		m->fav_fresh = true;
+		for (i = 0; i < n; i++) if ((e = fav_get(m, k[i], false))) e->l = 1;
+		free(k);
+	}
+	fav_tidy(m);
+}
+
+/* A favorite changed here: kept, and sent now when there is a server. */
+static void fav_change(msrv *m, int key, bool album, bool on)
+{
+	msrv_job *j;
+	ms_fav *e;
+
+	if (!m->o->fav_set || key <= 0) return;
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	if ((e = fav_get(m, key, album))) e->l = on;
+	fav_tidy(m);
+	fav_save(m);
+	pthread_mutex_unlock(&m->fav_mu);
+	if (!m->offline && (j = msrv_job_new(J_FAVSET))) {
+		j->n1 = key; j->n2 = album; j->n3 = on;
+		msrv_push(m, j, false);
+	}
+}
+
+static void do_favset(msrv *m, msrv_job *j)
+{
+	int key = (int)j->n1, code;
+	bool album = j->n2 != 0, on = j->n3 != 0;
+	ms_fav *e;
+
+	if (m->offline) return;
+	code = m->o->fav_set(m, key, album, on);
+	if (code < 200 || code >= 300) {
+		fprintf(stderr, "%s: favorite %s %d not sent (http %d), kept for later\n", m->o->tag,
+		        album ? "album" : "track", key, code);
+		return;
+	}
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	if ((e = fav_get(m, key, album))) e->b = on;   /* the server has it so now */
+	fav_tidy(m);
+	fav_save(m);
+	pthread_mutex_unlock(&m->fav_mu);
+}
+
+typedef struct { int key; unsigned char album, on, ok; } fav_push;
+
+static int push_cmp(const void *a, const void *b)
+{
+	const fav_push *x = a, *y = b;
+
+	if (x->album != y->album) return x->album < y->album ? -1 : 1;
+	return x->key < y->key ? -1 : x->key > y->key;
+}
+
+static bool in_keys(int k, const int *v, int n)
+{
+	return n > 0 && bsearch(&k, v, (size_t)n, sizeof *v, cmp_int);
+}
+
+/* The reconcile, on the worker after every library sync and when a change
+ * made here waits: the server's favorites of this library merged with this
+ * device's, what changed here sent, what changed there taken. */
+static void do_favs(msrv *m)
+{
+	int *rt = NULL, *ra = NULL, *alk = NULL, nt = 0, na = 0, nal = 0, np = 0, i, sent = 0, kept = 0, taken = 0;
+	fav_push *push = NULL;
+	unsigned gen;
+	bool tracks = false, fresh, have;
+
+	LOCK(); have = m->tab.ntr > 0; UNLOCK();
+	if (m->offline || !have) goto out;              /* no index yet: its sync comes first */
+	if (m->o->fav_list(m, &rt, &nt, &ra, &na) < 0) {
+		fprintf(stderr, "%s: favorites: the server did not answer\n", m->o->tag);
+		goto out;
+	}
+	if (nt > 1) qsort(rt, (size_t)nt, sizeof *rt, cmp_int);
+	if (na > 1) qsort(ra, (size_t)na, sizeof *ra, cmp_int);
+	LOCK();
+	if ((alk = malloc(sizeof *alk * (size_t)(m->tab.nal ? m->tab.nal : 1))))
+		for (nal = 0; nal < m->tab.nal; nal++) alk[nal] = m->tab.al[nal].key;
+	UNLOCK();
+	if (!alk) goto out;
+	qsort(alk, (size_t)nal, sizeof *alk, cmp_int);
+
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	gen = m->fav_gen;
+	fresh = m->fav_fresh;
+	LOCK();
+	/* The server's favorites this library has; and this device's that it
+	 * has no more go, never sent (a track gone from the server). */
+	for (i = 0; i < nt; i++) if (tab_find(&m->tab, rt[i]) >= 0) fav_get(m, rt[i], false);
+	for (i = 0; i < na; i++) if (in_keys(ra[i], alk, nal)) fav_get(m, ra[i], true);
+	{
+		int o = 0;
+
+		for (i = 0; i < m->nfav; i++)
+			if (m->fav[i].album ? in_keys(m->fav[i].key, alk, nal) : tab_find(&m->tab, m->fav[i].key) >= 0)
+				m->fav[o++] = m->fav[i];
+		m->nfav = o;
+	}
+	UNLOCK();
+	if ((push = malloc(sizeof *push * (size_t)(m->nfav ? m->nfav : 1))))
+		for (i = 0; i < m->nfav; i++) {
+			ms_fav *e = &m->fav[i];
+			bool r = e->album ? in_keys(e->key, ra, na) : in_keys(e->key, rt, nt);
+			bool res = e->l != e->b ? e->l : r;
+
+			if (res != r) push[np++] = (fav_push){ .key = e->key, .album = e->album, .on = res };
+		}
+	pthread_mutex_unlock(&m->fav_mu);
+	if (!push) goto out;
+
+	for (i = 0; i < np && !m->offline; i++) {
+		int code = m->o->fav_set(m, push[i].key, push[i].album, push[i].on);
+
+		push[i].ok = code >= 200 && code < 300;
+		if (push[i].ok) sent++;
+		else kept++;
+	}
+	kept += np - sent - kept;
+
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	if (m->fav_gen == gen) {                         /* still the same library */
+		for (i = 0; i < m->nfav; i++) {
+			ms_fav *e = &m->fav[i];
+			fav_push k = { .key = e->key, .album = e->album }, *p;
+			bool r = e->album ? in_keys(e->key, ra, na) : in_keys(e->key, rt, nt);
+
+			if (np && (p = bsearch(&k, push, (size_t)np, sizeof *push, push_cmp)) && p->ok) r = p->on;
+			if (e->l == e->b && e->l != r) {         /* unchanged here: the server's word */
+				e->l = r;
+				taken++;
+				if (!e->album) tracks = true;
+			}
+			e->b = r;
+		}
+		m->fav_fresh = false;
+		fav_tidy(m);
+		fav_save(m);
+		m->fav_m3u = 1;                              /* Favorite Tracks there, even empty */
+	}
+	pthread_mutex_unlock(&m->fav_mu);
+	fprintf(stderr, "%s: favorites: %d tracks, %d albums on the server; %d sent, %d kept for later, %d taken%s%s\n",
+	        m->o->tag, nt, na, sent, kept, taken, fresh ? " (first, merged)" : "", tracks ? " (tracks)" : "");
+out:
+	free(rt); free(ra); free(alk); free(push);
+	m->fav_last = now_ms();
+	m->fav_busy = false;
+}
+
+void msrv_favs_retry(msrv *m)
+{
+	unsigned now = now_ms();
+	msrv_job *j;
+
+	if (!m->o->fav_list || m->fav_busy || !m->fav_dirty || m->offline || !m->o->signed_in() ||
+	    (m->fav_last && now - m->fav_last < 30000u) || !net_online())
+		return;
+	if ((j = msrv_job_new(J_FAVS))) { m->fav_busy = true; m->fav_last = now; msrv_push(m, j, false); }
+}
+
+/* UI thread (Muse edits the same file there): Favorite Tracks made to hold
+ * this device's favorite tracks - the ones there kept in their order, the
+ * others added at the end. Written only when it changes or is missing. */
+bool msrv_fav_apply(msrv *m)
+{
+	char d[700], p[800];
+	int *have = NULL, *sorted = NULL, *want = NULL, *out = NULL, nh, nw = 0, no = 0, i;
+	bool changed = false;
+
+	if (!m->fav_m3u) return false;
+	m->fav_m3u = 0;
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	if ((want = malloc(sizeof *want * (size_t)(m->nfav ? m->nfav : 1))))
+		for (i = 0; i < m->nfav; i++) if (!m->fav[i].album && m->fav[i].l) want[nw++] = m->fav[i].key;
+	pthread_mutex_unlock(&m->fav_mu);
+	if (!want) return false;
+	nh = pl_file_keys(m, MSRV_FAVS, &have);
+	if (!(out = malloc(sizeof *out * (size_t)(nh + nw + 1))) || !(sorted = malloc(sizeof *sorted * (size_t)(nh + 1))))
+		goto done;
+	for (i = 0; i < nh; i++) {
+		sorted[i] = have[i];
+		if (in_keys(have[i], want, nw)) out[no++] = have[i];
+	}
+	if (nh > 1) qsort(sorted, (size_t)nh, sizeof *sorted, cmp_int);
+	for (i = 0; i < nw; i++) if (!in_keys(want[i], sorted, nh)) out[no++] = want[i];
+	msrv_pl_dir(m, d, sizeof d);
+	snprintf(p, sizeof p, "%s/%s.m3u", d, MSRV_FAVS);
+	changed = !exists(p) || no != nh || (no && memcmp(out, have, sizeof *out * (size_t)no));
+	if (changed) {
+		pl_file_write(m, MSRV_FAVS, out, no);
+		m->pl_gen++;
+	}
+done:
+	free(have); free(sorted); free(want); free(out);
+	return changed;
+}
+
+/* An album folder of this library ("<rel_root>/<artist>/<album>"): its key,
+ * 0 when not one. Under fav_mu. */
+static int fav_album_key(msrv *m, const char *dir)
+{
+	size_t n = strlen(m->fav_root);
+	const char *sl = dir ? strrchr(dir, '/') : NULL;
+
+	return n && sl && !strncmp(dir, m->fav_root, n) && dir[n] == '/' ? atoi(sl + 1) : 0;
+}
+
+bool msrv_fav_album_is(msrv *m, const char *dir)
+{
+	ms_fav *e;
+	bool on;
+
+	if (!m->o->fav_set) return false;
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	on = (e = fav_find(m, fav_album_key(m, dir), true)) && e->l;
+	pthread_mutex_unlock(&m->fav_mu);
+	return on;
+}
+
+bool msrv_fav_album_set(msrv *m, const char *dir, bool on)
+{
+	int key;
+
+	if (!m->o->fav_set) return false;
+	pthread_mutex_lock(&m->fav_mu);
+	fav_ensure(m);
+	key = fav_album_key(m, dir);
+	pthread_mutex_unlock(&m->fav_mu);
+	fav_change(m, key, true, on);
+	return key > 0;
+}
+
+bool msrv_favs_on(msrv *m) { return m->o->fav_set != NULL; }

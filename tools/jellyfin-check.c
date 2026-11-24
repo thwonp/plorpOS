@@ -93,6 +93,23 @@ static void real(void)
 	      "real: dur %d year %d disc %d idx %d ext %s", t.dur_ms, t.year, t.disc, t.idx, t.ext);
 }
 
+/* Favorites, as /Items?Filters=IsFavorite lists them (plorpos-vgr.6). */
+static void favs(void)
+{
+	static const char R[] = "{\"Items\":[{\"Name\":\"T\",\"Id\":\"t1\",\"Type\":\"Audio\"},"
+	                        "{\"Name\":\"A\",\"Id\":\"a1\",\"Type\":\"MusicAlbum\"},"
+	                        "{\"Name\":\"X\",\"Id\":\"x1\",\"Type\":\"MusicArtist\"},"
+	                        "{\"Name\":\"N\",\"Type\":\"Audio\"}],\"TotalRecordCount\":4}";
+	jsv items, it = { 0 }, e;
+	char id[40];
+	int got[4], n = 0;
+
+	CHECK(js_member(js_root(R, sizeof R - 1), "Items", &items), "favs: Items");
+	while (js_next(items, &it, &e) && n < 4) got[n++] = jf_fav_parse(e, id, sizeof id);
+	CHECK(n == 4 && got[0] == 1 && got[1] == 2 && got[2] == 0 && got[3] == 0,
+	      "favs: track, album, artist skipped, no Id skipped (%d: %d %d %d %d)", n, got[0], got[1], got[2], got[3]);
+}
+
 static void ext_iso(void)
 {
 	char b[32];
@@ -131,6 +148,7 @@ int main(void)
 {
 	items();
 	real();
+	favs();
 	ext_iso();
 	keys();
 	if (fails) { printf("jellyfin-check: %d failed\n", fails); return 1; }

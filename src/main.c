@@ -1483,10 +1483,13 @@ static int g_muse_artist = -1;        /* the artist whose albums are shown, or -
 static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
 static char g_muse_artist_name[128];
 
+/* A server's album is hearted on the server (plorpos-vgr.6). */
 static bool muse_fav_is(const char *dir)
 {
 	char key[LIB_PATH + 8];
+	msrv *m = srv_of_path(dir);
 
+	if (m && msrv_favs_on(m)) return msrv_fav_album_is(m, dir);
 	snprintf(key, sizeof key, "mfav.%s", dir);
 	return db_get_int(db_lib(), key, 0) == 1;
 }
@@ -1494,7 +1497,9 @@ static bool muse_fav_is(const char *dir)
 static void muse_fav_flip(const char *dir)
 {
 	char key[LIB_PATH + 8];
+	msrv *m = srv_of_path(dir);
 
+	if (m && msrv_favs_on(m)) { msrv_fav_album_set(m, dir, !msrv_fav_album_is(m, dir)); return; }
 	snprintf(key, sizeof key, "mfav.%s", dir);
 	if (muse_fav_is(dir)) db_del(db_lib(), key);
 	else db_set_str(db_lib(), key, "1");
@@ -1877,8 +1882,11 @@ static void muse_poll(void)
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
 	abs_unsent_retry();             /* places made offline (ps8.15) */
-	for (int i = 0; i < g_nsrv; i++)
+	for (int i = 0; i < g_nsrv; i++) {
 		msrv_plays_retry(g_srvs[i]);   /* plays counted offline (5tm.16.4) */
+		msrv_favs_retry(g_srvs[i]);    /* favorites changed offline (plorpos-vgr.6) */
+		msrv_fav_apply(g_srvs[i]);     /* Favorite Tracks brought in step (pl_gen says so) */
+	}
 	{
 		int idx;
 		double at;
@@ -15853,6 +15861,9 @@ static void muse_add_to_playlist(app *a, int t)
 	if (k == fav) {
 		bool ok = fav_at >= 0 ? pl_remove_at(d, PLEX_FAVS, fav_at)
 		                      : pl_add(d, PLEX_FAVS, g_muse.tracks[t].path);
+
+		if (ok && fav_at >= 0) msrv_pl_removed(g_srv, MSRV_FAVS, g_muse.tracks[t].path);   /* the server's too */
+		else if (ok) msrv_pl_added(g_srv, MSRV_FAVS, g_muse.tracks[t].path);
 		g_npls = -1;
 		muse_toast(!ok ? "Could not change " PLEX_FAVS
 		           : fav_at >= 0 ? "Removed from " PLEX_FAVS : "Added to " PLEX_FAVS);
@@ -18399,6 +18410,12 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					msrv_pl_download(g_srv, name, !dled);
 					muse_toast(dled ? "Download removed" : "Downloading");
 				}
+			} else if ((k == 0 || k == 1) && g_srv && msrv_favs_on(g_srv) && !strcmp(name, MSRV_FAVS)) {
+				/* The server's favorites: deleting it would unfavorite them all */
+				char fm[64];
+
+				snprintf(fm, sizeof fm, "Follows %.20s favorites", msrv_name(g_srv));
+				muse_toast(fm);
 			} else if (k >= 0 && !muse_pl_editable(name)) {
 				/* said why */
 			} else if (k == 0) {
@@ -22852,6 +22869,44 @@ static void muse_file_albums(void)
  *
  * Hidden when the folder is empty or missing, the same rule an empty system
  * and an empty Favorites shelf follow: a card should lead somewhere. */
+/* Hearts given to a server's albums before they were its favorites
+ * (plorpos-vgr.6): handed to the server source, then out of the db. One of
+ * a library not chosen now stays until it is. */
+typedef struct { char **k; int n, cap; } mfav_keys;
+
+static bool mfav_add(const char *key, const char *value, void *ctx)
+{
+	mfav_keys *d = ctx;
+
+	if (strcmp(value, "1") || !srv_of_path(key + 5)) return true;
+	if (d->n == d->cap) {
+		int cap = d->cap ? d->cap * 2 : 64;
+		char **k = realloc(d->k, sizeof *k * (size_t)cap);
+
+		if (!k) return false;
+		d->k = k;
+		d->cap = cap;
+	}
+	if ((d->k[d->n] = strdup(key))) d->n++;
+	return true;
+}
+
+static void muse_favs_adopt(void)
+{
+	mfav_keys d = { 0 };
+	int i, n = 0;
+
+	db_each_prefix(db_lib(), "mfav.", mfav_add, &d);
+	for (i = 0; i < d.n; i++) {
+		msrv *m = srv_of_path(d.k[i] + 5);
+
+		if (m && msrv_fav_album_set(m, d.k[i] + 5, true)) { db_del(db_lib(), d.k[i]); n++; }
+		free(d.k[i]);
+	}
+	free(d.k);
+	if (n) fprintf(stderr, "muse: %d album hearts handed to their server\n", n);
+}
+
 /* Reading the library is the one slow part: every folder under Music/ and
  * Audiobooks/, about four seconds cold for 13k tracks on exFAT, which used to
  * stand between power-on and the first frame (plorpos-18j). At boot it is
@@ -24626,6 +24681,7 @@ int main(int argc, char *argv[])
 			if (jellyfin_src())
 				msrv_set_offline(jellyfin_src(), db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_JELLYFIN], 0) != 0);
 			abs_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_ABS], 0) != 0);
+			muse_favs_adopt();
 			pod_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_PODCASTS], 0) != 0);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);
 			musec_set_online(net_online);
