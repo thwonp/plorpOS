@@ -41,6 +41,8 @@ void plat_geometry_init(SDL_Renderer *r);
 
 /* launch.sh polls for this and powers the device down when it appears. */
 #define TORTOS_POWEROFF_FLAG "/tmp/tortos_poweroff"
+/* And reboots it: the Rotate's new device tree, an installed update (plorpos-koo). */
+#define TORTOS_REBOOT_FLAG "/tmp/tortos_reboot"
 
 /* Overridable at runtime so the launcher can be pointed at a test tree. */
 extern const char *P_ROOT;     /* /mnt/SDCARD/plorpOS      */

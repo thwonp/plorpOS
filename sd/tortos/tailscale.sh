@@ -26,6 +26,12 @@ UP=/tmp/tailscale-up.pid
 UNIT=plorpos-tailscaled
 T=/tmp/tailscale
 
+# One at a time: the launcher does not wait for this script, which would hold
+# the menu up, so a quick off and on could otherwise run a stop and a start
+# together. Nothing that outlives the script keeps the lock (9>&-).
+exec 9> /tmp/tailscale.lock
+flock 9
+
 running() {
 	if command -v systemd-run > /dev/null; then
 		systemctl -q is-active "$UNIT"
@@ -53,12 +59,12 @@ start)
 	if command -v systemd-run > /dev/null; then
 		systemctl reset-failed "$UNIT" 2> /dev/null
 		systemd-run -q --unit="$UNIT" --property=Restart=on-failure \
-			--setenv=SSL_CERT_FILE="$D/cacert.pem" -- "$D/tailscaled" "$@" > /dev/null 2>&1
+			--setenv=SSL_CERT_FILE="$D/cacert.pem" -- "$D/tailscaled" "$@" > /dev/null 2>&1 9>&-
 	elif command -v start-stop-daemon > /dev/null; then
 		SSL_CERT_FILE=$D/cacert.pem start-stop-daemon -S -b -m -p "$PID" \
-			-x "$D/tailscaled" -- "$@" > /dev/null 2>&1
+			-x "$D/tailscaled" -- "$@" > /dev/null 2>&1 9>&-
 	else
-		SSL_CERT_FILE=$D/cacert.pem "$D/tailscaled" "$@" > /dev/null 2>&1 < /dev/null &
+		SSL_CERT_FILE=$D/cacert.pem "$D/tailscaled" "$@" > /dev/null 2>&1 < /dev/null 9>&- &
 		echo $! > "$PID"
 	fi
 	# `up` waits for the sign-in, then exits; after the first one the daemon
@@ -70,7 +76,7 @@ start)
 		"$T" --socket="$SOCK" up --hostname="$HOST" --accept-routes --netfilter-mode=off \
 			> /dev/null 2>&1 &
 		echo $! > "$UP"
-	) &
+	) 9>&- &
 	;;
 stop)
 	[ -f "$UP" ] && kill "$(cat "$UP")" 2> /dev/null

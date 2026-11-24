@@ -10,6 +10,9 @@
 # sees only the launcher's environment (TortOS-1jx).
 export TORTOS_DIR=/mnt/SDCARD/plorpOS
 SDCARD=/mnt/SDCARD
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "$SDCARD/.ota/ready" ] && sh "$TORTOS_DIR/ota.sh" apply "$SDCARD" && exec /bin/sh "$0" "$@"
 
 export PLATFORM=tg3040
 export DEVICE=brick
@@ -379,7 +382,7 @@ start_resident() {
 bt_write_asoundrc
 start_resident
 
-rm -f /tmp/tortos_poweroff
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 # Nothing is CONNECTED yet; bt_reconnect writes this when something is. The
 # .asoundrc is not removed with it - it describes bonds, which outlive any
 # connection, and removing it here would undo the line above.
@@ -434,11 +437,16 @@ while : ; do
 	now_s; START=$NOW
 	./tortos.elf >> "$LOG" 2>&1
 	[ -f /tmp/tortos_poweroff ] && break
+	[ -f /tmp/tortos_reboot ] && break     # an installed update (plorpos-koo)
 	now_s; END=$NOW
 	# A launcher that dies immediately, five times running, is not going to
 	# start on the sixth. Stop rather than strobe.
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		[ $FAILS -ge 5 ] && sh "$TORTOS_DIR/ota.sh" rollback "$SDCARD" >> "$LOG" 2>&1 &&
+			: > /tmp/tortos_reboot
 		[ $FAILS -ge 5 ] && break
 	else
 		FAILS=0
@@ -453,5 +461,6 @@ while : ; do
 done
 
 sync
+[ -f /tmp/tortos_reboot ] && { reboot; sleep 10; }
 poweroff
 sleep 10

@@ -50,6 +50,9 @@ sits at the root, not inside a folder.
 
 ## Updating from an earlier version
 
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+
 Copy everything in the new zip onto the plorpOS card (TF2), replacing what's
 there. Your settings, saves, play time and achievements live in `.userdata/`
 and `Saves/` and stay as they are.

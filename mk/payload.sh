@@ -19,38 +19,44 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/mk/plorpos-files.sh"
 PLATFORM=${PLATFORM:-brick}
-VERSION=${VERSION:-1.01}
 if [ "$PLATFORM" = gkd ]; then
 	B=$ROOT/build/gkd
 	OUT=$ROOT/out/gkd
 	CARD=$OUT/copy_to_sd
-	ZIP=$ROOT/out/plorpOS-gkd-v$VERSION.zip
+	PORT=gkd
 elif [ "$PLATFORM" = rgds ]; then
-	# The RG DS (plorpos-rgds): no zip - out/rgds/card is what mk/rgds-image.sh
-	# packs onto the image's exFAT partition.
+	# The RG DS (plorpos-rgds): out/rgds/card is what mk/rgds-image.sh packs
+	# onto the image's exFAT partition, and its zip is the update over Wi-Fi
+	# (plorpos-koo) - or by hand, onto that partition.
 	B=$ROOT/build/rgds
 	OUT=$ROOT/out/rgds
 	CARD=$OUT/card
-	ZIP=
+	PORT=rgds
 elif [ "$PLATFORM" = zero40 ]; then
 	# The MagicX Zero 40 on oakMOSS (plorpos-auv): the zip's contents go on the
 	# card that hosts - SD1's SPRUCEOS partition or SD2.
 	B=$ROOT/build/zero40
 	OUT=$ROOT/out/zero40
 	CARD=$OUT
-	ZIP=$ROOT/out/plorpOS-zero40-v$VERSION.zip
+	PORT=zero40
 elif [ "$PLATFORM" = h700 ]; then
 	B=$ROOT/build/h700
 	OUT=$ROOT/out/h700
 	CARD=$OUT
-	ZIP=$ROOT/out/plorpOS-h700-v$VERSION.zip
+	PORT=h700
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
 	CARD=$OUT
-	ZIP=$ROOT/out/plorpOS-brick-v$VERSION.zip
+	PORT=brick
 fi
 P=$CARD/plorpOS
+# The version the launcher was built with (the Makefile's stamp), so the zip's
+# name and the About page agree. The update check reads the version from the
+# name: plorpOS-v<version>-<port>.zip (docs/building.md, "Releases").
+VERSION=${VERSION:-$(cat "$B/version" 2>/dev/null)}
+[ -n "$VERSION" ] || { echo "no $B/version; run make PLATFORM=$PLATFORM first"; exit 1; }
+ZIP=$ROOT/out/plorpOS-v$VERSION-$PORT.zip
 
 [ -f "$B/tortos.elf" ] || { echo "run make PLATFORM=$PLATFORM first"; exit 1; }
 # A release ships with the ScreenScraper developer pair built in, or box art
@@ -193,6 +199,7 @@ else
 	done
 	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS
 	cp "$ROOT/sd/tortos/launch.sh" "$P/"
+	plorpos_unzip "$P" || exit 1            # the firmware has none (plorpos-koo)
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # sourced by launch.sh, run by the launcher
 	cp "$ROOT/sd/tortos/radio.sh" "$P/"   # sourced by launch.sh AND by plat_sleep()
 	cp "$ROOT/res/boot/tortos-boot.mp4" "$P/"
@@ -277,7 +284,9 @@ zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
 rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
-      du -sh "$OUT"; echo "payload ready: $CARD"; exit 0 ;;
+      du -sh "$OUT"; echo "payload ready: $CARD"
+      rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
+      echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;

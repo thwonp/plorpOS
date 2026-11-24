@@ -25,7 +25,7 @@ new card once in the Zero 40. That first boot adds a FAT32 partition called
 
 ## 2. Copy plorpOS onto a card
 
-Unzip `plorpOS-zero40-v<version>.zip` onto either card:
+Unzip `plorpOS-v<version>-zero40.zip` onto either card:
 
 - **The first card's `SPRUCEOS` partition**, for one card that does
   everything. A computer sees it as an ordinary drive.
@@ -101,6 +101,9 @@ copy with `ssh root@<zero40> 'cat > /path' < file`.
 - Below and above a landscape game the screen is black.
 
 ## Updating
+
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
 
 Copy everything in the new zip onto the card, replacing what is there. Your
 settings, saves, play time and achievements are in `.userdata/` and `Saves/`

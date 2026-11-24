@@ -41,7 +41,7 @@ A unit that already runs base618 has it: skip this step.
 ## 1. Flash the card
 
 - Download the Rotate card image (`.img.xz`) from
-  [Releases](https://github.com/thwonp/plorpOS/releases/latest) and check it against `SHA256SUMS`.
+  [Releases](https://github.com/thwonp/plorpOS/releases) and check it against `SHA256SUMS`.
 - **Extract it** (7-Zip on Windows, `xz -d` on Linux/macOS) - some flashing tools choke on the compressed file.
 - Write the extracted `.img` to a microSD card of 8 GB or more, with balenaEtcher /
 Rufus / Raspberry Pi Imager / etc., or `sudo dd if=<image>.img of=/dev/sdX bs=4M conv=fsync`.
@@ -73,8 +73,11 @@ Saves/           saves, per console
 
 ## Updating from an earlier version
 
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+
 Download the Rotate update zip from
-[Releases](https://github.com/thwonp/plorpOS/releases/latest) and copy its `plorpOS/` folder over the
+[Releases](https://github.com/thwonp/plorpOS/releases) and copy its `plorpOS/` folder over the
 one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
 underneath (the kernel, for one) comes only as a new card image.
 

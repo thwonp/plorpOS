@@ -115,7 +115,11 @@ root shell. It stays on across restarts until you turn it off.
 ## Updating
 
 Don't install ROCKNIX updates (its **update** network share): they replace
-plorpOS's system with stock ROCKNIX. A new plorpOS release is a new image. Copy `Saves/` and the hidden `.userdata/` folder
+plorpOS's system with stock ROCKNIX.
+
+From v1.10, **MENU > Network Services > Check for update** updates plorpOS
+over Wi-Fi ([guide](guide.md#check-for-update)). A release that changes the
+RG DS's system underneath comes as a new image instead. Copy `Saves/` and the hidden `.userdata/` folder
 off the card first (your settings, play time and achievements are in
 `.userdata/`), flash the new image, let the first boot finish, then copy them
 back.

@@ -12,7 +12,7 @@
 #   mk/miyoo-deploy.sh package  a release zip of what `all` stages, plus the boot hook,
 #                               a Roms/ skeleton, the cores, MD5SUMS and the install
 #                               page, all from this tree and its build outputs (never
-#                               from a card). Writes OUT/plorpOS-flip-v<VERSION>.zip.
+#                               from a card). Writes OUT/plorpOS-v<VERSION>-miyoominiflip.zip.
 #   mk/miyoo-deploy.sh verify   unzip that zip into an empty folder and check it
 #
 # MIYOO=root@<ip> (default the dev unit). FLIP_CORES = the from-source cores
@@ -30,7 +30,9 @@ FLIP_CURL=${FLIP_CURL:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/c
 FLIP_CORES=${FLIP_CORES:-$ROOT/build/flip-cores/out}
 FLIP_INPUTS=${FLIP_INPUTS:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist-inputs}
 OUT=${OUT:-$HOME/projects/misc/coding-team/plorpos-miyoo-mini-flip/dist}
-VER=$(sed -n 's/^VERSION ?= *//p' "$ROOT/Makefile" | head -1)   # the shared version (Makefile)
+# The version the launcher was built with (make writes the stamp), as payload.sh:
+# the update check reads it from the zip's name (plorpos-koo).
+VER=$(cat "$ROOT/build/miyoo/version" 2>/dev/null || sed -n 's/^VERSION ?= *//p' "$ROOT/Makefile" | head -1)
 # Miyoo's own RTL8188FU driver for the Flip's 4.9.84 kernel (plorpos-f1p.62.4,
 # docs/third-party/8188fu.md): the stock firmware has no copy of its own.
 DRIVER_MD5=085ee00a031c401ea7d5a6a6b2ed2b0c
@@ -39,7 +41,7 @@ cfg_cores() { # systems.cfg -> the cores it names
 	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' "$1" | sort -u
 }
 if [ "$MODE" = verify ]; then
-	Z=$OUT/plorpOS-flip-v$VER.zip
+	Z=$OUT/plorpOS-v$VER-miyoominiflip.zip
 	exec sh "$ROOT/mk/flip-verify.sh" "$Z" "$ROOT/mk/flip-cores/cores.lock" "$DRIVER_MD5"
 fi
 for f in tortos.elf muse musectl flip-pico8.so; do
@@ -142,7 +144,7 @@ stage_package() {
 	mkdir -p "$R/Bios" "$R/Saves"
 	cp "$ROOT/docs/install-flip.md" "$R/INSTALL-FLIP.md"
 	( cd "$R" && find . -type f ! -name MD5SUMS | sort | xargs md5sum > MD5SUMS )
-	mkdir -p "$OUT"; Z=$OUT/plorpOS-flip-v$VER.zip; rm -f "$Z"
+	mkdir -p "$OUT"; Z=$OUT/plorpOS-v$VER-miyoominiflip.zip; rm -f "$Z"
 	( cd "$R" && zip -qr "$Z" . -x '.DS_Store' '._*' )
 	echo "package: $Z ($(du -h "$Z" | cut -f1), $(wc -l < "$R/MD5SUMS") files)"
 }

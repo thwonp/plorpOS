@@ -57,7 +57,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
-         check-playlist check-podfeed
+         check-playlist check-podfeed check-ota
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -866,11 +866,15 @@ build-native/museart-check: tools/museart-check.c src/museart.c src/museart.h \
 check-backlog:
 	@python3 tools/backlog-check.py
 
+# sd/tortos/ota.sh on a fake card (plorpos-koo)
+check-ota:
+	@sh tools/ota-check.sh
+
 payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
-# payload.sh names the zip: out/plorpOS-brick-v$(VERSION).zip for the Brick,
-# out/plorpOS-gkd-v$(VERSION).zip for PLATFORM=gkd.
+# payload.sh names the zip: out/plorpOS-v$(VERSION)-brick.zip for the Brick,
+# out/plorpOS-v$(VERSION)-gkd.zip for PLATFORM=gkd (docs/building.md, "Releases").
 release: payload
 
 # Copy the assembled payload onto a mounted FAT32 card. CARD must be set.

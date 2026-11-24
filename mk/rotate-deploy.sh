@@ -2,7 +2,7 @@
 # Push a Rotate build to the device over ssh (plorpos-3yv), for development.
 # The card image is mk/payload.sh's business (.13); this only replaces files.
 #
-#   mk/rotate-deploy.sh [elf|diatom|all|boot|stage]   (ROTATE_HOST, ROTATE_KEY, DIATOM_ELF override)
+#   mk/rotate-deploy.sh [elf|diatom|all|boot|stage|package]   (ROTATE_HOST, ROTATE_KEY, DIATOM_ELF override)
 #
 # elf: the launcher alone. diatom: the resident emulator alone (../diatom,
 # PORT=rotate tools/brick-make.sh). all: both, the cores, Muse's tools, the session
@@ -10,6 +10,9 @@
 # and a ROM folder per shelf. boot: also installs
 # plorpos.service into the rootfs and enables it in place of tty1's getty.
 # stage: the plorpOS folder into $ROTATE_STAGE, no device (mk/rotate-image.sh).
+# package: the release's update zip, out/plorpOS-v<VERSION>-rotate-update.zip -
+# plorpOS/ alone, copied over the PLORPOS partition by hand or by the update
+# check (plorpos-koo). No device.
 # The runtime libraries are Debian's: apt, not this script.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -60,6 +63,7 @@ stage() {
 	plorpos_files "$S" "$ROOT/vendor/cores-rotate $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 	plorpos_tailscale "$S" "$B"
 	plorpos_syncthing "$S"
+	plorpos_unzip "$S"    # the update check's (plorpos-koo): Debian's image has none
 }
 if [ "$MODE" = stage ]; then
 	[ -n "${ROTATE_STAGE:-}" ] || { echo "stage: set ROTATE_STAGE" >&2; exit 1; }
@@ -67,6 +71,19 @@ if [ "$MODE" = stage ]; then
 	mkdir -p "$ROTATE_STAGE"
 	stage "$ROTATE_STAGE"
 	echo "staged plorpOS/ in $ROTATE_STAGE"
+	exit 0
+fi
+if [ "$MODE" = package ]; then
+	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; }
+	VER=$(cat "$B/version")
+	Z=$ROOT/out/plorpOS-v$VER-rotate-update.zip
+	T=$(mktemp -d)
+	trap 'rm -rf "$T"' EXIT
+	mkdir -p "$T/plorpOS" "$ROOT/out"
+	stage "$T/plorpOS"
+	rm -f "$Z"
+	( cd "$T" && zip -qr "$Z" plorpOS -x '.DS_Store' '._*' )
+	echo "release zip:  $Z  ($(du -h "$Z" | cut -f1))"
 	exit 0
 fi
 ssh_ "mkdir -p $P" < /dev/null

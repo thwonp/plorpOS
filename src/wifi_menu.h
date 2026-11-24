@@ -9,6 +9,7 @@
 #define TORTOS_WIFI_MENU_H
 
 #include "menu.h"
+#include "ota.h"
 #include "syncthing.h"
 #include "tailscale.h"
 #include "wifi.h"
@@ -39,7 +40,9 @@ enum {
 	WIFI_ROW_SWITCH, WIFI_ROW_SVC,
 	WIFI_ROW_ST = WIFI_ROW_SVC + WIFI_SVC_ROWS,
 	WIFI_ROW_TS = WIFI_ROW_ST + SYNC_ROWS,
-	WIFI_ROW_XFER = WIFI_ROW_TS + TS_ROWS, WIFI_TOP_ROWS
+	WIFI_ROW_XFER = WIFI_ROW_TS + TS_ROWS,
+	WIFI_ROW_OTA,               /* Check for update, where OTA_ROWS (plorpos-koo) */
+	WIFI_TOP_ROWS = WIFI_ROW_OTA + OTA_ROWS
 };
 
 /* Signal as a word. dBm is the honest number and it is also jargon; the list is

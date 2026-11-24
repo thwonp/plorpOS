@@ -49,6 +49,9 @@ Miyoo's MainUI.
 
 ## Updating from an earlier version
 
+From v1.10, **MENU > Network Services > Check for update** does this over
+Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+
 Copy everything in the new zip onto the card, replacing what's there. Your
 settings, saves, play time and achievements live in `.userdata/` and `Saves/`
 and stay as they are.
@@ -223,7 +226,7 @@ the whole `.tmp_update/` folder.
 
 ## Optional: faster boot
 
-A separate download, **plorpOS Flip fast boot** (`plorpOS-flip-fast-boot.zip`
+A separate download, **plorpOS Flip fast boot** (`plorpOS-miyoominiflip-fast-boot.zip`
 beside this one), makes the Flip start about 4 seconds sooner by flashing one
 partition of its internal storage. It is not needed and not part of this zip.
 Its own guide (`FAST-BOOT.md`, in that download) has the steps and how to undo

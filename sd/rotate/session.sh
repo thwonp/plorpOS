@@ -4,6 +4,9 @@
 # and the sc2730's habit of resetting HPL/HPR Gain at every PCM open happens
 # once, not at every track. sway then runs launch.sh (sway.conf).
 DIR=$(cd "$(dirname "$0")/.." && pwd)
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "${DIR%/*}/.ota/ready" ] && sh "$DIR/ota.sh" apply "${DIR%/*}" && exec /bin/sh "$0" "$@"
 export XDG_RUNTIME_DIR=/run/plorpos
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"

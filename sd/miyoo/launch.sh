@@ -7,6 +7,9 @@
 # Not here yet: sleep and power-off (plorpos-f1p.7).
 SD=/mnt/SDCARD
 DIR=$SD/plorpOS
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "$SD/.ota/ready" ] && sh "$DIR/ota.sh" apply "$SD" && exec /bin/sh "$0" "$@"
 export TORTOS_USERDATA=$SD/.userdata/miyooflip
 export HOME=$TORTOS_USERDATA
 # Ours first (SDL2, FFmpeg), then the firmware's (libmi_* for MI_AO).
@@ -58,7 +61,7 @@ start_resident() {
 	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 		--save "$SD/Saves" --system "$SD/Bios" >> "$LOG" 2>&1 &
 }
-rm -f /tmp/tortos_poweroff
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 cd "$DIR" || exit 1
 FAILS=0
 while :; do
@@ -77,11 +80,30 @@ while :; do
 		echo "power off" >> "$LOG"
 		killall diatom 2> /dev/null
 		sync
-		exec poweroff
+		# BusyBox poweroff and reboot only signal init and return: this script
+		# must not end, or the boot hook takes that as plorpOS failing and
+		# switches the card to the stock MainUI (.tmp_update.off).
+		poweroff
+		while :; do sleep 10; done
+	fi
+	if [ -f /tmp/tortos_reboot ]; then   # an installed update (plorpos-koo)
+		echo "reboot" >> "$LOG"
+		killall diatom 2> /dev/null
+		sync
+		reboot
+		while :; do sleep 10; done
 	fi
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		if [ $FAILS -ge 5 ] && sh "$DIR/ota.sh" rollback "$SD" >> "$LOG" 2>&1; then
+			killall diatom 2> /dev/null
+			sync
+			reboot
+			while :; do sleep 10; done
+		fi
 		if [ $FAILS -ge 5 ]; then
 			echo "launcher failed $FAILS times in a row; stopping" >> "$LOG"
 			exit 1

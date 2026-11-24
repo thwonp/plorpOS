@@ -8,6 +8,9 @@
 
 export TORTOS_DIR=/mnt/SDCARD/plorpOS
 SDCARD=/mnt/SDCARD
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "$SDCARD/.ota/ready" ] && sh "$TORTOS_DIR/ota.sh" apply "$SDCARD" && exec /bin/sh "$0" "$@"
 
 export PLATFORM=zero40
 export DEVICE=zero40
@@ -98,7 +101,7 @@ start_resident() {
 }
 start_resident
 
-rm -f /tmp/tortos_poweroff
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 
 # Restart loop: only ever exits for a power-off. A launcher that dies within
 # 5 s five times running is not going to start on the sixth.
@@ -113,9 +116,14 @@ while : ; do
 	now_s; START=$NOW
 	./tortos.elf >> "$LOG" 2>&1
 	[ -f /tmp/tortos_poweroff ] && break
+	[ -f /tmp/tortos_reboot ] && break     # an installed update (plorpos-koo)
 	now_s; END=$NOW
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		[ $FAILS -ge 5 ] && sh "$TORTOS_DIR/ota.sh" rollback "$SDCARD" >> "$LOG" 2>&1 &&
+			: > /tmp/tortos_reboot
 		[ $FAILS -ge 5 ] && break
 	else
 		FAILS=0
@@ -125,5 +133,6 @@ while : ; do
 done
 
 sync
+[ -f /tmp/tortos_reboot ] && { reboot; sleep 10; }
 poweroff
 sleep 10
