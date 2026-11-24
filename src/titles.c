@@ -38,17 +38,19 @@ void titles_apply(game_list *l, db *d, const char *folder, const char *dat, cons
 	for (i = 0; (map || dat) && i < l->count; ) {
 		game_entry *g = &l->items[i];
 		const char *t = map ? setmap_title(map, g->name) : NULL;
+		bool from_map = t != NULL;
 
-		if (t && t[0] == '.') {   /* a BIOS set: not a game */
+		if (!t && dat) t = fbneo_desc(dat, g->name);
+		if (t && t[0] == '.') {   /* a BIOS set (map or FBNeo's list): not a game */
 			memmove(g, g + 1, (size_t)(l->count - i - 1) * sizeof *g);
 			l->count--;
 			hidden++;
 			continue;
 		}
-		if (t) {
+		if (from_map) {
 			snprintf(g->title, sizeof g->title, "%s", t);
 			mapped++;
-		} else if (dat && (t = fbneo_desc(dat, g->name))) {
+		} else if (t) {
 			lib_title(t, g->title, sizeof g->title);
 			sets++;
 		}

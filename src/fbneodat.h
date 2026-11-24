@@ -9,7 +9,8 @@
  * the first time it is asked for and kept: the shelf titles (titles.c) and the
  * box art names (artscrape.c) both ask, and 359 KB is not worth reading twice.
  * The set is matched whatever its case. The description comes back raw,
- * revision and all, because libretro files arcade art under exactly that. */
+ * revision and all, because libretro files arcade art under exactly that.
+ * A BIOS set's description starts with '.' (the shelf hides it). */
 const char *fbneo_desc(const char *path, const char *set);
 
 #endif

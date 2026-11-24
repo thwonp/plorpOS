@@ -18,7 +18,8 @@ only" is a subset of it, checked 2026-10-01).
 One line per set, `set<TAB>description`, sorted bytewise on the set so the
 launcher can bsearch it with strcmp. The description is kept RAW, revision
 and all: libretro's "FBNeo - Arcade Games" and "SNK - Neo Geo" thumbnails are
-named by it, and the shelf strips the brackets itself (lib_title).
+named by it, and the shelf strips the brackets itself (lib_title). A BIOS
+set's description starts with '.', which hides it from the shelf.
 """
 import os
 import re
@@ -54,7 +55,9 @@ def main():
         name = g.get("name") or ""
         desc = " ".join((g.findtext("description") or "").split())
         if name and desc:
-            rows[name] = desc
+            # A BIOS set (neogeo, pgm, ...) is not a game: a leading '.' hides
+            # it from the shelf, as in the romset maps (src/titles.c).
+            rows[name] = ("." if g.get("isbios") == "yes" else "") + desc
     with open(OUT, "wb") as out:
         for name in sorted(rows, key=lambda s: s.encode()):
             out.write(f"{name}\t{rows[name]}\n".encode("utf-8"))
