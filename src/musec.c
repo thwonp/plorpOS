@@ -1116,6 +1116,7 @@ void musec_on_state(void (*fn)(mu_state st)) { g_on_state = fn; }
 bool musec_heard(void) { return g_now.state == MU_PLAYING || g_asked; }
 bool musec_asked(void) { return g_asked; }
 bool musec_asked_stream(void) { return g_asked && g_play_remote; }
+bool musec_fetching(void) { return g_wait_remote; }
 void musec_start_at(double at) { g_start_at = at > 0 ? at : 0; }
 
 void musec_sink(const char *device)

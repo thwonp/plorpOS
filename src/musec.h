@@ -146,6 +146,10 @@ bool musec_asked(void);
 /* That, for a remote track: the old one plays on until the new one opens, so
  * "playing" alone hides it (plorpos-ps8.2). */
 bool musec_asked_stream(void);
+/* A server's track still on its way to the card before it can play (a port
+ * whose FFmpeg cannot open the URL: Zero 40, Flip). Shown "Stopped" until
+ * plorpos-vgr.11; it is loading. */
+bool musec_fetching(void);
 /* The next play of the current track (A from stopped) starts at `at`, not
  * at 0: a stream cut short keeps its place (plorpos-ps8.13). */
 void musec_start_at(double at);

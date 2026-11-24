@@ -14727,8 +14727,9 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	unsigned rgb = MUSE_ACCENT, wait = (unsigned)-1, phase;
 	SDL_Color acc = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
 	/* A stream opening (plorpos-7ni.18), also over the track it replaces,
-	 * which says "playing" until then (ps8.2). */
-	const char *state = musec_asked_stream()    ? "Loading"
+	 * which says "playing" until then (ps8.2); a track fetched first, on its
+	 * way to the card (vgr.11). */
+	const char *state = musec_asked_stream() || musec_fetching() ? "Loading"
 	                  : mn->state == MU_PLAYING ? NULL
 	                  : musec_asked()           ? "Loading"
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
