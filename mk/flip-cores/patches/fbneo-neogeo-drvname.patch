@@ -1,0 +1,20 @@
+plorpOS (plorpos-f1p.95.16): NeoInitCommon looked up the set name once per
+process (function-local static), so in the resident Diatom the per-game fixes
+(moshougi, neodrift, zedblade, crswd2bl, spinmast) followed the first Neo Geo
+game played, not the current one.
+
+--- a/src/burn/drv/neogeo/neo_run.cpp
++++ b/src/burn/drv/neogeo/neo_run.cpp
+@@ -4170,8 +4170,10 @@
+ 	NEO_RASTER_IRQ_TWEAK = 0;
+ 
+ 	// These games rely on reading the line counter for synchronising raster effects
+-	const static char * drv_name   = BurnDrvGetTextA(DRV_NAME);
+-	const static char * drv_parent = BurnDrvGetTextA(DRV_PARENT);
++	// plorpOS: not static - the resident emulator plays more than one game,
++	// and a static kept the first game's name for every later one (plorpos-f1p.95.16).
++	const char * drv_name   = BurnDrvGetTextA(DRV_NAME);
++	const char * drv_parent = BurnDrvGetTextA(DRV_PARENT);
+ 	if (!strcmp(drv_name, "moshougi")) {
+ 		bRenderLineByLine = true;
+ 	}
