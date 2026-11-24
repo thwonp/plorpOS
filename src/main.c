@@ -8267,7 +8267,7 @@ static void ota_screen(app *a)
 		if (j.phase == OTA_UPTODATE) { muse_toast("No updates available"); break; }
 		if (j.phase == OTA_ERROR) { muse_toast(ota_error_text(&j, err, sizeof err)); break; }
 		if (j.phase == OTA_FOUND) {
-			snprintf(msg, sizeof msg, "Install plorpOS v%s (%lld MB)?", j.ver, (j.size + 524288) / 1048576);
+			snprintf(msg, sizeof msg, "Install v%s (%lld MB)?", j.ver, (j.size + 524288) / 1048576);
 			if (!confirm_panel(a, head, msg, "Download")) break;
 			ota_download(&j);
 			continue;

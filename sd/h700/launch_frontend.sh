@@ -102,14 +102,6 @@ start_resident() {
 	# game the launcher reads nothing.
 	ionice -c 3 "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 		--save "$SD/Saves" --system "$SD/Bios" 2>&1 &   # into the loop's logf, below
-	# Diatom grows fb0 to three pages before it listens, and the launcher must
-	# make its window after that (platform_h700.c). A cold boot is slow enough
-	# for that to happen by itself; a restart with warm caches is not, and the
-	# launcher's window came up black under diatom's resize (plorpos-koo).
-	if [ -n "$PLORPOS_RESTART" ]; then
-		i=0
-		while [ ! -S "$TORTOS_DIATOM_SOCKET" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-	fi
 }
 
 # Restart to install (plorpos-koo) restarts plorpOS, not the device: BaseOS's

@@ -24,6 +24,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -124,6 +125,18 @@ bool plat_video_init(void)
 	 * laid out for 720 and the right 80 px were cropped. */
 	int panel_w = 720, panel_h = 480;
 
+	/* Diatom grows fb0 to three pages (below) before it listens, and the
+	 * window has to be made after that. A cold boot's launcher is slower than
+	 * Diatom; started together with warm caches - Restart to install, a
+	 * frontend respawn - it was not, and the window came up black under the
+	 * resize (plorpos-koo). So wait for the socket, at most 2 s: no wait at
+	 * all once it is there. launch_frontend.sh removes it before a new Diatom. */
+	{
+		const char *sock = getenv("TORTOS_DIATOM_SOCKET");
+		struct stat st;
+
+		for (int i = 0; sock && i < 200 && stat(sock, &st) != 0; i++) SDL_Delay(10);
+	}
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
