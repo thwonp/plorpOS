@@ -29,7 +29,7 @@
 #define JF_DEVICE "plorpos"
 #endif
 
-#define PAGE       500
+#define PAGE       2000    /* tracks per /Items page: each request costs ~2.5 s on top (plorpos-vgr.5) */
 #define COVER_PX   500
 #define MAX_VIEWS  16
 #define PLS_TRACKS_MAX 2000
@@ -491,7 +491,10 @@ static long stamp(msrv *m, long old, long since, long total_then)
 
 /* Every track of a listing into `out`, PAGE at a time; the listing's count,
  * -1 failed. Pages can overlap on 12.x (GetItems is async), so a track seen
- * twice is kept once (by key, after). */
+ * twice is kept once (by key, after). Only the first page asks for the
+ * count: counting the whole library costs ~2.8 s per request on carolyn's
+ * 47k tracks, and later pages keep the first one's. No images: the
+ * album's cover tag still comes, 16% fewer bytes (plorpos-vgr.5). */
 static long fetch_tracks(const char *extra, msrv_set *out, bool progress)
 {
 	char q[300], path[700];
@@ -505,7 +508,8 @@ static long fetch_tracks(const char *extra, msrv_set *out, bool progress)
 		int got = 0;
 
 		snprintf(path, sizeof path, "/Items?%s%s&SortBy=SortName&SortOrder=Ascending&EnableUserData=false"
-		         "&StartIndex=%ld&Limit=%d", q, extra, start, PAGE);
+		         "&EnableImages=false&EnableTotalRecordCount=%s&StartIndex=%ld&Limit=%d",
+		         q, extra, total < 0 ? "true" : "false", start, PAGE);
 		if (server_req("GET", path, NULL, &b, &len, 120) != 200 || !b) { free(b); return -1; }
 		root = js_root(b, len);
 		if (total < 0 && js_member(root, "TotalRecordCount", &v)) {
