@@ -88,4 +88,10 @@ if [ "$MODE" = boot ]; then
 		< "$ROOT/sd/rotate/plorpos.service"
 fi
 put "$B/tortos.elf" tortos.elf
+# Tailscale (plorpos-8ns.7), which "all" brings with the rest of the folder.
+if [ "$MODE" = elf ] && [ -f "$B/tailscaled" ]; then
+	put "$B/tailscaled" tailscaled
+	put "$ROOT/sd/tortos/tailscale.sh" tailscale.sh
+	put "$B/LICENSE-tailscale.md" LICENSE-tailscale.md
+fi
 echo "deployed ($MODE) to $HOST:$P"
