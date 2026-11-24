@@ -25,11 +25,13 @@
 /* What the device's FFmpeg - the daemon's - can open (measured in the
  * sysroots, plorpos-1lw.8): http and https on the RG DS, GKD and Rotate, and
  * on the H700 since its FFmpeg was rebuilt with Mbed TLS for podcasts
- * (plorpos-7ni.9), and on the Brick since it runs that same FFmpeg
- * (plorpos-5eq.2); still nothing streamed on the Miyoo Flip or the Zero 40. A URL
- * the daemon cannot open is fetched to the card first (the cache below) and
- * played from there. The Rotate defines PLATFORM_H700 too. */
-#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40) || defined(PLEX_FETCH_FIRST)
+ * (plorpos-7ni.9), on the Zero 40 since it ships that FFmpeg too (7ni.1;
+ * it fetched first until plorpos-vgr.11 - the list was not updated then), and
+ * on the Brick since it runs that same FFmpeg (plorpos-5eq.2). The Flip's
+ * can as well, but it has no server Source (owner, 1lw.27). A URL the daemon
+ * cannot open is fetched to the card first (the cache below) and played from
+ * there. The Rotate defines PLATFORM_H700 too. */
+#if defined(PLATFORM_MIYOO) || defined(PLEX_FETCH_FIRST)
 #define STREAM_HTTP 0
 #define STREAM_TLS  0
 #elif defined(PLATFORM_GKD) || defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS) || defined(PLATFORM_H700)
