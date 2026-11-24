@@ -2525,10 +2525,13 @@ static unsigned pwr_since;
  * power button press (just resumed)"). 0 until the first sleep. */
 static unsigned resume_at;
 
+/* Holding power this long powers off, on every port. The Flip had its own
+ * 2 s (plorpos-f1p.55) until the owner found it too long (plorpos-f1p.98). */
+#define POWER_HOLD_MS 400u
+
 #if defined(PLATFORM_MIYOO)
-/* The Flip (plorpos-f1p.55): a 2 s hold powers off; a tap or a closed lid
+/* The Flip (plorpos-f1p.55): a hold powers off; a tap or a closed lid
  * sleeps for FLIP_SLEEP_S and then powers off (no suspend here). */
-#define POWER_HOLD_MS 2000u
 static int flip_sleep_s = 120;            /* Sleep Poweroff; main.c sets it */
 void plat_set_sleep_timeout(int seconds) { if (seconds > 0) flip_sleep_s = seconds; }
 static bool flip_lid_sleep = true;        /* Lid Close: sleep / nothing */
@@ -2649,8 +2652,6 @@ static int flip_wake_wait(unsigned *down_at, bool by_lid)
 	}
 	return 0;
 }
-#else
-#define POWER_HOLD_MS 400u
 #endif
 
 
