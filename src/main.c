@@ -47,6 +47,7 @@
 #include "menu.h"
 #include "musec.h"
 #include "plex.h"
+#include "jellyfin.h"
 #include "abs.h"
 #include "museart.h"
 #include "muselib.h"
@@ -1310,13 +1311,59 @@ static int *g_pod_stamp;
 /* Offline Mode (plorpos-5tm.16), one per server Source: only what is on the
  * card shown, and nothing asked of the network. */
 static const char *const MSRC_OFFLINE_KEY[MSRC_COUNT] = {
-	[MSRC_PLEX] = "plex.offline", [MSRC_ABS] = "abs.offline", [MSRC_PODCASTS] = "pod.offline",
+	[MSRC_PLEX] = "plex.offline", [MSRC_JELLYFIN] = "jellyfin.offline", [MSRC_ABS] = "abs.offline", [MSRC_PODCASTS] = "pod.offline",
 };
 
-/* The music server behind Source s, or NULL when s is not one. */
+/* The music server behind Source s, or NULL when s is not one (nor on a
+ * device without it: no Jellyfin on the Flip). */
 static msrv *srv_of(muse_src s)
 {
-	return s == MSRC_PLEX ? plex_src() : NULL;
+	return s == MSRC_PLEX ? plex_src() : s == MSRC_JELLYFIN ? jellyfin_src() : NULL;
+}
+
+/* Every music server there is. A queue can hold Plex and Jellyfin tracks at
+ * once, so the player's hooks ask each, and each knows its own tracks. */
+static msrv *g_srvs[2];
+static int g_nsrv;
+
+static muse_src srv_src(msrv *m) { return m == plex_src() ? MSRC_PLEX : MSRC_JELLYFIN; }
+
+/* The server whose track `rel` is, or NULL. */
+static msrv *srv_of_path(const char *rel)
+{
+	for (int i = 0; i < g_nsrv; i++)
+		if (msrv_is_path(g_srvs[i], rel)) return g_srvs[i];
+	return NULL;
+}
+
+static bool srv_title(const char *rel, char *out, size_t n)
+{
+	msrv *m = srv_of_path(rel);
+
+	return m && msrv_title(m, rel, out, n);
+}
+
+/* f asked of every server - each, since a take clears that one's flag. */
+static bool srv_take(bool (*f)(msrv *))
+{
+	bool any = false;
+
+	for (int i = 0; i < g_nsrv; i++) any |= f(g_srvs[i]);
+	return any;
+}
+
+static bool srv_cover_take(char *base, size_t n)
+{
+	for (int i = 0; i < g_nsrv; i++)
+		if (msrv_cover_take(g_srvs[i], base, n)) return true;
+	return false;
+}
+
+static bool srv_downloading(void)
+{
+	for (int i = 0; i < g_nsrv; i++)
+		if (msrv_download_status(g_srvs[i], NULL, 0)) return true;
+	return false;
 }
 
 static bool muse_src_offline(void)
@@ -1361,11 +1408,12 @@ static void muse_offline_note(void)
 
 /* No Plex on the Miyoo Flip (owner, 2026-11-21): a big library does not fit
  * its 103 MB next to the launcher - 47k tracks got it OOM-killed
- * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music. */
+ * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music.
+ * Nor Jellyfin, for the same reason (owner, plorpos-vgr). */
 static bool muse_src_offered(muse_src v)
 {
 #ifdef PLATFORM_MIYOO
-	return v != MSRC_PLEX;
+	return v != MSRC_PLEX && v != MSRC_JELLYFIN;
 #else
 	(void)v;
 	return true;
@@ -1377,7 +1425,7 @@ static bool muse_src_offered(muse_src v)
  * then books, read once and written as the new key. */
 static muse_src muse_src_saved(void)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "jellyfin", "abs", "podcasts" };
 	char s[16];
 	int i;
 
@@ -1398,7 +1446,7 @@ static muse_src muse_src_saved(void)
 
 static void muse_src_save(muse_src v)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "abs", "podcasts" };
+	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "jellyfin", "abs", "podcasts" };
 
 	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
 }
@@ -1799,25 +1847,27 @@ static void muse_poll(void)
 	mn = musec_now();
 	/* Here, not in the shelf's polls: read in Muse+'s screens and menus too,
 	 * where the marks they change are (plorpos-5tm.12). */
-	if (abs_download_take_changed() | plex_download_take_changed()) muse_card_changed();
+	if (abs_download_take_changed() | srv_take(msrv_download_take_changed)) muse_card_changed();
 	/* A stream not tried for want of a network, or one whose server did not
 	 * answer; a download that failed, the same two ways (plorpos-5eq.13). */
 	{
 		int nf = musec_take_net_fail();
 
-		if (plex_download_take_failed() | abs_download_take_failed() | pod_download_take_failed())
+		if (srv_take(msrv_download_take_failed) | abs_download_take_failed() | pod_download_take_failed())
 			if (!nf) nf = net_online() ? 2 : 1;
 		if (nf) muse_toast(nf == 1 ? "Device is offline" : nf == 3 ? "Offline Mode is on"
 		                                                   : "Could not reach the server");
 	}
-	plex_tick(musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
-	          mn->at, mn->len);
+	for (int i = 0; i < g_nsrv; i++)
+		msrv_tick(g_srvs[i], musec_path(), mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0,
+		          mn->at, mn->len);
 	/* A book's place to the server: the queue of a book is its files in
 	 * order, so the queue's index is the file's (plorpos-9rf.5). */
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
 	abs_unsent_retry();             /* places made offline (ps8.15) */
-	plex_plays_retry();             /* plays counted offline (5tm.16.4) */
+	for (int i = 0; i < g_nsrv; i++)
+		msrv_plays_retry(g_srvs[i]);   /* plays counted offline (5tm.16.4) */
 	{
 		int idx;
 		double at;
@@ -1829,12 +1879,12 @@ static void muse_poll(void)
 			musec_resume_release(idx, at);
 		}
 	}
-	if (mn->state == MU_PLAYING) {
+	for (int i = 0; mn->state == MU_PLAYING && i < g_nsrv; i++) {
 		const char *next[10];
-		int k, n = plex_ahead();
+		int k, n = msrv_ahead(g_srvs[i]);
 
 		for (k = 0; k < n && k < 10 && (next[k] = musec_upcoming_n(k + 1)); k++) {}
-		plex_prefetch(musec_path(), next, k);
+		msrv_prefetch(g_srvs[i], musec_path(), next, k);
 	}
 	muse_adopt_orphan();
 	book_keep(false);
@@ -10715,7 +10765,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
 	/* Auto Rewind (owner, plorpos-5eq.4): books and podcasts; on a music
 	 * Source the row is there, off and not to be changed. */
-	if (muse_src_shown() == MSRC_MUSIC || muse_src_shown() == MSRC_PLEX)
+	if (muse_src_shown() == MSRC_MUSIC || srv_of(muse_src_shown()))
 		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
@@ -11004,12 +11054,12 @@ static const char *plex_msg_libraries(void) { return "Reading the libraries...";
 /* The server's name as its rows and panels say it ("" before one). */
 static const char *srv_server_name(muse_src s)
 {
-	return s == MSRC_PLEX ? plex_server_name() : "";
+	return s == MSRC_PLEX ? plex_server_name() : s == MSRC_JELLYFIN ? jellyfin_server_name() : "";
 }
 
 static const char *srv_account_name(muse_src s)
 {
-	return s == MSRC_PLEX ? plex_account_name() : "";
+	return s == MSRC_PLEX ? plex_account_name() : s == MSRC_JELLYFIN ? jellyfin_account() : "";
 }
 
 /* "<Plex> needs Wi-Fi" and the like, until A or B. */
@@ -11151,27 +11201,6 @@ static bool plex_setup(app *a)
 	return plex_ready();
 }
 
-/* Server Source s set up: signed in, a server, a library. True when ready. */
-static bool srv_setup(app *a, muse_src s)
-{
-	return s == MSRC_PLEX ? plex_setup(a) : false;
-}
-
-static bool srv_choose_server(app *a, muse_src s)
-{
-	return s == MSRC_PLEX ? plex_choose_server(a) : false;
-}
-
-static bool srv_choose_library(app *a, muse_src s)
-{
-	return s == MSRC_PLEX ? plex_choose_library(a) : false;
-}
-
-static void srv_sign_out(muse_src s)
-{
-	if (s == MSRC_PLEX) plex_sign_out();
-}
-
 /* Read the card again for the source now saved: Muse's library from it. */
 static void muse_source_reload(app *a)
 {
@@ -11265,6 +11294,172 @@ static bool abs_setup(app *a)
 		abs_auth_poll(why, sizeof why);
 		plex_say(a, why);
 	}
+}
+
+/* ---- Jellyfin (plorpos-vgr) ------------------------------------------------------ */
+
+static const char *jf_msg_check(void)     { return "Checking the server..."; }
+static const char *jf_msg_login(void)     { return "Signing in..."; }
+static const char *jf_msg_libraries(void) { return "Reading the libraries..."; }
+
+/* The server's address, typed (as Audiobookshelf's) and checked to be a
+ * Jellyfin. True when it is. */
+static bool jellyfin_choose_server(app *a)
+{
+	char addr[256];
+	kb_result kr;
+	int r;
+
+	if (!net_online()) { plex_say(a, "Jellyfin needs Wi-Fi"); return false; }
+	{
+		const char *sv = jellyfin_server(), *sch = strstr(sv, "://");
+
+		snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : sv);   /* the last one, to edit */
+	}
+	for (;;) {
+		kr = kb_prompt_hint(a->r, &a->in, "Server Address", "e.g. 192.168.0.2:8096",
+		                    addr, (int)sizeof addr, MUSE_ACCENT, abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { power_off(a); return false; }
+		if (kr != KB_ACCEPT || !addr[0]) return false;
+		jellyfin_address_set(addr);
+		if ((r = src_wait(a, "Jellyfin", jf_msg_check, jellyfin_auth_poll)) > 0) return true;
+		if (r == 0) return false;
+		plex_say(a, jellyfin_why());
+	}
+}
+
+/* The fallback: a username and a password. True when signed in. */
+static bool jellyfin_password(app *a)
+{
+	char user[128], pass[256];
+	kb_result kr;
+	int r;
+
+	snprintf(user, sizeof user, "%s", jellyfin_account());
+	for (;;) {
+		kr = kb_prompt(a->r, &a->in, "Username", user, (int)sizeof user, MUSE_ACCENT,
+		               abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { power_off(a); return false; }
+		if (kr != KB_ACCEPT || !user[0]) return false;
+		pass[0] = '\0';
+		kr = kb_prompt(a->r, &a->in, "Password", pass, (int)sizeof pass, MUSE_ACCENT,
+		               abs_kb_backdrop, power_due_ctx, a);
+		if (kr == KB_POWER) { memset(pass, 0, sizeof pass); power_off(a); return false; }
+		if (kr != KB_ACCEPT) { memset(pass, 0, sizeof pass); return false; }
+		jellyfin_login(user, pass);
+		memset(pass, 0, sizeof pass);
+		if ((r = src_wait(a, "Jellyfin", jf_msg_login, jellyfin_auth_poll)) > 0) return jellyfin_signed_in();
+		if (r == 0) return false;
+		plex_say(a, jellyfin_why());
+	}
+}
+
+/* Quick Connect (owner: first, the password after): a code to enter in
+ * Jellyfin on a phone or computer already signed in, checked every two
+ * seconds. */
+typedef struct { int st; bool pw; char code[16]; } jf_qc_ui;
+
+static int jf_qc_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	jf_qc_ui *u = ctx;
+
+	(void)max;
+	*heading = "Sign In to Jellyfin";
+	if (u->st == 0) u->st = jellyfin_qc_poll(u->code, sizeof u->code);
+	if (u->st == 1) return 0;                    /* approved: the screen is done */
+	/* Short rows, so none slides on a 480 px portrait screen (plorpos-auv.18). */
+	if (u->st < 0) {
+		rows[0] = (menu_row){ jellyfin_why()[0] ? jellyfin_why() : "Jellyfin did not answer", NULL, false };
+		rows[1] = (menu_row){ "Use Password", NULL, true };
+		rows[2] = (menu_row){ "Try Again", NULL, true };
+		rows[3] = (menu_row){ "Cancel", NULL, true };
+		return 4;
+	}
+	rows[0] = (menu_row){ "On a phone or computer,", NULL, false };
+	rows[1] = (menu_row){ "in Jellyfin's user menu", NULL, false };
+	rows[2] = (menu_row){ "open Quick Connect", NULL, false };
+	rows[3] = (menu_row){ "and enter the code", NULL, false };
+	rows[4] = (menu_row){ u->code[0] ? u->code : "...", NULL, false };
+	rows[5] = (menu_row){ "Use Password", NULL, true };
+	rows[6] = (menu_row){ "Cancel", NULL, true };
+	return 7;
+}
+
+static menu_result jf_qc_key(app *a, void *ctx, in_button key, int sel)
+{
+	jf_qc_ui *u = ctx;
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (u->st < 0 && sel == 2) { u->st = 0; u->code[0] = '\0'; jellyfin_qc_start(); return MENU_STAY; }
+	u->pw = sel == (u->st < 0 ? 1 : 5);
+	return MENU_DONE;
+}
+
+static bool jellyfin_sign_in(app *a)
+{
+	jf_qc_ui u = { 0 };
+
+	jellyfin_qc_start();
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         jf_qc_build, jf_qc_key, &u);
+	jellyfin_qc_cancel();
+	if (jellyfin_signed_in()) return true;
+	return u.pw && jellyfin_password(a);
+}
+
+/* The music library; with two or more, "All music" is the last. */
+static bool jellyfin_choose_library(app *a)
+{
+	const char *labels[MENU_RUN_ROWS];
+	int n, k, i;
+
+	jellyfin_libraries_ask();
+	n = src_wait(a, "Jellyfin", jf_msg_libraries, jellyfin_libraries_poll);
+	if (n == 0) return false;
+	if (n < 0) { plex_say(a, jellyfin_why()[0] ? jellyfin_why() : "No music libraries on that server"); return false; }
+	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) labels[i] = jellyfin_library_at(i);
+	k = n == 1 ? 0 : muse_pick_run(a, "Music Library", labels, i);
+	if (k < 0) return false;
+	jellyfin_library_pick(k);
+	return true;
+}
+
+/* The address, signing in, the library: each only when not had yet. */
+static bool jellyfin_setup(app *a)
+{
+	if (!net_online()) { plex_say(a, "Jellyfin needs Wi-Fi"); return false; }
+	if (!jellyfin_server()[0] && !jellyfin_choose_server(a)) return false;
+	if (!jellyfin_signed_in() && !jellyfin_sign_in(a)) return false;
+	if (!jellyfin_library()[0] && !jellyfin_choose_library(a)) return false;
+	return jellyfin_ready();
+}
+
+/* ---- a server Source, whichever ------------------------------------------------ */
+
+/* Server Source s set up: signed in, a server, a library. True when ready. */
+static bool srv_setup(app *a, muse_src s)
+{
+	return s == MSRC_PLEX ? plex_setup(a) : s == MSRC_JELLYFIN ? jellyfin_setup(a) : false;
+}
+
+/* Plex: one of the account's servers; Jellyfin: its address. */
+static bool srv_choose_server(app *a, muse_src s)
+{
+	return s == MSRC_PLEX ? plex_choose_server(a) : s == MSRC_JELLYFIN ? jellyfin_choose_server(a) : false;
+}
+
+static bool srv_choose_library(app *a, muse_src s)
+{
+	if (s == MSRC_PLEX) return plex_choose_library(a);
+	/* Another server's address signed out of the last one: Sign In first. */
+	return s == MSRC_JELLYFIN && jellyfin_signed_in() && jellyfin_choose_library(a);
+}
+
+static void srv_sign_out(muse_src s)
+{
+	if (s == MSRC_PLEX) plex_sign_out();
+	else if (s == MSRC_JELLYFIN) jellyfin_sign_out();
 }
 
 /* Offline Mode switched for Source s (plorpos-5tm.16): kept, told to the
@@ -11707,13 +11902,22 @@ static void abs_main_poll(app *a)
 /* musec's remote hooks, for both servers. */
 static bool muse_resolve(const char *rel, musec_remote *out)
 {
-	return plex_resolve(rel, out) || abs_resolve(rel, out) || pod_resolve(rel, out);
+	msrv *m = srv_of_path(rel);
+
+	return (m && msrv_resolve(m, rel, out)) || abs_resolve(rel, out) || pod_resolve(rel, out);
 }
 static bool muse_owns(const char *daemon_path, const char *rel)
 {
-	return plex_owns(daemon_path, rel) || abs_owns(daemon_path, rel) || pod_owns(daemon_path, rel);
+	for (int i = 0; i < g_nsrv; i++)
+		if (msrv_owns(g_srvs[i], daemon_path, rel)) return true;
+	return abs_owns(daemon_path, rel) || pod_owns(daemon_path, rel);
 }
-static bool muse_stream_failed(const char *rel) { return plex_stream_failed(rel); }
+static bool muse_stream_failed(const char *rel)
+{
+	msrv *m = srv_of_path(rel);
+
+	return m && msrv_stream_failed(m, rel);
+}
 /* Play on a paused Audiobookshelf book - streamed, or a downloaded copy
  * under Local Audiobooks (its .abs names it) - asks its place on the server
  * first. Not off Wi-Fi: no answer can come, and play would wait for it. */
@@ -11742,6 +11946,7 @@ static bool muse_source_pick(app *a)
 	if (to == was && to == muse_src_shown()) return false;
 	switch (to) {
 	case MSRC_PLEX:
+	case MSRC_JELLYFIN:
 		if (!srv_setup(a, to)) return false;
 		muse_src_save(to);
 		/* The first time, the whole library: a minute or so. B stops
@@ -11878,7 +12083,9 @@ static void muse_dlq_screen(app *a)
 enum { PX_OFFLINE, PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_FAVS, PX_SIGNOUT, PX_ROWS };   /* Download Queue: Muse's own menu now (ps8.8) */
 /* Keep Playlists Synced, per server Source. */
-static const char *const SRV_PLMIRROR_KEY[MSRC_COUNT] = { [MSRC_PLEX] = "plex.plmirror" };
+static const char *const SRV_PLMIRROR_KEY[MSRC_COUNT] = {
+	[MSRC_PLEX] = "plex.plmirror", [MSRC_JELLYFIN] = "jellyfin.plmirror",
+};
 
 typedef struct {
 	muse_src s;
@@ -12054,13 +12261,13 @@ static void srv_main_poll(app *a)
 	static unsigned next_check;
 	unsigned now = plat_now_ms();
 
-	if (plex_sync_take()) g_srv_stale = true;
+	if (srv_take(msrv_sync_take)) g_srv_stale = true;
 	if (g_walk_thread) return;
 	if ((g_srv_stale && muse_source_saved_srv()) ||
-	    (g_local_stale && !g_srv && !g_muse_abs && !plex_download_status(NULL, 0) &&
+	    (g_local_stale && !g_srv && !g_muse_abs && !srv_downloading() &&
 	     !abs_download_status(NULL, 0))) {
 		g_srv_stale = g_local_stale = false;
-		fprintf(stderr, "plex: reading the library again\n");
+		fprintf(stderr, "muse: reading the library again\n");
 		muse_playlists_forget();
 		rescan_all(a);
 		ui_redraw_now();
@@ -12599,7 +12806,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
 				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
 				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
-				if (id == SMM_PLEX) return srv_settings_screen(a, muse_src_shown()) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_SRV) return srv_settings_screen(a, muse_src_shown()) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
@@ -14055,7 +14262,7 @@ static bool cover_answers(void)
 	size_t fl;
 	int i;
 
-	while (plex_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base) ||
+	while (srv_cover_take(base, sizeof base) || abs_cover_take(base, sizeof base) ||
 	       pod_cover_take(base, sizeof base)) {
 		landed = true;
 		/* Only the albums waiting for one: every album's base was 3527
@@ -14226,7 +14433,7 @@ static void np_cover_loose(app *a)
 	bool got;
 	int w, h;
 
-	if (!track || !track[0] || plex_is_path(track)) {
+	if (!track || !track[0] || srv_of_path(track)) {
 		if (g_np.album != -1) np_forget();
 		return;
 	}
@@ -14650,8 +14857,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	 * musec_path is "" (plorpos-7ni.18). */
 	{
 		const char *src = musec_track(mn->index) ? musec_track(mn->index) : "";
+		msrv *sm = srv_of_path(src);
+		char slab[32];
 
-		ui_text(r, fs, plex_is_path(src) ? "Source: Plex"
+		snprintf(slab, sizeof slab, "Source: %s", sm ? msrv_name(sm) : "");
+		ui_text(r, fs, sm ? slab
 		               : abs_is_path(src) ? "Source: Audiobookshelf"
 		               : pod_is_path(src) ? "Source: Podcasts" : "Source: Local",
 		        sx, sy, -1, UI_TEXT_DIM);
@@ -14843,7 +15053,7 @@ static void np_next_line(char *next, size_t cap)
 	    musec_chapter_now() + 1 < musec_chapters())
 		chapter_label(musec_chapter_now() + 1, next, cap);
 	else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()) &&
-	         !plex_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap) &&
+	         !srv_title(nt, next, (size_t)cap) && !abs_title(nt, next, (size_t)cap) &&
 	         !pod_title(nt, next, (size_t)cap))
 		ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt, next, cap);
 }
@@ -14953,7 +15163,7 @@ static bool np_chapters(app *a)
 			const char *t = musec_track(i);
 
 			if (!t || (!abs_title(t, rows.title[i], sizeof rows.title[i]) &&
-			           !plex_title(t, rows.title[i], sizeof rows.title[i]) &&
+			           !srv_title(t, rows.title[i], sizeof rows.title[i]) &&
 			           !pod_title(t, rows.title[i], sizeof rows.title[i])))
 				ml_track_name(t && strrchr(t, '/') ? strrchr(t, '/') + 1 : t ? t : "",
 				              rows.title[i], sizeof rows.title[i]);
@@ -15460,8 +15670,10 @@ static void muse_playlists_load(void)
 {
 	char d[CFG_STR * 2 + 32];
 	static int gen;
+	int now_gen = 0;
 
-	if (gen != plex_pl_gen()) { gen = plex_pl_gen(); g_npls = -1; }   /* Plex Favorites rewritten */
+	for (int i = 0; i < g_nsrv; i++) now_gen += msrv_pl_gen(g_srvs[i]);
+	if (gen != now_gen) { gen = now_gen; g_npls = -1; }   /* a server's Favorites rewritten */
 	if (g_npls >= 0) return;
 	muse_pl_dir(d, sizeof d);
 	g_npls = pl_list(d, g_pls, PL_SHOW_MAX);
@@ -16324,7 +16536,7 @@ static muse_src muse_src_of(const char *rel)
 {
 	char id[64];
 
-	if (plex_is_path(rel)) return MSRC_PLEX;
+	if (srv_of_path(rel)) return srv_src(srv_of_path(rel));
 	if (abs_is_path(rel)) return MSRC_ABS;
 	if (pod_is_path(rel)) return MSRC_PODCASTS;
 	if (abs_item(rel, id, sizeof id)) return MSRC_ABS;
@@ -16345,9 +16557,14 @@ static void muse_src_follow(app *a)
 	if (!(t = musec_track(mn->index)) || !t[0]) t = muse_orphan_rel();
 	if (!t || !t[0] || (to = muse_src_of(t)) == was) return;
 	if (to == MSRC_ABS && was == MSRC_BOOKS && !abs_is_path(t)) return;   /* a downloaded copy */
-	if (to == MSRC_MUSIC && was == MSRC_PLEX && !strncmp(t, "Music/Plex/", 11)) return;
+	if (to == MSRC_MUSIC && srv_of(was)) {   /* a downloaded copy: Music/<server>/ */
+		char pre[32];
+		int n = snprintf(pre, sizeof pre, "Music/%s/", msrv_name(srv_of(was)));
+
+		if (!strncmp(t, pre, (size_t)n)) return;
+	}
 	if (!muse_src_offered(to)) return;
-	if ((to == MSRC_PLEX && !plex_lib_cached()) || (to == MSRC_ABS && !abs_lib_cached()) ||
+	if ((srv_of(to) && !msrv_lib_cached(srv_of(to))) || (to == MSRC_ABS && !abs_lib_cached()) ||
 	    (to == MSRC_PODCASTS && !pod_lib_cached()))
 		return;
 	fprintf(stderr, "muse: Source back to %s, which is playing\n", sys_menu_src_label(to));
@@ -17414,11 +17631,19 @@ static const char *mpl_title(void *ctx, int i)
 static bool mpl_fav(void *ctx, int i) { (void)ctx; return pl_heart_at(g_pls[i].name) != NULL; }
 static const char *mpl_value(void *ctx, int i) { (void)ctx; return g_pl_val[i]; }
 /* Local Music: a playlist downloaded from Plex is "Plex <name>" (Download
- * Playlist writes it so), and says so in grey (owner, plorpos-5eq.21). */
+ * Playlist writes it so), and says so in grey (owner, plorpos-5eq.21);
+ * Jellyfin's "Jellyfin <name>". */
 static int mpl_lead(void *ctx, int i)
 {
 	(void)ctx;
-	return !g_srv && !g_muse_abs && !strncmp(g_pls[i].name, "Plex ", 5) ? 5 : 0;
+	if (g_srv || g_muse_abs) return 0;
+	for (int k = 0; k < g_nsrv; k++) {
+		const char *nm = msrv_name(g_srvs[k]);
+		size_t n = strlen(nm);
+
+		if (!strncmp(g_pls[i].name, nm, n) && g_pls[i].name[n] == ' ') return (int)n + 1;
+	}
+	return 0;
 }
 static bool mpl_dl(void *ctx, int i) { (void)ctx; return g_srv && msrv_pl_downloaded(g_srv, g_pls[i].name); }
 
@@ -23610,7 +23835,7 @@ static const char *queue_title(void *ctx, int i)
 
 	(void)ctx;
 	if (!p) return "";
-	if (plex_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0]) ||
+	if (srv_title(p, out, sizeof buf[0]) || abs_title(p, out, sizeof buf[0]) ||
 	    pod_title(p, out, sizeof buf[0])) return out;
 	slash = strrchr(p, '/');
 	ml_track_name(slash ? slash + 1 : p, out, sizeof buf[0]);
@@ -24374,10 +24599,18 @@ int main(int argc, char *argv[])
 			musec_init(shot_path ? "" : bin, music);
 			plex_init(P_CARD, P_SHARED);
 			plex_set_pl_mirror(db_get_int(db_dev(), "plex.plmirror", 1) != 0);
+			g_srvs[g_nsrv++] = plex_src();
+#ifndef PLATFORM_MIYOO   /* no Jellyfin on the Flip (owner): nor its worker */
+			jellyfin_init(P_CARD, P_SHARED);
+			msrv_set_pl_mirror(jellyfin_src(), db_get_int(db_dev(), "jellyfin.plmirror", 1) != 0);
+			g_srvs[g_nsrv++] = jellyfin_src();
+#endif
 			abs_init(P_CARD, P_SHARED);
 			pod_init(P_CARD, P_SHARED, art_shrink_now);   /* podcasts (plorpos-7ni) */
 			/* Offline Mode (plorpos-5tm.16): before anything is asked of a server. */
 			plex_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_PLEX], 0) != 0);
+			if (jellyfin_src())
+				msrv_set_offline(jellyfin_src(), db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_JELLYFIN], 0) != 0);
 			abs_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_ABS], 0) != 0);
 			pod_set_offline(db_get_int(db_dev(), MSRC_OFFLINE_KEY[MSRC_PODCASTS], 0) != 0);
 			musec_set_remote(muse_resolve, muse_owns, muse_stream_failed);

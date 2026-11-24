@@ -23,7 +23,7 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
 const char *sys_menu_src_label(muse_src s)
 {
 	static const char *const L[MSRC_COUNT] = {
-		"Local Music", "Local Audiobooks", "Plex Music", "Audiobookshelf", "Podcasts"
+		"Local Music", "Local Audiobooks", "Plex Music", "Jellyfin Music", "Audiobookshelf", "Podcasts"
 	};
 
 	return s >= 0 && s < MSRC_COUNT ? L[s] : L[0];
@@ -31,7 +31,8 @@ const char *sys_menu_src_label(muse_src s)
 
 int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 {
-	bool remote = src == MSRC_PLEX || src == MSRC_ABS || src == MSRC_PODCASTS;
+	bool srv = src == MSRC_PLEX || src == MSRC_JELLYFIN;
+	bool remote = srv || src == MSRC_ABS || src == MSRC_PODCASTS;
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
@@ -43,7 +44,7 @@ int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 	out[n++] = SMM_SETTINGS;
 #endif
 	out[n++] = SMM_SOURCE;
-	if (src == MSRC_PLEX) out[n++] = SMM_PLEX;
+	if (srv) out[n++] = SMM_SRV;
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
 	if (dlq && remote) out[n++] = SMM_DLQ;
@@ -94,8 +95,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 				case SMM_SOURCE:
 					out[k] = (menu_row){ "Source", sys_menu_src_label(u->muse_src), true };
 					break;
-				case SMM_PLEX:
-					out[k] = (menu_row){ "Plex Settings", NULL, true };
+				case SMM_SRV:
+					out[k] = (menu_row){ u->muse_src == MSRC_JELLYFIN ? "Jellyfin Settings"
+					                                                  : "Plex Settings", NULL, true };
 					break;
 				case SMM_ABS:
 					out[k] = (menu_row){ "Audiobookshelf Settings", NULL, true };

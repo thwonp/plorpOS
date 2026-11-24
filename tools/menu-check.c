@@ -602,8 +602,11 @@ static void system_menu(void)
 			   ids[5] == SMM_SOURCE,
 			   "books alone: the count, Sort By, Tab Settings, Rescan Folder, Playback Settings and Source");
 			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 6 && ids[2] == SMM_TABS &&
-			   ids[3] == SMM_SETTINGS && ids[4] == SMM_SOURCE && ids[5] == SMM_PLEX,
+			   ids[3] == SMM_SETTINGS && ids[4] == SMM_SOURCE && ids[5] == SMM_SRV,
 			   "Plex: no Album Art or Rescan Folder, Plex Settings after Source");
+			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 7 && ids[2] == SMM_TABS &&
+			   ids[4] == SMM_SOURCE && ids[5] == SMM_SRV && ids[6] == SMM_DLQ,
+			   "Jellyfin: Plex's rows - its Settings after Source, then Download Queue");
 			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 6 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_SOURCE && ids[5] == SMM_ABS,
 			   "Audiobookshelf: no Rescan Folder, Audiobookshelf Settings after Source");
@@ -611,7 +614,7 @@ static void system_menu(void)
 			   ids[1] == SMM_TABS && ids[2] == SMM_SETTINGS && ids[3] == SMM_SOURCE &&
 			   ids[4] == SMM_POD,
 			   "Podcasts: no Sort By or Rescan Folder, Podcast Settings after Source");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_PLEX &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_SRV &&
 			   ids[6] == SMM_DLQ,
 			   "Plex downloading: Download Queue right after Plex Settings (ps8.8)");
 			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 6 && ids[5] == SMM_DLQ,

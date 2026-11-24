@@ -139,15 +139,19 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * On books the count is Books, Sort By is by author or title, and Album Art is
  * not there: MusicBrainz knows records. So the rows move, and which one is where is sys_menu_muse_rows's to say. */
 typedef enum { SMM_COUNT, SMM_SORT, SMM_ART, SMM_TABS, SMM_RESCAN,
-               SMM_SETTINGS, SMM_SOURCE, SMM_PLEX, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
+               SMM_SETTINGS, SMM_SOURCE, SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
  * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan
  * Folder goes (Resync Library is in the source's own settings, which follow
  * Source), and Album Art is music on the card only. */
 /* Podcasts (plorpos-7ni) is the fifth: no Sort By (episodes are newest
- * first), no Rescan Folder (Check for Updates is in Podcast Settings). */
-typedef enum { MSRC_MUSIC, MSRC_BOOKS, MSRC_PLEX, MSRC_ABS, MSRC_PODCASTS, MSRC_COUNT } muse_src;
+ * first), no Rescan Folder (Check for Updates is in Podcast Settings).
+ * Jellyfin (plorpos-vgr) is a music server as Plex is, its rows Plex's; its
+ * Settings row is SMM_SRV, as Plex's. The values are not kept anywhere
+ * ("muse.src" holds names), so the order is the Source list's. */
+typedef enum { MSRC_MUSIC, MSRC_BOOKS, MSRC_PLEX, MSRC_JELLYFIN, MSRC_ABS, MSRC_PODCASTS,
+               MSRC_COUNT } muse_src;
 const char *sys_menu_src_label(muse_src s);
 /* No Display row: the coverflow is one of Muse's tabs (plorpos-era.8). */
 
