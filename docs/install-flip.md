@@ -168,12 +168,26 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
 
 ## Limits
 
-- **Arcade** and **Neo Geo** run on FinalBurn Neo; ROM sets must match it.
-  Arcade games go in `Roms/Arcade`. Earlier releases had `Arcade (FBA 2012)` and
+- **Arcade** and **Neo Geo** run on FinalBurn Neo; ROM sets must match it (a
+  current FinalBurn Neo set, non-merged is safest). Arcade games go in
+  `Roms/Arcade`. `neogeo.zip` can sit in `Roms/Neo Geo` or `Bios/`; the shelf
+  does not list BIOS files. Earlier releases had `Arcade (FBA 2012)` and
   `Arcade (MAME 2000)` shelves: those folders are no longer read, so move the
   sets you want to `Roms/Arcade`. Save states from the old cores do not load.
-- The largest Neo Geo sets (The King of Fighters '98 and up) need more memory
-  than the Flip has and do not start.
+- **Speed**: tested on a full set of 786 games. Every Neo Geo game that fits in
+  memory and all CPS-1 and CPS-2 games (Street Fighter II, Marvel vs. Capcom,
+  1944) run at full speed. About one arcade game in eight runs slower, mostly
+  on heavier boards: After Burner II, G-LOC, Space Harrier, Strikers 1945 II,
+  R-Type Leo, Raiden DX and Xexex among them.
+- **Memory**: about 18 Neo Geo games need more than the Flip has: Garou, The
+  King of Fighters '98 to 2003, Last Blade 2, Matrimelee, Metal Slug 3, 4 and 5,
+  Rage of the Dragons, Real Bout Fatal Fury 2, Samurai Shodown V and V Special,
+  Strikers 1945 Plus and SVC Chaos. The King of Fighters '97 and smaller run.
+  About 30 large arcade games are too big as well, Gunbird 2, Strikers 1945 III
+  and Raiden Fighters among them.
+- **A game that cannot run** (too big, or a set that does not match) shows
+  FinalBurn Neo's error message; press **Menu**, then **Quit**. Some too-big
+  games go back to the shelf by themselves after about 10 seconds instead.
 - **PlayStation** is **experimental**: it held full speed in testing, but only
   one game (Ace Combat 2) was checked at length, and memory is tight, so other
   titles may not run as well. Rewind is not offered for it.

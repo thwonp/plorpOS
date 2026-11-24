@@ -94,7 +94,7 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 
 Sega CD and 32X games can live in `Roms/Genesis` or use their own folders to split them into their own shelf.
 
-The Miyoo Mini Flip uses lighter cores on some shelves and splits Arcade in two; see [its guide](docs/install-flip.md#shelves-and-cores).
+The Miyoo Mini Flip uses lighter cores on some shelves; see [its guide](docs/install-flip.md#shelves-and-cores) and, for arcade speed and memory, [its limits](docs/install-flip.md#limits).
 
 ## Install
 
