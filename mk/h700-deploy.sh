@@ -103,6 +103,13 @@ case $MODE in muse|all)
 		adb shell "chmod +x $CARD/plorpOS/tailscaled.new && mv -f $CARD/plorpOS/tailscaled.new $CARD/plorpOS/tailscaled"
 		adb push "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/h700/LICENSE-tailscale.md" "$CARD/plorpOS/" > /dev/null
 		echo "deployed tailscaled"
+	fi
+	# Syncthing (plorpos-5jh), the same way.
+	if [ -f "$ROOT/build/syncthing-arm64/syncthing" ]; then
+		adb push "$ROOT/build/syncthing-arm64/syncthing" "$CARD/plorpOS/syncthing.new" > /dev/null
+		adb shell "chmod +x $CARD/plorpOS/syncthing.new && mv -f $CARD/plorpOS/syncthing.new $CARD/plorpOS/syncthing"
+		adb push "$ROOT/sd/tortos/syncthing.sh" "$ROOT/build/syncthing-arm64/LICENSE-syncthing.md" "$CARD/plorpOS/" > /dev/null
+		echo "deployed syncthing"
 	fi ;;
 esac
 [ "$MODE" = muse ] && { adb shell 'killall muse 2>/dev/null; true'; echo "muse restarted on the launcher's next ask"; exit 0; }

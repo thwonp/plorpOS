@@ -58,6 +58,12 @@ case $WHAT in elf)
 		put "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/gkd/LICENSE-tailscale.md" "$GKD:$P/"
 		echo "  + tailscaled, tailscale.sh"
 	fi
+	# Syncthing (plorpos-5jh), the same way.
+	if [ -f "$ROOT/build/syncthing-arm64/syncthing" ]; then
+		swap "$ROOT/build/syncthing-arm64/syncthing" syncthing
+		put "$ROOT/sd/tortos/syncthing.sh" "$ROOT/build/syncthing-arm64/LICENSE-syncthing.md" "$GKD:$P/"
+		echo "  + syncthing, syncthing.sh"
+	fi
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$GKD:$P/cards/"

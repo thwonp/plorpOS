@@ -72,6 +72,12 @@ case $WHAT in elf|all)
 		$A shell "mv -f $P/tailscaled.new $P/tailscaled"
 		$A push "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/LICENSE-tailscale.md" "$P/" > /dev/null
 	fi
+	# Syncthing (plorpos-5jh), the same way.
+	if [ -f "$ROOT/build/syncthing-arm64/syncthing" ]; then
+		$A push "$ROOT/build/syncthing-arm64/syncthing" "$P/syncthing.new" > /dev/null
+		$A shell "chmod +x $P/syncthing.new && mv -f $P/syncthing.new $P/syncthing"
+		$A push "$ROOT/sd/tortos/syncthing.sh" "$ROOT/build/syncthing-arm64/LICENSE-syncthing.md" "$P/" > /dev/null
+	fi
 	$A push "$ROOT/build/btplayer"          "$P/" > /dev/null
 	$A push "$ROOT/build/pico8sdl.so"       "$P/" > /dev/null
 	# systems.cfg only. tortos.cfg, coreopts.cfg and turbo.cfg are compiled

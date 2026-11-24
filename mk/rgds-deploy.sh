@@ -36,6 +36,11 @@ case $WHAT in elf)
 		swap "$ROOT/build/rgds/tailscaled" tailscaled
 		put "$ROOT/sd/tortos/tailscale.sh" "$ROOT/build/rgds/LICENSE-tailscale.md" "$RGDS:$P/"
 	fi
+	# Syncthing (plorpos-5jh), the same way.
+	if [ -f "$ROOT/build/syncthing-arm64/syncthing" ]; then
+		swap "$ROOT/build/syncthing-arm64/syncthing" syncthing
+		put "$ROOT/sd/tortos/syncthing.sh" "$ROOT/build/syncthing-arm64/LICENSE-syncthing.md" "$RGDS:$P/"
+	fi
 	$S "mkdir -p $P/rgds/portmaster"
 	put "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
 	    "${VENDOR:-$ROOT/vendor}/portmaster/PortMaster.zip" "$ROOT/build/rgds/portfullscreen.so" "$RGDS:$P/rgds/portmaster/"
