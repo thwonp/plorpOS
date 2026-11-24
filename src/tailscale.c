@@ -35,8 +35,10 @@ static const char *ts_hostname(void)
 	return TS_HOST;
 }
 
-/* plorpOS/tailscale.sh start HOSTNAME [userspace] | stop. It backgrounds the
- * daemon and the sign-in, so it returns at once. */
+/* plorpOS/tailscale.sh start HOSTNAME [userspace] | stop, not waited for: a
+ * start takes 130-150 ms and a stop 300-520 ms (the daemon taking its
+ * interface down), which the menu would show (plorpos-8ns.12). Forked twice,
+ * so the script is nobody's zombie; it runs one at a time by itself. */
 static bool run_script(bool start)
 {
 	char script[256];
@@ -49,9 +51,12 @@ static bool run_script(bool start)
 
 	snprintf(script, sizeof script, "%s/tailscale.sh", P_ROOT);
 	if ((pid = fork()) == 0) {
-		if (start) execl("/bin/sh", "sh", script, "start", ts_hostname(), mode, (char *)NULL);
-		else       execl("/bin/sh", "sh", script, "stop", (char *)NULL);
-		_exit(127);
+		if (fork() == 0) {
+			if (start) execl("/bin/sh", "sh", script, "start", ts_hostname(), mode, (char *)NULL);
+			else       execl("/bin/sh", "sh", script, "stop", (char *)NULL);
+			_exit(127);
+		}
+		_exit(0);
 	}
 	if (pid > 0) waitpid(pid, NULL, 0);
 	return pid > 0;
