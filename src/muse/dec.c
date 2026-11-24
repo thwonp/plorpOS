@@ -99,7 +99,7 @@ done:
 	return ok;
 }
 
-dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
+dec *dec_open(const char *path, const char *proxy, double at, double speed, char *err, size_t errn)
 {
 	dec *d = calloc(1, sizeof *d);
 	const AVCodec *codec = NULL;
@@ -133,6 +133,7 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 			uint8_t *loc = NULL;
 
 			av_dict_set(&o, "rw_timeout", "10000000", 0);
+			if (proxy && proxy[0]) av_dict_set(&o, "http_proxy", proxy, 0);
 			if (avio_open2(&pb, path, AVIO_FLAG_READ, NULL, &o) >= 0) {
 				if (av_opt_get(pb, "location", AV_OPT_SEARCH_CHILDREN, &loc) >= 0 && loc &&
 				    strcmp((char *)loc, path) && strstr((char *)loc, "://"))
@@ -142,9 +143,19 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 			}
 			av_dict_free(&o);
 		}
-		if (strstr(path, "://")) av_dict_set(&o, "rw_timeout", "10000000", 0);
+		if (strstr(path, "://")) {
+			av_dict_set(&o, "rw_timeout", "10000000", 0);
+			if (proxy && proxy[0]) av_dict_set(&o, "http_proxy", proxy, 0);
+		}
 		e = avformat_open_input(&d->fmt, to ? to : path, NULL, &o);
-		if (e < 0 && to) e = avformat_open_input(&d->fmt, path, NULL, &o);   /* as given, then */
+		if (e < 0 && to) {                                         /* as given, then */
+			/* The failed open used up the options: set them again, or the
+			 * retry would leave the proxy out. */
+			av_dict_free(&o);
+			av_dict_set(&o, "rw_timeout", "10000000", 0);
+			if (proxy && proxy[0]) av_dict_set(&o, "http_proxy", proxy, 0);
+			e = avformat_open_input(&d->fmt, path, NULL, &o);
+		}
 		free(to);
 		av_dict_free(&o);
 		/* An https stream's MP3 seeks to the byte its time is at, rather than

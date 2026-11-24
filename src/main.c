@@ -24152,6 +24152,8 @@ int main(int argc, char *argv[])
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
 		net_set_ca_path(cp);
+		/* Tailscale back on where no boot script starts it (the GKD). */
+		if (!shot_path) ts_boot();
 		ra_creds_load();
 		ss_creds_load();
 		{

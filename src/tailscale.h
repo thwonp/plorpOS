@@ -13,10 +13,21 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_ZERO40) || defined(PLATFORM_GKD)
 #define TS_ROWS 1
 #else
 #define TS_ROWS 0
+#endif
+
+/* The GKD's vendor kernel has no TUN driver (plorpos-8ns.4: a tun.ko of our
+ * own could not be shown to match it), so tailscaled runs in userspace
+ * networking there and nothing else on the device sees the tailnet. plorpOS's
+ * own requests - curl in net.c, Muse's streams - go through tailscaled's HTTP
+ * proxy instead, all of them while it is connected: it reaches tailnet peers
+ * by MagicDNS name or 100.x address and sends everything else out as it
+ * would have gone. */
+#if defined(PLATFORM_GKD)
+#define TS_PROXY "http://127.0.0.1:1055"
 #endif
 
 typedef enum {
@@ -37,5 +48,11 @@ bool     ts_connected(void);
  * of those (MagicDNS). Looks the name up: not on the UI thread. Always false
  * where there is no Tailscale. */
 bool     ts_tailnet_addr(const char *address);
+/* The proxy plorpOS's own HTTP goes through now: TS_PROXY while connected,
+ * else NULL (always NULL where Tailscale is the kernel's). Any thread. */
+const char *ts_proxy(void);
+/* At launcher start: the daemon back if the switch is on, where no boot
+ * script has started it (the GKD). */
+void     ts_boot(void);
 
 #endif

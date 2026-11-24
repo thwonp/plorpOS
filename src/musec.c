@@ -16,6 +16,7 @@
 #include "muselib.h"
 #include "musequeue.h"
 #include "platproc.h"
+#include "tailscale.h"
 
 #define MUSE_SOCK "/tmp/muse.sock"
 
@@ -311,9 +312,14 @@ static void play_current(void)
 		if (g_before_heard) g_before_heard();
 		/* Only the queue's first PLAY starts part way: every track after it
 		 * is one the queue moved on to, from its beginning. */
-		if (remote)
-			sendf("PLAY\tpath=%s\tat=%.1f\tspeed=%.2f", r.url, g_start_at, g_speed);
-		else
+		if (remote) {
+			/* A stream goes the way the launcher's own requests do: through
+			 * tailscaled where Tailscale is userspace (ts_proxy). */
+			const char *px = ts_proxy();
+
+			sendf("PLAY\tpath=%s\tat=%.1f\tspeed=%.2f%s%s", r.url, g_start_at, g_speed,
+			      px ? "\tproxy=" : "", px ? px : "");
+		} else
 			sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
 		g_nch = 0;                     /* the new file says its own */
 		/* No title until META: the tag, or the name the file has if it has none. */

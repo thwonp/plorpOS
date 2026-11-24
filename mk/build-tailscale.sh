@@ -3,8 +3,10 @@
 # CLI built in (run as "tailscale" through a symlink), from pinned source in
 # the pinned Go image. Only what a handheld on a tailnet uses: kernel TUN,
 # MagicDNS, routes from subnet routers, direct UDP. No log upload, no Tailscale
-# SSH, Serve, Taildrop or userspace networking.
-#   mk/build-tailscale.sh [PORT]   PORT zero40 (default); GOARCH=arm64 (default)
+# SSH, Serve or Taildrop. The GKD, whose kernel has no TUN, runs it in
+# userspace networking and adds the outbound HTTP proxy plorpOS's own
+# requests go through (plorpos-8ns.5).
+#   mk/build-tailscale.sh [PORT]   PORT zero40 (default) or gkd; GOARCH=arm64 (default)
 # Output: build/<PORT>/tailscaled and LICENSE-tailscale.md
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,6 +20,7 @@ GC=${GOCACHE_DIR:-$HOME/.cache/plorpos-go}   # module + build cache: big, not tm
 W=$R/build/$PORT/tailscale-src
 F=$DL/tailscale-$VER.tar.gz
 KEEP=cli,osrouter,nattraversal,udptransport,dns,linuxdnsfight,iptables,portmapper,ipnbus,health,useroutes,netstack
+[ "$PORT" = gkd ] && KEEP=$KEEP,outboundproxy
 
 mkdir -p "$DL" "$GC"
 [ -s "$F" ] || curl -sSfL --max-time 300 -o "$F" "https://github.com/tailscale/tailscale/archive/refs/tags/v$VER.tar.gz"

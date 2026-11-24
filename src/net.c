@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "net.h"
+#include "tailscale.h"
 
 #define RA_URL "https://retroachievements.org/dorequest.php"
 
@@ -67,6 +68,19 @@ static void cfg_quote(FILE *f, const char *v)
 	fputc('"', f);
 }
 
+/* Through tailscaled while it is connected, where Tailscale runs in userspace
+ * (the GKD, ts_proxy): the tailnet is only reachable that way, and every
+ * request takes it rather than each one being judged. The device itself is
+ * never sent there. */
+static void cfg_proxy(FILE *f)
+{
+	const char *p = ts_proxy();
+
+	if (!p) return;
+	fprintf(f, "proxy = "); cfg_quote(f, p); fputc('\n', f);
+	fprintf(f, "noproxy = \"localhost,127.0.0.1,::1\"\n");
+}
+
 /* The same config, for a GET of an arbitrary URL. No fields, no token, so
  * nothing here needs hiding from a process list - but it goes through a file
  * anyway, because two ways of invoking curl is two things to keep right. */
@@ -113,6 +127,7 @@ static bool write_get_config(const char *path, const char *url,
 	fprintf(f, "max-time = %d\n", timeout_s);
 	if (g_ca[0]) { fprintf(f, "cacert = "); cfg_quote(f, g_ca); fputc('\n', f); }
 	fprintf(f, "user-agent = "); cfg_quote(f, NET_UA); fputc('\n', f);
+	cfg_proxy(f);
 	fprintf(f, "url = "); cfg_quote(f, url); fputc('\n', f);
 	fclose(f);
 	return true;
@@ -151,6 +166,7 @@ static bool write_config(const char *path, const char *url, bool get,
 	/* RA refuses curl's default agent with `unsupported_client`, which reads
 	 * like a permissions problem and is not one. */
 	fprintf(f, "user-agent = "); cfg_quote(f, NET_UA); fputc('\n', f);
+	cfg_proxy(f);
 
 	for (i = 0; i < n; i++) {
 		char kv[1024];
@@ -313,6 +329,7 @@ static int fetch(const char *url, const char *method, const char *const *headers
 	if (method && strcmp(method, "GET")) { fprintf(f, "request = "); cfg_quote(f, method); fputc('\n', f); }
 	if (g_ca[0]) { fprintf(f, "cacert = "); cfg_quote(f, g_ca); fputc('\n', f); }
 	fprintf(f, "user-agent = "); cfg_quote(f, NET_UA); fputc('\n', f);
+	cfg_proxy(f);
 	for (i = 0; i < nh; i++) { fprintf(f, "header = "); cfg_quote(f, headers[i]); fputc('\n', f); }
 	if (body) { fprintf(f, "data-binary = "); cfg_quote(f, body); fputc('\n', f); }
 	fprintf(f, "url = "); cfg_quote(f, url); fputc('\n', f);

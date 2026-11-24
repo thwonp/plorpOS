@@ -182,7 +182,7 @@ volume, so the line says what it is without a glyph or a number on it.
 
 ### Tailscale
 
-*Coming in the next release.* On the Zero 40 for now.
+*Coming in the next release.* On the Zero 40 and the GKD for now.
 
 **MENU > Network Services > Tailscale** puts the device on your tailnet. The
 first time, A shows a QR code: scan it with a phone, or open the link under
@@ -190,8 +190,18 @@ it, and sign in. The screen closes by itself once the device is on, and the
 row shows its tailnet address, the one to type into SSH on another machine.
 It signs back in by itself after that, a reboot included.
 
-It joins as `plorpos-zero40`, can reach MagicDNS names, and uses routes from
-your subnet routers. A on the row turns it off.
+It joins as `plorpos-zero40` or `plorpos-gkd`, can reach MagicDNS names, and
+uses routes from your subnet routers. A on the row turns it off.
+
+**On the GKD, only plorpOS's own traffic uses the tailnet.** Its kernel has no
+driver for a network tunnel, so Tailscale runs without one:
+
+- Audiobookshelf, Plex, podcasts, Muse+ streams and plorpOS's other web
+  requests go through Tailscale while it is connected.
+- From another device on your tailnet you can still reach the GKD: SSH,
+  Samba and the Syncthing web page.
+- Anything else started on the GKD can't reach tailnet devices: SSH or ping
+  from the GKD, Syncthing syncing with a tailnet-only device, ports.
 
 ## Audio
 
@@ -597,7 +607,7 @@ network.
 - **Audiobookshelf Settings** has Check for Updates (only what changed),
   Resync Library (everything) and Sign Out. Muse+ checks every hour by itself.
   **Server** changes the address.
-- **Away from home, with [Tailscale](#tailscale)** (Zero 40 for now): put the
+- **Away from home, with [Tailscale](#tailscale)** (Zero 40 and GKD for now): put the
   server's tailnet address (such as `100.10.0.0:13378`) in **Tailnet Server**.
   Muse+ uses it while Tailscale is connected and the home address otherwise.
   Signing in at a tailnet address fills in Tailnet Server; add the home

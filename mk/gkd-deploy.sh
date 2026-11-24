@@ -51,6 +51,13 @@ case $WHAT in elf)
 	swap "$ROOT/build/gkd/muse" muse
 	swap "$ROOT/build/gkd/musectl" musectl
 	echo "  + muse, musectl"
+	# Tailscale (plorpos-8ns.5): a running daemon keeps the old binary until
+	# it is switched off and on.
+	if [ -f "$ROOT/build/gkd/tailscaled" ]; then
+		swap "$ROOT/build/gkd/tailscaled" tailscaled
+		put "$ROOT/sd/gkd/tailscale.sh" "$ROOT/build/gkd/LICENSE-tailscale.md" "$GKD:$P/"
+		echo "  + tailscaled, tailscale.sh"
+	fi
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$GKD:$P/cards/"
