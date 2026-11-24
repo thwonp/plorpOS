@@ -65,7 +65,7 @@ echo made-by-new > "$C/plorpOS/.new-state"
 $OTA rollback "$C" > "$T/out" 2>&1; rc=$?
 ok "rollback restores the old one"     '[ $rc -eq 0 ] && grep -q old-elf "$C/plorpOS/tortos.elf" && [ ! -e "$C/plorpOS.prev" ] && [ ! -e "$C/plorpOS.failed" ]'
 ok "  with what was carried"           '[ -f "$C/plorpOS/.last" ] && [ -f "$C/plorpOS/bootlogo.stock.bmp" ] && [ -f "$C/plorpOS/cores/added.so" ] && [ -f "$C/plorpOS/.new-state" ]'
-ok "  and says why"                    '[ -f "$C/plorpOS/.ota-rolledback" ] && [ -s "$C/plorpOS/update-failed.log" ]'
+ok "  and says why"                    '[ -s "$C/plorpOS/update-failed.log" ]'
 $OTA rollback "$C" > /dev/null 2>&1; rc=$?
 ok "nothing to roll back fails"        '[ $rc -ne 0 ] && grep -q old-elf "$C/plorpOS/tortos.elf"'
 

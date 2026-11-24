@@ -109,8 +109,10 @@ apply)
 		fi
 	done
 	rm -rf "$W"
+	MSG="ota: installed v$VER ($n files kept from the old plorpOS/)"
+	echo "$(date '+%Y-%m-%d %H:%M') $MSG" >> "$NEW/update.log"
 	sync
-	echo "ota: installed v$VER ($n files kept from the old plorpOS/)"
+	echo "$MSG"
 	;;
 ok)
 	[ -d "$PREV" ] || exit 0
@@ -123,7 +125,6 @@ rollback)
 	mv "$PREV" "$NEW"
 	n=$(carry "$CARD/plorpOS.failed" "$NEW")
 	rm -rf "$CARD/plorpOS.failed"
-	: > "$NEW/.ota-rolledback"
 	echo "$(date) the update would not start; plorpOS went back to the version before it ($n files kept)" \
 		>> "$NEW/update-failed.log"
 	sync

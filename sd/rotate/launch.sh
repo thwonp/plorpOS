@@ -155,6 +155,12 @@ while : ; do
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		if [ $FAILS -ge 5 ] && sh "$DIR/ota.sh" rollback "$SD" >> "$LOG" 2>&1; then
+			sync
+			exec systemctl reboot
+		fi
 		[ $FAILS -ge 5 ] && break
 	else
 		FAILS=0

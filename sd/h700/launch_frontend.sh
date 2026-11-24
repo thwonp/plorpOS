@@ -10,6 +10,9 @@ SD=/mnt/SDCARD
 DIR=$SD/plorpOS
 # TortOS/ on a card the rename has not reached yet (plorpos-nzi).
 [ -d "$DIR" ] || DIR=$SD/TortOS
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "$SD/.ota/ready" ] && sh "$DIR/ota.sh" apply "$SD" && exec /bin/sh "$0" "$@"
 
 # Which device: BaseOS writes it at build time. The userdata directory is per
 # device, so one card can move between H700s without mixing their settings.
@@ -55,7 +58,7 @@ WPA_CONF=$TORTOS_USERDATA/wpa_supplicant.conf
 if [ -x /usr/bin/timedatectl ]; then
 	if [ "$WIFI" = 1 ]; then timedatectl set-ntp true; else timedatectl set-ntp false; fi > /dev/null 2>&1 &
 fi
-if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
+if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ] && [ -z "$PLORPOS_RESTART" ]; then
 	(
 		i=0
 		while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 25 ]; do sleep 1; i=$((i + 1)); done
@@ -72,7 +75,7 @@ fi
 # Bluetooth as the player left it, off unless asked for (battery), in the
 # background: the attach and bluetoothd take seconds. radio.sh says the rest.
 [ -f "$DIR/radio.sh" ] && . "$DIR/radio.sh"
-[ "$BLUETOOTH" = 1 ] && bt_on > /dev/null 2>&1 &
+[ "$BLUETOOTH" = 1 ] && [ -z "$PLORPOS_RESTART" ] && bt_on > /dev/null 2>&1 &
 
 # USB DACs on the RG35XX H and RG35XX SP (plorpos-2wl.15): their stock kernels
 # have no USB audio; the RG SP's has it built in (so /sys/module has it). The
@@ -101,7 +104,22 @@ start_resident() {
 		--save "$SD/Saves" --system "$SD/Bios" 2>&1 &   # into the loop's logf, below
 }
 
-rm -f /tmp/tortos_poweroff
+# Restart to install (plorpos-koo) restarts plorpOS, not the device: BaseOS's
+# reboot can wedge the RG35XX SP, even with the USB audio modules out
+# (plorpos-koo.7, 2wl.18). What runs from plorpOS/ stops, then this script
+# starts again from the top, which installs the update. Wi-Fi, Bluetooth and
+# the modules are the system's and stay up (PLORPOS_RESTART).
+restart_plorpos() {
+	sh "$DIR/syncthing.sh" stop
+	sh "$DIR/tailscale.sh" stop
+	killall muse btplayer diatom 2> /dev/null
+	sleep 1
+	rm -f /tmp/tortos_reboot
+	sync
+	export PLORPOS_RESTART=1
+	exec /bin/sh "$SD/System/launch_frontend.sh"
+}
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 cd "$DIR" || { echo "no $DIR" >> "$LOG"; while :; do sleep 3600; done; }
 FAILS=0
 # One PCM per bonded headset, BEFORE the first start_resident: alsa-lib reads
@@ -119,9 +137,13 @@ while :; do
 		sync
 		exec poweroff        # BaseOS's: the PMIC's own power-off
 	fi
+	[ -f /tmp/tortos_reboot ] && restart_plorpos
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		[ $FAILS -ge 5 ] && sh "$DIR/ota.sh" rollback "$SD" && restart_plorpos
 		if [ $FAILS -ge 5 ]; then
 			echo "launcher failed $FAILS times in a row; idling (see above)"
 			killall diatom 2> /dev/null

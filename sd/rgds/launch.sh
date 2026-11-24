@@ -27,6 +27,9 @@ fi
 
 CARD=/storage/games-external
 DIR=$CARD/plorpOS
+# Check for update's download goes in before anything in plorpOS/ starts, and
+# this script starts again as the update has it (plorpos-koo, ota.sh).
+[ -f "$CARD/.ota/ready" ] && sh "$DIR/ota.sh" apply "$CARD" && exec /bin/sh "$0" "$@"
 LOGS=$CARD/.userdata/rgds/logs
 mkdir -p "$LOGS" "$CARD/Saves" "$CARD/Bios"
 # Ten boots kept, newest first, as on the Brick (sd/tortos/launch.sh), so
@@ -82,7 +85,7 @@ swaymsg output DSI-1 power off >> "$LOG" 2>&1 &
 # adb, when System Settings > USB Debugging left its marker (plorpos-rgds.11).
 [ -f "$CARD/.userdata/rgds/adb" ] && /bin/sh "$DIR/rgds/adb/adb.sh" start >> "$LOG" 2>&1 &
 
-rm -f /tmp/tortos_poweroff
+rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 cd "$DIR"
 FAILS=0
 while : ; do
@@ -97,11 +100,21 @@ while : ; do
 		sync
 		exec systemctl poweroff
 	fi
+	if [ -f /tmp/tortos_reboot ]; then   # an installed update (plorpos-koo)
+		sync
+		exec systemctl reboot
+	fi
 	END=$(cut -d. -f1 /proc/uptime)
 	# A launcher that dies immediately, five times running, is not going to
 	# start on the sixth: hand the device to ES until the next boot.
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
+		# An update that never got as far as its first frame, five times: back to
+		# the version before it, and a restart into that (plorpos-koo).
+		if [ $FAILS -ge 5 ] && sh "$DIR/ota.sh" rollback "$CARD" >> "$LOG" 2>&1; then
+			sync
+			exec systemctl reboot
+		fi
 		# The plorpOS card image strips EmulationStation (mk/rgds-image.sh):
 		# with nothing to hand over to, keep trying, slower (plorpos-rgds.6).
 		if [ $FAILS -ge 5 ] && [ ! -x /usr/bin/emulationstation ]; then
