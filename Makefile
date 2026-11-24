@@ -869,8 +869,8 @@ check-backlog:
 payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
-# payload.sh names the zip: out/plorpOS-brick-v$(VERSION).zip for the Brick,
-# out/plorpOS-gkd-v$(VERSION).zip for PLATFORM=gkd.
+# payload.sh names the zip: out/plorpOS-v$(VERSION)-brick.zip for the Brick,
+# out/plorpOS-v$(VERSION)-gkd.zip for PLATFORM=gkd (docs/building.md, "Releases").
 release: payload
 
 # Copy the assembled payload onto a mounted FAT32 card. CARD must be set.

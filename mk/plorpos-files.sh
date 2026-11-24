@@ -29,6 +29,15 @@ plorpos_syncthing() {
 	chmod +x "$1/syncthing.sh" "$1/syncthing"
 }
 
+# unzip, where the system has none (the Brick and Rotate; plorpos-koo): the
+# update check unpacks the release zip with it. mk/build-unzip.sh.
+plorpos_unzip() {
+	_uz=$ROOT/build/unzip-aarch64
+	[ -f "$_uz/unzip" ] || { echo "no $_uz/unzip; run mk/build-unzip.sh" >&2; return 1; }
+	cp "$_uz/unzip" "$_uz/LICENSE-busybox.txt" "$1/"
+	chmod +x "$1/unzip"
+}
+
 plorpos_files() {
 	_p=$1 _dirs=$2 _extra=${3:-}
 	mkdir -p "$_p/cards" "$_p/cores" "$_p/res/web" "$_p/shaders"

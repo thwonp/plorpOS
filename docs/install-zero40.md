@@ -25,7 +25,7 @@ new card once in the Zero 40. That first boot adds a FAT32 partition called
 
 ## 2. Copy plorpOS onto a card
 
-Unzip `plorpOS-zero40-v<version>.zip` onto either card:
+Unzip `plorpOS-v<version>-zero40.zip` onto either card:
 
 - **The first card's `SPRUCEOS` partition**, for one card that does
   everything. A computer sees it as an ordinary drive.

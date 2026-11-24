@@ -12,7 +12,7 @@
 #   mk/miyoo-deploy.sh package  a release zip of what `all` stages, plus the boot hook,
 #                               a Roms/ skeleton, the cores, MD5SUMS and the install
 #                               page, all from this tree and its build outputs (never
-#                               from a card). Writes OUT/plorpOS-flip-v<VERSION>.zip.
+#                               from a card). Writes OUT/plorpOS-v<VERSION>-miyoominiflip.zip.
 #   mk/miyoo-deploy.sh verify   unzip that zip into an empty folder and check it
 #
 # MIYOO=root@<ip> (default the dev unit). FLIP_CORES = the from-source cores
@@ -39,7 +39,7 @@ cfg_cores() { # systems.cfg -> the cores it names
 	awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' "$1" | sort -u
 }
 if [ "$MODE" = verify ]; then
-	Z=$OUT/plorpOS-flip-v$VER.zip
+	Z=$OUT/plorpOS-v$VER-miyoominiflip.zip
 	exec sh "$ROOT/mk/flip-verify.sh" "$Z" "$ROOT/mk/flip-cores/cores.lock" "$DRIVER_MD5"
 fi
 for f in tortos.elf muse musectl flip-pico8.so; do
@@ -142,7 +142,7 @@ stage_package() {
 	mkdir -p "$R/Bios" "$R/Saves"
 	cp "$ROOT/docs/install-flip.md" "$R/INSTALL-FLIP.md"
 	( cd "$R" && find . -type f ! -name MD5SUMS | sort | xargs md5sum > MD5SUMS )
-	mkdir -p "$OUT"; Z=$OUT/plorpOS-flip-v$VER.zip; rm -f "$Z"
+	mkdir -p "$OUT"; Z=$OUT/plorpOS-v$VER-miyoominiflip.zip; rm -f "$Z"
 	( cd "$R" && zip -qr "$Z" . -x '.DS_Store' '._*' )
 	echo "package: $Z ($(du -h "$Z" | cut -f1), $(wc -l < "$R/MD5SUMS") files)"
 }

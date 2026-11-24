@@ -42,10 +42,10 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 
 | Device | Sysroot | Extra prerequisites | Build and package |
 |---|---|---|---|
-| TrimUI Brick / Brick Pro | `mk/fetch-sysroot.sh` (adb) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-brick.sh` | `make && make payload` -> `out/sd/`, `out/plorpOS-brick-v<VER>.zip` |
+| TrimUI Brick / Brick Pro | `mk/fetch-sysroot.sh` (adb) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-brick.sh`, `mk/build-unzip.sh` | `make && make payload` -> `out/sd/`, `out/plorpOS-v<VER>-brick.zip` |
 | GKD 350H Ultra | `mk/fetch-gkd-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`) | `make PLATFORM=gkd && make PLATFORM=gkd payload` -> `out/gkd/`, zip |
 | Anbernic H700 (BaseOS) | `mk/fetch-h700-sysroot.sh` (~10 min) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-h700.sh`, `mk/build-sdl2-armhf.sh` | `make PLATFORM=h700 && make PLATFORM=h700 payload` -> `out/h700/`, zip |
-| RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`); image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `ROTATE_STAGE=out/rotate mk/rotate-deploy.sh stage` (update folder) and `mk/rotate-image.sh` (card image) |
+| RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`), `mk/build-unzip.sh`; image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `mk/rotate-deploy.sh package` (update zip) and `mk/rotate-image.sh` (card image) |
 | Miyoo Mini Flip | `mk/fetch-miyoo-sysroot.sh` | `docker build -t miyoo-toolchain -f mk/miyoo-toolchain.Dockerfile mk`; cores: `sh mk/flip-cores/build-all.sh` | `make PLATFORM=miyoo`, then `mk/miyoo-deploy.sh package` and `verify` |
 | MagicX Zero 40 (oakMOSS) | the Brick's, `mk/fetch-sysroot.sh`; and the H700's (`mk/fetch-h700-sysroot.sh`) for Muse+'s FFmpeg | `mk/build-dsperate-brick.sh`, `mk/build-dropbear-zero40.sh`; diatom `make PORT=zero40` | `make PLATFORM=zero40 && make PLATFORM=zero40 payload` -> `out/zero40/`, zip |
 | RG Nano | `mk/fetch-nano-sdk.sh` | none | `make nano-zip` (update zip), `make nano-kernel && make nano-image` (card image) |
@@ -60,7 +60,7 @@ Notes:
   `READ_DEVICE=1` refreshes it from a Rotate over ssh.
 - **Flip:** cores are built from pinned source, see
   [mk/flip-cores/README.md](../mk/flip-cores/README.md). `package` writes
-  `plorpOS-flip-v<VER>.zip` to `OUT` and also needs `FLIP_CURL`
+  `plorpOS-v<VER>-miyoominiflip.zip` to `OUT` and also needs `FLIP_CURL`
   (`mk/flip-cores/build-curl.sh`) and `FLIP_INPUTS` (the pinned Wi-Fi driver);
   the defaults point outside the repo.
 - **Nano:** a different stack (nanoshelf + PicoArch on FunKey-OS); see
@@ -70,6 +70,25 @@ Notes:
   `ALLOW_NO_SS=1` packages anyway.
 - `make install-card CARD=<mount>` copies the Brick payload to a mounted card,
   adding files only.
+
+## Releases
+
+The update check on the devices (Network Services > Check for update) finds
+releases by these rules, so every release follows them:
+
+- Tag `plorpos-v<VER>`, `<VER>` being the Makefile's `VERSION` the release was
+  built with (`1.10`, `1.10.1`). A release candidate is marked **pre-release**
+  on GitHub; the devices skip pre-releases and drafts.
+- One zip per port, named `plorpOS-v<VER>-<port>.zip`, exactly as the
+  packagers above write it: `brick`, `gkd`, `h700`, `rgds`, `zero40`,
+  `rotate-update` and `miyoominiflip`. A device takes the newest release that
+  has its own port's zip, so a release for some ports only is fine.
+- A `SHA256SUMS` beside them, covering every asset:
+  `cd out && sha256sum plorpOS-v<VER>-*.zip > SHA256SUMS`.
+- A port that needs a new card image for this release (a new kernel, say)
+  gets no zip in it, so no device updates to it over Wi-Fi.
+- Other downloads keep names outside that pattern: `plorpOS-v<VER>-rotate.img.xz`,
+  `plorpOS-miyoominiflip-fast-boot.zip`.
 
 ## Checks
 

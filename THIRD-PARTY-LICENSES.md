@@ -307,7 +307,7 @@ GPL core is that tarball plus the patches named there), by
 | `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
 | `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
 
-## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40, Tailscale and Syncthing on every Wi-Fi device but the Flip)
+## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40, Tailscale and Syncthing on every Wi-Fi device but the Flip, unzip on the Brick and Rotate)
 
 - `plorpOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
@@ -328,6 +328,11 @@ GPL core is that tarball plus the patches named there), by
   release's source tarball, pinned by sha256 in `mk/build-syncthing.sh`. Source:
   https://github.com/syncthing/syncthing/releases/tag/v2.1.7. Its licence and the licences of the Go
   modules linked into it are in `LICENSE-syncthing.md`. Off until switched on in Network Services.
+- `plorpOS/unzip` (TrimUI Brick, Brick Pro and RG Rotate, whose systems have none) - **BusyBox 1.37.0**
+  (GPL-2.0, Erik Andersen, Rob Landley, Denys Vlasenko and others), its unzip applet alone, built
+  unmodified and statically from the release tarball, pinned by sha256 in `mk/build-unzip.sh` (which
+  holds the configuration). Source: https://busybox.net/downloads/busybox-1.37.0.tar.bz2. Its licence
+  is in `LICENSE-busybox.txt`. It unpacks the release zip for Check for update.
 
 ## Wi-Fi driver (Miyoo Mini Flip only)
 
