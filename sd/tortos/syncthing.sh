@@ -25,6 +25,12 @@ PID=/tmp/syncthing.pid
 UNIT=plorpos-syncthing
 ST=$D/syncthing
 
+# One at a time: the launcher does not wait for this script, which would hold
+# the menu up, so a quick on and off could otherwise run a start and a stop
+# together. Nothing that outlives the script keeps the lock (9>&-).
+exec 9> /tmp/syncthing.lock
+flock 9
+
 running() {
 	if command -v systemd-run > /dev/null; then
 		systemctl -q is-active "$UNIT"
@@ -51,11 +57,11 @@ start)
 	if command -v systemd-run > /dev/null; then
 		systemctl reset-failed "$UNIT" 2> /dev/null
 		systemd-run -q --unit="$UNIT" --property=Restart=on-failure --setenv=HOME="$HOME" \
-			--setenv=SSL_CERT_FILE="$SSL_CERT_FILE" -- "$ST" "$@" > /dev/null 2>&1
+			--setenv=SSL_CERT_FILE="$SSL_CERT_FILE" -- "$ST" "$@" > /dev/null 2>&1 9>&-
 	elif command -v start-stop-daemon > /dev/null; then
-		start-stop-daemon -S -b -m -p "$PID" -x "$ST" -- "$@" > /dev/null 2>&1
+		start-stop-daemon -S -b -m -p "$PID" -x "$ST" -- "$@" > /dev/null 2>&1 9>&-
 	else
-		"$ST" "$@" > /dev/null 2>&1 < /dev/null &
+		"$ST" "$@" > /dev/null 2>&1 < /dev/null 9>&- &
 		echo $! > "$PID"
 	fi
 	# Saves, once: it goes through the running instance, which takes some
@@ -67,7 +73,7 @@ start)
 		echo "$L" | grep -qx plorpos-saves ||
 			$C add --id plorpos-saves --label Saves --path "$SAVES" \
 				--ignore-perms --raw-mod-time-windows 2 > /dev/null 2>&1
-	) > /dev/null 2>&1 < /dev/null &
+	) > /dev/null 2>&1 < /dev/null 9>&- &
 	;;
 stop)
 	if command -v systemd-run > /dev/null; then
