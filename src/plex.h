@@ -138,11 +138,9 @@ bool plex_stream_failed(const char *rel);
  * before it can play it. Cheap to call every frame. */
 void plex_prefetch(const char *playing, const char *const *next, int n);
 /* How many tracks plex_prefetch is handed (1, 3, 5 or 10; plorpos-1lw.22),
- * and whether this device fetches first at all (else it streams, and the
- * setting does nothing). */
+ * on every port: a streaming one caches them too (plorpos-vgr.12). */
 int  plex_ahead(void);
 void plex_set_ahead(int n);
-bool plex_fetches_first(void);
 /* Every frame Muse is polled: what plays, for Plex's timeline. */
 void plex_tick(const char *rel, int state, double at, double len);
 

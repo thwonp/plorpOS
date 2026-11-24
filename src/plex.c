@@ -1135,7 +1135,6 @@ bool plex_stream_failed(const char *rel) { return msrv_stream_failed(P, rel); }
 void plex_prefetch(const char *playing, const char *const *next, int n) { msrv_prefetch(P, playing, next, n); }
 int  plex_ahead(void)                    { return msrv_ahead(P); }
 void plex_set_ahead(int n)               { msrv_set_ahead(P, n); }
-bool plex_fetches_first(void)            { return msrv_fetches_first(); }
 void plex_tick(const char *rel, int state, double at, double len) { msrv_tick(P, rel, state, at, len); }
 int  plex_album_downloaded(int al)       { return msrv_album_downloaded(P, al); }
 void plex_albums_local(unsigned char *out, int n) { msrv_albums_local(P, out, n); }

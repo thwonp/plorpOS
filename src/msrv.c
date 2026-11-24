@@ -41,7 +41,8 @@
 #define STREAM_HTTP 1
 #define STREAM_TLS  1
 #endif
-/* Fetched first: what stays on the card, and how far ahead (plorpos-1lw.22). */
+/* Fetched first or ahead: what stays on the card, and how far ahead
+ * (plorpos-1lw.22, plorpos-vgr.12). */
 #define CACHE_MB    100        /* the cache's budget; the oldest go first */
 #define AHEAD_MAX   MSRV_AHEAD_MAX
 #define CACHE_Q     16         /* wishes waiting: the one now and those ahead */
@@ -902,7 +903,7 @@ static bool download_one(msrv *m, int key, char reason)
 	return false;
 }
 
-/* ---- fetched first: a device whose FFmpeg cannot open the stream ---------------- */
+/* ---- the cache: fetched first where FFmpeg cannot open the stream, ahead everywhere - */
 
 static bool need_fetch(const char *base)
 {
@@ -940,11 +941,13 @@ static void cache_trim(msrv *m)
 	if (!(dd = opendir(d))) return;
 	while ((e = readdir(dd)) && n < 96) {
 		struct stat st;
+		size_t len = strlen(e->d_name);
 
-		if (e->d_name[0] == '.' || strstr(e->d_name, ".part")) continue;
+		/* <key>.<ext> only: a name too long to keep is no track of ours */
+		if (e->d_name[0] == '.' || strstr(e->d_name, ".part") || len >= sizeof f[n].name) continue;
 		snprintf(p, sizeof p, "%s/%s", d, e->d_name);
 		if (stat(p, &st) != 0) continue;
-		snprintf(f[n].name, sizeof f[n].name, "%s", e->d_name);
+		memcpy(f[n].name, e->d_name, len + 1);
 		f[n].m = st.st_mtime;
 		f[n].sz = st.st_size;
 		total += f[n++].sz;
@@ -1343,15 +1346,18 @@ bool msrv_resolve(msrv *m, const char *rel, musec_remote *out)
 		UNLOCK();
 		return true;
 	}
+	/* A pre-fetched copy plays before any stream, on every port: a streaming
+	 * one caches what comes next too, so it starts without Loading
+	 * (plorpos-vgr.12). */
+	if (cache_file(m, &t, out->url, sizeof out->url)) { UNLOCK(); return true; }
 	m->o->base_now(base, sizeof base);
 	if (!base[0]) {
 		/* No connection known (a fresh start, or the last one stopped
 		 * answering): one is found off this thread, the queue's, and the
 		 * player asks again on each poll (plorpos-1lw.19). A track fetched
-		 * first plays meanwhile. */
+		 * first played above. */
 		bool ask = !m->picking && (!m->pick_failed || now_ms() - m->pick_failed > 10000);
 
-		if (cache_file(m, &t, out->url, sizeof out->url)) { UNLOCK(); return true; }
 		if (ask) m->picking = true;
 		UNLOCK();
 		if (ask) { msrv_job *j = msrv_job_new(J_PICK); if (j) msrv_push(m, j, true); else m->picking = false; }
@@ -1359,10 +1365,8 @@ bool msrv_resolve(msrv *m, const char *rel, musec_remote *out)
 		return true;
 	}
 	if (need_fetch(base)) {
-		if (!cache_file(m, &t, out->url, sizeof out->url)) {
-			cache_want(m, t.key, true);
-			out->wait = true;
-		}
+		cache_want(m, t.key, true);
+		out->wait = true;
 		UNLOCK();
 		return true;
 	}
@@ -1485,8 +1489,9 @@ void msrv_prefetch(msrv *m, const char *playing, const char *const *next, int n)
 	memcpy(m->keep, keys, sizeof keys[0] * (size_t)nk);
 	m->nkeep = nk;
 	m->o->base_now(base, sizeof base);
-	/* In order, as long as the guess at their size fits the budget. */
-	if (base[0] && need_fetch(base))
+	/* In order, as long as the guess at their size fits the budget - on a
+	 * streaming port too, while the playing track streams (plorpos-vgr.12). */
+	if (base[0])
 		for (i = 1; i < nk; i++) {
 			if (!keys[i] || (t = tab_find(&m->tab, keys[i])) < 0) continue;
 			if (local_copy(m, &m->tab.tr[t], f, sizeof f)) continue;
@@ -1500,7 +1505,6 @@ void msrv_prefetch(msrv *m, const char *playing, const char *const *next, int n)
 
 int  msrv_ahead(msrv *m) { return m->ahead >= 1 && m->ahead <= AHEAD_MAX ? m->ahead : 1; }
 void msrv_set_ahead(msrv *m, int n) { m->ahead = n; msrv_cfg_save(m); }
-bool msrv_fetches_first(void) { return !STREAM_HTTP || !STREAM_TLS; }
 
 int msrv_album_downloaded(msrv *m, int al)
 {

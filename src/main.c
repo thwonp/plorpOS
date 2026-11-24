@@ -12148,10 +12148,9 @@ static int srv_set_build(void *ctx, menu_row *rows, int max, const char **headin
 		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(msrv_stream_kbps(u->m)), true };
 		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(msrv_download_kbps(u->m)), true };
 	}
-	/* plorpos-1lw.22: only where a track is fetched before it plays. */
+	/* plorpos-1lw.22; streaming ports cache ahead too (plorpos-vgr.12). */
 	snprintf(u->ahead, sizeof u->ahead, "%d", msrv_ahead(u->m));
-	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", msrv_fetches_first() ? u->ahead : "streams",
-	                                msrv_fetches_first() };
+	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", u->ahead, true };
 	rows[PX_CHECK]    = (menu_row){ "Check for Updates",
 	                                SDL_GetTicks() < u->ok_until ? "Up to date" : NULL, ready && st != 1 && !off };
 	rows[PX_SYNC]     = (menu_row){ "Resync Library", u->sync[0] ? u->sync : NULL, ready && st != 1 && !off };

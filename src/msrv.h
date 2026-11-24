@@ -191,7 +191,6 @@ bool msrv_stream_failed(msrv *m, const char *rel);
 void msrv_prefetch(msrv *m, const char *playing, const char *const *next, int n);
 int  msrv_ahead(msrv *m);
 void msrv_set_ahead(msrv *m, int n);
-bool msrv_fetches_first(void);
 void msrv_tick(msrv *m, const char *rel, int state, double at, double len);
 
 int  msrv_album_downloaded(msrv *m, int al);
