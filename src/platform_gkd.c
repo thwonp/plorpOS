@@ -37,17 +37,27 @@
  * and libmali as on the GKD. PLATFORM_RGDS marks where its hardware differs -
  * the pad (InputPlumber's virtual one) and the top panel's backlight - and its
  * own userdata folder. */
-const char *P_ROOT = "/storage/games-external/plorpOS";
-const char *P_CARD = "/storage/games-external";
-const char *P_ROMS = "/storage/games-external/Roms";
-#ifdef PLATFORM_RGDS
-const char *P_USERDATA = "/storage/games-external/.userdata/rgds";
+/* And the GKD on the BasedOS fork (plorpos-gkd.94, PLATFORM=gkdb): the same
+ * device and kernel under another system - no sway, systemd or ConnMan.
+ * PLATFORM_BASEDOS marks where that shows here: the card's mount point, the
+ * sleep, and the window (to come). The folders under the card, userdata
+ * included, are the ROCKNIX build's, so a card moves over with its settings. */
+#if defined(PLATFORM_BASEDOS)
+#define CARD "/mnt/SDCARD"
 #else
-const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
+#define CARD "/storage/games-external"
 #endif
-const char *P_SHARED = "/storage/games-external/.userdata/shared";
-const char *P_WEB = "/storage/games-external/plorpOS/res/web";
-const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
+const char *P_ROOT = CARD "/plorpOS";
+const char *P_CARD = CARD;
+const char *P_ROMS = CARD "/Roms";
+#ifdef PLATFORM_RGDS
+const char *P_USERDATA = CARD "/.userdata/rgds";
+#else
+const char *P_USERDATA = CARD "/.userdata/gkd";
+#endif
+const char *P_SHARED = CARD "/.userdata/shared";
+const char *P_WEB = CARD "/plorpOS/res/web";
+const char *P_FONT = CARD "/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
@@ -56,15 +66,20 @@ const char *const plat_child_env[] = {
 #else
 	"PLATFORM=gkd350h", "DEVICE=gkd350h",
 #endif
-	"SDCARD_PATH=/storage/games-external",
-	"BIOS_PATH=/storage/games-external/Bios",
-	"CHEATS_PATH=/storage/games-external/Cheats",
-	"SAVES_PATH=/storage/games-external/Saves",
+	"SDCARD_PATH=" CARD,
+	"BIOS_PATH=" CARD "/Bios",
+	"CHEATS_PATH=" CARD "/Cheats",
+	"SAVES_PATH=" CARD "/Saves",
 	NULL
 };
 const char plat_child_libpath[] = "";
 const char *const plat_pico8_preload = NULL;
+#if defined(PLATFORM_BASEDOS)
+/* BusyBox's wget, as on the H700: the shim's folder first. (unverified) */
+const char *const plat_pico8_path = CARD "/plorpOS/pico8";
+#else
 const char *const plat_pico8_path = NULL;   /* ROCKNIX's wget is GNU, with TLS */
+#endif
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }
@@ -1860,6 +1875,31 @@ static bool button_lock;
 void plat_mute_switch_lock(bool lock) { button_lock = lock; }
 bool plat_hold_switch(void) { return button_lock; }
 
+#if defined(PLATFORM_BASEDOS)
+/* No systemd on the BasedOS fork and no hook to wait out: basedos-suspend
+ * writes "mem" itself and returns once the device is awake, the DAC's volume
+ * put back (the stock driver wakes the chip at full volume). The backlight is
+ * written again for the reason given below: the panel wakes at full
+ * brightness whatever the file says. (unverified on the device:
+ * plorpos-gkd.94.1) */
+bool plat_sleep_supported(void) { return true; }
+
+bool plat_sleep(void)
+{
+	extern char **environ;
+	char *argv[] = { "/usr/sbin/basedos-suspend", NULL };
+	pid_t pid;
+	int st = -1;
+
+	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) != 0) return false;
+	waitpid(pid, &st, 0);
+	apply_brightness(cur_bright);
+	fprintf(stderr, "sleep: basedos-suspend %s\n", st == 0 ? "woke" : "failed");
+	/* The press that woke it, which would otherwise read as a tap. */
+	drain(fd_power);
+	return st == 0;
+}
+#else
 /* Real suspend through systemd, so ROCKNIX's system-sleep hook runs - it
  * brings Wi-Fi back, among other things. By starting suspend.target, not
  * `systemctl suspend`: that returns before the device has even gone down
@@ -1979,6 +2019,7 @@ bool plat_sleep(void)
 	drain(fd_power);
 	return st == 0;
 }
+#endif /* PLATFORM_BASEDOS */
 
 bool plat_battery(int *pct, bool *charging)
 {

@@ -737,9 +737,9 @@ bool db_write_boot_env(void)
 	             db_get_int(g_dev, "bluetooth", 0) ? 1 : 0,
 	             strchr(tz, '\'') ? "UTC" : tz);
 	if (n < 0 || n >= (int)sizeof body) return false;
-#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40) || defined(PLATFORM_BASEDOS)
 	/* The Flip's and the Zero 40's ssh switch (plorpos-f1p.62.2, plorpos-auv):
-	 * launch.sh starts dropbear. */
+	 * launch.sh starts dropbear. And the GKD's on the BasedOS fork: sshd. */
 	{
 		int m = snprintf(body + n, sizeof body - (size_t)n, "SSH='%d'\n",
 		                 db_get_int(g_dev, "ssh", 0) ? 1 : 0);
@@ -747,9 +747,10 @@ bool db_write_boot_env(void)
 		n += m;
 	}
 #endif
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_ZERO40) || defined(PLATFORM_BASEDOS)
 	/* The zone's rule (plorpos-5tm.11): oakMOSS has no zone file for it, and
-	 * launch.sh starts Diatom, which would otherwise keep Shanghai's. */
+	 * launch.sh starts Diatom, which would otherwise keep Shanghai's. BasedOS
+	 * has no zone files at all (UTC). */
 	{
 		int z = clock_zone_find(tz);
 		int m = snprintf(body + n, sizeof body - (size_t)n, "TZRULE='%s'\n",

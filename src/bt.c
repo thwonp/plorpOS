@@ -24,7 +24,9 @@
 static const char *bonds(void)
 {
 	const char *b = getenv("TORTOS_BT_BONDS");
-#if defined(PLATFORM_GKD)
+#if defined(PLATFORM_BASEDOS)
+	return b && *b ? b : "/data/bluetooth";            /* the fork's basedos-bluetooth */
+#elif defined(PLATFORM_GKD)
 	return b && *b ? b : "/storage/.cache/bluetooth";   /* ROCKNIX's build */
 #elif defined(PLATFORM_ROTATE)
 	return b && *b ? b : "/var/lib/bluetooth";          /* Debian's */
@@ -335,7 +337,17 @@ static int btctl(char *out, size_t cap, int timeout_s, const char *a, const char
 static bool rocknix_bt(const char *verb)
 {
 	char out[512];
+#if defined(PLATFORM_BASEDOS)
+	/* The BasedOS fork's switch instead (plorpos-gkd.94): start attaches the
+	 * chip and starts bluetoothd, stop the reverse. launch_frontend.sh starts
+	 * it at boot from boot.env, and bonds live on /data: nothing to save. */
+	char *argv[] = { (char *)"/usr/sbin/basedos-bluetooth",
+	                 (char *)(strcmp(verb, "enable") ? "stop" : "start"), NULL };
+
+	if (!strcmp(verb, "save")) return true;
+#else
 	char *argv[] = { (char *)"/usr/bin/rocknix-bluetooth", (char *)verb, NULL };
+#endif
 	return run(argv, out, sizeof out, BT_ACT_S) == 0;
 }
 

@@ -12097,8 +12097,9 @@ static void scraping_screen(app *a)
  * The Brick's zone was already that key, New York unless chosen, and its
  * launch.sh points the system at it through boot.env. The GKD and the H700s
  * follow their own system's zone until one is chosen here: ROCKNIX has a zone
- * setting of its own, and a launcher default would quietly overrule it. */
-#if defined(PLATFORM_GKD) || defined(PLATFORM_H700)
+ * setting of its own, and a launcher default would quietly overrule it. The
+ * GKD on the BasedOS fork has no system zone, so it takes the Brick's. */
+#if (defined(PLATFORM_GKD) && !defined(PLATFORM_BASEDOS)) || defined(PLATFORM_H700)
 #define TZ_DEFAULT ""
 #else
 #define TZ_DEFAULT "America/New_York"
@@ -20594,6 +20595,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 {
 #if defined(PLATFORM_RGDS)	/* before GKD: the RG DS build defines both */
 	snprintf(out, n, "%s/rgds/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_BASEDOS)	/* before GKD, likewise */
+	snprintf(out, n, "%s/gkdb/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_GKD)
 	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_ROTATE)	/* before H700: the Rotate build defines both */

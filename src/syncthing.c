@@ -47,7 +47,7 @@ bool st_set(bool on)
  * own: a switch left on there becomes this one. */
 void st_boot(void)
 {
-#ifdef PLATFORM_GKD
+#if defined(PLATFORM_GKD) && !defined(PLATFORM_BASEDOS)
 	if (wifi_rocknix_syncthing_handover()) db_set_int(db_dev(), "syncthing", 1);
 #endif
 	if (st_on()) run_script(true);
