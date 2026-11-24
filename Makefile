@@ -316,7 +316,7 @@ build/miyoo/ss_creds.h: FORCE
 # The Miyoo Mini Flip (plorpos-f1p): 32-bit, glibc 2.28, so its own buster
 # image (mk/miyoo-toolchain.Dockerfile) and sysroot (mk/fetch-miyoo-sysroot.sh).
 MIYOO_IMAGE := miyoo-toolchain
-build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl: $(SRC_MIYOO) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) \
+build/miyoo/tortos.elf build/miyoo/muse build/miyoo/musectl &: $(SRC_MIYOO) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) \
 		$(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c build/miyoo/ss_creds.h
 	@docker image inspect $(MIYOO_IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: docker build -t $(MIYOO_IMAGE) -f mk/miyoo-toolchain.Dockerfile mk" >&2; exit 1; }
