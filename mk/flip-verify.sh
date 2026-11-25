@@ -35,8 +35,10 @@ done
 [ "$(md5sum < plorpOS/8188fu.ko | cut -c1-32)" = "$DRV" ] || fail "8188fu.ko is not the pinned driver"
 grep -qE '^[^#]*exec ' .tmp_update/updater && fail "the hook execs something"
 # $L is plorpOS/, or TortOS/ on a card the rename has not reached (plorpos-nzi).
+# The hook also reads .userdata/miyooflip/boot.env when it is there (the
+# saved brightness, plorpos-f1p.99): written by the launcher, never shipped.
 grep -E '^[^#]*(/mnt/SDCARD|\$ROOT|\$L)/[^ "]*' -o .tmp_update/updater | sed 's/^[^#]*\(\/mnt\/SDCARD\|\$ROOT\|\$L\)\//\1\//' | sort -u |
-	grep -vE '(plorpOS|\$L)/(launch\.sh|\.boot-idle|\.fallback-test)$|\.tmp_update(\.off)?$|^\$ROOT/(plorpOS|TortOS)$' > "$W.ref"
+	grep -vE '(plorpOS|\$L)/(launch\.sh|\.boot-idle|\.fallback-test)$|\.tmp_update(\.off)?$|^\$ROOT/(plorpOS|TortOS)$|^\$ROOT/\.userdata/miyooflip/boot\.env$' > "$W.ref"
 [ -s "$W.ref" ] && fail "the hook refers outside the zip: $(tr '\n' ' ' < "$W.ref")"
 rm -f "$W.ref"
 for b in plorpOS/bin/dropbearmulti plorpOS/ssh.sh plorpOS/launch.sh; do
