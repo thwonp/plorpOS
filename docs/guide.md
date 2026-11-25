@@ -618,6 +618,10 @@ second screen work as they do for the card's music.
 - **Pre-fetch Tracks** (in Plex Settings; 1, 3, 5 or 10) is how many of the
   next tracks Muse+ fetches while one plays, so they start at once with no
   loading. Fetched tracks share 100 MB on the card; the oldest go first.
+- **Away from home, with [Tailscale](#tailscale)**: put your server's tailnet
+  address (such as `100.10.0.0:32400`) in **Tailnet Server**, in Plex Settings.
+  Muse+ tries it first while Tailscale is connected. If you already typed a
+  Tailnet Server for another Source, the keyboard opens with that host.
 - **Plex Settings** has the server, the library, both qualities and Sign Out.
 
 Away from home, Muse+ reaches the server the way Plexamp does: its remote

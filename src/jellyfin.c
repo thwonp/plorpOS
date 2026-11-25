@@ -44,6 +44,7 @@ static msrv *P;
 
 static struct {
 	char server[256];                     /* "http://192.168.0.2:8096" */
+	char tailnet[256];                    /* the same server on the tailnet, or "" (plorpos-vgr.7) */
 	char server_id[64], server_name[128];
 	char device[48], token[128], user_id[64], user[128];
 	char view[64], library[128];          /* view "": all music libraries */
@@ -58,7 +59,7 @@ static void cfg_key(const char *k, const char *v)
 {
 #define K(name) else if (!strcmp(k, #name)) snprintf(C.name, sizeof C.name, "%s", v)
 	if (0) {}
-	K(server); K(server_id); K(server_name); K(device); K(token); K(user_id); K(user); K(view); K(library);
+	K(server); K(tailnet); K(server_id); K(server_name); K(device); K(token); K(user_id); K(user); K(view); K(library);
 #undef K
 }
 
@@ -81,8 +82,8 @@ static void cfg_loaded(msrv *m)
 
 static void cfg_write(FILE *f)
 {
-	fprintf(f, "server=%s\nserver_id=%s\nserver_name=%s\ndevice=%s\ntoken=%s\nuser_id=%s\nuser=%s\nview=%s\nlibrary=%s\n",
-	        C.server, C.server_id, C.server_name, C.device, C.token, C.user_id, C.user, C.view, C.library);
+	fprintf(f, "server=%s\ntailnet=%s\nserver_id=%s\nserver_name=%s\ndevice=%s\ntoken=%s\nuser_id=%s\nuser=%s\nview=%s\nlibrary=%s\n",
+	        C.server, C.tailnet, C.server_id, C.server_name, C.device, C.token, C.user_id, C.user, C.view, C.library);
 }
 
 #define cfg_save() msrv_cfg_save(P)
@@ -165,27 +166,36 @@ static pthread_mutex_t g_pick_mu = PTHREAD_MUTEX_INITIALIZER;
 
 static bool pick_base(msrv *m, char *out, size_t n)
 {
-	char at[256], id[64], *b = NULL;
-	size_t len;
-	bool ok = false;
+	char at[2][256], id[64];
+	int i, na = 0;
+	bool ok = false, ts = ts_connected();   /* asked before the locks: it may wait on the daemon */
 
 	(void)m;
 	pthread_mutex_lock(&g_pick_mu);
 	LOCK();
 	snprintf(out, n, "%s", g_base);
-	snprintf(at, sizeof at, "%s", C.server);
+	/* Tailnet Server first while Tailscale is connected, as Audiobookshelf's
+	 * (plorpos-vgr.7); off the tailnet it is asked only when it is the one
+	 * address there is. */
+	if (C.tailnet[0] && (ts || !C.server[0])) snprintf(at[na++], sizeof at[0], "%s", C.tailnet);
+	if (C.server[0]) snprintf(at[na++], sizeof at[0], "%s", C.server);
 	UNLOCK();
 	if (out[0]) ok = true;
-	else if (at[0] && req_at(at, "GET", "/System/Info/Public", NULL, &b, &len, 3, 6) == 200 && b) {
-		jstr(js_root(b, len), "Id", id, sizeof id);
-		if (!strcmp(id, C.server_id)) {
-			LOCK(); snprintf(g_base, sizeof g_base, "%s", at); UNLOCK();
-			snprintf(out, n, "%s", at);
-			fprintf(stderr, "jellyfin: server %s at %s\n", C.server_name, at);
-			ok = true;
-		} else fprintf(stderr, "jellyfin: %s is another server now\n", at);
+	for (i = 0; !ok && i < na; i++) {
+		char *b = NULL;
+		size_t len;
+
+		if (req_at(at[i], "GET", "/System/Info/Public", NULL, &b, &len, 3, 6) == 200 && b) {
+			jstr(js_root(b, len), "Id", id, sizeof id);
+			if (!strcmp(id, C.server_id)) {
+				LOCK(); snprintf(g_base, sizeof g_base, "%.255s", at[i]); UNLOCK();
+				snprintf(out, n, "%s", at[i]);
+				fprintf(stderr, "jellyfin: server %s at %s\n", C.server_name, at[i]);
+				ok = true;
+			} else fprintf(stderr, "jellyfin: %s is another server now\n", at[i]);
+		}
+		free(b);
 	}
-	free(b);
 	if (!ok) fprintf(stderr, "jellyfin: %s did not answer\n", C.server_name);
 	pthread_mutex_unlock(&g_pick_mu);
 	return ok;
@@ -246,7 +256,7 @@ static bool id_of_key(int key, char *out, size_t n)
 
 /* ---- the address, signing in, the library ---------------------------------------- */
 
-enum { J_ADDR = MSRV_J_BACKEND, J_QC, J_QCPOLL, J_LOGIN, J_VIEWS, J_LOGOUT };
+enum { J_ADDR = MSRV_J_BACKEND, J_QC, J_QCPOLL, J_LOGIN, J_VIEWS, J_LOGOUT, J_TADDR };
 
 static volatile int g_auth;                /* 0 idle, 1 waiting, 2 done, -1 failed */
 static char g_why[96];
@@ -291,7 +301,7 @@ static void do_addr(msrv_job *j)
 	if (!id[0] || (prod[0] && !strstr(prod, "Jellyfin"))) { fail(&g_auth, "Not a Jellyfin server"); return; }
 	LOCK();
 	if (strcmp(C.server_id, id)) {             /* another server: signed out of the old one */
-		C.token[0] = C.user_id[0] = C.user[0] = C.view[0] = C.library[0] = '\0';
+		C.token[0] = C.user_id[0] = C.user[0] = C.view[0] = C.library[0] = C.tailnet[0] = '\0';
 	}
 	snprintf(C.server, sizeof C.server, "%.255s", j->a);
 	snprintf(C.server_id, sizeof C.server_id, "%s", id);
@@ -434,10 +444,39 @@ static void do_logout(msrv_job *j)
 	memset(j->b, 0, sizeof j->b);
 }
 
+/* Tailnet Server (plorpos-vgr.7), as Audiobookshelf's: the same server's
+ * address on the tailnet, an empty one clears it. Only this server's is
+ * taken; no answer is saved anyway - typed with Tailscale off - and says so. */
+static void do_taddr(msrv_job *j)
+{
+	char *b = NULL, id[64] = "";
+	const char *why = "";
+	size_t len;
+	int code;
+
+	if (j->a[0]) {
+		code = req_at(j->a, "GET", "/System/Info/Public", NULL, &b, &len, 5, 10);
+		if (code == 200 && b) jstr(js_root(b, len), "Id", id, sizeof id);
+		free(b);
+		if (code != 0 && (code != 200 || !id[0])) { fail(&g_auth, "Not a Jellyfin server"); return; }
+		if (code == 200 && strcmp(id, C.server_id)) { fail(&g_auth, "Not the same server"); return; }
+		if (code == 0) why = "Saved. No answer now";
+	}
+	LOCK();
+	if (!j->a[0] && !C.server[0]) { UNLOCK(); fail(&g_auth, "Keep one address"); return; }
+	snprintf(C.tailnet, sizeof C.tailnet, "%.255s", j->a);
+	snprintf(g_why, sizeof g_why, "%s", why);
+	g_base[0] = '\0';                        /* picked again, by the new addresses */
+	UNLOCK();
+	cfg_save();
+	g_auth = 2;
+}
+
 static void job(msrv *m, msrv_job *j)
 {
 	(void)m;
 	switch (j->kind) {
+	case J_TADDR:  do_taddr(j); break;
 	case J_ADDR:   do_addr(j); break;
 	case J_QC:     do_qc(); break;
 	case J_QCPOLL: do_qc_poll(); break;
@@ -953,6 +992,7 @@ msrv *jellyfin_src(void) { return P; }
 bool jellyfin_signed_in(void) { return signed_in(); }
 bool jellyfin_ready(void) { return ready(); }
 const char *jellyfin_server(void) { return C.server; }
+const char *jellyfin_tailnet(void) { return C.tailnet; }
 const char *jellyfin_server_name(void) { return C.server_name; }
 const char *jellyfin_account(void) { return C.user; }
 const char *jellyfin_library(void) { return C.library; }
@@ -993,6 +1033,14 @@ void jellyfin_address_set(const char *address)
 
 	addr_norm(address, a, sizeof a);
 	push_job(J_ADDR, a, NULL, &g_auth);
+}
+
+void jellyfin_tailnet_set(const char *address)
+{
+	char a[256] = "";
+
+	if (address[0]) addr_norm(address, a, sizeof a);
+	push_job(J_TADDR, a, NULL, &g_auth);
 }
 
 void jellyfin_login(const char *user, const char *password)

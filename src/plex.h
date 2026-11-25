@@ -67,6 +67,15 @@ void plex_servers_ask(void);
 int  plex_servers_poll(void);
 const char *plex_server_at(int i, bool *owned);
 void plex_server_pick(int i);
+/* Tailnet Server (plorpos-vgr.7): the chosen server's address on the tailnet,
+ * used first while Tailscale is connected. Set ("" clears), then poll: 0
+ * waiting, 1 saved, -1 refused - plex_tailnet_why() says why, or what to
+ * know of a saved one. */
+const char *plex_tailnet(void);
+int  plex_home_port(void);
+void plex_tailnet_set(const char *address);
+int  plex_tailnet_poll(void);
+const char *plex_tailnet_why(void);
 void plex_libraries_ask(void);
 int  plex_libraries_poll(void);
 const char *plex_library_at(int i);

@@ -11544,6 +11544,37 @@ static const char *abs_addr_shown(const char *addr)
 	return !addr[0] ? "none" : sch && !strncmp(addr, "http://", 7) ? sch + 3 : addr;
 }
 
+/* The host of the Tailnet Server typed last, in any Source (plorpos-lmh.3,
+ * owner's option B): one box often runs every service, so a Source with no
+ * Tailnet Server yet opens its keyboard on that host and its own port. Only
+ * a first guess - nothing is saved until it is accepted and checked. */
+#define TAILNET_HOST_KEY "muse.tailnet_host"
+
+static void tailnet_host_note(const char *addr)
+{
+	const char *sch = strstr(addr, "://"), *h = sch ? sch + 3 : addr;
+	size_t n = h[0] == '[' ? strcspn(h, "]") + 1 : strcspn(h, ":/");
+	char host[200];
+
+	if (!n || n >= sizeof host) return;
+	memcpy(host, h, n);
+	host[n] = '\0';
+	db_set_str(db_dev(), TAILNET_HOST_KEY, host);
+}
+
+/* `home`: the Source's address off the tailnet, whose port the guess takes
+ * ("" or none in it: `port`, the service's own). */
+static void tailnet_prefill(char *out, size_t n, const char *home, int port)
+{
+	const char *sch = strstr(home, "://"), *h = sch ? sch + 3 : home, *c = strrchr(h, ':');
+	char host[200];
+
+	out[0] = '\0';
+	if (!db_get_str(db_dev(), TAILNET_HOST_KEY, host, sizeof host, "") || !host[0]) return;
+	if (c && atoi(c + 1) > 0) port = atoi(c + 1);
+	snprintf(out, n, "%s:%d", host, port);
+}
+
 /* Server or Tailnet Server, once signed in (plorpos-dpy): the account's token
  * is tried there, and an empty one clears it. */
 static void abs_addr_edit(app *a, bool tailnet)
@@ -11553,7 +11584,8 @@ static void abs_addr_edit(app *a, bool tailnet)
 	kb_result kr;
 	int r;
 
-	snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : cur);
+	if (tailnet && !cur[0]) tailnet_prefill(addr, sizeof addr, abs_server(), 13378);
+	else snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : cur);
 	kr = kb_prompt_hint(a->r, &a->in, tailnet ? "Tailnet Server Address" : "Server Address",
 	                    tailnet ? "e.g. 100.10.0.0:13378" : "e.g. 192.168.1.2:13378",
 	                    addr, (int)sizeof addr, MUSE_ACCENT, abs_kb_backdrop, power_due_ctx, a);
@@ -11562,6 +11594,7 @@ static void abs_addr_edit(app *a, bool tailnet)
 	abs_addr_start(tailnet, addr);
 	r = src_wait(a, "Audiobookshelf", abs_msg_check, abs_poll_auth);
 	if (r == 0) return;
+	if (r > 0 && tailnet && addr[0]) tailnet_host_note(addr);
 	abs_auth_poll(why, sizeof why);
 	if (why[0]) plex_say(a, why);
 }
@@ -12137,7 +12170,8 @@ static void muse_dlq_screen(app *a)
 	         dlq_build, dlq_key, &u);
 }
 
-enum { PX_OFFLINE, PX_ACCOUNT, PX_SERVER, PX_LIBRARY, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
+/* Tailnet Server only where Tailscale is (plorpos-vgr.7). */
+enum { PX_OFFLINE, PX_ACCOUNT, PX_SERVER, PX_TAILNET, PX_LIBRARY = PX_TAILNET + TS_ROWS, PX_STREAM, PX_DOWNLOAD, PX_AHEAD, PX_CHECK, PX_SYNC,
        PX_FAVS, PX_SIGNOUT, PX_ROWS };   /* Download Queue: Muse's own menu now (ps8.8) */
 /* Keep Playlists Synced, per server Source. */
 static const char *const SRV_PLMIRROR_KEY[MSRC_COUNT] = {
@@ -12151,6 +12185,33 @@ typedef struct {
 	char head[40], sync[48], ahead[8];
 	Uint32 ok_until;
 } srv_set_ui;
+
+/* Tailnet Server (plorpos-vgr.7), as Audiobookshelf's: the same server's
+ * address on the tailnet, used first while Tailscale is connected. Only the
+ * chosen server's is taken; an empty one clears it. */
+static void srv_tailnet_edit(app *a, muse_src s)
+{
+	bool plex = s == MSRC_PLEX;
+	const char *cur = plex ? plex_tailnet() : jellyfin_tailnet(), *sch = strstr(cur, "://"), *why;
+	char addr[256];
+	kb_result kr;
+	int r;
+
+	if (cur[0]) snprintf(addr, sizeof addr, "%s", sch ? sch + 3 : cur);
+	else if (plex) tailnet_prefill(addr, sizeof addr, "", plex_home_port());
+	else tailnet_prefill(addr, sizeof addr, jellyfin_server(), 8096);
+	kr = kb_prompt_hint(a->r, &a->in, "Tailnet Server Address", plex ? "e.g. 100.10.0.0:32400" : "e.g. 100.10.0.0:8096",
+	                    addr, (int)sizeof addr, MUSE_ACCENT, abs_kb_backdrop, power_due_ctx, a);
+	if (kr == KB_POWER) { power_off(a); return; }
+	if (kr != KB_ACCEPT) return;
+	if (plex) plex_tailnet_set(addr);
+	else jellyfin_tailnet_set(addr);
+	r = src_wait(a, plex ? "Plex" : "Jellyfin", jf_msg_check, plex ? plex_tailnet_poll : jellyfin_auth_poll);
+	if (r == 0) return;
+	if (r > 0 && addr[0]) tailnet_host_note(addr);
+	why = plex ? plex_tailnet_why() : jellyfin_why();
+	if (why[0]) plex_say(a, why);
+}
 
 /* "<Plex> Settings": one screen for every server Source, its rows the same;
  * what differs is how Account, Server and the qualities are had. */
@@ -12181,6 +12242,10 @@ static int srv_set_build(void *ctx, menu_row *rows, int max, const char **headin
 		         plex && sv[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
 		rows[PX_SERVER] = (menu_row){ "Server", srv, in && !off };
 	}
+#if TS_ROWS
+	rows[PX_TAILNET]  = (menu_row){ "Tailnet Server", abs_addr_shown(plex ? plex_tailnet() : jellyfin_tailnet()),
+	                                in && sv[0] && !off };
+#endif
 	rows[PX_LIBRARY]  = (menu_row){ "Library", lib[0] ? lib : "Choose", in && sv[0] && !off };
 	/* A Plex transcode needs Plex Pass on the server: without one it is the
 	 * file as it is, and there is nothing to choose (plorpos-5eq.9). */
@@ -12248,6 +12313,7 @@ static menu_result srv_set_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 	if (key != IN_ACCEPT) return MENU_STAY;
+	if (TS_ROWS && sel == PX_TAILNET) { srv_tailnet_edit(a, u->s); return MENU_STAY; }
 	switch (sel) {
 	case PX_ACCOUNT:
 		srv_setup(a, u->s);

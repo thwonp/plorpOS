@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include "net.h"
+#include "tailscale.h"
 #include "rajson.h"
 
 #define PLEX_TV        "https://plex.tv/api/v2"
@@ -56,6 +57,7 @@ typedef struct { char uri[256]; bool local, relay; } conn;
 static struct {
 	char client[48], token[128], account[128];
 	char server[128], server_id[64];
+	char tailnet[256];                    /* the server's address on the tailnet, or "" (plorpos-vgr.7) */
 	conn conns[MAX_CONNS]; int nconns;
 	int  section; char library[128];
 } C;
@@ -70,6 +72,7 @@ static void cfg_key(const char *k, const char *v)
 	else if (!strcmp(k, "account"))   snprintf(C.account, sizeof C.account, "%s", v);
 	else if (!strcmp(k, "server"))    snprintf(C.server, sizeof C.server, "%s", v);
 	else if (!strcmp(k, "server_id")) snprintf(C.server_id, sizeof C.server_id, "%s", v);
+	else if (!strcmp(k, "tailnet"))   snprintf(C.tailnet, sizeof C.tailnet, "%s", v);
 	else if (!strcmp(k, "section"))   C.section = atoi(v);
 	else if (!strcmp(k, "library"))   snprintf(C.library, sizeof C.library, "%s", v);
 	else if (!strcmp(k, "conn") && C.nconns < MAX_CONNS) {
@@ -106,7 +109,7 @@ static void cfg_write(FILE *f)
 	        C.client, C.token, C.account, C.server, C.server_id);
 	for (i = 0; i < C.nconns; i++)
 		fprintf(f, "conn=%d %d %s\n", C.conns[i].local, C.conns[i].relay, C.conns[i].uri);
-	fprintf(f, "section=%d\nlibrary=%s\n", C.section, C.library);
+	fprintf(f, "section=%d\nlibrary=%s\ntailnet=%s\n", C.section, C.library, C.tailnet);
 }
 
 #define cfg_save() msrv_cfg_save(P)
@@ -236,15 +239,30 @@ static void server_caps(const char *uri)
 
 static bool try_conns(char *out, size_t n)
 {
-	char url[400];
+	char url[400], tn[256];
 	conn cs[MAX_CONNS];
 	int pass, i, nc, code;
-	bool lan = false;
+	bool lan = false, ts = ts_connected();   /* asked before the lock: it may wait on the daemon */
 
 	LOCK();
 	memcpy(cs, C.conns, sizeof cs);
 	nc = C.nconns;
+	snprintf(tn, sizeof tn, "%s", C.tailnet);
 	UNLOCK();
+	/* Tailnet Server first while Tailscale is connected, as Audiobookshelf's
+	 * (plorpos-vgr.7). */
+	if (ts && tn[0]) {
+		snprintf(url, sizeof url, "%s/identity", tn);
+		if (plex_req_c("GET", url, true, NULL, NULL, 3, 5) == 200) {
+			server_caps(tn);
+			LOCK();
+			snprintf(g_base, sizeof g_base, "%s", tn);
+			UNLOCK();
+			fprintf(stderr, "plex: server %s via its tailnet address\n", C.server);
+			snprintf(out, n, "%s", tn);
+			return true;
+		}
+	}
 	for (pass = 0; pass < 4; pass++)
 		for (i = 0; i < nc; i++) {
 			conn *c = &cs[i];
@@ -334,7 +352,7 @@ static int server_send(const char *method, const char *path, char **body, size_t
 
 /* ---- sign-in, servers, libraries --------------------------------------------------- */
 
-enum { J_PIN = MSRV_J_BACKEND, J_SERVERS, J_LIBS };
+enum { J_PIN = MSRV_J_BACKEND, J_SERVERS, J_LIBS, J_TADDR };
 
 /* Sign-in state. */
 static volatile int g_pin_state;          /* 0 idle, 1 waiting, 2 linked, -1 failed */
@@ -498,10 +516,49 @@ static void do_libs(void)
 	g_nlibs = n > 0 ? n : -1;
 }
 
+/* Tailnet Server (plorpos-vgr.7), as Audiobookshelf's: the chosen server's
+ * address on the tailnet, an empty one clears it. Only this server's is
+ * taken; no answer is saved anyway - typed with Tailscale off - and says so. */
+static volatile int g_tn_state;           /* 0 idle, 1 waiting, 2 done, -1 failed */
+static char g_tn_why[64];
+
+static void do_taddr(msrv_job *j)
+{
+	char url[400], id[64] = "", *b = NULL;
+	const char *why = "";
+	size_t len;
+	jsv mc;
+	int code;
+
+	if (j->a[0]) {
+		snprintf(url, sizeof url, "%.380s/identity", j->a);
+		code = plex_req_c("GET", url, true, &b, &len, 5, 10);
+		if (code == 200 && b && js_member(js_root(b, len), "MediaContainer", &mc))
+			jstr(mc, "machineIdentifier", id, sizeof id);
+		free(b);
+		if (code != 0 && (code != 200 || !id[0])) why = "Not a Plex server";
+		else if (code == 200 && strcmp(id, C.server_id)) why = "Not the same server";
+		if (why[0]) {
+			LOCK(); snprintf(g_tn_why, sizeof g_tn_why, "%s", why); UNLOCK();
+			g_tn_state = -1;
+			return;
+		}
+		if (code == 0) why = "Saved. No answer now";
+	}
+	LOCK();
+	snprintf(C.tailnet, sizeof C.tailnet, "%.255s", j->a);
+	snprintf(g_tn_why, sizeof g_tn_why, "%s", why);
+	g_base[0] = '\0';                        /* picked again, with or without it */
+	UNLOCK();
+	cfg_save();
+	g_tn_state = 2;
+}
+
 static void job(msrv *m, msrv_job *j)
 {
 	(void)m;
 	switch (j->kind) {
+	case J_TADDR:   do_taddr(j); break;
 	case J_PIN:     do_pin(j); break;
 	case J_SERVERS: do_servers(); break;
 	case J_LIBS:    do_libs(); break;
@@ -1066,7 +1123,7 @@ void plex_sign_out(void)
 {
 	msrv_download_cancel(P);
 	LOCK();
-	C.token[0] = C.account[0] = C.server[0] = C.server_id[0] = C.library[0] = '\0';
+	C.token[0] = C.account[0] = C.server[0] = C.server_id[0] = C.library[0] = C.tailnet[0] = '\0';
 	C.nconns = 0; C.section = 0; g_base[0] = '\0';
 	msrv_rel_root_set(P);
 	UNLOCK();
@@ -1122,6 +1179,7 @@ void plex_server_pick(int i)
 {
 	if (i < 0 || i >= g_nservers) return;
 	LOCK();
+	if (strcmp(C.server_id, g_servers[i].id)) C.tailnet[0] = '\0';   /* another server's */
 	snprintf(C.server, sizeof C.server, "%s", g_servers[i].name);
 	snprintf(C.server_id, sizeof C.server_id, "%s", g_servers[i].id);
 	memcpy(C.conns, g_servers[i].conns, sizeof C.conns);
@@ -1132,6 +1190,44 @@ void plex_server_pick(int i)
 	UNLOCK();
 	cfg_save();
 }
+
+const char *plex_tailnet(void) { return C.tailnet; }
+
+/* The port the server answers at on the LAN, for a tailnet address's first
+ * guess: its plain-http local connection's, else Plex's own. */
+int plex_home_port(void)
+{
+	int i, port = 32400;
+
+	LOCK();
+	for (i = 0; i < C.nconns; i++) {
+		const char *u = C.conns[i].uri, *c;
+
+		if (!C.conns[i].local || C.conns[i].relay || strncmp(u, "http:", 5)) continue;
+		if ((c = strrchr(u, ':')) && atoi(c + 1) > 0) port = atoi(c + 1);
+		break;
+	}
+	UNLOCK();
+	return port;
+}
+
+void plex_tailnet_set(const char *address)
+{
+	msrv_job *j = msrv_job_new(J_TADDR);
+	size_t n;
+
+	g_tn_state = 1;
+	LOCK(); g_tn_why[0] = '\0'; UNLOCK();
+	if (!j) { g_tn_state = -1; return; }
+	if (address[0]) {
+		snprintf(j->a, sizeof j->a, "%s%s", strstr(address, "://") ? "" : "http://", address);
+		for (n = strlen(j->a); n && (j->a[n - 1] == '/' || j->a[n - 1] == ' '); n--) j->a[n - 1] = '\0';
+	}
+	msrv_push(P, j, true);
+}
+
+int plex_tailnet_poll(void) { return g_tn_state == 2 ? 1 : g_tn_state < 0 ? -1 : 0; }
+const char *plex_tailnet_why(void) { return g_tn_why; }
 
 void plex_libraries_ask(void)
 {
