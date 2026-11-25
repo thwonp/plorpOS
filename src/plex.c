@@ -898,6 +898,9 @@ static int pl_list(msrv *m, msrv_spl *out, int max)
 			if (id) snprintf(out[n].id, sizeof out[n].id, "%ld", id);
 			else out[n].id[0] = '\0';
 			jstr(e, "title", out[n].title, sizeof out[n].title);
+			/* Plex's own list of rated tracks: Favorite Plex Tracks stands
+			 * in for it here (owner, plorpos-vgr.18). */
+			if (!strcmp(out[n].title, "\xe2\x9d\xa4\xef\xb8\x8f Tracks")) continue;
 			out[n].leaf = (int)jnum(e, "leafCount");
 			out[n].smart = js_member(e, "smart", &v) && js_is_true(v);
 			n++;
@@ -1036,7 +1039,7 @@ static int pl_edit(msrv *m, int op, const char *ids, const char *b, int key, int
 /* ---- the source -------------------------------------------------------------------- */
 
 static const msrv_ops OPS = {
-	.tag = "plex", .dir = "plex", .music = ML_PLEX, .pl_pre = "Plex ", .pl_tsv = ".plex.tsv",
+	.tag = "plex", .dir = "plex", .music = ML_PLEX, .pl_pre = "Plex ", .pl_tsv = ".plex.tsv", .favs = "Favorite Plex Tracks",
 	.cover_cb = cover_cb,
 	.cfg_reset = cfg_reset, .cfg_key = cfg_key, .cfg_loaded = cfg_loaded, .cfg_write = cfg_write,
 	.signed_in = signed_in, .ready = ready, .rel_id = rel_id, .library = library,

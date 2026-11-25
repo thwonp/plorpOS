@@ -28,7 +28,7 @@
 
 typedef struct msrv msrv;
 
-#define MSRV_FAVS      "Favorite Tracks"
+#define MSRV_FAVS_WAS  "Favorite Tracks"   /* its name before it took the server's (plorpos-vgr.17) */
 #define MSRV_AHEAD_MAX 10        /* the most tracks fetched ahead (the setting's top) */
 
 /* ---- the track table (the index as read back) ---- */
@@ -84,6 +84,7 @@ typedef struct {
 	const char *music;    /* downloads: <card>/Music/<music> */
 	const char *pl_pre;   /* a downloaded playlist's Local list: "<pl_pre><name>.m3u" */
 	const char *pl_tsv;   /* what is known of the playlists, beside them */
+	const char *favs;     /* the favorite tracks' playlist: "Favorite Plex Tracks" */
 	coverq_fetch_fn cover_cb;   /* calls msrv_cover_fetch on this source */
 
 	/* The config file (<dir>/config, 0600): the core reads and writes its own
@@ -229,6 +230,7 @@ bool msrv_favs_on(msrv *m);                              /* the backend has favo
 bool msrv_fav_album_is(msrv *m, const char *dir);       /* dir: an album folder of this source */
 bool msrv_fav_album_set(msrv *m, const char *dir, bool on);    /* false: not an album of its library */
 void msrv_favs_retry(msrv *m);                          /* each frame: a change waiting, sent */
+const char *msrv_favs_name(msrv *m);                    /* that playlist's name on this server */
 bool msrv_fav_apply(msrv *m);                           /* UI thread: Favorite Tracks in step; true if rewritten */
 int  msrv_pl_gen(msrv *m);
 void msrv_set_pl_mirror(msrv *m, bool on);

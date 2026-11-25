@@ -924,7 +924,7 @@ static int pl_edit(msrv *m, int op, const char *pid, const char *b, int key, int
 /* ---- the source -------------------------------------------------------------------- */
 
 static const msrv_ops OPS = {
-	.tag = "jellyfin", .dir = "jellyfin", .music = ML_JELLYFIN, .pl_pre = "Jellyfin ", .pl_tsv = ".jellyfin.tsv",
+	.tag = "jellyfin", .dir = "jellyfin", .music = ML_JELLYFIN, .pl_pre = "Jellyfin ", .pl_tsv = ".jellyfin.tsv", .favs = "Favorite Jellyfin Tracks",
 	.cover_cb = cover_cb,
 	.cfg_reset = cfg_reset, .cfg_key = cfg_key, .cfg_loaded = cfg_loaded, .cfg_write = cfg_write,
 	.signed_in = signed_in, .ready = ready, .rel_id = rel_id, .library = library,

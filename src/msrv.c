@@ -1942,7 +1942,8 @@ static void pl_file_write(msrv *m, const char *name, const int *keys, int n)
 
 static void pl_local_path(msrv *m, const char *name, char *out, size_t n)
 {
-	snprintf(out, n, "%s/" PL_DIR_REL "/%s%.95s.m3u", m->card, m->o->pl_pre, name);
+	/* The favorites' list has its server in its name already. */
+	snprintf(out, n, "%s/" PL_DIR_REL "/%s%.95s.m3u", m->card, strcmp(name, m->o->favs) ? m->o->pl_pre : "", name);
 }
 
 /* The Local source's list of a downloaded playlist: the copies there are. */
@@ -2123,7 +2124,7 @@ static void do_pls(msrv *m)
 		sv[ns].leaf = raw[i].leaf;
 		sv[ns].smart = raw[i].smart;
 		safe_name(raw[i].title, sv[ns].name, 90);
-		if (!sv[ns].id[0] || !sv[ns].name[0] || !strcmp(sv[ns].name, MSRV_FAVS)) continue;
+		if (!sv[ns].id[0] || !sv[ns].name[0] || !strcmp(sv[ns].name, m->o->favs)) continue;
 		if (sv[ns].leaf > PLS_TRACKS_MAX) {
 			fprintf(stderr, "%s: playlist %s left out (%d tracks)\n", m->o->tag, sv[ns].name, sv[ns].leaf);
 			continue;
@@ -2188,7 +2189,7 @@ static void do_pls(msrv *m)
 		char id[48];
 		bool known;
 
-		if (!strcmp(have[i].name, MSRV_FAVS)) continue;
+		if (!strcmp(have[i].name, m->o->favs)) continue;
 		LOCK(); pe = pls_find_locked(m, have[i].name); known = pe && pe->id[0]; UNLOCK();
 		if (known || !pl_create(m, have[i].name, id, sizeof id)) continue;
 		LOCK();
@@ -2278,14 +2279,14 @@ static void fav_change(msrv *m, int key, bool album, bool on);
 void msrv_pl_added(msrv *m, const char *name, const char *track)
 {
 	if (!rel_key(m, track)) return;
-	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_ADD, name, NULL, rel_key(m, track));
+	if (strcmp(name, m->o->favs)) pl_edit(m, MSRV_PLE_ADD, name, NULL, rel_key(m, track));
 	else fav_change(m, rel_key(m, track), false, true);
 }
 
 void msrv_pl_removed(msrv *m, const char *name, const char *track)
 {
 	if (!rel_key(m, track)) return;
-	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_DEL, name, NULL, rel_key(m, track));
+	if (strcmp(name, m->o->favs)) pl_edit(m, MSRV_PLE_DEL, name, NULL, rel_key(m, track));
 	else fav_change(m, rel_key(m, track), false, false);
 }
 
@@ -2293,19 +2294,19 @@ void msrv_pl_moved(msrv *m, const char *name, const char *track, const char *aft
 {
 	char ak[16];
 
-	if (!strcmp(name, MSRV_FAVS) || !rel_key(m, track)) return;
+	if (!strcmp(name, m->o->favs) || !rel_key(m, track)) return;
 	snprintf(ak, sizeof ak, "%d", rel_key(m, after));
 	pl_edit(m, MSRV_PLE_MOVE, name, ak, rel_key(m, track));
 }
 
 void msrv_pl_renamed(msrv *m, const char *from, const char *to)
 {
-	if (strcmp(from, MSRV_FAVS)) pl_edit(m, MSRV_PLE_RENAME, from, to, 0);
+	if (strcmp(from, m->o->favs)) pl_edit(m, MSRV_PLE_RENAME, from, to, 0);
 }
 
 void msrv_pl_deleted(msrv *m, const char *name)
 {
-	if (strcmp(name, MSRV_FAVS)) pl_edit(m, MSRV_PLE_DELETE, name, NULL, 0);
+	if (strcmp(name, m->o->favs)) pl_edit(m, MSRV_PLE_DELETE, name, NULL, 0);
 }
 
 /* ---- favorites both ways (plorpos-vgr.6) ------------------------------------------ */
@@ -2400,6 +2401,35 @@ static void fav_save(msrv *m)
 	else unlink(tmp);
 }
 
+const char *msrv_favs_name(msrv *m) { return m->o->favs; }
+
+/* Under fav_mu: the playlist was "Favorite Tracks" on every server before it
+ * took its server's name (plorpos-vgr.17) - the file, what is known of it
+ * and its downloaded list go over to the new name. */
+static void fav_rename_was(msrv *m)
+{
+	char d[700], was[900], now[900];
+	ms_pl *e;
+
+	msrv_pl_dir(m, d, sizeof d);
+	snprintf(was, sizeof was, "%s/" MSRV_FAVS_WAS ".m3u", d);
+	snprintf(now, sizeof now, "%s/%s.m3u", d, m->o->favs);
+	if (access(was, F_OK) != 0) return;
+	if (access(now, F_OK) == 0) unlink(was);
+	else rename(was, now);
+	LOCK();
+	if ((e = pls_find_locked(m, MSRV_FAVS_WAS))) {
+		if (pls_find_locked(m, m->o->favs)) pls_drop_locked(m, e);
+		else snprintf(e->name, sizeof e->name, "%s", m->o->favs);
+		pls_save_locked(m);
+	}
+	UNLOCK();
+	pl_local_path(m, MSRV_FAVS_WAS, was, sizeof was);
+	pl_local_path(m, m->o->favs, now, sizeof now);
+	if (access(was, F_OK) == 0) rename(was, now);
+	m->pl_gen++;
+}
+
 /* Under fav_mu: this library's favorites, read when the library is new. With
  * no file yet, this device's Favorite Tracks so far are its own favorites,
  * to be merged with the server's. */
@@ -2416,6 +2446,7 @@ static void fav_ensure(msrv *m)
 	m->nfav = 0;
 	m->fav_fresh = false;
 	if (!m->fav_root[0]) { fav_tidy(m); return; }
+	fav_rename_was(m);
 	snprintf(p, sizeof p, "%s/%s/favs.tsv", m->card, m->fav_root);
 	if ((f = fopen(p, "r"))) {
 		while (fgets(line, sizeof line, f)) {
@@ -2429,7 +2460,7 @@ static void fav_ensure(msrv *m)
 		}
 		fclose(f);
 	} else {
-		int *k, n = pl_file_keys(m, MSRV_FAVS, &k), i;
+		int *k, n = pl_file_keys(m, m->o->favs, &k), i;
 		ms_fav *e;
 
 		m->fav_fresh = true;
@@ -2615,7 +2646,7 @@ bool msrv_fav_apply(msrv *m)
 		for (i = 0; i < m->nfav; i++) if (!m->fav[i].album && m->fav[i].l) want[nw++] = m->fav[i].key;
 	pthread_mutex_unlock(&m->fav_mu);
 	if (!want) return false;
-	nh = pl_file_keys(m, MSRV_FAVS, &have);
+	nh = pl_file_keys(m, m->o->favs, &have);
 	if (!(out = malloc(sizeof *out * (size_t)(nh + nw + 1))) || !(sorted = malloc(sizeof *sorted * (size_t)(nh + 1))))
 		goto done;
 	for (i = 0; i < nh; i++) {
@@ -2625,10 +2656,10 @@ bool msrv_fav_apply(msrv *m)
 	if (nh > 1) qsort(sorted, (size_t)nh, sizeof *sorted, cmp_int);
 	for (i = 0; i < nw; i++) if (!in_keys(want[i], sorted, nh)) out[no++] = want[i];
 	msrv_pl_dir(m, d, sizeof d);
-	snprintf(p, sizeof p, "%s/%s.m3u", d, MSRV_FAVS);
+	snprintf(p, sizeof p, "%s/%s.m3u", d, m->o->favs);
 	changed = !exists(p) || no != nh || (no && memcmp(out, have, sizeof *out * (size_t)no));
 	if (changed) {
-		pl_file_write(m, MSRV_FAVS, out, no);
+		pl_file_write(m, m->o->favs, out, no);
 		m->pl_gen++;
 	}
 done:

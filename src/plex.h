@@ -111,9 +111,8 @@ const char *plex_rel_root(void);
 int  plex_track_index(const char *rel);
 /* A Plex track's title, for lists drawn from queue paths. */
 bool plex_title(const char *rel, char *out, size_t n);
-/* The playlists of the Plex source; Favorite Tracks is one of them. */
+/* The playlists of the Plex source; Favorite Plex Tracks is one of them. */
 void plex_pl_dir(char *out, size_t n);
-#define PLEX_FAVS "Favorite Tracks"
 
 /* ---- covers ------------------------------------------------------------------- */
 

@@ -15822,7 +15822,7 @@ static int muse_pl_find(const char *dir, const char *name, const char *path)
  * this device's own. */
 static bool muse_pl_editable(const char *name)
 {
-	if (!g_srv || !strcmp(name, MSRV_FAVS)) return true;
+	if (!g_srv || !strcmp(name, msrv_favs_name(g_srv))) return true;
 	if (msrv_pl_smart(g_srv, name)) {
 		char m[64];
 
@@ -15838,6 +15838,7 @@ static void muse_add_to_playlist(app *a, int t)
 {
 	const char *labels[MENU_RUN_ROWS];
 	char d[CFG_STR * 2 + 32], name[PL_NAME_MAX], msg[160];
+	const char *favs = g_srv ? msrv_favs_name(g_srv) : "";
 	int k, n = 0, i, map[MENU_RUN_ROWS], fav = -1, fav_at = -1;
 
 	if (t < 0 || t >= g_muse.ntracks) return;
@@ -15847,26 +15848,26 @@ static void muse_add_to_playlist(app *a, int t)
 	/* On a server, Favorite Tracks first (the pak's Y): adds the track, or
 	 * takes it out when it is in already. */
 	if (g_srv) {
-		fav_at = muse_pl_find(d, PLEX_FAVS, g_muse.tracks[t].path);
+		fav_at = muse_pl_find(d, favs, g_muse.tracks[t].path);
 		fav = n;
-		labels[n] = fav_at >= 0 ? "Remove from " PLEX_FAVS : PLEX_FAVS; map[n++] = -1;
+		labels[n] = fav_at >= 0 ? "Remove from Favorites" : favs; map[n++] = -1;
 	}
 	for (i = 0; i < g_npls && n < MENU_RUN_ROWS; i++) {
-		if (g_srv && !strcmp(g_pls[i].name, MSRV_FAVS)) continue;
+		if (g_srv && !strcmp(g_pls[i].name, favs)) continue;
 		if (g_srv && msrv_pl_smart(g_srv, g_pls[i].name)) continue;   /* the server's rule fills it */
 		labels[n] = g_pls[i].name; map[n++] = i;
 	}
 	k = muse_pick_run(a, "Add to Playlist", labels, n);
 	if (k < 0) return;
 	if (k == fav) {
-		bool ok = fav_at >= 0 ? pl_remove_at(d, PLEX_FAVS, fav_at)
-		                      : pl_add(d, PLEX_FAVS, g_muse.tracks[t].path);
+		bool ok = fav_at >= 0 ? pl_remove_at(d, favs, fav_at)
+		                      : pl_add(d, favs, g_muse.tracks[t].path);
 
-		if (ok && fav_at >= 0) msrv_pl_removed(g_srv, MSRV_FAVS, g_muse.tracks[t].path);   /* the server's too */
-		else if (ok) msrv_pl_added(g_srv, MSRV_FAVS, g_muse.tracks[t].path);
+		if (ok && fav_at >= 0) msrv_pl_removed(g_srv, favs, g_muse.tracks[t].path);   /* the server's too */
+		else if (ok) msrv_pl_added(g_srv, favs, g_muse.tracks[t].path);
 		g_npls = -1;
-		muse_toast(!ok ? "Could not change " PLEX_FAVS
-		           : fav_at >= 0 ? "Removed from " PLEX_FAVS : "Added to " PLEX_FAVS);
+		muse_toast(!ok ? "Could not change favorites"
+		           : fav_at >= 0 ? "Removed from favorites" : "Added to favorites");
 		return;
 	}
 	if (k == 0) {
@@ -18410,7 +18411,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					msrv_pl_download(g_srv, name, !dled);
 					muse_toast(dled ? "Download removed" : "Downloading");
 				}
-			} else if ((k == 0 || k == 1) && g_srv && msrv_favs_on(g_srv) && !strcmp(name, MSRV_FAVS)) {
+			} else if ((k == 0 || k == 1) && g_srv && msrv_favs_on(g_srv) && !strcmp(name, msrv_favs_name(g_srv))) {
 				/* The server's favorites: deleting it would unfavorite them all */
 				char fm[64];
 

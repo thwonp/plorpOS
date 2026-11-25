@@ -595,14 +595,18 @@ second screen work as they do for the card's music.
   on Plex. A fully downloaded album has a ↓ mark in the lists.
 - **Download Queue** shows in Muse+'s menu, under Plex Settings, while albums
   are downloading: the one downloading, then the rest. X on one cancels it.
-- **X on a track** (or a long press on the RG Rotate), then **Add to Playlist**, lists **Favorite Tracks** first: A adds the track, or
-  removes it if it's in already. It's a playlist on the Playlists tab.
+- **X on a track** (or a long press on the RG Rotate), then **Add to Playlist**, lists **Favorite Plex Tracks** first: A adds the track, or
+  removes it if it's in already. It's a playlist on the Playlists tab, and it
+  follows your server both ways: a track in it is rated 5 stars on Plex (a
+  Plexamp love), and a track you love elsewhere shows up in it. Changes made
+  offline are sent later. **Y on an album** does the same for albums
+  (Favorites tab).
 - **Playlists** are your Plex server's: every sync (Check for Updates, or
   the hourly one) brings them in, and a playlist you make or change here -
   add, remove, move, rename, delete - is changed on the server at once, so
-  it needs Wi-Fi. A smart playlist (one Plex fills by a rule, like ❤️ Tracks)
+  it needs Wi-Fi. A smart playlist (one Plex fills by a rule)
   can be played but not changed, and one longer than 2000 tracks is left out.
-  Favorite Tracks stays on this device.
+  Plex's own ❤️ Tracks is left out too: Favorite Plex Tracks takes its place.
 - **X on a playlist** adds **Download Playlist**: its tracks are copied to
   the card and it shows under Local Music as **Plex <name>**, the "Plex" in
   gray, with a ↓ mark here. **Keep Playlists Synced** in Plex Settings (on to begin with) keeps
