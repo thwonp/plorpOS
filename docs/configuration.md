@@ -119,7 +119,7 @@ There is no menu for them yet (plorpos-l07.6), so they are set as
 | option | values | what |
 |---|---|---|
 | `dsperate_frameskip` | **auto**, slotplus, disabled | skip 3D rendering when the frontend says a frame will run late; never touches audio. Brick and H700 only (the other ports never ask) |
-| `dsperate_slot2` | **empty**, rumble pak | the Rumble Pak is opt-in because a device in slot 2 costs CPU in games that poll the slot (Golden Sun: Dark Dawn on a Brick: 0 frame skips without it, 456 with it). Needs a device with a motor: only the Brick has one wired so far |
+| `dsperate_slot2` | **empty**, rumble pak | the Rumble Pak is opt-in because a device in slot 2 costs CPU in games that poll the slot (Golden Sun: Dark Dawn on a Brick: 0 frame skips without it, 456 with it). Needs a device with a motor (Rumble Enabled in Game Settings is greyed on one without) |
 | `dsperate_gba_game` | **none**, or the name of a GBA game (no `.gba`) | the GBA game for the dual-slot DS games (Pokemon, Kirby Canvas Curse, ...), looked up in `Roms/Game Boy Advance`. A name the DS game does not accept is refused and the option keeps `none`, so a console-wide value only takes effect in the games that accept it. Its save is `<name>.sav` in the save directory |
 | `dsperate_guitar_grip` | **auto**, off | the Guitar Hero games get their Grip by themselves; frets are L, L2, R2, R |
 | `dsperate_analog` | **off**, or a CPAD patch name | feeds the sticks and ZL/ZR to one of the built-in analog patches for the game (the log lists the names). On the GKD the stick also moves the pen cursor, so both would move |
