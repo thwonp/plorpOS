@@ -521,7 +521,7 @@ d-pad's sides do what they do on Now Playing.
 Sleep leaves music playing. A tap of POWER while an album plays turns only the
 screen off, and the album plays on. So does leaving it alone: while music
 plays, how soon the screen goes off is **Auto Screen Off** in Playback Settings:
-**Follow Sleep Value** (the default) uses Auto Sleep's time, or Auto Off's when sleep
+**Follow System** (the default) uses Auto Sleep's time, or Auto Off's when sleep
 is off; or pick 5s to 1m, or Never.
 
 In the dark the volume keys change the volume and a headset's buttons work,
@@ -531,9 +531,12 @@ button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
 (MENU in Muse+, then Playback Settings) and the screen stays dark: Now Playing's
 buttons still work, every other button is ignored, and only POWER wakes it.
 When the music stops, paused or at the album's end, the screen stays dark and
-the same buttons keep working for 30 seconds, so a pause in the dark can be
-undone in the dark. Then the device suspends, or with Auto Off it powers
-down. NextUI pauses the music to sleep; this is plorpOS's own.
+the same buttons keep working for the **Paused Sleep Delay** (Playback
+Settings; not on the Miyoo Mini Flip), so a pause in the dark can be undone in
+the dark and a Bluetooth headset stays connected. **Follow System** (the
+default) waits as long as Auto Sleep, or Auto Off when sleep is off; or pick
+30s to 10m. Then the device suspends, or with Auto Off it powers down. On a
+charger it doesn't suspend. NextUI pauses the music to sleep; this is plorpOS's own.
 
 **Auto Rewind** (Playback Settings, off to begin with) starts a book or a
 podcast episode a little back when it has been paused a while: 3 seconds

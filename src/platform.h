@@ -455,6 +455,8 @@ void plat_rgds_child_tick(void);   /* a port's window onto the primary */
 void plat_bottom_keep(bool on);
 void plat_bottom_pump(void);
 #endif
+/* Paused Sleep Delay for a run's music dark, in ms; 0 never (plorpos-5tm.22). */
+void plat_set_music_grace(unsigned ms);
 #if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
 /* The lid opened since the last call. Light sleep wakes on it by itself
  * (power_key_within); Muse's dark screen asks here (plorpos-ps8.3). */

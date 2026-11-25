@@ -42,8 +42,10 @@
 #define REPEAT_DELAY_MS 300
 #define REPEAT_RATE_MS  90
 /* How long the music may be stopped in the dark before the suspend goes on:
- * main.c's MUSIC_GRACE_MS, the same fixed 30 s. */
-#define MUSIC_GRACE_MS  30000u
+ * Playback Settings' Paused Sleep Delay, which main.c sets before each run
+ * (plorpos-5tm.22). 0 never. */
+static unsigned music_grace_ms = 60000u;
+void plat_set_music_grace(unsigned ms) { music_grace_ms = ms; }
 #define SKIP_HOLD_MS    500   /* a volume key held this long, Muse playing: a track skip */
 
 int fd_power = -1; /* axp2202-pek: KEY_POWER */
@@ -916,7 +918,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				} else if (pa == PWR_NONE) {
 					if (lv_muse) dark_stopped = 0;
 					else if (!dark_stopped) dark_stopped = now ? now : 1;
-					else if (now - dark_stopped >= MUSIC_GRACE_MS) {
+					else if (music_grace_ms && now - dark_stopped >= music_grace_ms) {
 						bool awake = plat_light_sleep(now - dark_stopped);
 
 						group_kill(pid, SIGCONT);

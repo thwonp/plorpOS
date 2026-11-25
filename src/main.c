@@ -4897,12 +4897,43 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
-/* Playback Settings' Auto Screen Off, in seconds; 0 is Never, -1 Follow Sleep Value -
+/* Playback Settings' Auto Screen Off, in seconds; 0 is Never, -1 Follow System -
  * the system's Auto Sleep, or Auto Off with sleep off - the default
  * (plorpos-i8d.3; 10 s before). See idle_due. */
 static const int MUSE_SCREEN_OFF[] = { -1, 5, 10, 15, 30, 60, 0 };
 #define MUSE_SCREEN_OFF_COUNT \
 	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
+
+/* Playback Settings' Paused Sleep Delay (plorpos-5tm.22): how long music may
+ * stay stopped in the dark - paused, or the queue ended - before the sleep it
+ * was holding off goes on. -1 Follow System (the default), as Auto Screen Off:
+ * Auto Sleep's time, or Auto Off's with sleep off; both Never is never. Was a
+ * fixed 30 s (plorpos-3yv.95), which dropped a headset during a short pause. */
+static const int MUSE_PAUSE_DELAY[] = { -1, 30, 60, 120, 300, 600 };
+#if !defined(PLATFORM_MIYOO)              /* the row is not on the Flip */
+static const char *const MUSE_PAUSE_DELAY_LABEL[] =
+	{ "Follow System", "30s", "60s", "2m", "5m", "10m" };
+#endif
+#define MUSE_PAUSE_DELAY_COUNT \
+	((int)(sizeof MUSE_PAUSE_DELAY / sizeof *MUSE_PAUSE_DELAY))
+
+static int muse_pause_delay_at(void)
+{
+	int k, v = db_get_int(db_dev(), "muse.pausedelay", -1);
+
+	for (k = 0; k < MUSE_PAUSE_DELAY_COUNT; k++)
+		if (MUSE_PAUSE_DELAY[k] == v) return k;
+	return 0;
+}
+
+/* In ms, 0 never. */
+static unsigned muse_pause_delay_ms(const app *a)
+{
+	int s = MUSE_PAUSE_DELAY[muse_pause_delay_at()];
+
+	if (s < 0) s = a->auto_off ? a->auto_off : a->auto_poweroff;
+	return (unsigned)s * 1000u;
+}
 
 static bool idle_due(app *a)
 {
@@ -10807,7 +10838,7 @@ typedef struct {
  * which reads it - and how long music plays untouched before the screen goes
  * off - see idle_due. */
 static const char *const MUSE_SCREEN_OFF_LABEL[] =
-	{ "Follow Sleep Value", "5s", "10s", "15s", "30s", "1m", "Never" };
+	{ "Follow System", "5s", "10s", "15s", "30s", "1m", "Never" };
 
 static int muse_screen_off_at(void)
 {
@@ -10815,7 +10846,7 @@ static int muse_screen_off_at(void)
 
 	for (k = 0; k < MUSE_SCREEN_OFF_COUNT; k++)
 		if (MUSE_SCREEN_OFF[k] == v) return k;
-	return 0;                             /* Follow Sleep, should it be off-ladder */
+	return 0;                             /* Follow System, should it be off-ladder */
 }
 
 /* The software Sleep Button Lock. The GKD keeps its own (plat_hold_switch,
@@ -10872,17 +10903,28 @@ static bool np_layout_long(void)
 	return g_np_long;
 }
 
+/* Playback Settings' rows; Paused Sleep Delay is not on the Flip. */
+enum { PS_WAKE, PS_SCREEN_OFF,
+#if !defined(PLATFORM_MIYOO)
+       PS_PAUSE_DELAY,
+#endif
+       PS_LOCK, PS_SLEEPRESET, PS_REWIND, PS_HOTKEYS, PS_COUNT };
+
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
 {
 	(void)ctx;
 	(void)max;
 	*heading = "Playback Settings";
-	rows[0] = (menu_row){ "Wake Screen On Press",
+	rows[PS_WAKE] = (menu_row){ "Wake Screen On Press",
 	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
 	                      true };
-	rows[1] = (menu_row){ "Auto Screen Off",
+	rows[PS_SCREEN_OFF] = (menu_row){ "Auto Screen Off",
 	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
+#if !defined(PLATFORM_MIYOO)    /* the Flip pauses music for sleep (f1p.55): no dark */
+	rows[PS_PAUSE_DELAY] = (menu_row){ "Paused Sleep Delay",
+	                      MUSE_PAUSE_DELAY_LABEL[muse_pause_delay_at()], true };
+#endif
 	/* Sleep Button Lock (gkd.34, plorpos-uvs.2): on every device, while the
 	 * screen is off during Muse playback the face and shoulder buttons do
 	 * nothing - music_dark. Volume, its chord and hold-skip, the Rotate's
@@ -10891,22 +10933,22 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	 * then this row is only a label. */
 #if SYS_HAS_MUTESW
 	if (mutesw_locks())
-		rows[2] = (menu_row){ "Sleep Button Lock", "lock switch on", false };
+		rows[PS_LOCK] = (menu_row){ "Sleep Button Lock", "lock switch on", false };
 	else
 #endif
-	rows[2] = (menu_row){ "Sleep Button Lock",
+	rows[PS_LOCK] = (menu_row){ "Sleep Button Lock",
 	                      muse_hold() ? "On" : "Off", true };
 	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
-	rows[3] = (menu_row){ "Play Resets Sleep Timer",
+	rows[PS_SLEEPRESET] = (menu_row){ "Play Resets Sleep Timer",
 	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
 	/* Auto Rewind (owner, plorpos-5eq.4): books and podcasts; on a music
 	 * Source the row is there, off and not to be changed. */
 	if (muse_src_shown() == MSRC_MUSIC || srv_of(muse_src_shown()))
-		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
+		rows[PS_REWIND] = (menu_row){ "Auto Rewind", "Off", false };
 	else
-		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	rows[5] = (menu_row){ "Hotkeys", NULL, true };   /* Now-Playing Layout: UI Settings (plorpos-935) */
-	return 6;
+		rows[PS_REWIND] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
+	rows[PS_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };   /* Now-Playing Layout: UI Settings (plorpos-935) */
+	return PS_COUNT;
 }
 
 /* Hotkeys, from Playback Settings (owner, plorpos-5eq.6, .26): a row an
@@ -11065,19 +11107,29 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 
 	(void)a;
 	(void)ctx;
-	if (sel == 0 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
+	if (sel == PS_WAKE && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
 		db_set_int(db_dev(), "muse.wake",
 		           !db_get_int(db_dev(), "muse.wake", 1));
-	if (sel == 1 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+	if (sel == PS_SCREEN_OFF && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
 		at = muse_screen_off_at();
 		if (key == IN_ACCEPT)     at = (at + 1) % MUSE_SCREEN_OFF_COUNT;
 		else if (key == IN_LEFT)  at = at > 0 ? at - 1 : 0;
 		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
 		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
 	}
+#if !defined(PLATFORM_MIYOO)
+	/* Paused Sleep Delay: a ladder, as Screen Off. */
+	if (sel == PS_PAUSE_DELAY && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		at = muse_pause_delay_at();
+		if (key == IN_ACCEPT)     at = (at + 1) % MUSE_PAUSE_DELAY_COUNT;
+		else if (key == IN_LEFT)  at = at > 0 ? at - 1 : 0;
+		else if (at < MUSE_PAUSE_DELAY_COUNT - 1) at++;
+		db_set_int(db_dev(), "muse.pausedelay", MUSE_PAUSE_DELAY[at]);
+	}
+#endif
 	/* Sleep Button Lock: a toggle, like Wake. Not while the Brick's Mute
 	 * Switch row has it (the row is not live then; belt and braces). */
-	if (sel == 2 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+	if (sel == PS_LOCK && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
 #if SYS_HAS_MUTESW
 		if (mutesw_locks()) return MENU_STAY;
 #endif
@@ -11093,15 +11145,15 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.lock", soft_lock);
 #endif
 	}
-	if (sel == 3 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
+	if (sel == PS_SLEEPRESET && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
 		db_set_int(db_dev(), "muse.sleepreset", !db_get_int(db_dev(), "muse.sleepreset", 1));
-	if (sel == 4 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT) &&
+	if (sel == PS_REWIND && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT) &&
 	    muse_src_shown() != MSRC_MUSIC && muse_src_shown() != MSRC_PLEX) {
 		g_auto_rewind = !auto_rewind_on();
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
-	if (sel == 5 && key == IN_ACCEPT) muse_hotkeys_screen(a);
+	if (sel == PS_HOTKEYS && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -19865,15 +19917,15 @@ static void checkpoint_game(app *a)
  * other button is ignored, and only POWER wakes.
  *
  * Once the music stops - paused here, by a headset, or the album's end - it
- * stays dark with the same buttons live for MUSIC_GRACE_MS, so a pause in
+ * stays dark with the same buttons live for Playback Settings' Paused Sleep
+ * Delay (muse_pause_delay_ms, plorpos-5tm.22), so a pause in
  * the dark can be undone in the dark (TortOS-28l); music again cancels the
  * countdown. Only when it runs out does whatever asked for sleep carry on:
  * suspend, at once - *waited is the time already spent, already past light
- * sleep's PLAT_SUSPEND_AFTER_S - or Auto Off's power-off. Fixed, no setting
- * (plorpos-3yv.95, the user's call 2026-10-25). On a charger light sleep
+ * sleep's PLAT_SUSPEND_AFTER_S - or Auto Off's power-off. A fixed 30 s until
+ * plorpos-5tm.22 (a headset dropped in a short pause). On a charger light sleep
  * then waits on, as always. Never suspend while playing: suspend is where
  * the sound would stop. */
-#define MUSIC_GRACE_MS 30000u
 typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
 
 static dark_end music_dark(app *a, unsigned *waited)
@@ -19881,7 +19933,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 	static const char *const said[] = { "woke", "music stopped", "power off" };
 	dark_end end = DARK_STOPPED;
 	unsigned t0 = plat_now_ms();
-	unsigned grace = MUSIC_GRACE_MS;
+	unsigned grace = muse_pause_delay_ms(a);   /* 0: never */
 	unsigned stopped = 0;                 /* when it stopped; 0 while playing */
 	bool wake = db_get_int(db_dev(), "muse.wake", 1);
 	int b;
@@ -19908,7 +19960,7 @@ static dark_end music_dark(app *a, unsigned *waited)
 		now = plat_now_ms();
 		if (musec_playing() || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
 		else if (!stopped)                 stopped = now ? now : 1;
-		else if (now - stopped >= grace)   break;
+		else if (grace && now - stopped >= grace) break;
 		plat_input_poll(&a->in);
 		{
 			bool down = a->in.down[IN_POWER];
@@ -20096,7 +20148,7 @@ static pwr_action power_check(app *a)
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
-		 * music has been stopped for MUSIC_GRACE_MS (music_dark). A
+		 * music has been stopped for Paused Sleep Delay (music_dark). A
 		 * hold is not idle, and still does what it says at once. */
 		if (pa == PWR_POWEROFF && musec_playing() &&
 		    music_dark(a, NULL) == DARK_WOKE)
@@ -21021,6 +21073,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
 {
 	int rc;
 
+	plat_set_music_grace(muse_pause_delay_ms(a));   /* its music dark's (5tm.22) */
 	sleep_timer_game(true);
 	anim_launch(a, 190);
 #if defined(PLATFORM_ROTATE) || defined(PLATFORM_GKD)
