@@ -69,7 +69,13 @@ const char *const plat_pico8_path = NULL;   /* ROCKNIX's wget is GNU, with TLS *
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }
 /* Home turns the volume keys into brightness keys, as it does in a game. */
+#ifdef PLATFORM_RGDS
+/* Anbernic (Menu) + volume is the top screen, Home + volume the bottom
+ * (plorpos-rgds.27). */
+const char *plat_bright_keys(void) { return "Menu/Home+Vol"; }
+#else
 const char *plat_bright_keys(void) { return "Home+Vol"; }
+#endif
 
 /* ---- video ------------------------------------------------------------
  *

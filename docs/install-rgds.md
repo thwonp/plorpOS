@@ -1,7 +1,5 @@
 # Installing on the Anbernic RG DS
 
-*There is no RG DS release yet. This guide is for the next release.*
-
 On the RG DS, plorpOS is a whole microSD card image: flash it, put the card in,
 turn the RG DS on. Underneath is a trimmed ROCKNIX (its emulators and
 EmulationStation removed). The RG DS's own system on its internal storage is
@@ -73,6 +71,28 @@ Nintendo DS games always use both screens: the top one on top, the bottom one
 below, and the bottom screen takes your finger or stylus. PokeDaisy DS keeps
 its own picture on the top screen.
 
+## Buttons and brightness
+
+The **Anbernic** button is Menu. It opens the menu when you let go of it, so it
+can also be held for brightness.
+
+Each screen has its own brightness:
+
+| Hold | with Volume up/down |
+|---|---|
+| Anbernic | top screen |
+| Home | bottom screen |
+
+The level bar shows on the screen you are changing, in games too.
+
+- The second screen goes all the way down to **off**. While it's off, touching it
+  does nothing.
+- The main screen (Primary Screen) never goes fully dark.
+- Switch Primary Screen and the brightness goes with it: the new main screen
+  takes the old one's level, and the other screen takes the second screen's.
+- A DS game needs both screens, so a screen that is off lights up for the game
+  and goes dark again after it.
+
 ## Touch
 
 Both screens are touchscreens. The one plorpOS is on does what the buttons do:
@@ -106,6 +126,17 @@ The ports it installs land in `Roms/Ports/` and on the shelf, with the
 runtimes they need. Install ports through PortMaster rather than copying them
 onto the card: a copied port can be missing its runtime. It's unofficial
 support: report problems to plorpOS, not the PortMaster team.
+
+Select + Start quits a port.
+
+Known issues:
+
+- **Braid** doesn't start. Its port supports ROCKNIX only with the Panfrost
+  graphics driver, and the RG DS uses Mali's.
+- **TMNT: Shredder's Revenge** can stay black the first time, right after it
+  patches itself. Quit (Select + Start) and start it again.
+- **Balatro**: with the port's Performance setting off, keep the CRT effect at
+  0. The full CRT effect draws black patches on the RG DS's graphics driver.
 
 ## USB debugging
 
