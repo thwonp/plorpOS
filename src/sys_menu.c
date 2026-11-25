@@ -37,8 +37,8 @@ int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 
 	out[n++] = SMM_COUNT;
 	(void)books;
-	if (src != MSRC_PODCASTS) out[n++] = SMM_SORT;   /* episodes: newest first, always */
 	out[n++] = SMM_SOURCE;
+	if (src != MSRC_PODCASTS) out[n++] = SMM_SORT;   /* episodes: newest first, always */
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
@@ -94,7 +94,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					                                               : "Local Music Settings", NULL, true };
 					break;
 				case SMM_SOURCE:
-					out[k] = (menu_row){ "Source", sys_menu_src_label(u->muse_src), true };
+					out[k] = (menu_row){ "Source", sys_menu_src_label(u->muse_src), !u->muse_src_only };
 					break;
 				case SMM_SRV:
 					out[k] = (menu_row){ u->muse_src == MSRC_JELLYFIN ? "Jellyfin Settings"

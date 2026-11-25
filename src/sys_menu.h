@@ -143,11 +143,11 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  *
  * On books the count is Books, Sort By is by author or title, and Album Art is
  * not there: MusicBrainz knows records. So the rows move, and which one is where is sys_menu_muse_rows's to say. */
-/* The order (owner, plorpos-935): the count and Sort By, then Source, Playback
+/* The order (owner, plorpos-935): the count, Source and Sort By, then Playback
  * Settings, UI Settings (Tab Settings, Now-Playing Layout, Visible Sources)
  * and the Source's own settings - a card Source's Album Art and Rescan Folder
  * are behind Local Music Settings / Local Books Settings (SMM_LOCAL). */
-typedef enum { SMM_COUNT, SMM_SORT, SMM_SOURCE, SMM_SETTINGS, SMM_UI, SMM_LOCAL,
+typedef enum { SMM_COUNT, SMM_SOURCE, SMM_SORT, SMM_SETTINGS, SMM_UI, SMM_LOCAL,
                SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
@@ -208,6 +208,7 @@ typedef struct {
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
 	bool muse_books;         /* and it shows books rather than music */
 	muse_src muse_src;       /* and the Source chosen (plorpos-9rf.2) */
+	bool muse_src_only;      /* it is the one Visible Source: nothing to choose (owner) */
 	const char *muse_dlq;    /* its downloads on their way ("3 albums"), NULL none */
 	bool muse_list;          /* and the artist list itself is on screen: always by artist */
 

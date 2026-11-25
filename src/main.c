@@ -1447,6 +1447,15 @@ static bool muse_src_hidden(muse_src v)
 
 static bool muse_src_offered(muse_src v) { return muse_src_built(v) && !muse_src_hidden(v); }
 
+/* One Visible Source: the Source row has nothing to choose and is grey (owner). */
+static bool muse_src_only(void)
+{
+	int k, shown = 0;
+
+	for (k = 0; k < MSRC_COUNT; k++) shown += muse_src_offered((muse_src)k);
+	return shown <= 1;
+}
+
 /* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
  * A card from before it had Show (music or books) and Local/Plex: Plex wins,
  * then books, read once and written as the new key. */
@@ -7655,6 +7664,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_src   = u.muse ? muse_src_shown() : MSRC_MUSIC;
+		u.muse_src_only = u.muse && muse_src_only();
 		u.muse_dlq   = u.muse ? muse_dlq_label() : NULL;
 		u.sort       = u.muse ? ml_order_label(muse_sort_shown(a->view[sys].sort), u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
@@ -13090,7 +13100,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
 				if (id == SMM_UI) { muse_ui_screen(a); return MENU_STAY; }
 				if (id == SMM_LOCAL) return muse_local_screen(a) ? MENU_DONE : MENU_STAY;
-				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
+				if (id == SMM_SOURCE)
+					return !muse_src_only() && muse_source_pick(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_SRV) return srv_settings_screen(a, muse_src_shown()) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;

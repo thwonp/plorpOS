@@ -345,14 +345,15 @@ Muse+ plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse+ on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse+, has the album count, Sort By, Source, Playback Settings (not on the
+Muse+, has the album count, Source, Sort By, Playback Settings (not on the
 Miyoo Mini Flip), UI Settings and the Source's own settings. **UI Settings**
 holds Tab Settings, Now-Playing Layout and Visible Sources. **Local Music
 Settings** holds Album Art (below) and Rescan Folder, for music copied on
 while the device was running; **Local Books Settings** holds Rescan Folder.
 
 **Visible Sources** (in UI Settings) switches Sources you don't use out of
-the Source list. The one in use stays on.
+the Source list. The one in use stays on; when it is the only one left, the
+Source row is grayed out.
 
 **Source** picks what the shelf holds: Local Music, Local Audiobooks,
 [Plex Music](#plex), [Audiobookshelf](#audiobookshelf) or
