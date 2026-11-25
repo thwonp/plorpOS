@@ -26,9 +26,17 @@ void details_init(const char *font_dir) { snprintf(g_dir, sizeof g_dir, "%s", fo
 
 static int S(int v) { return (int)(v * g_k + 0.5f); }
 
+/* The RG DS's text, about 10% smaller as the launcher's (plorpos-rgds.26):
+ * the type only - the layout keeps its places. */
+#if defined(PLATFORM_RGDS)
+#define DETAILS_FONT_K 0.90f
+#else
+#define DETAILS_FONT_K 1.0f
+#endif
+
 static TTF_Font *font(bool head, int size)
 {
-	int px = S(size), i;
+	int px = (int)(size * g_k * DETAILS_FONT_K + 0.5f), i;
 
 	for (i = 0; i < 12 && g_fonts[i].f; i++)
 		if (g_fonts[i].head == head && g_fonts[i].px == px) return g_fonts[i].f;

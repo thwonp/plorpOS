@@ -184,6 +184,10 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 #endif
 	/* Brick Pro: the Brick's scale reads too large on its panel (pky.21; the user chose 0.82) */
 	if (plat_is_brick_pro()) font_k = 0.82f;
+#if defined(PLATFORM_RGDS)
+	/* The RG DS: every role about 10% smaller (owner, plorpos-rgds.26). */
+	font_k = 0.90f;
+#endif
 	{
 		char head[512];
 		const char *slash = strrchr(font_path, '/');
