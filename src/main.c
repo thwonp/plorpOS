@@ -6083,10 +6083,13 @@ static void gl_draw(app *a, const gl_list *L)
 				ui_text(a->r, fm, gl_fit(L->key, i, title, tw), tx, ty, -1, tc);
 		}
 		/* A tap on a row opens it, walking the cursor there first; on a game
-		 * list it only brings it into focus, as a tap on a card does. A long
-		 * press walks there and is Y (plorpos-3yv.110). */
+		 * list it only brings it into focus, as a tap on a card does, and a
+		 * tap on the focused row (no steps) is A. A long press walks there
+		 * and is Y (plorpos-3yv.110). The focused row must be recorded too:
+		 * left out, a tap on it was empty space and never opened the game
+		 * (plorpos-rgds.18.4). */
 		if (L->tap_focuses) {
-			if (i != cur) ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
+			ui_hit(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
 		} else {
 			ui_hit_act(&row, i < cur ? IN_UP : IN_DOWN, i < cur ? cur - i : i - cur);
 		}
