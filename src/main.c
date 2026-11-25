@@ -1256,6 +1256,29 @@ static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
+/* ml_album_of on g_muse, the last answer kept. Its callers ask every frame
+ * (Now Playing, the secondary's page beside a game at 10 Hz), and one search
+ * of a 3527-album library is about a millisecond - nearly all the launcher's
+ * time beside a game for a stream no album holds (plorpos-rgds.25). Asked
+ * again only for another track or another library (g_muse_gen). */
+static int muse_album_of(const char *track)
+{
+	static char last[2048];
+	static unsigned gen;
+	static const ml_album *albums;
+	static int nal = -1, al = -1;
+
+	if (!track || strlen(track) >= sizeof last) return ml_album_of(&g_muse, track);
+	if (nal < 0 || gen != g_muse_gen || albums != g_muse.albums ||
+	    nal != g_muse.nalbums || strcmp(last, track)) {
+		al = ml_album_of(&g_muse, track);
+		memcpy(last, track, strlen(track) + 1);
+		gen = g_muse_gen;
+		albums = g_muse.albums;
+		nal = g_muse.nalbums;
+	}
+	return al;
+}
 #if defined(PLATFORM_RGDS)
 static app *g_rgds_app;   /* main's, for the secondary's ticks */
 static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
@@ -1815,7 +1838,7 @@ static void book_keep(bool now)
 
 	if (!musec_is_book() || !g_book_done) { g_bk.al = -1; return; }
 	track = musec_track(mn->index);
-	al = ml_album_of(&g_muse, track);
+	al = muse_album_of(track);
 	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
 	if (ran_out && (pod_is_path(track) || abs_is_path(track)) && musec_end_cut() && !g_book_done[al]) {
 		/* The stream stopped short - Wi-Fi or the server went: not heard, so
@@ -2026,7 +2049,7 @@ static void muse_poll(void)
 		double at;
 
 		if (abs_resume_poll(&idx, &at) > 0) {
-			int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
+			int al = muse_album_of(musec_track(musec_now()->index));
 
 			if (idx >= 0 && al >= 0) tl_note(al, idx, at, 'Y');   /* the server's place */
 			musec_resume_release(idx, at);
@@ -2102,10 +2125,10 @@ static void muse_adopt_orphan(void)
 	if (!t[0]) { kept = false; return; }
 	if (g_walk_thread || g_muse.ntracks == 0) return;
 	if (kept && kept_gen == g_muse_gen) return;
-	al = ml_album_of(&g_muse, t);
+	al = muse_album_of(t);
 	/* An Audiobookshelf book's file, playing from its stream URL; a podcast
 	 * episode, streamed or from its download (plorpos-7ni.5). */
-	if (al < 0 && (t = muse_orphan_rel())) al = ml_album_of(&g_muse, t);
+	if (al < 0 && (t = muse_orphan_rel())) al = muse_album_of(t);
 	if (al < 0 && t && (mn->state == MU_PLAYING || mn->state == MU_PAUSED) &&
 	    (abs_is_path(t) || pod_is_path(t) || !strncmp(t, "Audiobooks/", 11) ||
 	     !strncmp(t, "Podcasts/", 9))) {
@@ -2155,7 +2178,7 @@ static double book_speed(int al)
 
 static void book_set_speed(double x)
 {
-	int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
+	int al = muse_album_of(musec_track(musec_now()->index));
 	char key[LIB_PATH + 16], val[16];
 
 	x = round(x * 10) / 10;
@@ -14748,7 +14771,7 @@ static void year_fill(void)
 
 	if (!g_year || g_srv || g_muse_abs) return;
 	if (musec_year_take(track, sizeof track, &y)) {
-		al = ml_album_of(&g_muse, track);
+		al = muse_album_of(track);
 		if (al >= 0 && g_year[al] < 0) {
 			long long m = year_key(al, key, sizeof key);
 
@@ -15119,7 +15142,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	                  : mn->state == MU_PLAYING ? NULL
 	                  : musec_asked()           ? "Loading"
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
-	int book = musec_is_book() ? ml_album_of(&g_muse, musec_track(mn->index)) : -1;
+	int book = musec_is_book() ? muse_album_of(musec_track(mn->index)) : -1;
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
 	char t0[16], t1[16], line[200], fit[200];
 	int y, bar, fill, left, right;
@@ -15691,7 +15714,7 @@ static void tl_on_state(mu_state st)
 		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - t) : 0, t);
 	}
 	if (told && kind && (kind != last_kind || strcmp(dir, last_dir)) && !g_walk_thread &&
-	    (al = ml_album_of(&g_muse, t)) >= 0 && g_muse.albums[al].book)
+	    (al = muse_album_of(t)) >= 0 && g_muse.albums[al].book)
 		tl_note(al, mn->index, mn->at, kind);
 	told = true;
 	last_kind = kind;
@@ -15743,7 +15766,7 @@ static void tl_where(int al, int index, double at, char *out, size_t n)
 static bool np_timeline(app *a)
 {
 	const mu_now *mn = musec_now();
-	int al = ml_album_of(&g_muse, musec_track(mn->index)), n, i, k;
+	int al = muse_album_of(musec_track(mn->index)), n, i, k;
 	tl_ev ev[TL_KEEP];
 	lp_rows rows;
 
@@ -15915,7 +15938,7 @@ static muse_exit muse_now_screen(app *a)
 
 		/* The queue's track, not musec_path: that goes blank when an album
 		 * ends, and the screen should still show the album that just did. */
-		np_cover(a, ml_album_of(&g_muse, musec_track(mn->index)));
+		np_cover(a, muse_album_of(musec_track(mn->index)));
 		np_next_line(next, sizeof next);
 
 		/* Drawn when what it shows has changed, not every pass. This is the
@@ -15980,7 +16003,7 @@ static muse_exit muse_now_screen(app *a)
 static int muse_playing_album(int *row)
 {
 	const char *t = musec_track(musec_now()->index);
-	int al = ml_album_of(&g_muse, t), i;
+	int al = muse_album_of(t), i;
 
 	if (row) *row = 0;
 	if (al < 0) return -1;
@@ -18240,7 +18263,7 @@ static bool pod_in_player(int al)
 	const mu_now *mn = musec_now();
 
 	return (mn->state == MU_PLAYING || mn->state == MU_PAUSED) && musec_is_book() &&
-	       ml_album_of(&g_muse, musec_track(mn->index)) == al;
+	       muse_album_of(musec_track(mn->index)) == al;
 }
 
 /* Under Auto-Delete When Played, episode al's copy gone (a favorite stays). */
@@ -24219,6 +24242,18 @@ static void np_key(char *key, size_t n, const mu_now *mn, SDL_Texture *tex, cons
 	         musec_chapter_now(), (int)(musec_speed() * 100 + 0.5), next);
 }
 
+/* np_key and the battery badge's reading: the page beside a game is drawn
+ * only when one of them changes while nothing plays. */
+static void panel_key(char *key, size_t n, const mu_now *mn, SDL_Texture *tex, const char *next)
+{
+	size_t k;
+
+	np_key(key, n, mn, tex, next);
+	battery_poll();                              /* a sysfs read at most every 5 s */
+	k = strlen(key);
+	snprintf(key + k, n - k, "|%d|%d|%d", g_batt_ok, g_batt_pct, g_batt_charging);
+}
+
 static void muse_panel_tick(bool fresh, bool busy, bool slide)
 {
 	static struct np_cover np_b = { .album = -1 };
@@ -24228,6 +24263,7 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 	char key[1200], next[128];
 	unsigned now = SDL_GetTicks(), t0, wait;
 	int w, h, x, y, al;
+	bool idle;
 	SDL_Renderer *r;
 
 	if (!g_rgds_app || !mn || g_muse_sec) return;  /* Muse itself draws there */
@@ -24241,11 +24277,14 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 		np_b = (struct np_cover){ .album = -1 };
 		gen = g_muse_gen;
 	}
-	al = ml_album_of(&g_muse, musec_track(mn->index));
+	al = muse_album_of(musec_track(mn->index));
 	if ((r = plat_bottom_renderer())) np_on(r, &np_b, al);
 	np_next_line(next, sizeof next);
-	np_key(key, sizeof key, mn, np_b.tex, next);
-	if (!fresh && !strcmp(key, shown) && (busy || (int)(now - due) < 0)) return;
+	panel_key(key, sizeof key, mn, np_b.tex, next);
+	/* Beside a game with the music paused or stopped, nothing on the page
+	 * moves: no redraw a second, only on a change (plorpos-rgds.25). */
+	idle = !slide && mn->state != MU_PLAYING;
+	if (!fresh && !strcmp(key, shown) && (busy || idle || (int)(now - due) < 0)) return;
 	t0 = SDL_GetTicks();
 	if (!(r = plat_bottom_begin(&w, &h))) return;
 	np_on(r, &np_b, al);                          /* the window may be new */
@@ -24269,7 +24308,7 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 	}
 	plat_bottom_end();
 	/* The tex in the key as drawn: a cover that came in this time round. */
-	np_key(key, sizeof key, mn, np_b.tex, next);
+	panel_key(key, sizeof key, mn, np_b.tex, next);
 	snprintf(shown, sizeof shown, "%s", key);
 	due = now + (slide && wait < 1000 ? wait : 1000);
 	if (g_ft) fprintf(stderr, "details: muse page in %u ms\n", SDL_GetTicks() - t0);

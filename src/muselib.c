@@ -70,9 +70,14 @@ int ml_album_of(const ml_lib *l, const char *track)
 
 		if (l->albums[i].n <= 0) continue;
 		p = l->tracks[l->albums[i].first].path;
-		/* The same length first: "Pixies/Doolittle" is a prefix of
-		 * "Pixies/Doolittle (Deluxe)", and they are two albums. */
-		if (dir_len(p) == n && !strncmp(p, track, n)) return i;
+		/* The same folder: the same n bytes, then the folder ends there -
+		 * "Pixies/Doolittle" is a prefix of "Pixies/Doolittle (Deluxe)", and
+		 * they are two albums. The compare first: it fails within a few
+		 * bytes for nearly every album, where finding each one's last '/'
+		 * read the whole path - 80% of the launcher's time beside a game,
+		 * a 3527-album library at 10 Hz (plorpos-rgds.25). */
+		if (n ? !strncmp(p, track, n) && p[n] == '/' && !strchr(p + n + 1, '/')
+		      : !strchr(p, '/')) return i;
 	}
 	return -1;
 }
