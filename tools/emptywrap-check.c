@@ -29,6 +29,7 @@ static const struct { const char *name; int w, h; float font_k; int flip; } PORT
 };
 static const struct { const char *file; float scale; } FACES[] = {   /* main.c FONTS[] */
 	{ "head.ttf", 1.00f }, { "josefin.ttf", 1.00f }, { "menu.ttf", 0.98f }, { "lato.ttf", 1.03f },
+	{ "jp.ttf", 0.93f },
 };
 
 static float g_ts;
