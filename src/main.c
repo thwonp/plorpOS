@@ -1568,15 +1568,24 @@ static void muse_fav_flip(const char *dir)
  * and A on it starts it over. Eric's, 2026-09-27. */
 static bool *g_book_done;
 
-/* The kind the shelf really shows: the one chosen, unless there is none of it
- * and some of the other. */
+/* The kind the shelf really shows: the one chosen, unless that is music and
+ * there is none of it but some books. Local Audiobooks with no books stays
+ * Local Audiobooks, empty, saying where they go (plorpos-5tm.23); it went
+ * back to music without a word. */
 static bool muse_books_shown(void)
 {
 	int books = ml_count(&g_muse, true), music = ml_count(&g_muse, false);
 
-	if (!books) return false;
+	if (!books) return g_muse_books && !g_srv && !g_muse_abs && !g_muse_pod;
 	if (!music) return true;
 	return g_muse_books;
+}
+
+/* Local Audiobooks shown with none on the card: every tab says so. */
+#define MUSE_NO_BOOKS "No audiobooks found. Put them in Audiobooks/"
+static bool muse_no_books(void)
+{
+	return muse_src_shown() == MSRC_BOOKS && !ml_count(&g_muse, true);
 }
 
 /* The Source the shelf really shows: a server's only once its index is in. */
@@ -17083,8 +17092,9 @@ static sysview *muse_shelf_refind(app *a)
 		muse_order_view(&a->view[muse]);
 	}
 	/* Offline Mode with nothing on the card: Muse still, empty, saying how to
-	 * get some (owner, plorpos-5tm.16). */
-	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline())) return NULL;
+	 * get some (owner, plorpos-5tm.16). Local Audiobooks with none: the same
+	 * (5tm.23). */
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_no_books())) return NULL;
 	a->sys_cursor = muse;
 	a->screen = SCREEN_GAMES;
 	v = &a->view[muse];
@@ -18323,7 +18333,8 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->cur = asel;
 		L->title = mar_title;
 		L->value = mar_value;
-		L->empty = muse_empty(g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some." : "Nothing here");
+		L->empty = muse_empty(g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some."
+		                      : muse_no_books() ? MUSE_NO_BOOKS : "Nothing here");
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
 		if (g_muse_pod) L->art = mar_pod_art;
 		return;
@@ -18331,9 +18342,10 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (tab == MT_PLAYLISTS && books && !g_muse_pod) {
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
-		L->n = BPL_N;
+		L->n = muse_no_books() ? 0 : BPL_N;
 		L->cur = psel < BPL_N ? psel : 0;
 		L->title = bpl_title;
+		L->empty = MUSE_NO_BOOKS;
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -18382,6 +18394,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	         : tab != MT_FAVORITES ? "Nothing here"
 	         : books ? "No favorite books yet. Y on a book marks it."
 	         : "No favorite albums yet. Y on an album marks it.";
+	if (muse_no_books()) L->empty = MUSE_NO_BOOKS;
 	L->empty = muse_empty(L->empty);
 	L->phase = title_phase(a);
 	/* As the track list: a long artist's name runs over the cover to the
@@ -18555,7 +18568,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
-		  : artists ? g_mar.n : lists ? (books ? BPL_N : g_npls) : 0;
+		  : artists ? g_mar.n : lists ? (books ? (muse_no_books() ? 0 : BPL_N) : g_npls) : 0;
 		if (lists && g_mls_psel >= n) g_mls_psel = n > 0 ? n - 1 : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
@@ -18850,7 +18863,9 @@ static void muse_shelf_screen(app *a, bool now)
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
-	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline())) return;
+	/* Empty: not opened - but Local Audiobooks with none opens, to say where
+	 * they go (plorpos-5tm.23), as Offline Mode with nothing on the card does. */
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_no_books())) return;
 
 	a->sys_cursor = muse;
 	enter_system(a);                      /* the screen, the coverflow, the window */
