@@ -886,11 +886,12 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 #endif
 		}
 #if defined(PLATFORM_H700)
-		/* A closed lid is a POWER tap: down, and up on the call below. */
+		/* A closed lid is a POWER tap: down, and up on the call below. Not
+		 * in the music dark, where a tap wakes (plorpos-5tm.21). */
 #if defined(PLATFORM_ROTATE)
 		if (sw_tap) lid_tap = true;
 #endif
-		if (lid_tap && !term_at && !pwr_down) plat_power_tap_or_hold(true);
+		if (lid_tap && !term_at && !pwr_down && !dark) plat_power_tap_or_hold(true);
 #endif
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);

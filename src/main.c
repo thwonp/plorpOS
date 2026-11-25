@@ -19910,7 +19910,15 @@ static dark_end music_dark(app *a, unsigned *waited)
 		else if (!stopped)                 stopped = now ? now : 1;
 		else if (now - stopped >= grace)   break;
 		plat_input_poll(&a->in);
-		pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+		{
+			bool down = a->in.down[IN_POWER];
+#if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
+			/* The lid closing is a POWER tap that would wake it here: the
+			 * screen on behind a shut lid (plorpos-5tm.21). Dark stays dark. */
+			if (plat_lid_closing()) down = false;
+#endif
+			pa = plat_power_tap_or_hold(down);
+		}
 		if (pa != PWR_NONE) {
 			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
 			break;
@@ -19943,6 +19951,11 @@ static dark_end music_dark(app *a, unsigned *waited)
 			if (b == IN_ACCEPT)     musec_toggle();
 			else if (b == IN_Y)     muse_cycle_mode();
 			else muse_hk_dark(&a->in, (in_button)b);
+#if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
+			/* Wake Screen on Press, but not behind a shut lid: a press in
+			 * a bag stays dark (plorpos-5tm.21). */
+			if (wake && plat_lid_shut()) { SDL_Delay(50); continue; }
+#endif
 			if (wake) { end = DARK_WOKE; break; }
 		}
 		SDL_Delay(50);
