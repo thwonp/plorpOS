@@ -75,6 +75,9 @@ struct msrv {
 	/* resolve's connection, found on the worker */
 	volatile bool picking;
 	unsigned pick_failed;              /* when the last one found none; 0 never */
+	/* the index read for a queue alone (vgr.19): asked once a run, reading now */
+	bool tab_asked;
+	volatile bool tab_reading;
 
 	coverq *cq;
 
@@ -347,8 +350,9 @@ void msrv_set_download_kbps(msrv *m, int kbps) { m->download_kbps = kbps; msrv_c
 
 /* ---- the worker queue ----------------------------------------------------------- */
 
-enum { J_TIMELINE = 1, J_PLS, J_PLDL, J_PLEDIT, J_PICK, J_PLAYS, J_FAVS, J_FAVSET };
+enum { J_TIMELINE = 1, J_PLS, J_PLDL, J_PLEDIT, J_PICK, J_PLAYS, J_FAVS, J_FAVSET, J_TAB };
 static void do_pls(msrv *m);
+static void do_tab(msrv *m);
 static void do_favs(msrv *m);
 static void do_favset(msrv *m, msrv_job *j);
 static void do_pl_downloads(msrv *m);
@@ -486,6 +490,7 @@ static void *api_main(void *arg)
 		case J_PLAYS:    do_plays(m); break;
 		case J_FAVS:     do_favs(m); break;
 		case J_FAVSET:   do_favset(m, j); break;
+		case J_TAB:      do_tab(m); break;
 		default:         if (j->kind >= MSRV_J_BACKEND) m->o->job(m, j); break;
 		}
 		free(j);
@@ -1182,6 +1187,27 @@ msrv *msrv_new(const msrv_ops *ops, const char *card, const char *shared)
 	return m;
 }
 
+/* The index for a queue alone (plorpos-vgr.19). msrv_lib_load reads it only
+ * when this server is the Source shown, so after a restart with another one
+ * shown a queue of this server's tracks (the headset's Play, Now Playing)
+ * resolved as missing and the daemon skipped through it in silence. Read
+ * here, on the worker - not on the player's tick - while resolve says wait. */
+static void do_tab(msrv *m)
+{
+	msrv_table t;
+	unsigned t0 = now_ms();
+	bool ok = m->o->ready() && tab_read(m, &t), taken = false;
+
+	LOCK();
+	if (ok && !m->tab.ntr) { m->tab = t; taken = true; }
+	m->tab_reading = false;
+	UNLOCK();
+	if (ok && !taken) tab_free(&t);      /* the Source read it meanwhile */
+	if (taken) fprintf(stderr, "%s: index read for the queue (%d tracks) in %u ms\n",
+	                   m->o->tag, t.ntr, now_ms() - t0);
+	else if (!ok) fprintf(stderr, "%s: no index for the queue\n", m->o->tag);
+}
+
 bool msrv_lib_cached(msrv *m)
 {
 	char p[700];
@@ -1357,6 +1383,21 @@ bool msrv_resolve(msrv *m, const char *rel, musec_remote *out)
 	memset(out, 0, sizeof *out);
 	LOCK();
 	i = tab_find(&m->tab, key_of(rel));
+	if (i < 0 && (m->tab_reading || (!m->tab.ntr && !m->tab_asked && m->o->ready()))) {
+		/* No table yet: read for the queue, once a run (do_tab). */
+		bool ask = !m->tab_asked;
+
+		m->tab_asked = m->tab_reading = true;
+		UNLOCK();
+		if (ask) {
+			msrv_job *j = msrv_job_new(J_TAB);
+
+			if (j) msrv_push(m, j, true);
+			else m->tab_reading = false;
+		}
+		out->wait = true;
+		return true;
+	}
 	if (i < 0) {
 		UNLOCK();
 		/* Not in the table (a queue outliving its library): the daemon
