@@ -1910,6 +1910,40 @@ static void sleep_timer_tick(void)
 }
 
 
+/* Whether the library changed on the server (plorpos-vgr.16): asked when a
+ * server Source comes in - at boot, on a switch to it - and hourly after,
+ * each Source by its own clock; one clock for all left a Source switched to
+ * unasked for up to an hour. A check that failed says so and is tried again
+ * in five minutes (owner; a suspend mid-sync is one, plorpos-vgr.10). Nothing
+ * is asked in Offline Mode or off the network, and the clock waits. From
+ * muse_poll, so on the shelf and in Muse+ alike: starting a sync rebuilds
+ * nothing - srv_main_poll takes what it brings. */
+static void srv_check_tick(void)
+{
+	static unsigned next[MSRC_COUNT];   /* 0: not asked yet */
+	static msrv *asked;                 /* the check whose end is waited for */
+	unsigned now = plat_now_ms();
+	muse_src s;
+
+	if (asked) {
+		int st = msrv_sync_state(asked, NULL, NULL);
+
+		if (st == 1) return;
+		if (st < 0) {
+			next[srv_src(asked)] = (now + 5u * 60u * 1000u) | 1u;
+			if (asked == g_srv) muse_toast("Server offline. Retrying in 5 min");
+		}
+		asked = NULL;
+	}
+	if (!g_srv || g_walk_thread) return;
+	s = srv_src(g_srv);
+	if (next[s] && (int)(now - next[s]) < 0) return;
+	if (!net_online() || msrv_get_offline(g_srv) || msrv_sync_state(g_srv, NULL, NULL) == 1) return;
+	msrv_sync_start(g_srv, false);
+	next[s] = (now + 60u * 60u * 1000u) | 1u;        /* an hour */
+	asked = g_srv;
+}
+
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
  * Everything that polls Muse comes through here. */
 static void muse_poll(void)
@@ -1940,6 +1974,7 @@ static void muse_poll(void)
 	abs_tick(musec_is_book() ? musec_path() : NULL, mn->index, mn->at,
 	         mn->state == MU_PLAYING ? 1 : mn->state == MU_PAUSED ? 2 : 0);
 	abs_unsent_retry();             /* places made offline (ps8.15) */
+	srv_check_tick();
 	for (int i = 0; i < g_nsrv; i++) {
 		msrv_plays_retry(g_srvs[i]);   /* plays counted offline (5tm.16.4) */
 		msrv_favs_retry(g_srvs[i]);    /* favorites changed offline (plorpos-vgr.6) */
@@ -12414,13 +12449,10 @@ static bool srv_settings_screen(app *a, muse_src s)
 
 /* From the shelf's own loop - never inside Muse or a menu, since it can
  * rebuild the library: a sync that wrote a new index, or downloads that
- * changed Music/<server> under the Local source. And now and then, whether
- * the library changed on the server. */
+ * changed Music/<server> under the Local source. Whether the library changed
+ * on the server is srv_check_tick's to ask. */
 static void srv_main_poll(app *a)
 {
-	static unsigned next_check;
-	unsigned now = plat_now_ms();
-
 	if (srv_take(msrv_sync_take)) g_srv_stale = true;
 	if (g_walk_thread) return;
 	if ((g_srv_stale && muse_source_saved_srv()) ||
@@ -12434,10 +12466,6 @@ static void srv_main_poll(app *a)
 		return;
 	}
 	g_srv_stale = g_srv_stale && muse_source_saved_srv();
-	if (g_srv && (int)(now - next_check) >= 0 && net_online() && !msrv_get_offline(g_srv)) {
-		msrv_sync_start(g_srv, false);
-		next_check = now + 60u * 60u * 1000u;            /* an hour */
-	}
 }
 
 /* Visible Sources (owner, plorpos-935): which Sources the Source list
