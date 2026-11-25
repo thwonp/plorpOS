@@ -379,9 +379,9 @@ static bool bluetoothd_running(void)
  * replaced and why each was wrong. */
 int bt_mark_connected_now(bt_device *list, int n)
 {
-#if defined(PLATFORM_H700) || defined(PLATFORM_ROTATE)
-	/* No hcitool on BaseOS (nor in Debian's bluez). BlueZ 5.66's own list, which holds a device only
-	 * once its link is up - not the half-open one hcitool also showed.
+#if defined(PLATFORM_H700) || defined(PLATFORM_ROTATE) || defined(PLATFORM_BASEDOS)
+	/* No hcitool on BaseOS, the BasedOS fork (BlueZ 5.79), nor in Debian's
+	 * bluez. BlueZ 5.66's own list, which holds a device only once its link is up - not the half-open one hcitool also showed.
 	 * Matched on `Device <mac>` at a line's start, so neither an event line
 	 * (`[CHG] Device ...`) nor a device with no name is misread. */
 	char out[2048];
@@ -413,6 +413,12 @@ bt_state bt_status(void)
 {
 	char out[512];
 
+#if defined(PLATFORM_BASEDOS)
+	/* The fork attaches the chip in basedos-bluetooth start, so no hci0
+	 * while bluetoothd is down is simply off, and turning it on works now
+	 * rather than at the next boot (plorpos-gkd.94.18). */
+	if (!bluetoothd_running()) return BT_POWERED_OFF;
+#endif
 	if (access("/sys/class/bluetooth/hci0", F_OK) != 0) return BT_NO_ADAPTER;
 #if defined(PLATFORM_GKD)
 	if (!bluetoothd_running()) return BT_POWERED_OFF;
