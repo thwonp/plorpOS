@@ -15,6 +15,11 @@
 # describes it - System/launch_frontend.sh (BaseOS's frontend hook), plorpOS/
 # with the SDL2 and FFmpeg libraries BaseOS lacks in plorpOS/lib/, and the empty
 # folders - plus that guide as INSTALL.md. BaseOS itself is the user's, on TF1.
+#
+# GKD on BasedOS (PLATFORM=gkdb, plorpos-gkd.94): out/gkdb/, the card's root -
+# System/launch_frontend.sh (BasedOS's frontend hook), plorpOS/ with Muse's
+# FFmpeg in plorpOS/lib/, and the empty folders. Asset gkdb, never gkd: ROCKNIX
+# GKDs download gkd.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/mk/plorpos-files.sh"
@@ -44,6 +49,11 @@ elif [ "$PLATFORM" = h700 ]; then
 	OUT=$ROOT/out/h700
 	CARD=$OUT
 	PORT=h700
+elif [ "$PLATFORM" = gkdb ]; then
+	B=$ROOT/build/gkdb
+	OUT=$ROOT/out/gkdb
+	CARD=$OUT
+	PORT=gkdb
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
@@ -141,6 +151,18 @@ elif [ "$PLATFORM" = zero40 ]; then
 	done
 	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
+elif [ "$PLATFORM" = gkdb ]; then
+	cp "$B/musectl" "$P/"
+	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib"
+	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
+	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
+	L=$ROOT/sysroot-h700/usr/lib
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
+			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	done
+	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
@@ -226,6 +248,8 @@ cp "$ROOT/config/systems.cfg" "$P/"
 # screen at a time (mk/build-dsperate-brick.sh).
 # The Zero 40 has the DS shelf on the same DSperate build; no Ports yet.
 [ "$PLATFORM" = zero40 ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The GKD on BasedOS: the DS shelf; Ports once PortMaster runs there (plorpos-gkd.94.15).
+[ "$PLATFORM" = gkdb ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -237,6 +261,8 @@ fi
 if [ "$PLATFORM" = rgds ]; then
 	# The DS and Ports shelves, as the GKD (plorpos-rgds.9).
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
+elif [ "$PLATFORM" = gkdb ]; then
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -287,11 +313,12 @@ rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"
       rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
+gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
 esac
-if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then
+if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
 	du -sh "$OUT"
 	echo "payload ready: $OUT"
 	rm -f "$ZIP"

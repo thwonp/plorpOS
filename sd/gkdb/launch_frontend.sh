@@ -36,6 +36,10 @@ done
 : > "$LOG"
 echo "plorpOS on $BASEOS_MODEL, BasedOS $BASEOS_VERSION, uptime $(cut -d' ' -f1 /proc/uptime)" >> "$LOG"
 
+# The launcher's jack watch finds the amp and detect lines in debugfs's gpio
+# list, as on ROCKNIX; BasedOS doesn't mount debugfs.
+grep -q ' /sys/kernel/debug ' /proc/mounts || mount -t debugfs debugfs /sys/kernel/debug
+
 # What the player left (boot.env, which the launcher writes on every change).
 WIFI=0 BLUETOOTH=0 SSH=0 TZRULE=
 [ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
