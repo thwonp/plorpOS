@@ -355,8 +355,8 @@ the Source list. The one in use stays on; when it is the only one left, the
 Source row is grayed out.
 
 **Source** picks what the shelf holds: Local Music, Local Audiobooks,
-[Plex Music](#plex), [Audiobookshelf](#audiobookshelf) or
-[Podcasts](#podcasts). (Before the next release this was two rows, Show and
+[Plex Music](#plex), [Jellyfin Music](#jellyfin),
+[Audiobookshelf](#audiobookshelf) or [Podcasts](#podcasts). (Before the next release this was two rows, Show and
 Source.) Muse+ opens on whichever you left
 it on, except that SELECT with a book playing lands on the books, on that
 book.
@@ -638,6 +638,53 @@ changes; a song cut off by that ends, and the next one plays.
 
 Plex sees what Muse+ plays and counts a play at 90%, as Plexamp does. The
 sign-in is kept on the card in `.userdata/shared/plex/`.
+
+### Jellyfin
+
+*Coming in the next release; not in v1.9.x.*
+
+Muse+ can also play a Jellyfin music library (not on the Miyoo Mini Flip).
+Set **Source** to Jellyfin Music and type the server's address with its port,
+such as `192.168.0.2:8096`. Then sign in with **Quick Connect**: in Jellyfin
+on a phone or computer, open your user menu, choose Quick Connect and enter
+the code on the screen. **Use Password** signs in with your user name and
+password instead. With more than one music library, pick one, or All music.
+
+The first sync reads the whole library (47,000 tracks took 3 minutes on
+home Wi-Fi, 12 over Tailscale) and keeps it on the card. After that Jellyfin
+Music works the way [Plex](#plex) does:
+
+- **Streaming Quality**, **Download Quality**, **Pre-fetch Tracks**, **Check
+  for Updates**, **Resync Library**, **Keep Playlists Synced** and the hourly
+  sync are the same, in **Jellyfin Settings**.
+- **X on an album** downloads it to `Music/Jellyfin/<artist>/<album>/`.
+  **Download Playlist** works the same way too.
+- **Favorite Jellyfin Tracks** is the favorites playlist: adding a track marks
+  it a favorite in Jellyfin, and your Jellyfin favorites show up in it. Y on an
+  album does the same for albums (Favorites tab). It can be downloaded but not
+  renamed or deleted.
+- **Tailnet Server** works as Plex's: your server's tailnet address (such as
+  `100.10.0.0:8096`), tried first while Tailscale is connected. An address that
+  is not your Jellyfin server is refused ("Not a Jellyfin server", or "Not the
+  same server" for a different one). Leave it empty to turn it off.
+- If the server can't be reached when you switch to it, Muse+ says "Server
+  offline. Retrying in 5 min" and keeps showing the copy on the card.
+
+Jellyfin reads your files' tags, so a few server settings make a big
+difference:
+
+- Tag compilations with **ALBUMARTIST**, or they split into one album per
+  artist. Multi-disc albums need **DISCNUMBER**.
+- Jellyfin splits artist names on `/`, `;` and `|` ("AC/DC" becomes "AC" and
+  "DC"). Fix it in the library's settings: custom tag delimiters plus a
+  delimiter whitelist.
+- A shared (non-admin) user needs **Allow media downloading** for downloads
+  and audio transcoding allowed for the quality settings.
+- Jellyfin plays some audio without asking for a sign-in, so keep the server
+  off the open internet: use Tailscale or a reverse proxy to reach it away
+  from home.
+
+The sign-in is kept on the card in `.userdata/shared/jellyfin/`.
 
 ### Audiobookshelf
 
