@@ -64,9 +64,18 @@ if [ "$SSH" = 1 ]; then
 	sh "$DIR/ssh.sh" start
 fi
 
+# The vibration motor (plorpos-5tm.6): GPIO 48, active low. Exported as an
+# output held high - off - for Diatom to drive; a plain "out" would start it.
+MOTOR=/sys/class/gpio/gpio48
+[ -d $MOTOR ] || echo 48 > /sys/class/gpio/export
+echo high > $MOTOR/direction
+
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {
 	pidof diatom > /dev/null && return
+	# No resident: one that died mid-rumble left the motor on. Stock main
+	# does the same "in case app crash".
+	echo 1 > $MOTOR/value 2> /dev/null
 	[ -x "$DIR/diatom" ] || return
 	rm -f "$TORTOS_DIATOM_SOCKET"
 	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \

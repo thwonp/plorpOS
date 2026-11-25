@@ -1734,7 +1734,10 @@ bool plat_has_rumble(void)
 
 	if (has >= 0) return has;
 	has = 0;
-#if defined(__linux__) && !defined(PLATFORM_MIYOO)   /* the Flip's port drives none yet (plorpos-5tm.6) */
+#if defined(__linux__) && defined(PLATFORM_MIYOO)
+	/* The Flip's motor is GPIO 48, which launch.sh exports (plorpos-5tm.6). */
+	if (access("/sys/class/gpio/gpio48/value", W_OK) == 0) has = 1;
+#elif defined(__linux__)
 	if (access("/sys/class/gpio/gpio227/value", W_OK) == 0) has = 1;
 	for (int i = 0; i < 32 && !has; i++) {
 		unsigned long bits[FF_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
