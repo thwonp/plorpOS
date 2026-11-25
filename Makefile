@@ -57,7 +57,7 @@ CHECKS = check-jellyfin check-cheevos check-hare check-httpd check-idle check-ra
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
-         check-playlist check-podfeed check-ota
+         check-playlist check-podfeed check-ota check-emptywrap
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -479,6 +479,15 @@ check-xfer: build-native/xfer-check
 # link, ADR-0001 has failed - reopen it rather than adding the flag.
 check-menus: build-native/menu-check
 	@./build-native/menu-check
+
+# Muse+'s empty Local Source lines on every port and face (plorpos-5tm.23):
+# three lines at most, each inside the list - SDL_ttf and the shipped fonts.
+check-emptywrap: build-native/emptywrap-check
+	@./build-native/emptywrap-check
+build-native/emptywrap-check: tools/emptywrap-check.c src/textwrap.c src/textwrap.h src/muse_empty.h FORCE
+	@mkdir -p build-native
+	@cc -std=c11 -O1 -Wall -Wextra -o $@ tools/emptywrap-check.c src/textwrap.c \
+		$$(pkg-config --cflags --libs SDL2_ttf) -lm
 
 # Where sound goes, given a cable, a headset and a setting. Eight combinations
 # and a five-line rule, which is exactly the kind of thing that is obviously

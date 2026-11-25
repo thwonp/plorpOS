@@ -51,6 +51,8 @@
 #include "abs.h"
 #include "museart.h"
 #include "muselib.h"
+#include "muse_empty.h"
+#include "textwrap.h"
 #include "playlist.h"
 #include "ss.h"
 #include "ssrun.h"
@@ -1568,25 +1570,35 @@ static void muse_fav_flip(const char *dir)
  * and A on it starts it over. Eric's, 2026-09-27. */
 static bool *g_book_done;
 
-/* The kind the shelf really shows: the one chosen, unless that is music and
- * there is none of it but some books. Local Audiobooks with no books stays
- * Local Audiobooks, empty, saying where they go (plorpos-5tm.23); it went
- * back to music without a word. */
+/* The kind the shelf really shows. The card's: the one chosen, even with none
+ * of it - Local Audiobooks or Local Music on a card without any stays itself,
+ * empty, saying where they go (plorpos-5tm.23); it showed the other kind
+ * without a word. A server's, Audiobookshelf's or Podcasts': what it has. */
 static bool muse_books_shown(void)
 {
 	int books = ml_count(&g_muse, true), music = ml_count(&g_muse, false);
 
-	if (!books) return g_muse_books && !g_srv && !g_muse_abs && !g_muse_pod;
+	if (!g_srv && !g_muse_abs && !g_muse_pod) return g_muse_books;
+	if (!books) return false;
 	if (!music) return true;
 	return g_muse_books;
 }
 
-/* Local Audiobooks shown with none on the card: every tab says so. */
-#define MUSE_NO_BOOKS "No audiobooks found. Put them in Audiobooks/"
-static bool muse_no_books(void)
+/* A Local Source shown with none of it on the card: what every tab says
+ * (muse_empty.h), or NULL. */
+static const char *muse_local_none(void)
 {
-	return muse_src_shown() == MSRC_BOOKS && !ml_count(&g_muse, true);
+	muse_src s = muse_src_shown();
+
+	if (s == MSRC_BOOKS && !ml_count(&g_muse, true)) return MUSE_NO_BOOKS;
+#if defined(PLATFORM_MIYOO)
+	if (s == MSRC_MUSIC && !ml_count(&g_muse, false)) return MUSE_NO_MUSIC_CARD;
+#else
+	if (s == MSRC_MUSIC && !ml_count(&g_muse, false)) return MUSE_NO_MUSIC_SRV;
+#endif
+	return NULL;
 }
+
 
 /* The Source the shelf really shows: a server's only once its index is in. */
 static muse_src muse_src_shown(void)
@@ -5219,6 +5231,8 @@ static unsigned rail_sys_hue(void *ctx, int i)
  * placed against the cards moves with them. 0 on the Brick. */
 #define STAGE_Y ((TORTOS_SCREEN_H - CF_STAGE_H) / 2)
 #define GL_PAD (TORTOS_SCREEN_W / 40)
+/* text_wrap's measure: a font's width of s. */
+static int gl_text_w(void *font, const char *s) { return ui_text_width((TTF_Font *)font, s); }
 /* Portrait: the band under the header that a list's art and its lines take. */
 #define GL_ART_BAND (TORTOS_SCREEN_H * 36 / 100)
 
@@ -5988,28 +6002,18 @@ static void gl_draw(app *a, const gl_list *L)
 	if (first > n - g.rows) first = n - g.rows;
 	if (first < 0) first = 0;
 	if (n == 0 && L->empty) {
-		/* Two lines when one does not fit - a narrow screen, the Zero 40's
-		 * 480 px (plorpos-5tm.16.5): cut at the last space that fits. */
-		int y = g.top + (g.row_h - mline) / 2, room = TORTOS_SCREEN_W - 2 * GL_PAD;
-		char l1[192];
-		size_t k = strlen(L->empty), c = k;
+		/* Wrapped when one line does not fit - a narrow screen, the Zero 40's
+		 * 480 px (plorpos-5tm.16.5) - at the last space that fits, and at a
+		 * '\n' first (5tm.23's two sentences): three lines at most. */
+		int y = g.top + (g.row_h - mline) / 2, room = TORTOS_SCREEN_W - 2 * GL_PAD, nl, l;
+		char lines[3][TEXTWRAP_LINE];
 
 		/* Portrait: a tab without art (Artists, Playlists) puts it where its
 		 * neighbours with art do, under their band (owner, plorpos-5tm.16.6). */
 		if (UI_PORTRAIT && !L->art && L->ntabs > 0) y += GL_ART_BAND + GL_PAD / 2;
-		if (k < sizeof l1 && ui_text_width(fm, L->empty) > room) {
-			char *sp;
-
-			memcpy(l1, L->empty, k + 1);
-			while ((sp = strrchr(l1, ' ')) && (*sp = '\0', ui_text_width(fm, l1) > room)) { }
-			c = strlen(l1);
-		}
-		if (c >= k) {
-			ui_text(a->r, fm, L->empty, GL_PAD, y, -1, UI_TEXT_DIM);
-		} else {
-			ui_text(a->r, fm, l1, GL_PAD, y, -1, UI_TEXT_DIM);
-			ui_text(a->r, fm, L->empty + c + 1, GL_PAD, y + g.row_h, -1, UI_TEXT_DIM);
-		}
+		nl = text_wrap(L->empty, room, gl_text_w, fm, lines, 3);
+		for (l = 0; l < nl; l++)
+			ui_text(a->r, fm, lines[l], GL_PAD, y + l * g.row_h, -1, UI_TEXT_DIM);
 	}
 	for (i = first; i < n && i < first + g.rows; i++) {
 		const char *title = L->title(L->ctx, i);
@@ -17092,9 +17096,9 @@ static sysview *muse_shelf_refind(app *a)
 		muse_order_view(&a->view[muse]);
 	}
 	/* Offline Mode with nothing on the card: Muse still, empty, saying how to
-	 * get some (owner, plorpos-5tm.16). Local Audiobooks with none: the same
+	 * get some (owner, plorpos-5tm.16). A Local Source with none: the same
 	 * (5tm.23). */
-	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_no_books())) return NULL;
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_local_none())) return NULL;
 	a->sys_cursor = muse;
 	a->screen = SCREEN_GAMES;
 	v = &a->view[muse];
@@ -18334,7 +18338,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->title = mar_title;
 		L->value = mar_value;
 		L->empty = muse_empty(g_muse_pod ? "No podcasts yet. Podcast Settings in the menu adds some."
-		                      : muse_no_books() ? MUSE_NO_BOOKS : "Nothing here");
+		                      : muse_local_none() ? muse_local_none() : "Nothing here");
 		L->phase = mq_phase(MQ_SHELF, -2, asel);
 		if (g_muse_pod) L->art = mar_pod_art;
 		return;
@@ -18342,10 +18346,10 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	if (tab == MT_PLAYLISTS && books && !g_muse_pod) {
 		L->key = GL_KEY_PLAYLISTS;
 		L->header = "Playlists";
-		L->n = muse_no_books() ? 0 : BPL_N;
+		L->n = muse_local_none() ? 0 : BPL_N;
 		L->cur = psel < BPL_N ? psel : 0;
 		L->title = bpl_title;
-		L->empty = MUSE_NO_BOOKS;
+		L->empty = muse_local_none();
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -18361,7 +18365,9 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 		L->dl = mpl_dl;
 		L->lead = mpl_lead;
 		L->empty = muse_empty(g_srv && msrv_get_offline(g_srv) ? "No downloaded playlists"
-		                                                       : "No playlists yet. X on a track adds one.");
+		                      : muse_local_none() ? muse_local_none()
+		                      : "No playlists yet. X on a track adds one.");
+		if (muse_local_none()) L->n = 0;   /* no music: its playlists play nothing */
 		L->phase = mq_phase(MQ_SHELF, -4, psel);
 		return;
 	}
@@ -18394,7 +18400,7 @@ static void muse_list_describe(app *a, sysview *v, int asel, int psel, gl_list *
 	         : tab != MT_FAVORITES ? "Nothing here"
 	         : books ? "No favorite books yet. Y on a book marks it."
 	         : "No favorite albums yet. Y on an album marks it.";
-	if (muse_no_books()) L->empty = MUSE_NO_BOOKS;
+	if (muse_local_none()) L->empty = muse_local_none();
 	L->empty = muse_empty(L->empty);
 	L->phase = title_phase(a);
 	/* As the track list: a long artist's name runs over the cover to the
@@ -18568,7 +18574,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		}
 		if (lists && !books) muse_playlists_load();
 		n = albums ? (favs && !g_muse_favs ? 0 : v->list.count)
-		  : artists ? g_mar.n : lists ? (books ? (muse_no_books() ? 0 : BPL_N) : g_npls) : 0;
+		  : artists ? g_mar.n : lists ? (muse_local_none() ? 0 : books ? BPL_N : g_npls) : 0;
 		if (lists && g_mls_psel >= n) g_mls_psel = n > 0 ? n - 1 : 0;
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
@@ -18863,9 +18869,9 @@ static void muse_shelf_screen(app *a, bool now)
 
 	for (i = 0; i < a->sys.count; i++)
 		if (is_muse(&a->sys.systems[i])) { muse = i; break; }
-	/* Empty: not opened - but Local Audiobooks with none opens, to say where
-	 * they go (plorpos-5tm.23), as Offline Mode with nothing on the card does. */
-	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_no_books())) return;
+	/* Empty: not opened - but a Local Source with none opens, to say where
+	 * it goes (plorpos-5tm.23), as Offline Mode with nothing on the card does. */
+	if (muse < 0 || (a->view[muse].list.count <= 0 && !muse_src_offline() && !muse_local_none())) return;
 
 	a->sys_cursor = muse;
 	enter_system(a);                      /* the screen, the coverflow, the window */
