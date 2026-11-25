@@ -104,11 +104,9 @@ start_resident() {
 		--save "$SD/Saves" --system "$SD/Bios" 2>&1 &   # into the loop's logf, below
 }
 
-# Restart to install (plorpos-koo) restarts plorpOS, not the device: BaseOS's
-# reboot can wedge the RG35XX SP, even with the USB audio modules out
-# (plorpos-koo.7, 2wl.18). What runs from plorpOS/ stops, then this script
-# starts again from the top, which installs the update. Wi-Fi, Bluetooth and
-# the modules are the system's and stay up (PLORPOS_RESTART).
+# The rollback (plorpos-koo) restarts plorpOS, not the device: what runs from
+# plorpOS/ stops, then this script starts again from the top. Wi-Fi, Bluetooth
+# and the modules are the system's and stay up (PLORPOS_RESTART).
 restart_plorpos() {
 	sh "$DIR/syncthing.sh" stop
 	sh "$DIR/tailscale.sh" stop
@@ -119,6 +117,31 @@ restart_plorpos() {
 	sync
 	export PLORPOS_RESTART=1
 	exec /bin/sh "$SD/System/launch_frontend.sh"
+}
+# Restart to install (plorpos-koo.7): a real reboot, the update installed at
+# the top of this script. Not BaseOS's reboot: its shutdown (rcK, then init's
+# kill sweep) leaves the RG35XX SP black until reset, modules loaded or not
+# (2wl.18), while the kernel's restart called directly came back 3/3 there -
+# NextUI's way, and BaseOS's own lab restart on the RG40XX V. So: plorpOS
+# stopped, the log closed, every disk read-only, then the kernel restart.
+reboot_device() {
+	sh "$DIR/syncthing.sh" stop
+	sh "$DIR/tailscale.sh" stop
+	killall muse btplayer diatom 2> /dev/null
+	i=0
+	while pidof diatom > /dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+	rm -f /tmp/tortos_reboot
+	echo "reboot: uptime $(cut -d' ' -f1 /proc/uptime)"
+	# The loop's output is logf's only writer: closed, awk ends and lets go of
+	# the log, the card's last open file for writing.
+	exec > /dev/null 2>&1
+	sleep 0.3
+	sync
+	mount -o remount,ro "$(readlink -f "$SD")"   # /mnt/SDCARD is a link
+	mount -o remount,ro /data
+	mount -o remount,ro /
+	sync
+	exec /usr/bin/busybox reboot -f
 }
 rm -f /tmp/tortos_poweroff /tmp/tortos_reboot
 cd "$DIR" || { echo "no $DIR" >> "$LOG"; while :; do sleep 3600; done; }
@@ -138,7 +161,7 @@ while :; do
 		sync
 		exec poweroff        # BaseOS's: the PMIC's own power-off
 	fi
-	[ -f /tmp/tortos_reboot ] && restart_plorpos
+	[ -f /tmp/tortos_reboot ] && reboot_device
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
