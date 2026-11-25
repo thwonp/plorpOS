@@ -212,10 +212,24 @@ static void dhcp_after_join(void)
  *
  * oakMOSS on the Zero 40 runs no time daemon (plorpos-5tm.9): one BusyBox
  * ntpd -q a join sets the clock and the RTC (UTC) and exits, as radio.sh does
- * at boot and after a sleep; Wi-Fi off stops one still waiting for an answer. */
+ * at boot and after a sleep; Wi-Fi off stops one still waiting for an answer.
+ *
+ * The Flip's firmware runs none either under plorpOS (plorpos-5tm.10), and its
+ * BusyBox 1.20 ntpd exits at once if pool.ntp.org does not resolve, so the
+ * one-shot waits for the lease's default route first (2 min at most, and only
+ * while wpa_supplicant runs). launch.sh does the same at boot. */
 static void net_time(bool on)
 {
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_MIYOO)
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"(i=0; until " IP_BIN " route | grep -q '^default'; do"
+		  " pidof wpa_supplicant > /dev/null && [ $i -lt 120 ] || exit;"
+		  " sleep 1; i=$((i + 1)); done;"
+		  " ntpd -n -q -p pool.ntp.org && hwclock -w -u) > /dev/null 2>&1 &"
+		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
+
+	run(argv, NULL, 0);
+#elif defined(PLATFORM_ZERO40)
 	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
 		? (char *)"(/usr/sbin/ntpd -n -q -p pool.ntp.org && /sbin/hwclock -w -u) > /dev/null 2>&1 &"
 		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };

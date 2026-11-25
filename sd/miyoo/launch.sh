@@ -44,6 +44,17 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 		/customer/app/wpa_supplicant -B -D nl80211 -iwlan0 -c "$WPA_CONF"
 		udhcpc -i wlan0 -s /etc/init.d/udhcpc.script
 	) > /dev/null 2>&1 &
+	# The clock (plorpos-5tm.10): nothing sets it under plorpOS. One ntpd -q
+	# sets it and the RTC (UTC) once the lease has a route - BusyBox 1.20's
+	# ntpd quits if the name does not resolve yet. As src/wifi.c net_time.
+	(
+		i=0
+		until ip route | grep -q '^default'; do
+			[ $i -lt 120 ] || exit
+			sleep 1; i=$((i + 1))
+		done
+		ntpd -n -q -p pool.ntp.org && hwclock -w -u
+	) > /dev/null 2>&1 &
 else
 	echo "wifi: off at boot (WIFI=$WIFI)" >> "$LOG"
 fi
