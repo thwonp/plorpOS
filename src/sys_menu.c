@@ -305,10 +305,9 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
 {
 	*heading = "Dual Screen Settings";
-	out[DU_SECONDARY] = (menu_row){ "Secondary Screen", u->dual_on ? "on" : "off", true };
-	/* What the second panel shows on the shelf - nothing to choose while it
-	 * is off. */
-	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse+" : "Details", u->dual_on };
+	/* What the second panel shows on the shelf. It has no off here: its
+	 * brightness goes down to off (plorpos-rgds.30). */
+	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse+" : "Details", true };
 	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
 	return DU_ROWS;
 }

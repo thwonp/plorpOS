@@ -1221,8 +1221,10 @@ static sys_order g_order;
 static bool g_ports_hidden, g_has_ports;
 #if defined(PLATFORM_RGDS)
 /* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
- * once and kept here, as details_tick asks every frame. */
-static bool g_dual_on = true, g_dual_muse, g_dual_bottom;
+ * once and kept here, as details_tick asks every frame. No on/off: the
+ * secondary is off at brightness 0 (plorpos-rgds.30), drawn all the same so
+ * that raising it - beside a game too - shows it at once. */
+static bool g_dual_muse, g_dual_bottom;
 #endif
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
@@ -7790,7 +7792,6 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.adb_restart = plat_adb_restart();
 #endif
 #if defined(PLATFORM_RGDS)
-		u.dual_on = g_dual_on;
 		u.dual_muse = g_dual_muse;
 		u.dual_bottom = g_dual_bottom;
 #endif
@@ -13109,9 +13110,8 @@ static int dual_settings_build(void *ctx, menu_row *rows, int max,
 
 static menu_result dual_settings_key(app *a, void *ctx, in_button key, int sel)
 {
-	bool *v = sel == DU_SECONDARY ? &g_dual_on : sel == DU_FUNCTION ? &g_dual_muse
-	        : sel == DU_PRIMARY ? &g_dual_bottom : NULL;
-	static const char *const id[DU_ROWS] = { "dual_on", "dual_muse", "dual_bottom" };
+	bool *v = sel == DU_FUNCTION ? &g_dual_muse : sel == DU_PRIMARY ? &g_dual_bottom : NULL;
+	static const char *const id[DU_ROWS] = { "dual_muse", "dual_bottom" };
 
 	(void)a; (void)ctx;
 	if (!v || !(key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) return MENU_STAY;
@@ -24257,7 +24257,7 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 }
 
 /* The secondary panel (plorpos-rgds.18, .18.1): on for as long as the launcher
- * is on the screen and Secondary Screen is on - lit already when a shelf
+ * is on the screen - lit already when a shelf
  * opens, so its page only has to be drawn. Details for the game under the
  * cursor, the system's page on the carousel, or Muse. */
 /* During a game (both kinds' ticks, 10 Hz): Muse beside it keeps playing its
@@ -24268,7 +24268,7 @@ static void muse_on_secondary(app *a, void (*tick)(void));
 
 static void muse_panel_game_tick(void (*tick)(void))
 {
-	if (!g_dual_on || !g_dual_muse || g_muse_sec) return;   /* Muse runs it */
+	if (!g_dual_muse || g_muse_sec) return;   /* Muse runs it */
 	plat_bottom_queue(false);
 	plat_bottom_pump();
 	if (plat_bottom_want() && g_rgds_app) { muse_on_secondary(g_rgds_app, tick); return; }
@@ -24322,7 +24322,7 @@ static void muse_queue_tick(void)
 	gl_geom g;
 	SDL_Renderer *r;
 
-	if (!a || !mn || !g_dual_on || !g_dual_muse || g_muse_sec) return;
+	if (!a || !mn || !g_dual_muse || g_muse_sec) return;
 	plat_bottom_queue(true);
 	g_panel_fresh = true;                 /* the resting page, after Muse */
 	if (now - last > 500) shown[0] = '\0', dragged = false;  /* Muse just opened */
@@ -24452,7 +24452,7 @@ static void muse_on_secondary(app *a, void (*tick)(void))
  * (plat_bottom_on_want): the in-game menu, a settings menu (.18.3.8). */
 static void muse_want_hook(void)
 {
-	if (g_rgds_app && g_dual_on && g_dual_muse && !g_muse_sec) muse_on_secondary(g_rgds_app, NULL);
+	if (g_rgds_app && g_dual_muse && !g_muse_sec) muse_on_secondary(g_rgds_app, NULL);
 }
 
 static void details_tick(app *a)
@@ -24475,11 +24475,6 @@ static void details_tick(app *a)
 		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - P_FONT) : 1, slash ? P_FONT : ".");
 		details_init(dir);
 		init = true;
-	}
-	if (!g_dual_on) {
-		if (on) { plat_bottom_off(); on = false; }
-		shown[0] = pend[0] = '\0';
-		return;
 	}
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse) {
 		epoch = plat_bottom_epoch();
@@ -24998,7 +24993,6 @@ int main(int argc, char *argv[])
 		g_order = cfg_order_index(id);
 		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
 #if defined(PLATFORM_RGDS)
-		g_dual_on     = db_get_int(db_dev(), "dual_on", 1) != 0;
 		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
 		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
 #endif

@@ -59,7 +59,6 @@ plorpOS uses one screen and puts something useful on the other. Choose which
 in Menu > **Dual Screen Settings**:
 
 - **Primary Screen**: Top or Bottom - where plorpOS and your games go.
-- **Secondary Screen**: on or off.
 - **Secondary Function**: **Details** shows the game under the cursor (cover,
   what the scrape knows, play time, achievements; swipe for its three pages).
   **Muse+** puts Muse+'s Now Playing there, also beside your game. Touch it and
@@ -85,8 +84,8 @@ Each screen has its own brightness:
 
 The level bar shows on the screen you are changing, in games too.
 
-- The second screen goes all the way down to **off**. While it's off, touching it
-  does nothing.
+- The second screen goes all the way down to **off**: that's how you turn it
+  off. While it's off, touching it does nothing.
 - The main screen (Primary Screen) never goes fully dark.
 - Switch Primary Screen and the brightness goes with it: the new main screen
   takes the old one's level, and the other screen takes the second screen's.
@@ -133,8 +132,6 @@ Known issues:
 
 - **Braid** doesn't start. Its port supports ROCKNIX only with the Panfrost
   graphics driver, and the RG DS uses Mali's.
-- **TMNT: Shredder's Revenge** can stay black the first time, right after it
-  patches itself. Quit (Select + Start) and start it again.
 - **Balatro**: with the port's Performance setting off, keep the CRT effect at
   0. The full CRT effect draws black patches on the RG DS's graphics driver.
 
