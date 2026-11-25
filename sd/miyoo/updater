@@ -40,10 +40,29 @@ boot_fallback() {
 
 export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
 
-# Backlight and panel as the stock firmware brings them up.
+# Backlight and panel as the stock firmware brings them up, at the saved
+# level from the start (plorpos-f1p.99): the duty of boot.env's BRIGHTNESS,
+# from platform_miyoo.c's ladder (keep the two the same), or 50 on a card
+# the launcher has not written yet. The panel helper that cat /proc/ls
+# starts (/dev/l) sets duty 10 x the stock system.json "brightness" about
+# 2 s later, so that value is matched to the level too, written only when
+# it differs.
+DUTY=50
+LEVEL=$(sed -n "s/^BRIGHTNESS='\([0-9]*\)'\$/\1/p" "$ROOT/.userdata/miyooflip/boot.env" 2> /dev/null)
+i=0
+for d in 3 5 8 12 17 24 33 44 56 70 85 100; do
+	[ "$i" = "$LEVEL" ] && DUTY=$d
+	i=$((i + 1))
+done
+J=/appconfigs/system.json
+if [ -n "$LEVEL" ] && [ -f "$J" ]; then
+	S=$(((DUTY + 5) / 10))
+	grep -q "\"brightness\":[[:space:]]*$S," "$J" ||
+		sed -i "s/\(\"brightness\":[[:space:]]*\)[0-9]*,/\1$S,/" "$J"
+fi
 echo 0 > /sys/class/pwm/pwmchip0/export 2> /dev/null
 echo 800 > /sys/class/pwm/pwmchip0/pwm0/period
-echo 50 > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
+echo $DUTY > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
 echo 1 > /sys/class/pwm/pwmchip0/pwm0/enable
 cat /proc/ls > /dev/null
 # The stock telnetd (passwordless root): plorpOS's ssh, off by default, is
