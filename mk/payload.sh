@@ -156,8 +156,9 @@ elif [ "$PLATFORM" = zero40 ]; then
 	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = gkdb ]; then
 	cp "$B/musectl" "$P/"
-	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib"
+	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS: stock's curl (the shim says why)
 	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
 	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
 	L=$ROOT/sysroot-h700/usr/lib
@@ -316,7 +317,7 @@ rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"
       rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
-gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" ;;
+gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
