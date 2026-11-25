@@ -600,7 +600,11 @@ gesture plat_run_menu_why(void);
  * wakes at its own stored or full level, and IEMs on a DAC at 100% is hearing
  * damage (plorpos-3yv.68, plorpos-7wu.1). The user raises it from there. */
 #define PLAT_OUT_CAP 6
+#if defined(PLATFORM_RGDS)
+#define PLAT_BRIGHT_MAX  12   /* the twelve rungs over an off rung 0 (plorpos-rgds.27) */
+#else
 #define PLAT_BRIGHT_MAX  11   /* a 12-rung geometric ladder, 0..11 */
+#endif
 
 /* Levels come from the settings database: seeded from the shipped defaults on
  * first run, then overwritten by every nudge of the rocker. There is no longer

@@ -1684,6 +1684,14 @@ bool plat_resident_send(const plat_game *g)
 		                    vol, PLAT_VOL_MAX + 1);
 		if (bri >= 0) dsend("SETLEVEL\tkind=brightness\tindex=%d\tcount=%d",
 		                    bri, PLAT_BRIGHT_MAX + 1);
+#ifdef PLATFORM_RGDS
+		{
+			/* The secondary panel's own level (plorpos-rgds.27). */
+			extern int cur_bright2;
+			if (cur_bright2 >= 0) dsend("SETLEVEL\tkind=brightness2\tindex=%d\tcount=%d",
+			                            cur_bright2, PLAT_BRIGHT_MAX + 1);
+		}
+#endif
 		/* And the mute, ON EVERY RUN and not only when it changes. A state
 		 * sent only on transition is wrong exactly once - the first time -
 		 * which here means a game started with the switch already down comes
@@ -1832,6 +1840,14 @@ static void d_note_level(const char *l)
 	cnt = atoi(c + 6);
 	if (cnt < 2) return;
 	if (strncmp(k + 5, "volume", 6) == 0)          { d_pend_vol = idx; d_pend_vol_n = cnt; }
+#ifdef PLATFORM_RGDS
+	/* The secondary's, set in the game: it is on its panel already; kept now,
+	 * with its bar there - that panel is the launcher's (plorpos-rgds.27). */
+	else if (strncmp(k + 5, "brightness2", 11) == 0) {
+		extern void rgds_brightness2_set(int level, bool show);
+		rgds_brightness2_set((idx * PLAT_BRIGHT_MAX + (cnt - 1) / 2) / (cnt - 1), true);
+	}
+#endif
 	else if (strncmp(k + 5, "brightness", 10) == 0) { d_pend_bri = idx; d_pend_bri_n = cnt; }
 }
 
@@ -2448,7 +2464,13 @@ int plat_resident_wait(void)
 	{
 		extern bool rgds_game_top;
 
-		if (r != RES_PAUSED) rgds_game_top = false;   /* over: the launcher's panels again */
+		if (r != RES_PAUSED && rgds_game_top) {
+			rgds_game_top = false;   /* over: the launcher's panels again */
+			/* And a secondary kept dark lit only for the DS game goes dark
+			 * again: its levels were applied with the game still on
+			 * (plorpos-rgds.27). */
+			apply_brightness(cur_bright);
+		}
 	}
 #endif
 	screen_yield(false);
@@ -2936,6 +2958,11 @@ void plat_volume_nudge(int delta)
 
 void plat_brightness_nudge(int delta)
 {
+#ifdef PLATFORM_RGDS
+	extern void rgds_brightness_nudge(int delta);
+	rgds_brightness_nudge(delta);   /* a panel of two: platform_gkd.c */
+	return;
+#endif
 	if (disp_fd < 0) return;
 	apply_brightness(clampi(cur_bright + delta, 0, BRIGHT_MAX));
 	levels_save();

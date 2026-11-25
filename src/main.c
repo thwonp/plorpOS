@@ -24204,7 +24204,7 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 {
 	static struct np_cover np_b = { .album = -1 };
 	static char shown[1200];
-	static unsigned due, gen;
+	static unsigned due, gen, epoch;
 	const mu_now *mn = musec_now();
 	char key[1200], next[128];
 	unsigned now = SDL_GetTicks(), t0, wait;
@@ -24213,6 +24213,9 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 
 	if (!g_rgds_app || !mn || g_muse_sec) return;  /* Muse itself draws there */
 	if (g_panel_fresh) fresh = true, g_panel_fresh = false;
+	/* Drawn over again when the platform asks - a brightness bar for this
+	 * panel, beside a game too (plorpos-rgds.27). */
+	if (epoch != plat_bottom_epoch()) fresh = true, epoch = plat_bottom_epoch();
 	while (plat_bottom_tap(&x, &y)) { }          /* a tap opens Muse: details_tick */
 	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
 		if (np_b.tex) SDL_DestroyTexture(np_b.tex);

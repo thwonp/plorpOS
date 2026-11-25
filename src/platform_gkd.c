@@ -218,6 +218,9 @@ void plat_video_quit(void)
  * always has the top for its top screen (rgds_game_top, set at its launch). */
 static bool g_prim_bottom;
 bool rgds_game_top;
+static bool sec_dark(void);
+static void primary_mark(void);
+static void osd2_tick(void);
 #define SEC_OUT  (g_prim_bottom ? "DSI-2" : "DSI-1")
 
 /* Workspace 1 - the launcher, a game, a port: everything placed "on the
@@ -354,10 +357,11 @@ void plat_bottom_pump(void)
 	int n;
 
 	if (!bwin || !b_shown) return;
+	osd2_tick();                           /* its bar's end, beside a game */
 	SDL_PumpEvents();
 	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERMOTION)) > 0)
 		for (int i = 0; i < n; i++) {
-			if (e[i].tfinger.windowID != SDL_GetWindowID(bwin)) continue;
+			if (e[i].tfinger.windowID != SDL_GetWindowID(bwin) || sec_dark()) continue;
 			/* Muse rests there: a finger opens it beside the game and
 			 * carries on (plorpos-rgds.18.3.5), as on the shelf. */
 			if (b_keep && !b_session) {
@@ -471,9 +475,13 @@ void plat_bottom_session(bool on, bool game)
 	}
 }
 
+static void osd2_draw(void);
+
 void plat_bottom_end(void)
 {
-	if (bren && b_shown) SDL_RenderPresent(bren);
+	if (!bren || !b_shown) return;
+	osd2_draw();
+	SDL_RenderPresent(bren);
 }
 
 /* The secondary window onto the top panel (Primary Bottom), lit; false while
@@ -523,6 +531,9 @@ void plat_set_primary_bottom(bool on)
 	if (win && !b_away) place_pending = true;
 	sway_cmd(on ? "output DSI-2 power off" : "output DSI-1 power off");   /* lit again when drawn */
 	b_epoch++;
+	/* The levels go with the roles: each panel takes its new role's. */
+	primary_mark();
+	if (cur_bright >= 0) apply_brightness(cur_bright);
 }
 
 bool plat_bottom_tap(int *x, int *y)
@@ -664,6 +675,14 @@ static int fd_home = -1;
 #define KEYS_NAME "gpio-keys"
 #endif
 static bool home_down;
+#ifdef PLATFORM_RGDS
+/* The Anbernic key (BTN_MODE, Menu) is also the top panel's brightness
+ * modifier (plorpos-rgds.27), so it is held back as the Rotate's Menu is:
+ * down only with another button (a chord), spent by a volume key, and
+ * otherwise a one-poll press on release (anb_pulse: up the next poll). */
+static bool anb_down, anb_sent, anb_spent, anb_pulse;
+static bool bright_top;   /* the next brightness press is the top panel's (Anbernic) */
+#endif
 /* The d-pad and the stick each keep their own state, so letting go of one
  * does not release a direction the other still holds. Left, right, up, down -
  * IN_LEFT..IN_DOWN's order. */
@@ -753,6 +772,16 @@ void plat_input_flush(void)
 #ifdef PLATFORM_RGDS
 	drain(fd_home);
 	home_down = false;
+	{
+		/* An Anbernic key still held is spent: its release must not arrive
+		 * as a fresh Menu and close what its press opened. */
+		unsigned long bits[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+		anb_down = fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+		           (bits[BTN_MODE / (8 * sizeof bits[0])] >> (BTN_MODE % (8 * sizeof bits[0])) & 1);
+		anb_spent = anb_down;
+		anb_sent = anb_pulse = false;
+	}
 	if (!carry) touch_reset();
 #endif
 	/* Their releases were in what was just thrown away. */
@@ -979,6 +1008,20 @@ static void pad_read(in_state *st)
 		}
 		if (ev.type != EV_KEY || ev.value == 2) continue;
 		bool down = ev.value == 1;
+#ifdef PLATFORM_RGDS
+		if (ev.code == BTN_MODE) {
+			anb_down = down;
+			if (down) { anb_sent = anb_spent = false; continue; }
+			if (anb_sent) set_btn(st, IN_MENU, false);
+			else if (!anb_spent) { set_btn(st, IN_MENU, true); anb_pulse = true; }
+			anb_sent = false;
+			continue;
+		}
+		if (down && anb_down && !anb_sent && !anb_spent) {
+			set_btn(st, IN_MENU, true);
+			anb_sent = true;
+		}
+#endif
 		switch (ev.code) {
 		/* A press counts when it comes, not only if it is still held after
 		 * the read: a quick tap's release can arrive in the same read, and
@@ -1017,6 +1060,15 @@ static void keys_read(in_state *st)
 		if      (ev.code == KEY_VOLUMEUP)   { vol = IN_VOLUP; bright = IN_BRIGHTUP; }
 		else if (ev.code == KEY_VOLUMEDOWN) { vol = IN_VOLDN; bright = IN_BRIGHTDN; }
 		else continue;
+#ifdef PLATFORM_RGDS
+		/* Anbernic + volume: the top panel; Home + volume: the bottom. */
+		if (ev.value == 1 && (anb_down || home_down)) {
+			bright_top = anb_down;
+			if (anb_down) anb_spent = true;
+			set_btn(st, bright, true);
+			continue;
+		}
+#endif
 		if (ev.value == 1) set_btn(st, home_down ? bright : vol, true);
 		else { set_btn(st, vol, false); set_btn(st, bright, false); }
 	}
@@ -1160,6 +1212,10 @@ void plat_input_poll(in_state *st)
 #endif
 	memset(st->pressed, 0, sizeof st->pressed);
 	if (g_terminating) st->quit_requested = true;
+#ifdef PLATFORM_RGDS
+	if (anb_pulse) { set_btn(st, IN_MENU, false); anb_pulse = false; }
+	osd2_tick();
+#endif
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) st->quit_requested = true;
@@ -1169,6 +1225,8 @@ void plat_input_poll(in_state *st)
 		 * (plorpos-rgds.24.2). */
 		if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERUP || e.type == SDL_FINGERMOTION) {
 			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
+
+			if (sec && sec_dark()) continue;   /* dark: its touches are nobody's */
 
 			if (b_session) {
 				if (sec) touch_event(&e, bw, bh);
@@ -1245,10 +1303,13 @@ void plat_leds_off(void) { }
  * first step that reads as distinct, and above it every 8 units are visible -
  * so twelve rungs evenly spaced from 40 to 255. */
 #ifdef PLATFORM_RGDS
-/* The RG DS's backlights run 0..1666: the same twelve rungs, scaled. */
+/* The RG DS's backlights run 0..1666: the same twelve rungs, scaled, over
+ * an off rung 0 - each panel has its own level and the secondary can be
+ * dark; the primary never goes below rung 1 (plorpos-rgds.27). diatom's
+ * port/gkd.c has the same ladder. */
 #define BL_RAW_MAX 1666
 static const unsigned short bright_ladder[] = {
-	261, 392, 516, 647, 771, 902, 1026, 1156, 1281, 1411, 1535, 1666
+	0, 261, 392, 516, 647, 771, 902, 1026, 1156, 1281, 1411, 1535, 1666
 };
 #else
 #define BL_RAW_MAX 255
@@ -1260,7 +1321,7 @@ static const unsigned short bright_ladder[] = {
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "ladder and platform.h disagree");
 #define VOL_MAX PLAT_VOL_MAX
 #ifdef PLATFORM_RGDS
-/* The top panel (DSI-2); backlight0 is the bottom one, which launch.sh turns off. */
+/* The top panel (DSI-2); backlight0 is the bottom one (disp2_fd). */
 #define BACKLIGHT "/sys/class/backlight/backlight1/brightness"
 #else
 #define BACKLIGHT "/sys/class/backlight/backlight/brightness"
@@ -1274,6 +1335,15 @@ int mixer_fd = -1, disp_fd = -1;
 static int disp2_fd = -1;    /* the bottom panel's backlight0 */
 #endif
 int cur_vol = -1, cur_bright = -1;
+#ifdef PLATFORM_RGDS
+/* Two levels kept by ROLE, not by panel (plorpos-rgds.27): cur_bright is the
+ * primary screen's, cur_bright2 the secondary's. Switching Primary Screen
+ * then swaps what the panels show with no more to do - the owner's rule:
+ * "if secondary was at 0 and becomes primary, it automatically raises
+ * brightness and the other screen goes to 0". bright_top: the panel the
+ * next brightness press is for - the Anbernic key's (top) or Home's. */
+int cur_bright2 = -1;
+#endif
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 /* As on the Brick: the player's levels in the device db, and boot.env
@@ -1282,6 +1352,9 @@ void levels_save(void)
 {
 	db_set_int(db_dev(), "volume", cur_vol);
 	db_set_int(db_dev(), "brightness", cur_bright);
+#ifdef PLATFORM_RGDS
+	db_set_int(db_dev(), "brightness2", cur_bright2);
+#endif
 	db_write_boot_env();
 }
 
@@ -1342,11 +1415,133 @@ static void backlight_write(int raw)
 #endif
 }
 
+#ifdef PLATFORM_RGDS
+/* What each panel shows: the primary at its level (never below rung 1), the
+ * secondary at its own - dark at 0 - but lit at 1 at least while a DS game
+ * has both panels (rgds_game_top). */
+static void bright_raws(int *top, int *bot)
+{
+	int p = clampi(cur_bright, 1, BRIGHT_MAX);
+	int q = clampi(cur_bright2 < 0 ? p : cur_bright2, rgds_game_top ? 1 : 0, BRIGHT_MAX);
+
+	*top = bright_ladder[g_prim_bottom ? q : p];
+	*bot = bright_ladder[g_prim_bottom ? p : q];
+}
+
+/* The secondary dark: its touches are nobody's (plorpos-rgds.27). */
+static bool sec_dark(void)
+{
+	return cur_bright2 == 0 && !rgds_game_top;
+}
+
+static void bl_put(int fd, int raw, const char *which)
+{
+	char s[8];
+	int n = snprintf(s, sizeof s, "%d\n", raw);
+
+	if (fd >= 0 && pwrite(fd, s, n, 0) != n)
+		fprintf(stderr, "settings: %s backlight write %d failed\n", which, raw);
+}
+
+void apply_brightness(int b)
+{
+	int top, bot;
+
+	cur_bright = clampi(b, 1, BRIGHT_MAX);
+	bright_raws(&top, &bot);
+	bl_put(disp_fd, top, "top");
+	bl_put(disp2_fd, bot, "bottom");
+}
+
+/* /run, for diatom: which panel a one-screen game is on, so its brightness
+ * keys know which level is which (port/gkd.c RGDS_PRIMARY). */
+static void primary_mark(void)
+{
+	FILE *f = fopen("/run/plorpos-primary", "w");
+
+	if (!f) return;
+	fputs(g_prim_bottom ? "bottom\n" : "top\n", f);
+	fclose(f);
+}
+
+/* The secondary's own bar, on its window (plat_bottom_end): the level OSD
+ * shows on the screen being changed. Drawn when the secondary next draws -
+ * b_epoch makes it - and gone with one more draw when its time is up. */
+static Uint32 osd2_until;
+static int    osd2_val;
+
+static void osd2_show(int val)
+{
+	osd2_val = val;
+	osd2_until = SDL_GetTicks() + 900;
+	b_epoch++;
+}
+
+static void osd2_draw(void)
+{
+	SDL_Color fill = UI_OSD_BRIGHT;
+	int h = UI_BAR_H, pad = 3;
+
+	if (!osd2_until || !bren) return;
+	if ((Sint32)(SDL_GetTicks() - osd2_until) > 0) return;
+	SDL_SetRenderDrawBlendMode(bren, SDL_BLENDMODE_BLEND);
+	SDL_SetRenderDrawColor(bren, 0, 0, 0, 128);
+	SDL_RenderFillRect(bren, &(SDL_Rect){ 0, 0, bw, h + pad * 2 });
+	SDL_SetRenderDrawColor(bren, 60, 62, 72, 255);
+	SDL_RenderFillRect(bren, &(SDL_Rect){ 0, pad, bw, h });
+	SDL_SetRenderDrawColor(bren, fill.r, fill.g, fill.b, 255);
+	SDL_RenderFillRect(bren, &(SDL_Rect){ 0, pad, bw * osd2_val / BRIGHT_MAX, h });
+}
+
+/* One more draw of the secondary once the bar's time is up, to take it off. */
+static void osd2_tick(void)
+{
+	if (osd2_until && (Sint32)(SDL_GetTicks() - osd2_until) > 0) {
+		osd2_until = 0;
+		b_epoch++;
+	}
+}
+
+/* Anbernic + volume is the top panel, Home + volume the bottom; whichever is
+ * the primary never goes below rung 1, the secondary goes down to dark. */
+void rgds_brightness_nudge(int delta)
+{
+	bool prim = bright_top != g_prim_bottom;
+
+	if (disp_fd < 0) return;
+	if (prim) {
+		apply_brightness(clampi(cur_bright + delta, 1, BRIGHT_MAX));
+		plat_osd_show(1, cur_bright, BRIGHT_MAX);
+	} else {
+		cur_bright2 = clampi(cur_bright2 + delta, 0, BRIGHT_MAX);
+		apply_brightness(cur_bright);
+		osd2_show(cur_bright2);
+	}
+	levels_save();
+}
+
+/* The secondary's level from a game (diatom's LEVEL kind=brightness2): it is
+ * on the panel already; kept, and its bar shown there. */
+void rgds_brightness2_set(int level, bool show)
+{
+	level = clampi(level, 0, BRIGHT_MAX);
+	/* diatom answers every game's start with the level it was sent: no bar
+	 * for that, only for a change. */
+	if (level == cur_bright2) return;
+	cur_bright2 = level;
+	/* Not applied: diatom has lit both panels already, and the primary's
+	 * level it may have changed too comes back only at the game's end - an
+	 * apply here put the primary back to the launcher's old one. */
+	levels_save();
+	if (show) osd2_show(cur_bright2);
+}
+#else
 void apply_brightness(int b)
 {
 	cur_bright = b;
 	backlight_write(bright_ladder[b]);
 }
+#endif
 
 /* Dark, not rung 0 (raw 40 is a dim screen); cur_bright is kept so
  * apply_brightness(cur_bright) brings the player's level back. */
@@ -1842,6 +2037,17 @@ void plat_settings_init(void)
 	}
 	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX)    : -1;
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
+#ifdef PLATFORM_RGDS
+	/* No brightness2 yet: a level saved on the old ladder, which had no off
+	 * rung - one up keeps the same light, and the secondary starts at it. */
+	cur_bright2 = db_get_int(db_dev(), "brightness2", -1);
+	if (cur_bright2 < 0) {
+		if (b >= 0) cur_bright = clampi(b + 1, 1, BRIGHT_MAX);
+		cur_bright2 = cur_bright;
+		levels_save();
+	}
+	primary_mark();
+#endif
 	if (cur_vol >= 0) apply_volume(cur_vol);
 	apply_brightness(cur_bright);
 	plat_mute_switch_lock(db_get_int(db_dev(), "muteswitch", 0) == 1);
@@ -1924,18 +2130,25 @@ static void *hook_watch(void *arg)
 		char s[16] = { 0 };
 		int raw;
 
+#ifdef PLATFORM_RGDS
+		/* Each panel against its own level: the hook restores both to its
+		 * one old value (.23, .27). */
+		int want[2], fds[2] = { disp_fd, disp2_fd };
+
+		bright_raws(&want[0], &want[1]);
+		for (int k = 0; k < 2; k++) {
+			memset(s, 0, sizeof s);
+			if (fds[k] >= 0 && pread(fds[k], s, sizeof s - 1, 0) > 0 &&
+			    (raw = atoi(s)) != 0 && raw != want[k]) {
+				fprintf(stderr, "sleep: %s backlight %d after the wake, back to %d\n",
+				        k ? "bottom" : "top", raw, want[k]);
+				apply_brightness(cur_bright);
+			}
+		}
+#else
 		if (disp_fd >= 0 && pread(disp_fd, s, sizeof s - 1, 0) > 0 &&
 		    (raw = atoi(s)) != 0 && raw != bright_ladder[cur_bright]) {
 			fprintf(stderr, "sleep: backlight %d after the wake, back to %d\n",
-			        raw, bright_ladder[cur_bright]);
-			apply_brightness(cur_bright);
-		}
-#ifdef PLATFORM_RGDS
-		/* The hook restores the bottom panel's own old level too (.23). */
-		memset(s, 0, sizeof s);
-		if (disp2_fd >= 0 && pread(disp2_fd, s, sizeof s - 1, 0) > 0 &&
-		    (raw = atoi(s)) != 0 && raw != bright_ladder[cur_bright]) {
-			fprintf(stderr, "sleep: bottom backlight %d after the wake, back to %d\n",
 			        raw, bright_ladder[cur_bright]);
 			apply_brightness(cur_bright);
 		}
