@@ -248,13 +248,22 @@ void plat_rgds_game_tick(void)
 
 /* A port or native PICO-8 asks for fullscreen on SDL's display 0, the top
  * panel, whatever has the focus: with Primary Bottom, its window is taken
- * onto workspace 1 once it is there. From the native tick; up to 5 s. */
+ * onto workspace 1 once it is there. From the native tick, for as long as the
+ * child runs: 10 Hz for the first 5 s, then once a second. Not only the
+ * first window and not only 5 s - a port can map its game's window late
+ * (Celeste) or after a patcher's or splash's (Gato Roboto); that window was
+ * left on the top panel's hidden workspace, black and frozen
+ * (plorpos-rgds.9). plat_window_show(true) ends it. */
 void plat_rgds_child_tick(void)
 {
+	static Uint32 next;
 	char *argv[] = { "swaymsg", "[title=\"^(?!plorpOS|diatom)\" workspace=\"^(?!1$|plorpos-launcher$|plorpos-hidden$)\"] move container to workspace 1, focus, fullscreen enable", NULL };
 
 	if (!cp_pending) return;
-	if (helper(argv) || ++cp_tries > 50) cp_pending = false;
+	if (cp_tries < 50) cp_tries++;
+	else if ((Sint32)(SDL_GetTicks() - next) < 0) return;
+	else next = SDL_GetTicks() + 1000;
+	helper(argv);
 }
 static bool helper(char *const argv[]);
 
@@ -637,6 +646,9 @@ void plat_window_show(bool on)
 	if (on) {
 		SDL_RenderSetVSync(ren, 0);
 		resident_away_pending = true;
+#ifdef PLATFORM_RGDS
+		cp_pending = false;           /* the child is done: its windows too */
+#endif
 	} else {
 		resident_away_pending = false;
 		launcher_place(false);
