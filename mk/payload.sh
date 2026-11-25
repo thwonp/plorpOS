@@ -82,7 +82,10 @@ if grep -q '^#define SS_DEVID *""' "$B/ss_creds.h" 2>/dev/null ||
 	fi
 	echo "payload: WARNING: packaging without the ScreenScraper developer pair" >&2
 fi
-DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/$PLATFORM/diatom}
+# The GKD on BasedOS runs diatom's GKD build as it is: the same device, and it
+# draws through SDL, KMSDRM there instead of sway (plorpos-gkd.94.14).
+DPORT=$PLATFORM; [ "$PLATFORM" = gkdb ] && DPORT=gkd
+DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/$DPORT/diatom}
 [ -f "$DIATOM_ELF" ] || { echo "no diatom at $DIATOM_ELF (set DIATOM_ELF)"; exit 1; }
 [ -f "$ROOT/vendor/cores/fceumm_libretro.so" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }
 
