@@ -27,10 +27,29 @@ static SDL_Renderer *scaled_ren;
 static int scaled_w, scaled_h;
 static bool knows_output, decided;
 
+/* SDL itself, past these hooks: also when the game carries its own SDL inside
+ * a library it loaded privately (Pyxel's Python extension, RTLD_LOCAL), which
+ * RTLD_NEXT does not see - then the caller's copy, from its own library. */
+static void *sdl_real(const char *name, const void *caller)
+{
+	void *f = dlsym(RTLD_NEXT, name);
+	Dl_info di;
+
+	if (!f && dladdr(caller, &di) && di.dli_fname) {
+		void *h = dlopen(di.dli_fname, RTLD_LAZY | RTLD_NOLOAD);
+
+		if (h) {
+			f = dlsym(h, name);
+			dlclose(h);
+		}
+	}
+	return f;
+}
+
 SDL_Window *SDL_CreateWindow(const char *title, int x, int y, int w, int h, Uint32 flags)
 {
-	SDL_Window *(*create)(const char *, int, int, int, int, Uint32) = dlsym(RTLD_NEXT, "SDL_CreateWindow");
-	int (*desktop)(int, SDL_DisplayMode *) = dlsym(RTLD_NEXT, "SDL_GetDesktopDisplayMode");
+	SDL_Window *(*create)(const char *, int, int, int, int, Uint32) = sdl_real("SDL_CreateWindow", __builtin_return_address(0));
+	int (*desktop)(int, SDL_DisplayMode *) = sdl_real("SDL_GetDesktopDisplayMode", __builtin_return_address(0));
 	SDL_DisplayMode dm;
 	SDL_Window *win;
 
@@ -50,7 +69,7 @@ SDL_Window *SDL_CreateWindow(const char *title, int x, int y, int w, int h, Uint
 
 SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, int index, Uint32 flags)
 {
-	SDL_Renderer *(*create)(SDL_Window *, int, Uint32) = dlsym(RTLD_NEXT, "SDL_CreateRenderer");
+	SDL_Renderer *(*create)(SDL_Window *, int, Uint32) = sdl_real("SDL_CreateRenderer", __builtin_return_address(0));
 	SDL_Renderer *r = create ? create(window, index, flags) : NULL;
 
 	if (r && window && window == scaled) {
@@ -63,7 +82,7 @@ SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, int index, Uint32 flags)
 /* A game that asks this draws to the whole output itself. */
 int SDL_GetRendererOutputSize(SDL_Renderer *r, int *w, int *h)
 {
-	int (*size)(SDL_Renderer *, int *, int *) = dlsym(RTLD_NEXT, "SDL_GetRendererOutputSize");
+	int (*size)(SDL_Renderer *, int *, int *) = sdl_real("SDL_GetRendererOutputSize", __builtin_return_address(0));
 
 	if (r && r == scaled_ren) knows_output = true;
 	return size ? size(r, w, h) : -1;
@@ -71,12 +90,12 @@ int SDL_GetRendererOutputSize(SDL_Renderer *r, int *w, int *h)
 
 void SDL_RenderPresent(SDL_Renderer *r)
 {
-	void (*present)(SDL_Renderer *) = dlsym(RTLD_NEXT, "SDL_RenderPresent");
+	void (*present)(SDL_Renderer *) = sdl_real("SDL_RenderPresent", __builtin_return_address(0));
 
 	if (r && r == scaled_ren && !decided) {
-		void (*get_logical)(SDL_Renderer *, int *, int *) = dlsym(RTLD_NEXT, "SDL_RenderGetLogicalSize");
-		void (*get_scale)(SDL_Renderer *, float *, float *) = dlsym(RTLD_NEXT, "SDL_RenderGetScale");
-		int (*logical)(SDL_Renderer *, int, int) = dlsym(RTLD_NEXT, "SDL_RenderSetLogicalSize");
+		void (*get_logical)(SDL_Renderer *, int *, int *) = sdl_real("SDL_RenderGetLogicalSize", __builtin_return_address(0));
+		void (*get_scale)(SDL_Renderer *, float *, float *) = sdl_real("SDL_RenderGetScale", __builtin_return_address(0));
+		int (*logical)(SDL_Renderer *, int, int) = sdl_real("SDL_RenderSetLogicalSize", __builtin_return_address(0));
 		int lw = 0, lh = 0;
 		float sx = 1.0f, sy = 1.0f;
 
@@ -96,7 +115,7 @@ void SDL_RenderPresent(SDL_Renderer *r)
  * its own and land in the corner again. */
 int SDL_SetWindowFullscreen(SDL_Window *window, Uint32 flags)
 {
-	int (*fullscreen)(SDL_Window *, Uint32) = dlsym(RTLD_NEXT, "SDL_SetWindowFullscreen");
+	int (*fullscreen)(SDL_Window *, Uint32) = sdl_real("SDL_SetWindowFullscreen", __builtin_return_address(0));
 
 	if (!fullscreen) return -1;
 	if (window && window == scaled && (flags & SDL_WINDOW_FULLSCREEN))

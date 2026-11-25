@@ -172,8 +172,9 @@ elif [ "$PLATFORM" = gkdb ]; then
 	mkdir -p "$P/gkdb/portmaster"
 	cp "$ROOT/sd/gkdb/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" \
 	   "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so" "$B/portscale.so" "$P/gkdb/portmaster/"
-	cp "$ROOT/sd/h700/portmaster/libgl_ROCKNIX.txt" "$ROOT/sd/h700/portmaster/launch_hooks.txt" \
-	   "$ROOT/sd/h700/portmaster/retroarch" "$P/gkdb/portmaster/"
+	# Its libgl_ROCKNIX.txt is PortMaster's own (sd/gkdb/portmaster): gl4es on
+	# GBM (LIBGL_FB=4), as the GKD's libmali needs; the H700's drops it for fbdev.
+	cp "$ROOT/sd/h700/portmaster/launch_hooks.txt" "$ROOT/sd/h700/portmaster/retroarch" "$P/gkdb/portmaster/"
 	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
 	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
 	L=$ROOT/sysroot-h700/usr/lib

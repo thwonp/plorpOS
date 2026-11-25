@@ -45,6 +45,13 @@ export PATH=$TOOLS/bin:$TOOLS/python/bin:$PATH
 # GUI's pysdl2 looks only on this path (launch_hooks.txt).
 export LD_LIBRARY_PATH=$TOOLS/lib:/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export SSL_CERT_FILE=$CARD/plorpOS/cacert.pem
+# dotnet (PortMaster's GameMaker patcher, dotnet ports) aborts without ICU,
+# which BasedOS does not have: the invariant culture instead.
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+# PipeWire's socket where it is, whatever XDG_RUNTIME_DIR a port's wrapper
+# sets for itself (Westonpack's is its own folder): those win over it.
+export PIPEWIRE_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/0}
+export PULSE_RUNTIME_PATH=${XDG_RUNTIME_DIR:-/run/user/0}/pulse
 
 if [ "$1" = --uninstall ]; then
 	cd "$PM" || exit 1
@@ -59,6 +66,13 @@ if [ ! -f "$PM/PortMaster.sh" ] && [ -f "$HERE/PortMaster.zip" ]; then
 		rm -rf "$PM" && mv "$PMDATA/.install/PortMaster" "$PM" && rm -rf "$PMDATA/.install" ||
 		exit 1
 fi
+
+# Westonpack's wrapper looks for PortMaster in fixed places only, the
+# ROCKNIX build's /opt/tools link among them, which a read-only root cannot
+# hold: $HOME's is one of them too, bound for this run. And XWayland, which
+# it starts, wants the X11 socket folder every other system has.
+mkdir -p "$HOME/.local/share/PortMaster" /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+mount --bind "$PM" "$HOME/.local/share/PortMaster"
 
 for f in control.txt libgl_ROCKNIX.txt; do
 	cmp -s "$HERE/$f" "$PM/$f" || cp "$HERE/$f" "$PM/$f"

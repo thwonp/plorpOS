@@ -43,8 +43,14 @@ source $controlfolder/funcs.txt
 
 # Ports run bare on KMS's GL, as on the H700, and PortMaster's ROCKNIX branch
 # is the one that skips its own compositor. Ports only: PortMaster's own GUI
-# stays generic (pm-run.sh sets PLORPOS_PM_GUI).
-[ -n "${PLORPOS_PM_GUI:-}" ] || export CFW_NAME="ROCKNIX"
+# stays generic (pm-run.sh sets PLORPOS_PM_GUI). So does Westonpack's wrapper,
+# which sources this too: named ROCKNIX it expects ROCKNIX's sway already
+# running, while its generic mode brings its own Weston and draws through
+# Crusty on KMS, which is what a system with no compositor needs.
+case "$0" in
+*/westonwrap.sh) ;;
+*) [ -n "${PLORPOS_PM_GUI:-}" ] || export CFW_NAME="ROCKNIX" ;;
+esac
 
 export GPTOKEYB2="$ESUDO env LD_PRELOAD=$controlfolder/libinterpose.${DEVICE_ARCH}.so $controlfolder/gptokeyb2 $ESUDOKILL2"
 export GPTOKEYB="$ESUDO $controlfolder/gptokeyb $ESUDOKILL"
