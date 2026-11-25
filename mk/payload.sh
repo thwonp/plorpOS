@@ -159,6 +159,21 @@ elif [ "$PLATFORM" = gkdb ]; then
 	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
 	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS: stock's curl (the shim says why)
+	# PortMaster: the H700's runner on BasedOS (plorpos-gkd.94.15), with the
+	# H700's python image and port shims as they are (mk/build-pmtools-h700.sh,
+	# tools/portcompat.c); BasedOS brings its own SDL2, 64- and 32-bit.
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	[ -f "$B/portscale.so" ] || { echo "no $B/portscale.so; run make PLATFORM=gkdb" >&2; exit 1; }
+	for f in pmtools.squashfs portcompat.so; do
+		[ -f "$ROOT/build/h700/$f" ] ||
+			{ echo "no build/h700/$f; run mk/build-pmtools-h700.sh (and make PLATFORM=h700)" >&2; exit 1; }
+	done
+	mkdir -p "$P/gkdb/portmaster"
+	cp "$ROOT/sd/gkdb/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" \
+	   "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so" "$B/portscale.so" "$P/gkdb/portmaster/"
+	cp "$ROOT/sd/h700/portmaster/libgl_ROCKNIX.txt" "$ROOT/sd/h700/portmaster/launch_hooks.txt" \
+	   "$ROOT/sd/h700/portmaster/retroarch" "$P/gkdb/portmaster/"
 	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
 	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
 	L=$ROOT/sysroot-h700/usr/lib
@@ -252,8 +267,8 @@ cp "$ROOT/config/systems.cfg" "$P/"
 # screen at a time (mk/build-dsperate-brick.sh).
 # The Zero 40 has the DS shelf on the same DSperate build; no Ports yet.
 [ "$PLATFORM" = zero40 ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
-# The GKD on BasedOS: the DS shelf; Ports once PortMaster runs there (plorpos-gkd.94.15).
-[ "$PLATFORM" = gkdb ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The GKD on BasedOS: the DS and Ports shelves (plorpos-gkd.94.15).
+[ "$PLATFORM" = gkdb ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -317,7 +332,8 @@ rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"
       rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
-gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
+gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
+	"$P/gkdb/portmaster/pm-run.sh" "$P/gkdb/portmaster/retroarch" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;

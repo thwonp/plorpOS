@@ -36,7 +36,7 @@ all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscr
 else ifeq ($(PLATFORM),rgds)
 all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so build/rgds/adbroot.so
 else ifeq ($(PLATFORM),gkdb)
-all: build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl
+all: build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl build/gkdb/portscale.so
 else ifeq ($(PLATFORM),zero40)
 all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl
 else ifeq ($(PLATFORM),nano)
@@ -180,6 +180,13 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 # ROCKNIX's pipewire-alsa plugin provides - no source change from the Brick.
 build/gkd/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
+
+# PortMaster's scaling shim on the GKD under BasedOS (tools/portscale.c).
+build/gkdb/portscale.so: tools/portscale.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
+		-I/work/sysroot-gkdb/usr/include/SDL2 -o $@ $< -ldl
 
 build/gkd/portfullscreen.so: tools/portfullscreen.c
 	@mkdir -p $(@D)

@@ -628,6 +628,83 @@ void screen_yield(bool to_game)
 	}
 }
 
+#if defined(PLATFORM_BASEDOS)
+/* The display a native child leaves behind (plorpos-gkd.94.15). An SDL child
+ * puts back the scanout it found when it quits (KMSDRM_VideoQuit); one that
+ * does not - gmloader's GameMaker ports - leaves the primary plane with no
+ * framebuffer once its own go with its fd, and every page flip of ours then
+ * fails with EBUSY: the launcher black for good. So the launcher's scanout is
+ * noted before a native child - its front buffer stays SDL's until our next
+ * flip - and set again on the way back if the CRTC has none. Raw ioctls: the
+ * sysroot has no libdrm, and these four are all it takes. The sysroot's SDL
+ * headers come from a build without KMSDRM; the device's SDL has it, and the
+ * kmsdrm member of SDL_SysWMinfo is unchanged since 2.0.16. */
+#ifndef SDL_VIDEO_DRIVER_KMSDRM
+#define SDL_VIDEO_DRIVER_KMSDRM 1
+#endif
+#include <SDL_syswm.h>
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
+
+static struct drm_mode_crtc kms_saved;
+static uint32_t kms_conn;
+static int kms_fd = -1;
+
+static void kms_note(void)
+{
+	struct drm_mode_card_res res = { 0 };
+	uint32_t crtcs[8], conns[8];
+	SDL_SysWMinfo wm;
+	int fd;
+
+	kms_fd = -1;
+	SDL_VERSION(&wm.version);
+	if (!win || !SDL_GetWindowWMInfo(win, &wm) || wm.subsystem != SDL_SYSWM_KMSDRM) return;
+	fd = wm.info.kmsdrm.drm_fd;
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) != 0 ||
+	    res.count_crtcs > 8 || res.count_connectors > 8) return;
+	res.count_fbs = res.count_encoders = 0;
+	res.fb_id_ptr = res.encoder_id_ptr = 0;
+	res.crtc_id_ptr = (uintptr_t)crtcs;
+	res.connector_id_ptr = (uintptr_t)conns;
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) != 0) return;
+	for (uint32_t i = 0; i < res.count_crtcs; i++) {
+		struct drm_mode_crtc c = { .crtc_id = crtcs[i] };
+
+		if (ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &c) != 0 || !c.fb_id || !c.mode_valid) continue;
+		/* The panel's connector, once: the one whose encoder drives this CRTC. */
+		for (uint32_t j = 0; !kms_conn && j < res.count_connectors; j++) {
+			struct drm_mode_get_connector k = { .connector_id = conns[j] };
+			struct drm_mode_get_encoder e = { 0 };
+
+			if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &k) != 0 || !k.encoder_id) continue;
+			e.encoder_id = k.encoder_id;
+			if (ioctl(fd, DRM_IOCTL_MODE_GETENCODER, &e) == 0 && e.crtc_id == c.crtc_id)
+				kms_conn = conns[j];
+		}
+		if (!kms_conn) return;
+		kms_saved = c;
+		kms_fd = fd;
+		return;
+	}
+}
+
+static void kms_restore(void)
+{
+	struct drm_mode_crtc c = { .crtc_id = kms_saved.crtc_id };
+
+	if (kms_fd < 0) return;
+	if (ioctl(kms_fd, DRM_IOCTL_MODE_GETCRTC, &c) == 0 && c.fb_id) return;   /* put back already */
+	c = kms_saved;
+	c.set_connectors_ptr = (uintptr_t)&kms_conn;
+	c.count_connectors = 1;
+	if (ioctl(kms_fd, DRM_IOCTL_MODE_SETCRTC, &c) != 0)
+		fprintf(stderr, "run: the child left no scanout, and ours would not go back: %s\n", strerror(errno));
+	else
+		fprintf(stderr, "run: the child left no scanout; ours put back\n");
+}
+#endif
+
 /* A native child's run (run_alone) and its menu keep the launcher's window,
  * as on the Rotate - but moved between workspaces, never unmapped, for the
  * reason screen_yield gives (f5d). Shown: its next frame is drawn off-screen
@@ -639,9 +716,15 @@ void plat_window_show(bool on)
 {
 	if (!win) return;
 	if (on) {
+#if defined(PLATFORM_BASEDOS)
+		kms_restore();
+#endif
 		SDL_RenderSetVSync(ren, 0);
 		resident_away_pending = true;
 	} else {
+#if defined(PLATFORM_BASEDOS)
+		kms_note();
+#endif
 		resident_away_pending = false;
 		launcher_place(false);
 #ifdef PLATFORM_RGDS
