@@ -176,6 +176,12 @@ elif [ "$PLATFORM" = gkdb ]; then
 	# GBM (LIBGL_FB=4), as the GKD's libmali needs; the H700's drops it for fbdev.
 	cp "$ROOT/sd/h700/portmaster/launch_hooks.txt" "$ROOT/sd/h700/portmaster/retroarch" "$P/gkdb/portmaster/"
 	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
+	# The boot logos, put on the eMMC by the launch script (plorpos-gkd.94.26):
+	# U-Boot's, and BasedOS's with the boot keys labelled
+	python3 "$ROOT/mk/gkdb-bootlogo.py" "$ROOT/res/boot/plorpos-wordmark.png" "$ROOT/res/fonts/menu.ttf" \
+		"$P/gkdb/bootlogo.bmp.gz" || exit 1
+	python3 "$ROOT/mk/gkdb-bootlogo.py" "$ROOT/res/boot/plorpos-wordmark.png" "$ROOT/res/fonts/menu.ttf" \
+		"$P/gkdb/bootlogo-keys.bmp.gz" --keys || exit 1
 	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
 	L=$ROOT/sysroot-h700/usr/lib
 	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do

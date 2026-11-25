@@ -83,6 +83,26 @@ fi
 # background: the attach and bluetoothd take seconds.
 [ "$BLUETOOTH" = 1 ] && basedos-bluetooth start >> "$LOG" 2>&1 &
 
+# The boot logos are plorpOS's (plorpos-gkd.94.26): U-Boot's from power-on,
+# gkdb/bootlogo.bmp.gz in place of stock's GameKiddy logo, which is kept beside
+# it as .stock (the device's copy, never the card's: a fresh card must not take
+# our logo for stock's, the Brick's lesson); and BasedOS's, drawn once the
+# kernel has blanked the screen until the launcher's first frame, with the boot
+# keys labelled (gkdb/bootlogo-keys.bmp.gz). Asks the files themselves each
+# boot; in the background, so the shelf never waits on it.
+LOGO=/boot/.backup/logo_mini_plus.bmp.gz KEYS_LOGO=/boot/basedos/boot-logo.bmp.gz
+if [ -f "$DIR/gkdb/bootlogo.bmp.gz" ] && [ -f "$DIR/gkdb/bootlogo-keys.bmp.gz" ] && [ -f $LOGO ] &&
+	! { cmp -s $LOGO "$DIR/gkdb/bootlogo.bmp.gz" && cmp -s $KEYS_LOGO "$DIR/gkdb/bootlogo-keys.bmp.gz"; }; then
+	(
+		mount -o remount,rw /boot || exit
+		{ [ -f $LOGO.stock ] || cp $LOGO $LOGO.stock; } &&
+			cp "$DIR/gkdb/bootlogo.bmp.gz" $LOGO.new && cp "$DIR/gkdb/bootlogo-keys.bmp.gz" $KEYS_LOGO.new &&
+			sync && mv $LOGO.new $LOGO && mv $KEYS_LOGO.new $KEYS_LOGO && sync &&
+			echo "boot logos: plorpOS's in place (stock's kept as $LOGO.stock)"
+		mount -o remount,ro /boot
+	) >> "$LOG" 2>&1 &
+fi
+
 # The resident emulator. A child of this script, so it lives through launcher
 # restarts.
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
