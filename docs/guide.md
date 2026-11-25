@@ -345,9 +345,14 @@ Muse+ plays the music and the audiobooks on the card. Its card at the end of
 the shelf opens Muse+ on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
-Muse+, has the album count, Sort By, Album Art (below), Tab Settings, Rescan
-Folder for music copied on while the device was running, Playback Settings
-(not on the Miyoo Mini Flip), and Source.
+Muse+, has the album count, Sort By, Source, Playback Settings (not on the
+Miyoo Mini Flip), UI Settings and the Source's own settings. **UI Settings**
+holds Tab Settings, Now-Playing Layout and Visible Sources. **Local Music
+Settings** holds Album Art (below) and Rescan Folder, for music copied on
+while the device was running; **Local Books Settings** holds Rescan Folder.
+
+**Visible Sources** (in UI Settings) switches Sources you don't use out of
+the Source list. The one in use stays on.
 
 **Source** picks what the shelf holds: Local Music, Local Audiobooks,
 [Plex Music](#plex), [Audiobookshelf](#audiobookshelf) or
@@ -366,7 +371,7 @@ Muse+ has five tabs, **Artists**, **Albums**, **Favorites**, **Playlists** and
 **Playlists** and **Coverflow**),
 named along the bottom with L2 and R2 at its ends. L2 and R2 step between them,
 round from the last to the first, and Muse+ opens on the tab you left it on.
-**Tab Settings** in Muse+'s MENU lists the tabs in order with On or Off: A (or
+**Tab Settings** (MENU, then UI Settings) lists the tabs in order with On or Off: A (or
 left/right) switches one, and L2 and R2 move it up and down, which is the
 order along the bottom too. One order for music and audiobooks; at least one
 tab besides Playlists stays on.
@@ -457,7 +462,7 @@ Audiobookshelf).
 | **Y** | the play mode (music) |
 | **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
 
-**Now-Playing Layout** in Playback Settings picks how the screen is laid out.
+**Now-Playing Layout** in UI Settings picks how the screen is laid out.
 `Longer Titles` (the default) puts the title, artist and album across the top,
 the title on up to two lines, with the cover and the progress bar under them.
 `Original` keeps the words beside the cover, sliding when they are too long.
@@ -552,7 +557,7 @@ picture its files carry and keeps it beside the album, in
 `Music/<artist>/.media/`, the way box art sits in `Roms/<system>/.media`. An
 album whose files carry none gets a generated card.
 
-**Album Art**, in MENU on Muse+'s shelf, fetches covers over Wi-Fi for every
+**Album Art**, in Local Music Settings, fetches covers over Wi-Fi for every
 album with none, or with one smaller than the shelf draws it - 461px. It asks
 MusicBrainz which record the album is, from the artist and album folder names
 and the number of tracks - the track count is what tells a same-named single,

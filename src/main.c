@@ -1421,7 +1421,10 @@ static void muse_offline_note(void)
  * its 103 MB next to the launcher - 47k tracks got it OOM-killed
  * (plorpos-1lw.27). Not in Source, and a card that had it opens Local Music.
  * Nor Jellyfin, for the same reason (owner, plorpos-vgr). */
-static bool muse_src_offered(muse_src v)
+static const char *const MSRC_KEY[MSRC_COUNT] = { "music", "books", "plex", "jellyfin", "abs", "podcasts" };
+
+/* The Sources this device has at all. */
+static bool muse_src_built(muse_src v)
 {
 #ifdef PLATFORM_MIYOO
 	return v != MSRC_PLEX && v != MSRC_JELLYFIN;
@@ -1431,12 +1434,25 @@ static bool muse_src_offered(muse_src v)
 #endif
 }
 
+/* Visible Sources (owner, plorpos-935): a Source switched off there is not
+ * offered, "muse.hide.<source>" on the device. The one in use cannot be
+ * switched off, so there is always one. */
+static bool muse_src_hidden(muse_src v)
+{
+	char key[32];
+
+	snprintf(key, sizeof key, "muse.hide.%s", MSRC_KEY[v]);
+	return db_get_int(db_dev(), key, 0) != 0;
+}
+
+static bool muse_src_offered(muse_src v) { return muse_src_built(v) && !muse_src_hidden(v); }
+
 /* Muse's Source (plorpos-9rf.2), one of four, kept per device as "muse.src".
  * A card from before it had Show (music or books) and Local/Plex: Plex wins,
  * then books, read once and written as the new key. */
 static muse_src muse_src_saved(void)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "jellyfin", "abs", "podcasts" };
+	const char *const *K = MSRC_KEY;
 	char s[16];
 	int i;
 
@@ -1457,9 +1473,7 @@ static muse_src muse_src_saved(void)
 
 static void muse_src_save(muse_src v)
 {
-	static const char *const K[MSRC_COUNT] = { "music", "books", "plex", "jellyfin", "abs", "podcasts" };
-
-	db_set_str(db_dev(), "muse.src", K[v >= 0 && v < MSRC_COUNT ? v : 0]);
+	db_set_str(db_dev(), "muse.src", MSRC_KEY[v >= 0 && v < MSRC_COUNT ? v : 0]);
 }
 
 static bool muse_source_saved_srv(void) { return srv_of(muse_src_saved()) != NULL; }
@@ -10783,7 +10797,7 @@ static bool auto_rewind_on(void)
 	return g_auto_rewind;
 }
 
-/* Playback Settings' Now-Playing Layout (plorpos-5eq.24), db "muse.nplayout":
+/* UI Settings' Now-Playing Layout (plorpos-5eq.24), db "muse.nplayout":
  * 0 Longer Titles, the default; 1 Original. Read once. */
 static int g_np_long = -1;
 
@@ -10826,10 +10840,8 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 		rows[4] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[4] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	/* Now Playing's two layouts (owner, plorpos-5eq.24). */
-	rows[5] = (menu_row){ "Now-Playing Layout", np_layout_long() ? "Longer Titles" : "Original", true };
-	rows[6] = (menu_row){ "Hotkeys", NULL, true };
-	return 7;
+	rows[5] = (menu_row){ "Hotkeys", NULL, true };   /* Now-Playing Layout: UI Settings (plorpos-935) */
+	return 6;
 }
 
 /* Hotkeys, from Playback Settings (owner, plorpos-5eq.6, .26): a row an
@@ -11024,11 +11036,7 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
-	if (sel == 5 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		g_np_long = !np_layout_long();
-		db_set_int(db_dev(), "muse.nplayout", !g_np_long);
-	}
-	if (sel == 6 && key == IN_ACCEPT) muse_hotkeys_screen(a);
+	if (sel == 5 && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -12402,6 +12410,128 @@ static void srv_main_poll(app *a)
 	}
 }
 
+/* Visible Sources (owner, plorpos-935): which Sources the Source list
+ * offers. The one in use stays on. */
+static int muse_vis_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	muse_src *map = ctx;
+	int k, n = 0;
+
+	*heading = "Visible Sources";
+	for (k = 0; k < MSRC_COUNT && n < max; k++) {
+		bool cur = (muse_src)k == muse_src_saved();
+
+		if (!muse_src_built((muse_src)k)) continue;
+		map[n] = (muse_src)k;
+		rows[n++] = (menu_row){ sys_menu_src_label((muse_src)k),
+		                        cur ? "In Use" : muse_src_hidden((muse_src)k) ? "Off" : "On", !cur };
+	}
+	return n;
+}
+
+static menu_result muse_vis_key(app *a, void *ctx, in_button key, int sel)
+{
+	muse_src *map = ctx, s;
+	char k[32];
+
+	(void)a;
+	if (key != IN_ACCEPT && key != IN_LEFT && key != IN_RIGHT) return MENU_STAY;
+	if (sel < 0 || sel >= MSRC_COUNT) return MENU_STAY;
+	s = map[sel];
+	if (s == muse_src_saved()) return MENU_STAY;
+	snprintf(k, sizeof k, "muse.hide.%s", MSRC_KEY[s]);
+	db_set_int(db_dev(), k, !muse_src_hidden(s));
+	return MENU_STAY;
+}
+
+/* UI Settings (owner, plorpos-935): how Muse+ looks - its tabs, Now
+ * Playing's layout, the Sources offered. */
+#if defined(PLATFORM_MIYOO)   /* the Flip never had Now-Playing Layout: Playback Settings is not there (f1p.58) */
+enum { MU_TABS, MU_SOURCES, MU_ROWS, MU_LAYOUT = -1 };
+#else
+enum { MU_TABS, MU_LAYOUT, MU_SOURCES, MU_ROWS };
+#endif
+
+static int muse_ui_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)ctx;
+	(void)max;
+	*heading = "UI Settings";
+	rows[MU_TABS] = (menu_row){ "Tab Settings", NULL, true };
+	/* Now Playing's two layouts (owner, plorpos-5eq.24). */
+	if (MU_LAYOUT >= 0)
+		rows[MU_LAYOUT > 0 ? MU_LAYOUT : 0] = (menu_row){ "Now-Playing Layout",
+		                                                 np_layout_long() ? "Longer Titles" : "Original", true };
+	rows[MU_SOURCES] = (menu_row){ "Visible Sources", NULL, true };
+	return MU_ROWS;
+}
+
+static menu_result muse_ui_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)ctx;
+	if (sel == MU_LAYOUT && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		g_np_long = !np_layout_long();
+		db_set_int(db_dev(), "muse.nplayout", !g_np_long);
+		return MENU_STAY;
+	}
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (sel == MU_TABS) muse_tabs_screen(a);
+	if (sel == MU_SOURCES) {
+		muse_src map[MSRC_COUNT];
+
+		menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+		         muse_vis_build, muse_vis_key, map);
+	}
+	return MENU_STAY;
+}
+
+static void muse_ui_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         muse_ui_build, muse_ui_key, NULL);
+}
+
+/* Local Music Settings / Local Books Settings (owner, plorpos-935): what a
+ * card Source has of its own - Album Art (music: MusicBrainz knows records)
+ * and Rescan Folder. True when the library was read again (the caller's menu
+ * goes). */
+typedef struct { bool art, rebuilt; } muse_local_ui;
+
+static int muse_local_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	muse_local_ui *u = ctx;
+	bool net = net_online();
+	int n = 0;
+
+	(void)max;
+	*heading = u->art ? "Local Music Settings" : "Local Books Settings";
+	if (u->rebuilt) return 0;
+	if (u->art) rows[n++] = (menu_row){ "Album Art", net ? NULL : "needs Wi-Fi", net };
+	rows[n++] = (menu_row){ "Rescan Folder", NULL, true };
+	return n;
+}
+
+static menu_result muse_local_key(app *a, void *ctx, in_button key, int sel)
+{
+	muse_local_ui *u = ctx;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (u->art && sel == 0) { album_art_screen(a); return MENU_STAY; }
+	wait_panel(a, "Muse+", "Scanning...");
+	rescan_all(a);
+	u->rebuilt = true;
+	return MENU_DONE;
+}
+
+static bool muse_local_screen(app *a)
+{
+	muse_local_ui u = { .art = muse_src_shown() == MSRC_MUSIC };
+
+	menu_run(a, &(menu_style){ .accent = MUSE_ACCENT, .fixed_w = menu_std_width(a) },
+	         muse_local_build, muse_local_key, &u);
+	return u.rebuilt;
+}
+
 static void muse_settings_screen(app *a)
 {
 	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
@@ -12924,18 +13054,15 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				sel = SM_SORT;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
-				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
 				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
-				if (id == SMM_TABS) { muse_tabs_screen(a); return MENU_STAY; }
+				if (id == SMM_UI) { muse_ui_screen(a); return MENU_STAY; }
+				if (id == SMM_LOCAL) return muse_local_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_SOURCE) return muse_source_pick(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_SRV) return srv_settings_screen(a, muse_src_shown()) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
-				if (id != SMM_RESCAN) return MENU_STAY;
-				wait_panel(a, "Muse+", "Scanning...");
-				rescan_all(a);
-				return MENU_DONE;
+				return MENU_STAY;
 			}
 		}
 		/* Favorites' menu is its own rows too, Sort By alone - see

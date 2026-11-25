@@ -36,14 +36,14 @@ int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 	int n = 0;
 
 	out[n++] = SMM_COUNT;
+	(void)books;
 	if (src != MSRC_PODCASTS) out[n++] = SMM_SORT;   /* episodes: newest first, always */
-	if (!books && !remote) out[n++] = SMM_ART;
-	out[n++] = SMM_TABS;
-	if (!remote) out[n++] = SMM_RESCAN;   /* a server's Resync Library is in its settings (1lw.17) */
+	out[n++] = SMM_SOURCE;
 #if !defined(PLATFORM_MIYOO)   /* all three rows are screen-off behaviour, unused on the Flip (f1p.58) */
 	out[n++] = SMM_SETTINGS;
 #endif
-	out[n++] = SMM_SOURCE;
+	out[n++] = SMM_UI;
+	if (!remote) out[n++] = SMM_LOCAL;    /* Album Art, Rescan Folder; a server's Resync is in its own */
 	if (srv) out[n++] = SMM_SRV;
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
@@ -86,11 +86,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					                     ? (u->muse_books ? "Author" : "Artist") : u->sort,
 					                     !u->muse_list };
 					break;
-				case SMM_ART:
-					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };
+				case SMM_UI:
+					out[k] = (menu_row){ "UI Settings", NULL, true };
 					break;
-				case SMM_RESCAN:
-					out[k] = (menu_row){ "Rescan Folder", NULL, true };
+				case SMM_LOCAL:
+					out[k] = (menu_row){ u->muse_src == MSRC_BOOKS ? "Local Books Settings"
+					                                               : "Local Music Settings", NULL, true };
 					break;
 				case SMM_SOURCE:
 					out[k] = (menu_row){ "Source", sys_menu_src_label(u->muse_src), true };
@@ -107,9 +108,6 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_DLQ:
 					out[k] = (menu_row){ "Download Queue", u->muse_dlq, true };
-					break;
-				case SMM_TABS:
-					out[k] = (menu_row){ "Tab Settings", NULL, true };
 					break;
 				case SMM_SETTINGS:
 					out[k] = (menu_row){ "Playback Settings", NULL, true };
