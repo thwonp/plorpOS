@@ -459,6 +459,8 @@ void plat_bottom_pump(void);
 /* The lid opened since the last call. Light sleep wakes on it by itself
  * (power_key_within); Muse's dark screen asks here (plorpos-ps8.3). */
 bool plat_lid_opened(void);
+bool plat_lid_closing(void);
+bool plat_lid_shut(void);
 #endif
 #if defined(PLATFORM_ROTATE)
 /* The swivel (plorpos-5eq.1). System Settings' "Rotate (Closed)" and

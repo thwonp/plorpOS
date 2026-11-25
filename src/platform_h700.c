@@ -521,13 +521,13 @@ static void pad_read(in_state *st)
 }
 
 static bool lid_opened;   /* plat_lid_opened's: one opening, not yet taken */
+static bool lid_pulse;    /* this poll's IN_POWER down is the lid closing */
 
 /* POWER, and the lid closing as a tap of it: down now, up on the next poll.
  * The lid opening is no button - as POWER it would sleep the shelf - but
  * Muse's dark screen wakes on it (plat_lid_opened). */
 static void power_read(in_state *st)
 {
-	static bool lid_pulse;
 	struct input_event ev;
 
 	if (lid_pulse) { set_btn(st, IN_POWER, false); lid_pulse = false; }
@@ -541,6 +541,27 @@ static void power_read(in_state *st)
 			lid_opened = true;
 		}
 	}
+}
+
+/* True for the poll whose POWER press is really the lid closing: music dark
+ * takes it for no tap, so a closed lid leaves the screen off (plorpos-5tm.21). */
+bool plat_lid_closing(void)
+{
+	return lid_pulse;
+}
+
+/* The SP's hall sensor as the PMIC driver shows it: "0" shut, "1" open. A
+ * model without a lid has no file and reads open. Read on demand only. */
+bool plat_lid_shut(void)
+{
+	char c = '1';
+	int fd = open("/sys/class/power_supply/axp2202-battery/hallkey", O_RDONLY | O_CLOEXEC);
+
+	if (fd >= 0) {
+		if (read(fd, &c, 1) != 1) c = '1';
+		close(fd);
+	}
+	return c == '0';
 }
 
 bool plat_lid_opened(void)
