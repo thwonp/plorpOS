@@ -27,8 +27,10 @@ typedef struct {
 	char     art[1024];        /* box art path, empty = none */
 } details_info;
 
-/* `font_dir` holds head.ttf and lato.ttf. Fonts open on first use. */
-void details_init(const char *font_dir);
+/* The launcher's Header Font (head) or Body Font: its file and its width
+ * correction (main.c FONTS). Both before the first draw; again on a change,
+ * then draw again. Fonts open on first use. */
+void details_set_face(bool head, const char *path, float scale);
 void details_draw(SDL_Renderer *r, int w, int h, const details_info *d, int page);
 /* The system under the carousel's cursor, while no game is (plorpos-rgds.18.1). */
 void details_draw_system(SDL_Renderer *r, int w, int h, const char *name, unsigned accent, const char *line);

@@ -10,7 +10,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static char g_dir[512];
 static float g_k = 1.0f;                     /* panel width / 640 */
 static struct { bool head; int px; TTF_Font *f; } g_fonts[12];
 static SDL_Texture *g_art;
@@ -22,7 +21,16 @@ static const SDL_Color BG = { 22, 24, 32, 255 }, PANEL = { 12, 13, 18, 255 }, TR
                        MUTED = { 138, 143, 163, 255 }, WHITE = { 240, 240, 245, 255 }, LIGHT = { 210, 210, 220, 255 },
                        ACC = { 0x8A, 0x5C, 0xD6, 255 }, DOT = { 78, 82, 100, 255 };
 
-void details_init(const char *font_dir) { snprintf(g_dir, sizeof g_dir, "%s", font_dir); }
+/* UI Settings > Header and Body Font, as the launcher uses them
+ * (plorpos-g8i.1): [1] the head, [0] the body. */
+static struct { char path[512]; float scale; } g_face[2];
+
+void details_set_face(bool head, const char *path, float scale)
+{
+	snprintf(g_face[head].path, sizeof g_face[head].path, "%s", path);
+	g_face[head].scale = scale > 0 ? scale : 1.0f;
+	for (int i = 0; i < 12 && g_fonts[i].f; i++) { TTF_CloseFont(g_fonts[i].f); g_fonts[i].f = NULL; }
+}
 
 static int S(int v) { return (int)(v * g_k + 0.5f); }
 
@@ -34,18 +42,27 @@ static int S(int v) { return (int)(v * g_k + 0.5f); }
 #define DETAILS_FONT_K 1.0f
 #endif
 
+/* The faces this layout was drawn with, Fredoka over Lato, at their width
+ * corrections (main.c FONTS): another face is sized by its own against
+ * them, so a line of it takes the room the layout gave it. */
+#define DETAILS_HEAD_REF 1.00f
+#define DETAILS_BODY_REF 1.03f
+
 static TTF_Font *font(bool head, int size)
 {
-	int px = (int)(size * g_k * DETAILS_FONT_K + 0.5f), i;
+	float k = g_face[head].scale / (head ? DETAILS_HEAD_REF : DETAILS_BODY_REF);
+	int px = (int)(size * g_k * DETAILS_FONT_K * k + 0.5f), i;
 
 	for (i = 0; i < 12 && g_fonts[i].f; i++)
 		if (g_fonts[i].head == head && g_fonts[i].px == px) return g_fonts[i].f;
 	if (i == 12) return g_fonts[11].f;
 	{
-		char p[600];
-		snprintf(p, sizeof p, "%s/%s", g_dir, head ? "head.ttf" : "lato.ttf");
-		g_fonts[i].f = TTF_OpenFont(p, px);
-		if (!g_fonts[i].f) { fprintf(stderr, "details: no font %s\n", p); return NULL; }
+		const char *p = g_face[head].path;
+
+		if (!p[0] || !(g_fonts[i].f = TTF_OpenFont(p, px))) {
+			fprintf(stderr, "details: no font %s\n", p);
+			return NULL;
+		}
 		g_fonts[i].head = head;
 		g_fonts[i].px = px;
 	}

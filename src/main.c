@@ -215,17 +215,31 @@ static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
 static int g_head = 0, g_font = 2;
+#if defined(PLATFORM_RGDS)
+static unsigned g_face_gen;   /* bumped by a font change: Details draws again */
+#endif
+
+static void font_path(int k, char *out, size_t n)
+{
+	const char *slash = strrchr(P_FONT, '/');
+
+	snprintf(out, n, "%.*s%s", slash ? (int)(slash - P_FONT + 1) : 0,
+	         P_FONT, FONTS[k].file);
+}
 
 static void font_apply(bool head, int k)
 {
 	char path[512];
-	const char *slash = strrchr(P_FONT, '/');
 
-	snprintf(path, sizeof path, "%.*s%s", slash ? (int)(slash - P_FONT + 1) : 0,
-	         P_FONT, FONTS[k].file);
+	font_path(k, path, sizeof path);
 	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
 	*(head ? &g_head : &g_font) = k;
 	ui_set_face(head, path, FONTS[k].scale);
+#if defined(PLATFORM_RGDS)
+	/* The second screen's Details too (plorpos-g8i.1). */
+	details_set_face(head, path, FONTS[k].scale);
+	g_face_gen++;
+#endif
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   4
@@ -24464,7 +24478,7 @@ static void details_tick(app *a)
 {
 	static details_info d;
 	static char shown[LIB_PATH + 16], pend[LIB_PATH + 16];
-	static unsigned pend_at, epoch;
+	static unsigned pend_at, epoch, face_seen;
 	static int page;
 	static bool on, init, was_muse;
 	const sysview *v = &a->view[a->sys_cursor];
@@ -24475,14 +24489,17 @@ static void details_tick(app *a)
 	SDL_Renderer *r;
 
 	if (!init) {
-		char dir[512];
-		const char *slash = strrchr(P_FONT, '/');
-		snprintf(dir, sizeof dir, "%.*s", slash ? (int)(slash - P_FONT) : 1, slash ? P_FONT : ".");
-		details_init(dir);
+		char p[512];
+
+		font_path(g_head, p, sizeof p);
+		details_set_face(true, p, FONTS[g_head].scale);
+		font_path(g_font, p, sizeof p);
+		details_set_face(false, p, FONTS[g_font].scale);
 		init = true;
 	}
-	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse) {
+	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
 		epoch = plat_bottom_epoch();
+		face_seen = g_face_gen;
 		shown[0] = '\0';
 		pend_at = now - DETAILS_SETTLE_MS;
 		fresh = true;
