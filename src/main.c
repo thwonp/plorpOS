@@ -25385,8 +25385,12 @@ int main(int argc, char *argv[])
 		if (grace_until && SDL_GetTicks() < grace_until) {   /* the boot's input grace, above */
 			memset(&a.in, 0, sizeof a.in);
 			memset(&g_shelf_scroll, 0, sizeof g_shelf_scroll);
-		} else {
+		} else if (grace_until) {
 			grace_until = 0;
+			/* And what touch still holds from inside it: a drag's queued
+			 * steps and a flick's coast drain one per poll, after the
+			 * deadline, and moved the shelf (plorpos-94l). */
+			plat_input_flush();
 		}
 		ft0 = g_ft ? ft_us() : 0;
 		if (a.in.quit_requested || want_quit) break;
