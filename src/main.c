@@ -1483,15 +1483,49 @@ static int g_muse_artist = -1;        /* the artist whose albums are shown, or -
 static unsigned g_muse_artist_gen;    /* the library g_muse_artist indexes */
 static char g_muse_artist_name[128];
 
+/* The marked folders, read once and kept in order: the Favorites tab asks
+ * about every album, and a db read each was 360 ms for 3500 albums on the
+ * Zero 40 (plorpos-vgr.15). muse_fav_flip and the boot's handing-over drop
+ * it, to be read again. */
+static char **g_mfav;
+static int g_nmfav = -1, g_mfav_cap;
+
+static bool mfav_keep(const char *key, const char *value, void *ctx)
+{
+	(void)ctx;
+	if (strcmp(value, "1")) return true;
+	if (g_nmfav == g_mfav_cap) {
+		int cap = g_mfav_cap ? g_mfav_cap * 2 : 64;
+		char **k = realloc(g_mfav, sizeof *k * (size_t)cap);
+
+		if (!k) return false;
+		g_mfav = k;
+		g_mfav_cap = cap;
+	}
+	if ((g_mfav[g_nmfav] = strdup(key + 5))) g_nmfav++;
+	return true;
+}
+
+static int mfav_cmp(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+static void mfav_forget(void)
+{
+	while (g_nmfav > 0) free(g_mfav[--g_nmfav]);
+	g_nmfav = -1;
+}
+
 /* A server's album is hearted on the server (plorpos-vgr.6). */
 static bool muse_fav_is(const char *dir)
 {
-	char key[LIB_PATH + 8];
 	msrv *m = srv_of_path(dir);
 
 	if (m && msrv_favs_on(m)) return msrv_fav_album_is(m, dir);
-	snprintf(key, sizeof key, "mfav.%s", dir);
-	return db_get_int(db_lib(), key, 0) == 1;
+	if (g_nmfav < 0) {
+		g_nmfav = 0;
+		db_each_prefix(db_lib(), "mfav.", mfav_keep, NULL);
+		if (g_nmfav > 1) qsort(g_mfav, (size_t)g_nmfav, sizeof *g_mfav, mfav_cmp);
+	}
+	return g_nmfav > 0 && bsearch(&dir, g_mfav, (size_t)g_nmfav, sizeof *g_mfav, mfav_cmp) != NULL;
 }
 
 static void muse_fav_flip(const char *dir)
@@ -1503,6 +1537,7 @@ static void muse_fav_flip(const char *dir)
 	snprintf(key, sizeof key, "mfav.%s", dir);
 	if (muse_fav_is(dir)) db_del(db_lib(), key);
 	else db_set_str(db_lib(), key, "1");
+	mfav_forget();
 }
 
 /* Whether each album is a book listened to the end: one per album in g_muse,
@@ -22905,6 +22940,7 @@ static void muse_favs_adopt(void)
 		free(d.k[i]);
 	}
 	free(d.k);
+	mfav_forget();
 	if (n) fprintf(stderr, "muse: %d album hearts handed to their server\n", n);
 }
 
