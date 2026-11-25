@@ -126,12 +126,20 @@ runtimes they need. Install ports through PortMaster rather than copying them
 onto the card: a copied port can be missing its runtime. It's unofficial
 support: report problems to plorpOS, not the PortMaster team.
 
-Select + Start quits a port.
+Select + Start quits a port. In PortMaster's own menus, B selects and A goes
+back.
+
+Tested runtimes: native 64-bit and 32-bit, LÖVE, Mono, .NET, GameMaker
+(GMLoader, 64-bit and 32-bit), Java, Godot 3 and 4, Westonpack (Wayland and
+X11), box86, Python, Pyxel, Ren'Py and Qt6. Ren'Py games keep their own
+shape, with black bars above and below.
 
 Known issues:
 
 - **Braid** doesn't start. Its port supports ROCKNIX only with the Panfrost
   graphics driver, and the RG DS uses Mali's.
+- **Dust Racing 2D** closes at once. Its port looks for its Qt6 runtime under
+  a name PortMaster doesn't install.
 - **Balatro**: with the port's Performance setting off, keep the CRT effect at
   0. The full CRT effect draws black patches on the RG DS's graphics driver.
 

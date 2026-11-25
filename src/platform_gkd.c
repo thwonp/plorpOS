@@ -260,10 +260,18 @@ void plat_rgds_game_tick(void)
  * (Celeste) or after a patcher's or splash's (Gato Roboto); that window was
  * left on the top panel's hidden workspace, black and frozen
  * (plorpos-rgds.9). plat_window_show(true) ends it. */
+#define CP_AWAY "title=\"^(?!plorpOS|diatom)\" workspace=\"^(?!1$|plorpos-launcher$|plorpos-hidden$)\""
 void plat_rgds_child_tick(void)
 {
 	static Uint32 next;
-	char *argv[] = { "swaymsg", "[title=\"^(?!plorpOS|diatom)\" workspace=\"^(?!1$|plorpos-launcher$|plorpos-hidden$)\"] move container to workspace 1, focus, fullscreen enable", NULL };
+	/* Ren'Py keeps its own size (pm-run.sh, plorpos-rgds.31): moved, not
+	 * fullscreened. An X11 window has no app_id, so it needs its own
+	 * criteria; sway runs every part, also after one that matches nothing. */
+	char *argv[] = { "swaymsg",
+		"[" CP_AWAY " app_id=\"^(?!startRENPY$)\"] move container to workspace 1, focus, fullscreen enable; "
+		"[" CP_AWAY " shell=\"xwayland\"] move container to workspace 1, focus, fullscreen enable; "
+		"[" CP_AWAY " app_id=\"^startRENPY$\"] move container to workspace 1, focus, move position center",
+		NULL };
 
 	if (!cp_pending) return;
 	if (cp_tries < 50) cp_tries++;
@@ -935,7 +943,13 @@ void child_restore(pid_t pid, bool show)
 {
 	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
+#ifdef PLATFORM_RGDS
+	/* A fullscreen window stays fullscreen across the move, and Ren'Py's
+	 * floating one must keep its size (plorpos-rgds.31). */
+	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus"))
+#else
 	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
+#endif
 		fprintf(stderr, "run: sway would not show the child\n");
 	/* Then the launcher's window off, also when the child is not coming
 	 * back: a reset's new child maps next, and after a quit run_alone
