@@ -809,7 +809,8 @@ bool wifi_svc_set(wifi_svc s, bool on)
 /* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
  * fresh card. The switch is the "ssh" setting, which boot.env carries to
  * launch.sh so it is still on after a reboot; plorpOS/ssh.sh starts and stops
- * it for both. Key login only, from plorpOS/ssh/authorized_keys. */
+ * it for both. Login is as plorpos with the password plorpos, or with a key
+ * from plorpOS/ssh/authorized_keys. */
 bool wifi_svc_on(wifi_svc s)
 {
 	return s == WIFI_SSH && db_get_int(db_dev(), "ssh", 0);

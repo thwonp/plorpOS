@@ -481,7 +481,8 @@ bool plat_hold_switch(void) { return false; }
 /* Backlight: pwm0's duty over the period the boot hook sets (800). Judged by
  * eye on the Flip (plorpos-f1p.53): the panel is at full light by duty ~75-100
  * and readable down to 3, so the twelve rungs are raw duties spanning 3..100,
- * roughly geometric. diatom's bright_apply carries the same table. */
+ * roughly geometric. diatom's bright_apply and the boot hook (sd/miyoo/updater)
+ * carry the same table. */
 #define PWM_DUTY "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
 static const unsigned char ladder[] = { 3, 5, 8, 12, 17, 24, 33, 44, 56, 70, 85, 100 };
 _Static_assert(sizeof ladder == PLAT_BRIGHT_MAX + 1, "ladder vs PLAT_BRIGHT_MAX");

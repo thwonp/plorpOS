@@ -21795,7 +21795,7 @@ static void launch_one(app *a)
 	 * loader's own cap so the two cannot drift apart: the previous 20 was
 	 * already 18 full, and a silent bound check would have dropped every
 	 * option rather than failing loudly. */
-	char *argv[20 + 2 * 32 + 6];   /* and the palette's two (plorpos-gkd.76),
+	char *argv[20 + 2 * 48 + 6];   /* 48 is platform.c's COREOPT_MAX. And the palette's two (plorpos-gkd.76),
 	                                * and --disc (plorpos-gkd.47) */
 	char palp[64] = "", palc[64] = "";
 	char discs[16] = "";
@@ -22264,7 +22264,7 @@ static void launch_one(app *a)
 		 * the same whether the resident was up or the fallback ran it. */
 		{
 			int ci;
-			for (ci = 0; ci < plat_coreopt_count(s->tag) && n < (int)(sizeof argv / sizeof argv[0]) - 3; ci++) {
+			for (ci = 0; ci < plat_coreopt_count(s->tag) && n < (int)(sizeof argv / sizeof argv[0]) - 5; ci++) {   /* room for the palette's two pairs and NULL */
 				argv[n++] = (char *)"--core-option";
 				argv[n++] = (char *)plat_coreopt(s->tag, ci);
 			}
