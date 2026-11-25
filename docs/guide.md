@@ -240,7 +240,6 @@ goes in at the next restart instead.
 - Your settings, saves, games and anything you added to `plorpOS/` stay.
 - If the new version won't start, the device goes back to the one it had and
   leaves a note in `plorpOS/update-failed.log`.
-- On the Anbernic H700 devices, Restart restarts plorpOS, not the device.
 - Only full releases are offered, not pre-releases. A release that needs a
   new card image (the RG Rotate's or RG DS's system, say) isn't offered;
   flash that one.
