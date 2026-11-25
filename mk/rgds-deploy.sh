@@ -44,8 +44,11 @@ case $WHAT in elf)
 	$S "mkdir -p $P/rgds/portmaster"
 	put "$ROOT/sd/gkd/portmaster/pm-run.sh" "$ROOT/sd/rgds/portmaster/control.txt" \
 	    "${VENDOR:-$ROOT/vendor}/portmaster/PortMaster.zip" "$ROOT/build/rgds/portfullscreen.so" "$RGDS:$P/rgds/portmaster/"
-	$S "mkdir -p $P/rgds/adb"
-	put "${VENDOR:-$ROOT/vendor}/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$ROOT/build/rgds/adbroot.so" "$RGDS:$P/rgds/adb/"
+	# Beside the folder, then moved in: a running adbd's file cannot be
+	# written over, only replaced (plorpos-3vc).
+	$S "rm -rf $P/rgds/adb.new && mkdir -p $P/rgds/adb $P/rgds/adb.new"
+	put "${VENDOR:-$ROOT/vendor}/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$ROOT/build/rgds/adbroot.so" "$RGDS:$P/rgds/adb.new/"
+	$S "cp -r $P/rgds/adb.new/licenses $P/rgds/adb/ && rm -rf $P/rgds/adb.new/licenses && mv -f $P/rgds/adb.new/* $P/rgds/adb/ && rmdir $P/rgds/adb.new"
 	echo "  + launcher, muse, musectl, PortMaster runner, adb"
 esac
 case $WHAT in res)
@@ -58,7 +61,9 @@ case $WHAT in res)
 	echo "  + assets"
 esac
 case $WHAT in diatom)
-	D=${DIATOM_ELF:-$ROOT/../diatom-rgds/build/rgds/diatom}
+	# ../diatom, as the other ports' scripts: diatom-rgds was a stale branch
+	# checkout (plorpos-3vc).
+	D=${DIATOM_ELF:-$ROOT/../diatom/build/rgds/diatom}
 	[ -f "$D" ] || { echo "no diatom at $D (set DIATOM_ELF)"; exit 1; }
 	swap "$D" diatom
 	echo "  + diatom"
