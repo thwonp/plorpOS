@@ -363,7 +363,7 @@ GPL core is that tarball plus the patches named there), by
 
 ## Fonts
 
-All five are under the SIL Open Font License 1.1; each family's copyright notice
+All six are under the SIL Open Font License 1.1; each family's copyright notice
 and the licence text are in the `res/fonts/` file named below.
 
 - `res/fonts/menu.ttf` - **Quicksand** (`OFL.txt`). plorpOS's UI face, the
@@ -374,6 +374,8 @@ and the licence text are in the `res/fonts/` file named below.
 - `res/fonts/josefin.ttf` - **Josefin Sans** (`OFL-JosefinSans.txt`). One of the
   faces UI Settings > Font offers.
 - `res/fonts/lato.ttf` - **Lato** (`OFL-Lato.txt`). The other one.
+- `res/fonts/jp.ttf` - **M PLUS 1p** Medium (`OFL-MPLUS1p.txt`). The face
+  with Japanese (kana and kanji) as well as Latin, in UI Settings beside the others.
 - `res/fonts/wordmark.ttf` - **Josefin Sans** too (`OFL-JosefinSans.txt`), for
   the plorpOS wordmark.
 

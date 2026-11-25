@@ -48,6 +48,7 @@ plorpos_files() {
 	rm -rf "$_p/cards/src"                    # art sources for tools/genportscard.py, not the card's
 	cp "$ROOT/res/fonts/head.ttf" "$_p/"       # the heading face (ui.c, plorpos-8m1.2)
 	cp "$ROOT/res/fonts/josefin.ttf" "$ROOT/res/fonts/lato.ttf" "$_p/"   # UI Settings > Font (plorpos-8m1.3)
+	cp "$ROOT/res/fonts/jp.ttf" "$_p/"         # the Japanese face, also in UI Settings (plorpos-g8i)
 	cp "$ROOT/res/fonts/menu.ttf" "$_p/"       # the UI face, and the in-game menu's
 	cp "$ROOT/res/singles.png" "$_p/"          # Muse's cover for Singles, the loose songs
 	# Over The Hare's page. The launcher serves these off the card at P_WEB, so a
