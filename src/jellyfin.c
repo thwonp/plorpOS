@@ -715,6 +715,7 @@ static bool owns_url(const char *daemon_path, int key, const char *part)
  * stops the last one here. On the worker, one at a time. */
 static int g_started;                      /* the track Playing was sent for */
 static long g_pos;                         /* its last position, ms */
+static bool g_paused;                      /* and whether it was paused */
 
 static void report(const char *what, int key, long at_ms, bool paused)
 {
@@ -741,6 +742,7 @@ static void timeline(msrv *m, int key, const char *state, long at_ms, long len_m
 	if (g_started != key) { report("", key, at_ms, paused); g_started = key; }
 	else report("/Progress", key, at_ms, paused);
 	g_pos = at_ms;
+	g_paused = paused;
 }
 
 /* A play made offline. With datePlayed the server adds one to the play
@@ -807,14 +809,26 @@ static int fav_list(msrv *m, int **tracks, int *nt, int **albums, int *na)
 	return 0;
 }
 
+/* The playing track's favorite (plorpos-vgr.20): Jellyfin 12.4 holds the
+ * item's user data as it was at Playing and writes that copy back with every
+ * Progress and the Stopped, so a favorite changed mid-track was undone within
+ * seconds - and the next sync took the undo as the server's own. Stopped
+ * first (its stale write lands before the change), then a fresh Playing that
+ * reads the new flag. Stopped at 0, so a track favorited past 90% is not
+ * counted as played twice. On the worker, as timeline() is. */
 static int fav_set(msrv *m, int key, bool album, bool on)
 {
 	char id[48], path[200];
+	bool playing = !album && key == g_started;
+	int code;
 
-	(void)m; (void)album;
+	(void)m;
 	if (!id_of_key(key, id, sizeof id)) return 404;
+	if (playing) report("/Stopped", key, 0, false);
 	snprintf(path, sizeof path, "/UserFavoriteItems/%s?userId=%s", id, C.user_id);
-	return server_req(on ? "POST" : "DELETE", path, NULL, NULL, NULL, 10);
+	code = server_req(on ? "POST" : "DELETE", path, NULL, NULL, NULL, 10);
+	if (playing) report("", key, g_pos, g_paused);
+	return code;
 }
 
 /* ---- playlists -------------------------------------------------------------------- */
