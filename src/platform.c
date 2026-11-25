@@ -2309,8 +2309,15 @@ static int diatom_wait(void)
 				 * started a SECOND emulator while the first still held the
 				 * framebuffer - two presenters, which wedges the display
 				 * engine in-kernel, and the supervisor powered the device
-				 * off. */
-				if (!d_got_running) return RES_DEAD;
+				 * off.
+				 *
+				 * Except a refused shader (plorpos-9lq): the chain is sent
+				 * before RUN, and Diatom keeps the None sent ahead of it and
+				 * starts the game. */
+				if (!d_got_running) {
+					if (strncmp(l, "ERROR\tcode=bad_shader\t", 22) != 0) return RES_DEAD;
+					fprintf(stderr, "resident: shader refused, the game starts without it\n");
+				}
 			}
 		}
 		if (dsock < 0) return RES_DEAD;            /* EOF mid-game */
