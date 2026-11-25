@@ -880,20 +880,26 @@ void plat_adb_set(bool on)
  * its own down for it, and its menu's goes again before the child thaws), so
  * whatever is on workspace 1 is the child's, and whatever is on HIDE_WS. One
  * swaymsg each way: the menu's own time to come up is the budget. */
+#if !defined(PLATFORM_BASEDOS)
 static bool sway_cmd(const char *cmd)
 {
 	char *argv[] = { "swaymsg", (char *)cmd, NULL };
 
 	return helper(argv);
 }
+#endif
 
 bool child_hide(pid_t pid)
 {
 	(void)pid;
+#if !defined(PLATFORM_BASEDOS)
+	/* BasedOS has no compositor: the frozen child flips no more, and the
+	 * menu's first present puts the launcher's frame on the panel. */
 	if (!sway_cmd("[workspace=1] move container to workspace " HIDE_WS)) {
 		fprintf(stderr, "run: sway would not hide the child\n");
 		return false;
 	}
+#endif
 	if (fd_pad >= 0 && ioctl(fd_pad, EVIOCGRAB, 1) != 0)
 		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
 	return true;
@@ -903,8 +909,12 @@ void child_restore(pid_t pid, bool show)
 {
 	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
+#if !defined(PLATFORM_BASEDOS)
 	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
 		fprintf(stderr, "run: sway would not show the child\n");
+#else
+	(void)show;   /* the thawed child's next flip is on the panel again */
+#endif
 	/* Then the launcher's window off, also when the child is not coming
 	 * back: a reset's new child maps next, and after a quit run_alone
 	 * shows the window again (plat_window_show). */
@@ -915,21 +925,42 @@ void child_restore(pid_t pid, bool show)
  * ~30 ms each way (measured 2026-10-02), so the stream is looked for at most
  * twice a second until it appears - a cart may never open one - and a mute
  * is sent only when it changes. */
+/* The child's, or a process in its group's: a port's game is its script's
+ * grandchild (plorpos-46o.5, as platform_rotate.c). */
+static bool child_pid(pid_t p, pid_t pid) { return p > 0 && (p == pid || getpgid(p) == pid); }
+
 static int quiet_stream(pid_t pid)
 {
+	enum { MAX_IN = 32 };
 	char line[256];
-	int cur = -1, idx = -1;
+	int cur = -1, idx = -1, n = 0, in_idx[MAX_IN], in_client[MAX_IN];
 	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
 
 	if (!f) return -1;
-	/* The child's, or a process in its group's: a port's game is its
-	 * script's grandchild (plorpos-46o.5, as platform_rotate.c). */
 	while (fgets(line, sizeof line, f)) {
 		const char *k = strstr(line, "application.process.id = \"");
-		pid_t p = k ? (pid_t)atoi(k + 26) : 0;
 
-		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
-		else if (idx < 0 && p > 0 && (p == pid || getpgid(p) == pid)) idx = cur;
+		if (!strncmp(line, "Sink Input #", 12)) {
+			cur = atoi(line + 12);
+			if (n < MAX_IN) in_idx[n] = cur, in_client[n++] = -1;
+		} else if (!strncmp(line, "\tClient: ", 9) && n > 0 && in_idx[n - 1] == cur)
+			in_client[n - 1] = atoi(line + 9);
+		else if (idx < 0 && k && child_pid((pid_t)atoi(k + 26), pid)) idx = cur;
+	}
+	pclose(f);
+	if (idx >= 0 || n == 0) return idx;
+	/* A native PipeWire stream - ALSA through the pipewire plugin, as SDL's
+	 * ALSA-only build on BasedOS plays (plorpos-gkd.94.19) - carries the pid
+	 * on its client only. */
+	if (!(f = popen("pactl list clients 2>/dev/null", "r"))) return -1;
+	cur = -1;
+	while (idx < 0 && fgets(line, sizeof line, f)) {
+		const char *k = strstr(line, "application.process.id = \"");
+
+		if (!strncmp(line, "Client #", 8)) cur = atoi(line + 8);
+		else if (k && cur >= 0 && child_pid((pid_t)atoi(k + 26), pid))
+			for (int i = 0; i < n; i++)
+				if (in_client[i] == cur) { idx = in_idx[i]; break; }
 	}
 	pclose(f);
 	return idx;
@@ -1177,7 +1208,10 @@ void plat_input_poll(in_state *st)
 	if (g_terminating) st->quit_requested = true;
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
-		if (e.type == SDL_QUIT) st->quit_requested = true;
+		if (e.type == SDL_QUIT) {
+			if (!st->quit_requested) fprintf(stderr, "input: SDL_QUIT\n");
+			st->quit_requested = true;
+		}
 #ifdef PLATFORM_RGDS
 		/* The secondary's fingers are its own (Details, Muse); the
 		 * launcher's are the touch engine's, every gesture the Rotate has
@@ -1880,8 +1914,8 @@ bool plat_hold_switch(void) { return button_lock; }
  * writes "mem" itself and returns once the device is awake, the DAC's volume
  * put back (the stock driver wakes the chip at full volume). The backlight is
  * written again for the reason given below: the panel wakes at full
- * brightness whatever the file says. (unverified on the device:
- * plorpos-gkd.94.1) */
+ * brightness whatever the file says. Sleep and wake verified on the device
+ * (pre.8, 2026-11-25). */
 bool plat_sleep_supported(void) { return true; }
 
 bool plat_sleep(void)
@@ -1891,8 +1925,14 @@ bool plat_sleep(void)
 	pid_t pid;
 	int st = -1;
 
-	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) != 0) return false;
-	waitpid(pid, &st, 0);
+	/* The kernel can refuse for a moment - the Wi-Fi driver answered EBUSY
+	 * mid-transfer (2026-11-25) - and a refusal here means power off
+	 * (plat_light_sleep's caller). It refuses at once, so ask again. */
+	for (int tries = 0; tries < 3 && st != 0; tries++) {
+		if (tries) sleep(2);
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) != 0) return false;
+		waitpid(pid, &st, 0);
+	}
 	apply_brightness(cur_bright);
 	fprintf(stderr, "sleep: basedos-suspend %s\n", st == 0 ? "woke" : "failed");
 	/* The press that woke it, which would otherwise read as a tap. */

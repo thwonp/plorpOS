@@ -459,7 +459,13 @@ static void enter_system(app *a);
 static int  menu_std_width(app *a);
 
 static volatile sig_atomic_t want_quit;
-static void on_sigterm(int sig) { (void)sig; want_quit = 1; plat_terminate(); }
+static void on_sigterm(int sig)
+{
+	static const char m[] = "launcher: SIGTERM or SIGINT, quitting\n";
+
+	if (write(2, m, sizeof m - 1) < 0) {}   /* who ended it, in the log; write is signal-safe */
+	(void)sig; want_quit = 1; plat_terminate();
+}
 
 /* Boot time is the one number a launcher cannot be careless about, so the
  * phases are timed and logged rather than guessed at. On the project this
