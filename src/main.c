@@ -10821,8 +10821,13 @@ static int menu_std_width(app *a)
 {
 	int content = 800 - menu_pad() * 2;
 	int floor   = menu_shelf_width(a);
+	/* No wider than menu_draw lets a panel be on this screen: text wrapped
+	 * to more than that ran past the panel's edge on 640x480 (the PortMaster
+	 * notice, plorpos-rgds.29). */
+	int most    = TORTOS_SCREEN_W - MENU_MARGIN * 2 - menu_pad() * 2;
+	int w       = floor > content ? floor : content;
 
-	return floor > content ? floor : content;
+	return w < most ? w : most;
 }
 
 static void tortos_menu_draw(app *a, int sel)
