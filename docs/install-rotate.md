@@ -56,7 +56,7 @@ partition - an exFAT partition named **PLORPOS** across the rest of the card, wi
 itself) and `Roms/ Bios/ Saves/ Music/` (a folder per console in `Roms/` and `Saves/`) - shows
 "plorpOS: setup complete" and **powers off (once)**. Turn it on again: the shelf comes up.
 
-Wi-Fi is set up from MENU > Network Services. ssh is off until you turn it on there; the login is
+Wi-Fi is set up from MENU > Wi-Fi. ssh is off until you turn it on in MENU > Network Services; the login is
 **root / plorpos**.
 
 ## 3. Your games and files
@@ -86,7 +86,7 @@ start after copying the folder shows "System updated", then restarts once by its
 
 ## Adding games over Wi-Fi
 
-1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
 2. Open **Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder or albums into `Music`. They're on the shelf when you leave

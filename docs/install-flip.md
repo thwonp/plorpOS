@@ -62,7 +62,7 @@ updating moves whatever is still in it that the new `plorpOS/` does not have
 
 ## Adding games over Wi-Fi
 
-1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
 2. Open **Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder or albums into `Music`. They're on
@@ -158,7 +158,7 @@ its own cart saves); no Scanline Filter.
 
 ## Wi-Fi and ssh
 
-Wi-Fi is switched on in the plorpOS menu, Network Services. Its **SSH** row
+Wi-Fi is switched on in the plorpOS menu, under Wi-Fi. The **SSH** row in Network Services
 starts an ssh server on port 22 and is **off** on a fresh card. Log in as
 **`plorpos`**, password **`plorpos`** (a root account; it starts in the card's
 root folder). Keys work too: put your public key (for example the contents of

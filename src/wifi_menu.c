@@ -84,7 +84,51 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	int nrows = 0, i;
 	bool any_saved = false;
 
-	*heading = "Network Services";
+	if (w->services) {
+		/* Where the device is on the network is asked on the way in
+		 * (wifi_label): this screen runs no scan to bring it again. */
+		*heading = "Network Services";
+		/* The RetroAchievements account that sat here went to Game Settings
+		 * (plorpos-pyz.7). */
+		/* Not tied to the radio: they serve whatever network the device is on. */
+		if (WIFI_SVC_ROWS)
+			ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
+		if (WIFI_SVC_ROWS > WIFI_SAMBA)
+			ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
+#if SYNC_ROWS
+		/* On, it reads as where to manage it: the web UI, signed into as
+		 * plorpos / plorpos (plorpos-5jh). */
+		ADD((menu_row){ "Syncthing", !w->st ? "off" : w->st_ui[0] ? w->st_ui : "on", true });
+#endif
+#if TS_ROWS
+		/* Tailscale (plorpos-8ns): what the daemon says, asked once a second
+		 * (a socket round trip, not a fork). On the tailnet it reads as the
+		 * address to type into another machine. */
+		{
+			static time_t asked;
+			time_t now = time(NULL);
+
+			if (now != asked) {
+				asked = now;
+				w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
+			}
+			ADD((menu_row){ "Tailscale", w->ts == TS_OFF ? "off" : w->ts == TS_LOGIN ? "sign in"
+			                : w->ts == TS_STARTING ? "starting" : w->ts_ip[0] ? w->ts_ip : "on", true });
+		}
+#endif
+		ADD((menu_row){ "Over The Hare",
+		                            w->connected ? NULL : "needs Wi-Fi", w->connected });
+#if OTA_ROWS
+		/* A new release of this port's plorpOS, from GitHub (plorpos-koo). */
+		ADD((menu_row){ "Check for update", w->connected ? NULL : "needs Wi-Fi", w->connected });
+#endif
+		if (w->conn[0]) {
+			ADD(MENU_RULE);
+			ADD(MENU_NOTE(w->conn));
+		}
+		return nrows;
+	}
+	*heading = "Wi-Fi";
 
 	/* The scan is driven from here because this is the function that already
 	 * runs every frame. wifi_scan_poll() does nothing until its next second is
@@ -105,42 +149,6 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	/* The switch is row 0, so the state of the radio is the first thing read
 	 * and the first thing reachable. */
 	ADD((menu_row){ "Wi-Fi", w->on ? "on" : "off", true });
-	/* Under the switch and above the list, so they stay put while a scan
-	 * changes the list's length (WIFI_TOP_ROWS). The file server is dead
-	 * until there is a network to serve it on. The RetroAchievements account
-	 * that sat here went to Game Settings (plorpos-pyz.7). */
-	/* Not tied to the radio: they serve whatever network the device is on. */
-	if (WIFI_SVC_ROWS)
-		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
-	if (WIFI_SVC_ROWS > WIFI_SAMBA)
-		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
-#if SYNC_ROWS
-	/* On, it reads as where to manage it: the web UI, signed into as
-	 * plorpos / plorpos (plorpos-5jh). */
-	ADD((menu_row){ "Syncthing", !w->st ? "off" : w->st_ui[0] ? w->st_ui : "on", true });
-#endif
-#if TS_ROWS
-	/* Tailscale (plorpos-8ns): what the daemon says, asked once a second
-	 * (a socket round trip, not a fork). On the tailnet it reads as the
-	 * address to type into another machine. */
-	{
-		static time_t asked;
-		time_t now = time(NULL);
-
-		if (now != asked) {
-			asked = now;
-			w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
-		}
-		ADD((menu_row){ "Tailscale", w->ts == TS_OFF ? "off" : w->ts == TS_LOGIN ? "sign in"
-		                : w->ts == TS_STARTING ? "starting" : w->ts_ip[0] ? w->ts_ip : "on", true });
-	}
-#endif
-	ADD((menu_row){ "Over The Hare",
-	                            w->connected ? NULL : "needs Wi-Fi", w->connected });
-#if OTA_ROWS
-	/* A new release of this port's plorpOS, from GitHub (plorpos-koo). */
-	ADD((menu_row){ "Check for update", w->connected ? NULL : "needs Wi-Fi", w->connected });
-#endif
 	for (i = 0; i < w->n && nrows < max - 3; i++)
 		ADD((menu_row){ w->nets[i].ssid, w->vals[i], true });
 

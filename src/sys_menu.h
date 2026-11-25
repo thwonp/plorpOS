@@ -36,13 +36,17 @@
  * The rest are grouped a level down since plorpos-z0d.1: the timers under
  * System Settings, the look under UI Settings, and Cheevos and Over The Hare
  * on the Network Services screen with the other things that need the network. */
+/* The order (owner, plorpos-eiz): Play Time, Wi-Fi - its own row now, the
+ * radio and the networks - Bluetooth, Network Services (what the network is
+ * for), System Settings (Audio Output is in there), UI Settings, Game
+ * Settings, Controls, About. */
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
 #if !defined(PLATFORM_MIYOO)   /* the Flip has no Bluetooth (f1p.57) */
 	PM_BT,
 #endif
-	PM_AUDIO,
+	PM_NET,
 	PM_SYSTEM, PM_UI,
 #if defined(PLATFORM_RGDS)
 	PM_DUAL,                    /* Dual Screen Settings (plorpos-rgds.18.1) */
@@ -64,6 +68,7 @@ typedef enum {
  * indicator, and the side switch where there is one. */
 typedef enum {
 	ST_CLOCK,
+	ST_AUDIO,                   /* Audio Output, from the top menu (plorpos-eiz) */
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
 	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
 #else

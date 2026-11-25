@@ -182,26 +182,16 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		snprintf(b->b, sizeof b->b, "%s",
 		         u->wifi == WIFI_CONNECTING ? "connecting" :
 		         u->wifi == WIFI_IDLE       ? "not connected" : "off");
-	/* The Wi-Fi screen, named for everything on it now: the radio, and the
-	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
-	 * value is still the radio's, since that is what decides the rest. */
-	out[PM_WIFI]         = (menu_row){ "Network Services", b->b, true };
+	/* Wi-Fi is the radio and its networks; what the network is for - SSH,
+	 * Syncthing, Tailscale, Over The Hare, updates - is Network Services,
+	 * its own row since plorpos-eiz (owner). */
+	out[PM_WIFI]         = (menu_row){ "Wi-Fi", b->b, true };
 #if !defined(PLATFORM_MIYOO)
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
 #endif
-	/* Where the system's sound goes - not Diatom's, which is why the label says
-	 * neither "game" nor "emulator": the audiobook and music player will read
-	 * the same setting. Diatom's ADR-0029, and src/audioout.c for the rule.
-	 *
-	 * Auto names what it resolved to, because a row that reads only "Auto"
-	 * makes the player guess which of three places they are about to hear. */
-	if (u->audio_policy == AOUT_AUTO)
-		snprintf(b->d, sizeof b->d, "auto (%s)", aout_dest_name(u->audio_dest));
-	else
-		snprintf(b->d, sizeof b->d, "%s", aout_dest_name(u->audio_dest));
-	out[PM_AUDIO]        = (menu_row){ "Audio Output", b->d, true };
+	out[PM_NET]          = (menu_row){ "Network Services", NULL, true };
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
 	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
@@ -233,6 +223,17 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* Date & Time leads: setup, where the timers are settings (upstream
 	 * b3b4483, which put it in the top menu; ours is regrouped - z0d.1). */
 	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
+	/* Where the system's sound goes - not Diatom's, which is why the label says
+	 * neither "game" nor "emulator": the audiobook and music player will read
+	 * the same setting. Diatom's ADR-0029, and src/audioout.c for the rule.
+	 *
+	 * Auto names what it resolved to, because a row that reads only "Auto"
+	 * makes the player guess which of three places they are about to hear. */
+	if (u->audio_policy == AOUT_AUTO)
+		snprintf(b->d, sizeof b->d, "auto (%s)", aout_dest_name(u->audio_dest));
+	else
+		snprintf(b->d, sizeof b->d, "%s", aout_dest_name(u->audio_dest));
+	out[ST_AUDIO]    = (menu_row){ "Audio Output", b->d, true };
 #if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 #if defined(PLATFORM_MIYOO)

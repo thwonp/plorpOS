@@ -84,7 +84,7 @@ menu's Layout row has the others.
 
 ## Wi-Fi and ssh
 
-Switch Wi-Fi on in the plorpOS menu, Network Services. The **SSH** row starts
+Switch Wi-Fi on in the plorpOS menu, under Wi-Fi. The **SSH** row in Network Services starts
 an ssh server on port 22. It is off on a fresh card. Log in as `root` with a
 key: put your public key (the contents of `~/.ssh/id_ed25519.pub`, for
 example) in `plorpOS/ssh/authorized_keys` on the card, one key per line.

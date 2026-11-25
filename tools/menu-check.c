@@ -55,18 +55,27 @@ static void off_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("radio off:\n");
-	ck(heading && !strcmp(heading, "Network Services"), "the screen names itself");
-	ck(n == WIFI_TOP_ROWS + 2, "switch, OTH, rule, note");
+	ck(heading && !strcmp(heading, "Wi-Fi"), "the screen names itself (plorpos-eiz)");
+	ck(n == WIFI_TOP_ROWS + 2, "switch, rule, note");
 	ck(rows[WIFI_ROW_SWITCH].live, "the switch is live");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].label, "Wi-Fi"), "row 0 is the switch");
 	ck(!strcmp(rows[WIFI_ROW_SWITCH].value, "off"), "the switch reads off");
-	ck(!strcmp(rows[WIFI_ROW_XFER].label, "Over The Hare"), "OTH is under it too");
-	ck(!strcmp(rows[WIFI_ROW_XFER].value, "needs Wi-Fi"), "OTH says why it is dead");
-	ck(!rows[WIFI_ROW_XFER].live, "OTH is not selectable offline");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS, "the rule separates the footer");
 	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 1]), "the footer is a note");
 	ck(!rows[WIFI_TOP_ROWS + 1].live, "the footer is not selectable");
 	ck(live_count(rows, n) == 1, "only the switch can be chosen (Cheevos went to Game Settings)");
+
+	/* Network Services, its own screen since plorpos-eiz: what the network
+	 * is for, and no switch. */
+	w.services = true;
+	n = wifi_build(&w, rows, 64, &heading);
+	printf("Network Services, radio off:\n");
+	ck(heading && !strcmp(heading, "Network Services"), "the screen names itself");
+	ck(n == NS_ROWS, "its rows and no footer with no address to show");
+	ck(!strcmp(rows[NS_ROW_XFER].label, "Over The Hare"), "Over The Hare is here");
+	ck(!strcmp(rows[NS_ROW_XFER].value, "needs Wi-Fi"), "OTH says why it is dead");
+	ck(!rows[NS_ROW_XFER].live, "OTH is not selectable offline");
+	for (n = 0; n < NS_ROWS; n++) ck(strcmp(rows[n].label, "Wi-Fi") != 0, "no Wi-Fi switch here");
 }
 
 /* The state the async scan produces on entry: saved networks up immediately,
@@ -157,7 +166,6 @@ static void connected_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("connected:\n");
-	ck(rows[WIFI_ROW_XFER].live && !rows[WIFI_ROW_XFER].value, "OTH is live and unqualified");
 	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, network, rule, where, legend");
 	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 1, "rule after the network");
 	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "kitchen · 192.168.0.55"),
@@ -165,6 +173,14 @@ static void connected_state(void)
 	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 2]) && !rows[WIFI_TOP_ROWS + 2].live,
 	   "and is a note, not a stop");
 	ck(!strcmp(rows[WIFI_TOP_ROWS + 3].label, "Y: rescan   X: forget"), "the legend stays last");
+
+	w.services = true;
+	n = wifi_build(&w, rows, 64, &heading);
+	printf("Network Services, connected:\n");
+	ck(rows[NS_ROW_XFER].live && !rows[NS_ROW_XFER].value, "OTH is live and unqualified");
+	ck(n == NS_ROWS + 2 && rule_at(rows, n) == NS_ROWS, "its rows, a rule, where the device is");
+	ck(!strcmp(rows[NS_ROWS + 1].label, "kitchen · 192.168.0.55") && !rows[NS_ROWS + 1].live,
+	   "the footer names the network and the address");
 }
 
 /* The bands are a judgment on a measured number and the boundary is not
@@ -227,8 +243,17 @@ static void tortos_menu_offline(void)
 	printf("plorpOS menu, radio off:\n");
 	ck(n == PM_ROWS, "every row is filled");
 	ck(!strcmp(heading, "plorpOS"), "heading");
-	ck(!strcmp(rows[PM_WIFI].label, "Network Services"), "the Wi-Fi row is Network Services");
+	ck(!strcmp(rows[PM_WIFI].label, "Wi-Fi"), "Wi-Fi is its own row (plorpos-eiz)");
 	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "and reads the radio: off");
+	ck(!strcmp(rows[PM_NET].label, "Network Services") && rows[PM_NET].live && !rows[PM_NET].value,
+	   "Network Services opens, with no value");
+	ck(PM_STATS == 0 && PM_WIFI == 1 && PM_NET < PM_SYSTEM && PM_SYSTEM < PM_UI && PM_UI < PM_GAME &&
+	   PM_GAME < PM_CONTROLS && PM_CONTROLS < PM_ABOUT,
+	   "Play Time, Wi-Fi, (Bluetooth), Network Services, System, UI, Game, Controls, About");
+	{
+		int k;
+		for (k = 0; k < n; k++) ck(strcmp(rows[k].label, "Audio Output") != 0, "Audio Output is in System Settings");
+	}
 	ck(!strcmp(rows[PM_SYSTEM].label, "System Settings") && rows[PM_SYSTEM].live
 	   && !rows[PM_SYSTEM].value, "System Settings opens, with no value");
 	ck(!strcmp(rows[PM_UI].label, "UI Settings") && rows[PM_UI].live
@@ -244,7 +269,9 @@ static void tortos_menu_offline(void)
 	n = sys_menu_system_build(&u, rows, &b, &heading);
 	ck(n == ST_ROWS && !strcmp(heading, "System Settings"), "System Settings submenu");
 	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
-	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off follows it");
+	ck(ST_AUDIO == ST_CLOCK + 1 && !strcmp(rows[ST_AUDIO].label, "Audio Output"),
+	   "Audio Output follows it (plorpos-eiz)");
+	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "then Auto Off");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
 	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
@@ -276,8 +303,9 @@ static void tortos_menu_offline(void)
 	/* Always reachable, even with no radio and no cable: it is the row you go
 	 * to in order to say "not Bluetooth", so it must not vanish with the thing
 	 * it refuses. */
-	ck(rows[PM_AUDIO].live, "Audio Output is reachable offline");
-	ck(!strcmp(val(&rows[PM_AUDIO]), "auto (speaker)"),
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(rows[ST_AUDIO].label, "Audio Output") && rows[ST_AUDIO].live, "Audio Output is reachable offline");
+	ck(!strcmp(val(&rows[ST_AUDIO]), "auto (speaker)"),
 	   "and Auto names where it landed rather than only saying Auto");
 }
 
@@ -295,29 +323,29 @@ static void audio_row(void)
 
 	u.audio_policy = AOUT_AUTO;
 	u.audio_dest = AOUT_WIRED;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_AUDIO]), "auto (wired)"), "auto, on a cable");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_AUDIO]), "auto (wired)"), "auto, on a cable");
 
 	u.audio_dest = AOUT_BT;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_AUDIO]), "auto (bluetooth)"), "auto, on a headset");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_AUDIO]), "auto (bluetooth)"), "auto, on a headset");
 
 	u.audio_dest = AOUT_USB;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_AUDIO]), "auto (USB DAC)"), "auto, on a USB DAC");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_AUDIO]), "auto (USB DAC)"), "auto, on a USB DAC");
 
 	/* Pinned says the place with no "auto", because there is no rule left to
 	 * describe - it is just where the sound is. */
 	u.audio_policy = AOUT_SPEAKER;
 	u.audio_dest = AOUT_SPK;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_AUDIO]), "speaker"), "pinned reads as the place");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_AUDIO]), "speaker"), "pinned reads as the place");
 
 	/* Pinned to Speaker with a cable in is still the cable: the pin refuses
 	 * Bluetooth, never the jack. */
 	u.audio_dest = AOUT_WIRED;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_AUDIO]), "wired"),
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_AUDIO]), "wired"),
 	   "and a cable still shows through the Speaker pin");
 }
 
@@ -339,7 +367,7 @@ static void tortos_menu_online(void)
 
 	ck(n == PM_ROWS, "row count does not depend on the network");
 	printf("plorpOS menu, connected:\n");
-	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Network Services shows the network name");
+	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi shows the network name");
 	sys_menu_scraping_build(&u, rows, &heading);
 	ck(rows[SC_BOXART].live, "Box Art is live");
 	sys_menu_system_build(&u, rows, &b, &heading);

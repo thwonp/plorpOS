@@ -60,7 +60,7 @@ and stay as they are.
 
 ## Adding games over Wi-Fi
 
-1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
 2. Open **Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into
@@ -164,7 +164,7 @@ Before you reformat the card or give the Brick away:
 - **Copy `plorpOS/bootlogo.stock.bmp` and `plorpOS/splash.stock.png` somewhere
   safe.** They're the Brick's original boot pictures, and the card holds the
   only copy.
-- **Forget your Wi-Fi networks** with X in Network Services. Their passwords
+- **Forget your Wi-Fi networks** with X in the Wi-Fi menu. Their passwords
   are stored on the Brick, not on the card.
 
 <details>

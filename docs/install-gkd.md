@@ -117,7 +117,7 @@ updating moves whatever is still in it that the new `plorpOS/` does not have
 
 ## Adding games over Wi-Fi
 
-1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
 2. Open **Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into

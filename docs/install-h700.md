@@ -42,7 +42,7 @@ names them) and BIOS files in `Bios/`.
 ## 3. Turn it on
 
 Put the card in the slot marked **TF2** and turn the device on. BaseOS starts
-plorpOS in a few seconds. Join Wi-Fi from **Menu > Network Services**.
+plorpOS in a few seconds. Join Wi-Fi from **Menu > Wi-Fi**.
 
 If it shows **ADD FRONTEND TO SD CARD**, BaseOS did not find `System/` on
 TF2: check that the card uses Master Boot Record (not GPT) and that `System/`
@@ -59,7 +59,7 @@ and `Saves/` and stay as they are.
 
 ## Adding games over Wi-Fi
 
-1. In **Menu > Network Services**, turn Wi-Fi on and pick your network.
+1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
 2. Open **Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into

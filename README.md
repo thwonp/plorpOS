@@ -111,7 +111,7 @@ Taking the card out gives you the stock system back. Each guide has a **Removing
 
 <img align="right" width="360" src="res/readme/hare.png" alt="Over The Hare, with a browser connected">
 
-1. Join a network under **MENU > Network Services > Wi-Fi**.
+1. Join a network under **MENU > Wi-Fi**.
 2. Open **MENU > Network Services > Over The Hare**. It shows an address and a PIN.
 3. Open that address in a browser on your phone or computer, and type the PIN.
 4. Drag games into their console's folder, albums into `Music` or books into `Audiobooks`. They're on the shelf when you leave the screen.

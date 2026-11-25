@@ -8455,13 +8455,62 @@ static void ota_screen(app *a)
 }
 #endif
 
+/* A on a Network Services row. */
+static menu_result ns_key(app *a, wifi_ui *w, int sel)
+{
+	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
+	 * though it may be the only way in: the owner's call (gkd.10). */
+	if (sel >= NS_ROW_SVC && sel < NS_ROW_SVC + WIFI_SVC_ROWS) {
+		wifi_svc s = (wifi_svc)(sel - NS_ROW_SVC);
+		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
+		return MENU_STAY;
+	}
+
+#if SYNC_ROWS
+	if (sel == NS_ROW_ST) {
+		if (st_set(!w->st)) w->st = !w->st;
+		return MENU_STAY;
+	}
+#endif
+
+#if TS_ROWS
+	/* Tailscale: on the tailnet, A turns it off (no confirm, like SSH);
+	 * otherwise A turns it on if need be and shows the sign-in, which closes
+	 * by itself when no sign-in is wanted. */
+	if (sel == NS_ROW_TS) {
+		if (w->ts == TS_RUNNING) {
+			if (ts_set(false)) { w->ts = TS_OFF; w->ts_ip[0] = '\0'; }
+			return MENU_STAY;
+		}
+		if (w->ts == TS_OFF && !ts_set(true)) return MENU_STAY;
+		ts_signin_screen(a);
+		w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
+		return MENU_STAY;
+	}
+#endif
+
+	/* The switch. Saved on every change rather than on the way out: the way out
+	 * of a handheld is often the power button. */
+	/* Over The Hare, which moved here from the plorpOS menu (plorpos-z0d.1). */
+	if (sel == NS_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
+#if OTA_ROWS
+	if (sel == NS_ROW_OTA) { ota_screen(a); return MENU_STAY; }
+#endif
+	return MENU_STAY;
+}
+
 static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 {
 	wifi_ui *w = ctx;
 	char status[96], ssid[WIFI_SSID_MAX], ip[64];
-	int k = sel - WIFI_TOP_ROWS;        /* the fixed rows, then the networks */
-	bool net_row = sel >= WIFI_TOP_ROWS && sel < WIFI_TOP_ROWS + w->n;
+	int k = sel - WIFI_TOP_ROWS;        /* the switch, then the networks */
+	bool net_row = !w->services && sel >= WIFI_TOP_ROWS && sel < WIFI_TOP_ROWS + w->n;
 
+	/* Network Services (plorpos-eiz): its rows, and nothing of the radio's. */
+	if (w->services) {
+		if (key != IN_ACCEPT) return MENU_STAY;
+		return ns_key(a, w, sel);
+	}
 	if (key == IN_Y && w->on) { wifi_begin_scan(w); return MENU_STAY; }
 
 	/* Forget a saved network. Only saved rows offer it - there is nothing to
@@ -8499,45 +8548,6 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 	}
 
 	if (key != IN_ACCEPT) return MENU_STAY;
-
-	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
-	 * though it may be the only way in: the owner's call (gkd.10). */
-	if (sel >= WIFI_ROW_SVC && sel < WIFI_ROW_SVC + WIFI_SVC_ROWS) {
-		wifi_svc s = (wifi_svc)(sel - WIFI_ROW_SVC);
-		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
-		return MENU_STAY;
-	}
-
-#if SYNC_ROWS
-	if (sel == WIFI_ROW_ST) {
-		if (st_set(!w->st)) w->st = !w->st;
-		return MENU_STAY;
-	}
-#endif
-
-#if TS_ROWS
-	/* Tailscale: on the tailnet, A turns it off (no confirm, like SSH);
-	 * otherwise A turns it on if need be and shows the sign-in, which closes
-	 * by itself when no sign-in is wanted. */
-	if (sel == WIFI_ROW_TS) {
-		if (w->ts == TS_RUNNING) {
-			if (ts_set(false)) { w->ts = TS_OFF; w->ts_ip[0] = '\0'; }
-			return MENU_STAY;
-		}
-		if (w->ts == TS_OFF && !ts_set(true)) return MENU_STAY;
-		ts_signin_screen(a);
-		w->ts = ts_status(w->ts_ip, sizeof w->ts_ip, NULL, 0);
-		return MENU_STAY;
-	}
-#endif
-
-	/* The switch. Saved on every change rather than on the way out: the way out
-	 * of a handheld is often the power button. */
-	/* Over The Hare, which moved here from the plorpOS menu (plorpos-z0d.1). */
-	if (sel == WIFI_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
-#if OTA_ROWS
-	if (sel == WIFI_ROW_OTA) { ota_screen(a); return MENU_STAY; }
-#endif
 
 	if (sel == WIFI_ROW_SWITCH) {
 		if (w->on) {
@@ -8602,13 +8612,23 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-static void wifi_screen(app *a)
+/* Network Services (plorpos-eiz): no scan, only where the device is. */
+static void net_screen(app *a)
 {
-	wifi_ui w = { 0 };
+	wifi_ui w = { .services = true };
 	int i;
 
 	for (i = 0; i < WIFI_SVC_ROWS; i++) w.svc[i] = wifi_svc_on((wifi_svc)i);
 	w.st = st_on();
+	wifi_label(&w);
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a), .toasts = true },
+	         wifi_build, wifi_key, &w);
+}
+
+static void wifi_screen(app *a)
+{
+	wifi_ui w = { 0 };
 
 	/* Entering does not switch the radio on. It used to, which made the screen
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and
@@ -12789,6 +12809,19 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 #endif
 	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
+	/* Audio Output, here from the top menu (plorpos-eiz). Two positions, so
+	 * left and right and A all do the same thing: there is nothing to step
+	 * through, only something to turn off and on. */
+	if (sel == ST_AUDIO && (d || key == IN_ACCEPT)) {
+		g_aout_policy = g_aout_policy == AOUT_AUTO ? AOUT_SPEAKER : AOUT_AUTO;
+		aout_save(g_aout_policy);
+		/* Forced: the resolved DEVICE may not have changed - pinning Speaker
+		 * with a cable in is still the codec - but the setting did, and the
+		 * next unplug must act on the new policy rather than on a cached
+		 * device string that happens to match. */
+		aout_apply(true);
+		return MENU_STAY;
+	}
 #if defined(PLATFORM_MIYOO)
 	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
 	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
@@ -13177,22 +13210,10 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* Two positions, so left and right and A all do the same thing: there is
-	 * nothing to step through, only something to turn off and on. */
-	if (sel == PM_AUDIO && (d || key == IN_ACCEPT)) {
-		g_aout_policy = g_aout_policy == AOUT_AUTO ? AOUT_SPEAKER : AOUT_AUTO;
-		aout_save(g_aout_policy);
-		/* Forced: the resolved DEVICE may not have changed - pinning Speaker
-		 * with a cable in is still the codec - but the setting did, and the
-		 * next unplug must act on the new policy rather than on a cached
-		 * device string that happens to match. */
-		aout_apply(true);
-		return MENU_STAY;
-	}
-
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PM_WIFI:         wifi_screen(a); break;
+	case PM_NET:          net_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 #if defined(PLATFORM_RGDS)
