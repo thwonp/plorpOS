@@ -18,7 +18,8 @@
 #
 # GKD on BasedOS (PLATFORM=gkdb, plorpos-gkd.94): out/gkdb/, the card's root -
 # System/launch_frontend.sh (BasedOS's frontend hook), plorpOS/ with Muse's
-# FFmpeg in plorpOS/lib/, and the empty folders. Asset gkdb, never gkd: ROCKNIX
+# FFmpeg in plorpOS/lib/, the empty folders, and docs/install-gkdb.md as
+# INSTALL.md. Asset gkdb, never gkd: ROCKNIX
 # GKDs download gkd.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -158,6 +159,7 @@ elif [ "$PLATFORM" = gkdb ]; then
 	cp "$B/musectl" "$P/"
 	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/docs/install-gkdb.md" "$OUT/INSTALL.md"
 	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS: stock's curl (the shim says why)
 	# PortMaster: the H700's runner on BasedOS (plorpos-gkd.94.15), with the
 	# H700's python image and port shims as they are (mk/build-pmtools-h700.sh,

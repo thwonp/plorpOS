@@ -39,7 +39,8 @@ plorpOS started as a fork of [TortOS](https://tortos.games/) for the TrimUI Bric
 | Handheld | How plorpOS runs | Guide |
 |---|---|---|
 | TrimUI Brick, Brick Hammer, Brick Pro | From the card, on the stock system. One card works in all three | [Installing on the Brick](docs/install-brick.md) |
-| GKD 350H Ultra | On top of the stock ROCKNIX, at the screen's full resolution | [Installing on the GKD](docs/install-gkd.md) |
+| GKD 350H Ultra | On [BasedOS](https://github.com/thwonp/BasedOS), installed beside the stock ROCKNIX, at the screen's full resolution | [Installing on the GKD](docs/install-gkdb.md) |
+| GKD 350H Ultra, older build | On top of the stock ROCKNIX (no more updates) | [Installing on ROCKNIX](docs/install-gkd.md) |
 | Anbernic RG Rotate | A card image ([base618](https://github.com/thwonp/base618), Linux). Android stays on the device | [Installing on the RG Rotate](docs/install-rotate.md) |
 | Anbernic RG SP, RG34xxSP, RG35XX H, RG35XX SP | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [Installing on an H700](docs/install-h700.md) |
 | Miyoo Mini Flip | From the card, on the stock firmware | [Installing on the Mini Flip](docs/install-flip.md) |

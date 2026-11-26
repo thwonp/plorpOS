@@ -6,7 +6,7 @@ every control, menu row and setting, and the reasons behind them.
 ## Installing
 
 Each handheld has its own guide: [TrimUI Brick](install-brick.md),
-[GKD 350H Ultra](install-gkd.md), [RG Rotate](install-rotate.md),
+[GKD 350H Ultra](install-gkdb.md), [RG Rotate](install-rotate.md),
 [H700](install-h700.md) (RG SP, RG34xxSP, RG35XX H),
 [Miyoo Mini Flip](install-flip.md) and [RG Nano](install-nano.md). The BIOS files each
 console needs are in the README's
