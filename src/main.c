@@ -21218,15 +21218,21 @@ static bool is_splore(const system_cfg *s, const char *file)
 
 /* The owner's PICO-8, and where it keeps what it writes (-home). The Flip runs
  * the Raspberry Pi build, pico8_dyn (plorpos-f1p.78), and its card is vfat
- * mounted iocharset=utf8: lookups there are case-sensitive, yet a mkdir of
+ * mounted iocharset=utf8 (so is the MagicX boards'): lookups there are case-sensitive, yet a mkdir of
  * Saves/pico-8 collides with fake08's Saves/Pico-8 on the short name - so
  * native's home there is that folder, spelled as fake08 has it, and the two
  * share cdata/ as they do on exFAT. */
 #if defined(PLATFORM_MIYOO)
 #define P8_BIN  "pico8_dyn"
-#define P8_HOME "Saves/Pico-8"
 #else
 #define P8_BIN  "pico8_64"
+#endif
+/* The MagicX boards under oakMOSS mount the card the same way (vfat,
+ * iocharset=utf8), and native PICO-8 there started with "no permanent
+ * storage": its -home was a Saves/pico-8 it could not open (plorpos-lop). */
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)
+#define P8_HOME "Saves/Pico-8"
+#else
 #define P8_HOME "Saves/pico-8"
 #endif
 
