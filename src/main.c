@@ -4289,7 +4289,10 @@ static void muse_screen_poll(void)
 	muse_queue_tick();
 #endif
 	year_fill();
-	if (musec_heard()) aout_apply(false);
+	/* Paused too, as the shelf's loop does: a DAC pulled out under the music
+	 * and put back was otherwise picked up only at play - uncapped, sitting at
+	 * the DAC's own 0 dB until then (plorpos-czp). */
+	aout_apply(false);
 }
 
 /* A sink that failed once is otherwise never tried again. aout_apply sends on
