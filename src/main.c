@@ -9386,7 +9386,7 @@ static void art_screen(app *a, const char *only, const char *one,
 	 *
 	 * It brings the text with it. A cover fetched without the year and the
 	 * synopsis would mean asking again later for what was in hand now. */
-	if (one && stem && only && ss_signed_in()) {
+	if (one && stem && only && ss_have_dev()) {
 		const system_cfg *sys = NULL;
 		char dir[LIB_PATH * 2];
 		int i;

@@ -78,14 +78,21 @@ bool ss_auth_query(char *out, size_t n)
 
 	if (!out || !n) return false;
 	out[0] = '\0';
-	if (!ss_signed_in()) return false;
+	if (!ss_have_dev()) return false;
 
-	net_urlencode(g_user, user, sizeof user);
-	net_urlencode(g_pass, pass, sizeof pass);
-	len = snprintf(out, n, "devid=%s&devpassword=%s&softname=%s&output=json"
-	                       "&ssid=%s&sspassword=%s",
-	               SS_DEVID, SS_DEVPASS, SS_SOFT, user, pass);
-	memset(pass, 0, sizeof pass);
+	/* No player account: the developer pair alone, which ScreenScraper
+	 * answers on its own (one thread, 10,000 a day; measured 2026-11-26). */
+	if (!ss_signed_in())
+		len = snprintf(out, n, "devid=%s&devpassword=%s&softname=%s&output=json",
+		               SS_DEVID, SS_DEVPASS, SS_SOFT);
+	else {
+		net_urlencode(g_user, user, sizeof user);
+		net_urlencode(g_pass, pass, sizeof pass);
+		len = snprintf(out, n, "devid=%s&devpassword=%s&softname=%s&output=json"
+		                       "&ssid=%s&sspassword=%s",
+		               SS_DEVID, SS_DEVPASS, SS_SOFT, user, pass);
+		memset(pass, 0, sizeof pass);
+	}
 	if (len < 0 || (size_t)len >= n) { out[0] = '\0'; return false; }
 	return true;
 }

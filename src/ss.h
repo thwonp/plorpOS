@@ -64,11 +64,12 @@ const char *ss_user(void);
 bool ss_sign_in(const char *user, const char *password, char *err, size_t errn);
 
 /* The credential half of a query string: devid, devpassword, softname, output
- * and the player's ssid and sspassword, urlencoded and joined with `&`.
+ * and, when a player is signed in, their ssid and sspassword, urlencoded and
+ * joined with `&`. Without an account the developer pair alone is enough.
  *
  * A FRAGMENT RATHER THAN THE PASSWORD ITSELF. Every caller needs the same six
  * parameters and none of them needs to hold the password to build them, so it
- * does not leave this file. False when either half is missing.
+ * does not leave this file. False when the build has no developer pair.
  *
  * What comes back is a credential: it is never logged, never printed, and the
  * caller wipes it when it is done. */

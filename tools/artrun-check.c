@@ -137,7 +137,7 @@ static char g_ss_stem[256];
 static char g_ss_dest[512];
 static bool g_ss_toomany;
 
-bool ss_signed_in(void) { return g_ss_on; }
+bool ss_have_dev(void) { return g_ss_on; }
 
 bool ss_run_begin(const char *folder, const char *file, const char *stem,
                   const char *rom_dir, const char *exts)

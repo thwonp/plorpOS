@@ -401,7 +401,9 @@ enum { P_SYSTEM, P_SS, P_SS_WAIT, P_TRY, P_TRY_WAIT, P_INDEX, P_INDEX_WAIT,
  * BACKLOG 27 settled the order and Replace Box Art has followed it for one
  * game since 2026-09-16: ScreenScraper when the player has an account,
  * libretro when they do not and libretro again whenever they cannot answer.
- * This is that order over a whole shelf.
+ * This is that order over a whole shelf. Since 2026-11-26 (plorpos-08c.13)
+ * "an account" includes none: the build's developer key alone is answered,
+ * and libretro's own server had stopped answering at all that day.
  *
  * It costs nothing when there is nothing to do, because P_SYSTEM has already
  * counted what is missing and skipped the system if the answer is none. A
@@ -1085,10 +1087,10 @@ int art_step(void)
 		g_nretry = 0;
 		/* A replace keeps its own driver in the screen for now, which asks
 		 * ScreenScraper before it ever gets here. */
-		g_phase = (!g_only[0] && !g_ss_stop && ss_signed_in()) ? P_SS : P_TRY;
+		g_phase = (!g_only[0] && !g_ss_stop && ss_have_dev()) ? P_SS : P_TRY;
 		return 1;
 
-	/* ---- pass zero: ScreenScraper, for an account that has one --------- */
+	/* ---- pass zero: ScreenScraper, with or without a player account --- */
 	case P_SS:
 		if (g_ss_stop || g_ri >= g_nroms) {
 			g_ri = 0;

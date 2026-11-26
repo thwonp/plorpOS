@@ -245,6 +245,14 @@ int main(void)
 	ck(!ss_creds_load(), "loading finds nothing");
 	ck(!ss_signed_in(), "and nothing claims to be signed in");
 	ck(ss_user()[0] == '\0', "the account name is empty");
+	{
+		char q[512];
+		bool got = ss_auth_query(q, sizeof q);
+
+		ck(got == ss_have_dev(), "the developer key alone still makes a query");
+		ck(!got || !strstr(q, "ssid="), "and it names no player");
+		memset(q, 0, sizeof q);
+	}
 
 	have_account = env_value("SS_USER", user, sizeof user) &&
 	               env_value("SS_PASS", pass, sizeof pass);
