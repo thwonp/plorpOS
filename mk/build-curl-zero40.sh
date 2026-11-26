@@ -5,6 +5,7 @@
 # curl and Mbed TLS (mk/flip-cores/build-curl.sh), built in the Brick
 # toolchain image; only libc stays dynamic (the toolchain's 2.31 runs on
 # oakMOSS's 2.38). net.c finds it beside cacert.pem: plorpOS/curl.
+# The GKD on BasedOS ships the same file (BasedOS has no curl either).
 # Output: build/zero40/curl.
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)

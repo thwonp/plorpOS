@@ -167,6 +167,11 @@ elif [ "$PLATFORM" = zero40 ]; then
 		"$B/lib32.squashfs" "$P/zero40/portmaster/"
 elif [ "$PLATFORM" = gkdb ]; then
 	cp "$B/musectl" "$P/"
+	# BasedOS has no curl: the Zero 40's (static TLS, glibc 2.31; mk/build-curl-zero40.sh), beside
+	# cacert.pem, where net.c finds it. Without it the update check, RetroAchievements, scraping and
+	# the streaming sources fetched nothing.
+	[ -f "$ROOT/build/zero40/curl" ] || { echo "no build/zero40/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
+	cp "$ROOT/build/zero40/curl" "$P/"
 	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
 	cp "$ROOT/docs/install-gkdb.md" "$OUT/INSTALL.md"
@@ -352,7 +357,7 @@ rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"
       rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
-gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
+gkdb) chmod +x "$P/musectl" "$P/curl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	"$P/gkdb/portmaster/pm-run.sh" "$P/gkdb/portmaster/retroarch" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
