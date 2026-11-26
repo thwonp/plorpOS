@@ -146,11 +146,11 @@ elif [ "$PLATFORM" = zero40 ]; then
 		{ echo "no $B/pmtools.squashfs; run mk/build-pmtools-h700.sh zero40" >&2; exit 1; }
 	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
 		{ echo "run mk/fetch-vendor.sh first" >&2; exit 1; }
-	# 32-bit ports (mk/build-lib32-zero40.sh, lib32.squashfs) are not shipped
-	# yet (plorpos-auv.7.4): pm-run.sh mounts the image only when it is there.
+	[ -f "$B/lib32.squashfs" ] ||
+		{ echo "no $B/lib32.squashfs; run mk/build-lib32-zero40.sh" >&2; exit 1; }
 	mkdir -p "$P/zero40/portmaster"
 	cp "$ROOT/sd/zero40/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" \
-		"$P/zero40/portmaster/"
+		"$B/lib32.squashfs" "$P/zero40/portmaster/"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
