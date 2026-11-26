@@ -79,9 +79,9 @@ device for adb from the next boot on. It is off on a fresh card.
 
 ## Ports
 
-The **Ports** shelf sits above Muse+. Its first entry is **PortMaster**; open
-it with the device on Wi-Fi to install ports, which land in `Roms/Ports/` and
-appear on the shelf. A port is a script (`Name.sh`) beside a folder of the
+The **Ports** shelf sits just before Muse+. Its first entry is
+**PortMaster**; open it with the device on Wi-Fi to install ports, which land
+in `Roms/Ports/` and appear on the shelf. A port is a script (`Name.sh`) beside a folder of the
 same name, so ports can also be copied onto the card. PortMaster itself lives
 in `.userdata/shared/portmaster/`. This is unofficial support: report problems
 to plorpOS, not the PortMaster team.
@@ -94,8 +94,9 @@ What to expect:
   have to be given them: put them where the port's page says. A port may
   download a runtime the first time, so do that on Wi-Fi.
 - 32-bit ports run on software graphics: the GPU has no 32-bit driver.
-  GameMaker ones play slowly. Ports that run through box86 (Braid, Shovel
-  Knight) do not work.
+  GameMaker ones play slowly (MEGA MAN Sunrise about 13 fps). Ports that run
+  through box86 (Braid, Shovel Knight) do not work.
+- Stardew Valley shows only the top-left part of its picture.
 - Dust Racing 2D does not start until PortMaster fixes the runtime name its
   script asks for.
 - PortMaster's tools ship as read-only images in `plorpOS/zero28/portmaster/`,
