@@ -147,7 +147,7 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 # by an rpath beside muse - not LD_LIBRARY_PATH, which would hand the lean
 # build to every port that wants the firmware's - and DT_RPATH (not RUNPATH),
 # so the libraries find each other there too. The Zero 40 has the same five
-# on its LD_LIBRARY_PATH (sd/zero40/launch.sh).
+# on its LD_LIBRARY_PATH (sd/oakmoss/launch.sh).
 ifeq ($(PLATFORM),brick)
 MUSE_LDFLAGS := -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/lib'
 endif

@@ -1,13 +1,14 @@
 #!/bin/sh
-# Unofficial PortMaster on the MagicX Zero 40 (plorpos-auv.7): the Brick's
-# runner (sd/brick/portmaster/pm-run.sh) on oakMOSS - same A133P, GE8300 and
-# firmware SDL, here in /usr/magicx/lib. pm-run.sh SCRIPT [ARGS], or
+# Unofficial PortMaster on the MagicX boards (Zero 40 plorpos-auv.7, Zero 28
+# plorpos-08c.10): the Brick's runner (sd/brick/portmaster/pm-run.sh) on
+# oakMOSS - same A133P, GE8300 and firmware SDL, here in /usr/magicx/lib. pm-run.sh SCRIPT [ARGS], or
 # pm-run.sh --uninstall ZIP.
 #
 # If something PortMaster related does not work, do not bug the PortMaster devs.
 # SPDX-License-Identifier: MIT
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
+BOARD=$(cat /usr/magicx/device 2> /dev/null)
 CARD=/mnt/SDCARD
 PMDATA=$CARD/.userdata/shared/portmaster
 PM=$PMDATA/PortMaster
@@ -86,11 +87,12 @@ export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 # launch.sh's pad map is the launcher's, by position; PortMaster and its ports
 # take control.txt's, by label - SDL would let the inherited one win.
 unset SDL_GAMECONTROLLERCONFIG
-# The stick rests about 2.5 % off centre (ABS_Y -819 to -901), and gptokeyb2
-# with a port's small dead zone sent Right over and over. A dead zone on the
-# axes (the kernel's "flat"), which SDL honours only when asked to; the
-# launcher and Diatom read the pad raw and are unaffected.
-python3 - << 'PY'
+# The Zero 40's stick rests about 2.5 % off centre (ABS_Y -819 to -901), and
+# gptokeyb2 with a port's small dead zone sent Right over and over. A dead
+# zone on the axes (the kernel's "flat"), which SDL honours only when asked
+# to; the launcher and Diatom read the pad raw and are unaffected. The Zero
+# 28's sticks rest at exactly 0 (its driver filters them).
+[ "$BOARD" = zero40 ] && python3 - << 'PY'
 import fcntl, os, struct
 try:
     fd = os.open('/dev/input/event2', os.O_RDWR)
@@ -123,9 +125,9 @@ fi
 # oakMOSS tags only Powkiddy pads for udev (its 61-oakmoss-pads.rules), and
 # has no input_id rules: Godot found no pad, and libinput (Westonpack's
 # Weston) skipped gptokeyb's keyboard, so a Weston port took no input. The
-# Zero 40's pad is a joystick by name - input_id calls it a mouse - and every
-# virtual device a port makes (gptokeyb's keyboard, a fake pad) is classified.
-RULES=/etc/udev/rules.d/61-plorpos-zero40-pad.rules
+# pad is a joystick by name - input_id calls it a mouse - and every virtual
+# device a port makes (gptokeyb's keyboard, a fake pad) is classified.
+RULES=/etc/udev/rules.d/61-plorpos-$BOARD-pad.rules
 if ! cmp -s "$HERE/udev.rules" "$RULES"; then
     cp "$HERE/udev.rules" "$RULES" && udevadm control --reload &&
         udevadm trigger --action=change --subsystem-match=input
@@ -146,5 +148,9 @@ else
     cd "$(dirname "$1")" || exit 1
     # Older scripts source device_info.txt again after control.txt: keep the
     # name and the display control.txt gave (plorpos-3yv.86.18).
-    bash -c 'trap "export CFW_NAME=ROCKNIX DISPLAY_WIDTH=480 DISPLAY_HEIGHT=800 DISPLAY_ORIENTATION=0 ASPECT_X=3 ASPECT_Y=5" RETURN; . "$0" "$@"' "$@"
+    case $BOARD in
+    zero28) export PLORPOS_PM_DISPLAY="DISPLAY_WIDTH=640 DISPLAY_HEIGHT=480 DISPLAY_ORIENTATION=0 ASPECT_X=4 ASPECT_Y=3" ;;
+    *) export PLORPOS_PM_DISPLAY="DISPLAY_WIDTH=480 DISPLAY_HEIGHT=800 DISPLAY_ORIENTATION=0 ASPECT_X=3 ASPECT_Y=5" ;;
+    esac
+    bash -c 'trap "export CFW_NAME=ROCKNIX $PLORPOS_PM_DISPLAY" RETURN; . "$0" "$@"' "$@"
 fi

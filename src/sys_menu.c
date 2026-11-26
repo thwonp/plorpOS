@@ -186,7 +186,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * Syncthing, Tailscale, Over The Hare, updates - is Network Services,
 	 * its own row since plorpos-eiz (owner). */
 	out[PM_WIFI]         = (menu_row){ "Wi-Fi", b->b, true };
-#if !defined(PLATFORM_MIYOO)
+#if SYS_HAS_BT
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };

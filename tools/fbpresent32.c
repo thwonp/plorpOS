@@ -2,7 +2,7 @@
 /* Zero 40, 32-bit PortMaster ports only (plorpos-auv.7): the GE8300 has no
  * 32-bit driver, so an armhf port renders with Mesa's software GL into an
  * offscreen surface (SDL_VIDEODRIVER=offscreen) and nothing reaches the
- * panel. Preloaded into the port (sd/zero40/portmaster/pm-run.sh), this
+ * panel. Preloaded into the port (sd/oakmoss/portmaster/pm-run.sh), this
  * reads each finished frame back at eglSwapBuffers and copies it into the
  * framebuffer page on glass: fit to the panel's width (or height), centred,
  * nearest neighbour - a landscape frame on the portrait panel is a band

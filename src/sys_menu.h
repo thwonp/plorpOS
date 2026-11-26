@@ -24,6 +24,13 @@
 #include "wifi.h"
 #include "audioout.h"
 
+/* Bluetooth: none on the Flip (f1p.57) or the Zero 28 (no antenna, plorpos-08c). */
+#if !defined(PLATFORM_MIYOO) && !defined(PLATFORM_ZERO28)
+#define SYS_HAS_BT 1
+#else
+#define SYS_HAS_BT 0
+#endif
+
 /* The plorpOS menu, in the order it is read.
  *
  * Play Time leads because it is the only row here anyone opens twice. Wi-Fi,
@@ -43,7 +50,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
-#if !defined(PLATFORM_MIYOO)   /* the Flip has no Bluetooth (f1p.57) */
+#if SYS_HAS_BT
 	PM_BT,
 #endif
 	PM_NET,

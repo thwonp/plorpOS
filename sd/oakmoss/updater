@@ -1,0 +1,12 @@
+#!/bin/sh
+# plorpOS on a MagicX board under oakMOSS (Zero 40, Zero 28): oakMOSS's
+# runmagicx.sh runs this from the card that hosts (/mnt/SDCARD: SD2, or SD1's
+# SPRUCEOS partition) and powers the board off when it returns.
+#
+# /usr/magicx/device names the board (oakMOSS boards/<board>/board.conf). Each
+# board has its own build; mk/payload.sh writes the one this zip is for below,
+# and any other board is left alone rather than half-booted.
+[ "$(cat /usr/magicx/device 2> /dev/null)" = @BOARD@ ] || exit 1
+
+LAUNCH=/mnt/SDCARD/plorpOS/launch.sh
+[ -f "$LAUNCH" ] && sh "$LAUNCH"

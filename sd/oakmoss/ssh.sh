@@ -1,5 +1,5 @@
 #!/bin/sh
-# ssh on the MagicX Zero 40 (plorpos-auv): plorpOS's own static dropbear,
+# ssh on the MagicX boards (Zero 40 plorpos-auv, Zero 28 plorpos-08c): plorpOS's own static dropbear,
 # since oakMOSS ships no SSH server. Off on a fresh card; the Network Services
 # switch is the "ssh" setting, which boot.env carries to launch.sh. As root,
 # key login only (no crypt() in the static build), keys from

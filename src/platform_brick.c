@@ -1856,7 +1856,7 @@ bool plat_battery(int *pct, bool *charging)
  * into the computer. Writing usb_device to otg_role forces device mode; it
  * also stops the manager's ID scan for the rest of the boot, and nothing
  * restarts that short of a reboot (SDK usbc0_platform.c device_chose). So on
- * is now and from every boot (sd/zero40/launch.sh reads the marker); off is
+ * is now and from every boot (sd/oakmoss/launch.sh reads the marker); off is
  * from the next boot, and the row says "off · restart needed" until then. Off by
  * default: the port is for gamepads and USB DACs until asked. */
 #define USB_OTG_ROLE "/sys/devices/platform/soc/usbc0/otg_role"
