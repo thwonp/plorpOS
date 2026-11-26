@@ -63,8 +63,9 @@ to `plorpOS-old/` before copying, and delete it once everything works. Your
 settings, saves, play time and achievements are in `.userdata/` and `Saves/`
 and carry over. Wi-Fi has to be joined again and Bluetooth headsets paired
 again: BasedOS doesn't see ROCKNIX's settings. The three files on the GKD's
-`system.d` share can stay: with no `plorpOS/launch.sh` on the card, ROCKNIX
-starts EmulationStation as usual.
+`system.d` share can stay. The first start removes the old build's
+`plorpOS/launch.sh` and `TortOS/launch.sh` from the card, so ROCKNIX (Start
+at power-on) starts EmulationStation as usual.
 
 ## 3. Start it
 

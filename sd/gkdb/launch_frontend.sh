@@ -76,6 +76,13 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 		ntpd -n -q -p pool.ntp.org && hwclock -w -u
 	) > /dev/null 2>&1 &
 fi
+# Stock ROCKNIX (Start held at power-on) runs plorpOS's ROCKNIX build from
+# plorpOS/launch.sh, or TortOS/launch.sh on a GKD set up before v1.10, through
+# the system.d drop-ins that build installed. This build ships neither, so on a
+# card moved over from it they started nothing and stock stayed black, retrying
+# every 2 s (plorpos-gkd.94.16). Without them stock starts EmulationStation.
+grep -qs plorpos-nzi "$SD/TortOS/launch.sh" && rm -f "$SD/TortOS/launch.sh" && rmdir "$SD/TortOS" 2> /dev/null
+[ -f "$DIR/launch.sh" ] && rm -f "$DIR/launch.sh" && echo "removed the ROCKNIX build's plorpOS/launch.sh" >> "$LOG"
 # SSH is the frontend's too, off unless switched on in Network Settings. It
 # signs in as root / plorpos, as on the Rotate (plorpos-gkd.94.22): BasedOS
 # leaves root's password empty, so it is set while it still is - one changed
