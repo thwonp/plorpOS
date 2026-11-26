@@ -24,7 +24,9 @@
 static const char *bonds(void)
 {
 	const char *b = getenv("TORTOS_BT_BONDS");
-#if defined(PLATFORM_GKD)
+#if defined(PLATFORM_BASEDOS)
+	return b && *b ? b : "/data/bluetooth";            /* the fork's basedos-bluetooth */
+#elif defined(PLATFORM_GKD)
 	return b && *b ? b : "/storage/.cache/bluetooth";   /* ROCKNIX's build */
 #elif defined(PLATFORM_ROTATE)
 	return b && *b ? b : "/var/lib/bluetooth";          /* Debian's */
@@ -335,7 +337,17 @@ static int btctl(char *out, size_t cap, int timeout_s, const char *a, const char
 static bool rocknix_bt(const char *verb)
 {
 	char out[512];
+#if defined(PLATFORM_BASEDOS)
+	/* The BasedOS fork's switch instead (plorpos-gkd.94): start attaches the
+	 * chip and starts bluetoothd, stop the reverse. launch_frontend.sh starts
+	 * it at boot from boot.env, and bonds live on /data: nothing to save. */
+	char *argv[] = { (char *)"/usr/sbin/basedos-bluetooth",
+	                 (char *)(strcmp(verb, "enable") ? "stop" : "start"), NULL };
+
+	if (!strcmp(verb, "save")) return true;
+#else
 	char *argv[] = { (char *)"/usr/bin/rocknix-bluetooth", (char *)verb, NULL };
+#endif
 	return run(argv, out, sizeof out, BT_ACT_S) == 0;
 }
 
@@ -367,9 +379,9 @@ static bool bluetoothd_running(void)
  * replaced and why each was wrong. */
 int bt_mark_connected_now(bt_device *list, int n)
 {
-#if defined(PLATFORM_H700) || defined(PLATFORM_ROTATE)
-	/* No hcitool on BaseOS (nor in Debian's bluez). BlueZ 5.66's own list, which holds a device only
-	 * once its link is up - not the half-open one hcitool also showed.
+#if defined(PLATFORM_H700) || defined(PLATFORM_ROTATE) || defined(PLATFORM_BASEDOS)
+	/* No hcitool on BaseOS, the BasedOS fork (BlueZ 5.79), nor in Debian's
+	 * bluez. BlueZ 5.66's own list, which holds a device only once its link is up - not the half-open one hcitool also showed.
 	 * Matched on `Device <mac>` at a line's start, so neither an event line
 	 * (`[CHG] Device ...`) nor a device with no name is misread. */
 	char out[2048];
@@ -401,6 +413,12 @@ bt_state bt_status(void)
 {
 	char out[512];
 
+#if defined(PLATFORM_BASEDOS)
+	/* The fork attaches the chip in basedos-bluetooth start, so no hci0
+	 * while bluetoothd is down is simply off, and turning it on works now
+	 * rather than at the next boot (plorpos-gkd.94.18). */
+	if (!bluetoothd_running()) return BT_POWERED_OFF;
+#endif
 	if (access("/sys/class/bluetooth/hci0", F_OK) != 0) return BT_NO_ADAPTER;
 #if defined(PLATFORM_GKD)
 	if (!bluetoothd_running()) return BT_POWERED_OFF;

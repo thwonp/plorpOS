@@ -4,7 +4,8 @@
 # docs/building.md covers every port.
 IMAGE := tortos-toolchain
 # Which device: brick (the Brick and Brick Pro, the default), gkd, h700, rotate,
-# miyoo (the Mini Flip), rgds (the RG DS), zero40 (the MagicX Zero 40), zero28 (the MagicX Zero 28) or nano. The Brick builds into build/
+# miyoo (the Mini Flip), rgds (the RG DS), zero40 (the MagicX Zero 40), zero28 (the MagicX Zero 28),
+# gkdb (the GKD on the BasedOS fork) or nano. The Brick builds into build/
 # against sysroot/, the others into build/<platform>/ against sysroot-<platform>/
 # (the Nano: sdk-nano/, mk/nano.mk). All but the Nano compile one device file,
 # src/platform_$(PLATFORM).c.
@@ -34,6 +35,8 @@ ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
 else ifeq ($(PLATFORM),rgds)
 all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so build/rgds/adbroot.so
+else ifeq ($(PLATFORM),gkdb)
+all: build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl build/gkdb/portscale.so
 else ifeq ($(PLATFORM),zero40)
 all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so
 else ifeq ($(PLATFORM),zero28)
@@ -85,7 +88,7 @@ VERSION ?= 1.9
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd rgds h700 rotate miyoo zero40 zero28,$(PLATFORM)),build/$(PLATFORM),build)
+VBUILD := $(if $(filter gkd rgds gkdb h700 rotate miyoo zero40 zero28,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -180,6 +183,13 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 build/gkd/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
 
+# PortMaster's scaling shim on the GKD under BasedOS (tools/portscale.c).
+build/gkdb/portscale.so: tools/portscale.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
+		-I/work/sysroot-gkdb/usr/include/SDL2 -o $@ $< -ldl
+
 build/gkd/portfullscreen.so: tools/portfullscreen.c
 	@mkdir -p $(@D)
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
@@ -214,6 +224,31 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 	done
 	@[ tools/musectl.c -nt build/gkd/musectl ] && { \
 		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
+
+# The GKD on the BasedOS fork (plorpos-gkd.94): the GKD's sources again, with
+# -DPLATFORM_BASEDOS from mk/cross.mk, against a sysroot that needs no device
+# (mk/fetch-gkdb-sysroot.sh: SDL from the fork's Buildroot output, the H700's
+# FFmpeg for Muse).
+build/gkdb/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkdb creds
+
+build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl &: \
+                      $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/gkdb/ss_creds.h \
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-gkdb/usr/include/SDL2 ] || { \
+		echo "no gkdb sysroot; run: mk/fetch-gkdb-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=gkdb BUILD=build/gkdb SYSROOT=/work/sysroot-gkdb \
+		VERSION=$(VERSION) creds build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl
+	@for src in $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkdb/ss_creds.h; do \
+		if [ "$$src" -nt build/gkdb/tortos.elf ]; then \
+			echo "STALE: build/gkdb/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/gkdb/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
 
 # The RG DS (plorpos-rgds): the GKD's sources (SRC_GKD - it shares
 # platform_gkd.c, with -DPLATFORM_RGDS from mk/cross.mk) against the RG DS's own

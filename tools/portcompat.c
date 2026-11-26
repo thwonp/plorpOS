@@ -152,20 +152,38 @@ static void wait_for_keys(void)
 	}
 }
 
+/* SDL itself, past this hook. A game can carry its own SDL inside a library it
+ * loaded privately - Pyxel's Python extension, RTLD_LOCAL with SDL linked in -
+ * which RTLD_NEXT does not see: the hook called NULL and the port died
+ * (plorpos-gkd.94.15). Then the caller's own copy, looked up in its library. */
+static void *sdl_real(const char *name, const void *caller)
+{
+	void *f = dlsym(RTLD_NEXT, name);
+	Dl_info di;
+
+	if (!f && dladdr(caller, &di) && di.dli_fname) {
+		void *h = dlopen(di.dli_fname, RTLD_LAZY | RTLD_NOLOAD);
+
+		if (h) {
+			f = dlsym(h, name);
+			dlclose(h);
+		}
+	}
+	return f;
+}
+
 int SDL_Init(uint32_t flags)
 {
-	static int (*real)(uint32_t);
+	int (*real)(uint32_t) = sdl_real("SDL_Init", __builtin_return_address(0));
 
-	if (!real) real = dlsym(RTLD_NEXT, "SDL_Init");
 	wait_for_keys();
-	return real(flags);
+	return real ? real(flags) : -1;
 }
 
 int SDL_InitSubSystem(uint32_t flags)
 {
-	static int (*real)(uint32_t);
+	int (*real)(uint32_t) = sdl_real("SDL_InitSubSystem", __builtin_return_address(0));
 
-	if (!real) real = dlsym(RTLD_NEXT, "SDL_InitSubSystem");
 	wait_for_keys();
-	return real(flags);
+	return real ? real(flags) : -1;
 }

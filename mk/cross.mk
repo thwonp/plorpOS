@@ -8,7 +8,7 @@ BUILD := build
 PLATFORM ?= brick
 # The RG DS runs ROCKNIX as the GKD does and shares its device file (rgds below).
 # The MagicX boards run the Brick's device file on oakMOSS (zero40, zero28 below).
-PLATFORM_SRC := $(if $(filter rgds,$(PLATFORM)),gkd,$(if $(filter zero40 zero28,$(PLATFORM)),brick,$(PLATFORM)))
+PLATFORM_SRC := $(if $(filter rgds gkdb,$(PLATFORM)),gkd,$(if $(filter zero40 zero28,$(PLATFORM)),brick,$(PLATFORM)))
 SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM_SRC).c
 CC ?= aarch64-linux-gnu-gcc
 
@@ -35,6 +35,12 @@ ifeq ($(PLATFORM),rgds)
 # sway, PipeWire and libmali - and PLATFORM_RGDS where the hardware differs
 # (two panels, InputPlumber's pad, backlight names; src/platform_gkd.c).
 CFLAGS += -DPLATFORM_GKD -DPLATFORM_RGDS
+endif
+ifeq ($(PLATFORM),gkdb)
+# The GKD 350H Ultra on the BasedOS fork (plorpos-gkd.94): the same device, so
+# the GKD's branches all fit, and PLATFORM_BASEDOS where the system under it
+# differs - no sway, systemd or ConnMan there (src/platform_gkd.c).
+CFLAGS += -DPLATFORM_GKD -DPLATFORM_BASEDOS
 endif
 # MagicX boards on oakMOSS: the Brick's branches all fit - same A133P, GE8300
 # and SDL2. PLATFORM_OAKMOSS where the OS differs from the Brick's (paths, adb,
@@ -88,7 +94,7 @@ endif
 LDFLAGS := -L$(SYSROOT)/usr/lib -Wl,-rpath-link,$(SYSROOT)/usr/lib \
            -Wl,--allow-shlib-undefined
 LDLIBS := -lSDL2 -lSDL2_image -lSDL2_ttf -lm -ldl -lpthread
-ifneq ($(filter gkd rgds rotate,$(PLATFORM)),)
+ifneq ($(filter gkd rgds gkdb rotate,$(PLATFORM)),)
 # The volume worker (platform_gkd.c, platform_rotate.c). glibc 2.31 here still has it apart from
 # libc; the device's 2.40 keeps libpthread.so.0 as a stub, so it resolves.
 LDLIBS += -lpthread
@@ -147,8 +153,9 @@ $(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 # by an rpath beside muse - not LD_LIBRARY_PATH, which would hand the lean
 # build to every port that wants the firmware's - and DT_RPATH (not RUNPATH),
 # so the libraries find each other there too. The Zero 40 has the same five
-# on its LD_LIBRARY_PATH (sd/oakmoss/launch.sh).
-ifeq ($(PLATFORM),brick)
+# on its LD_LIBRARY_PATH (sd/oakmoss/launch.sh). The GKD on the BasedOS fork
+# (gkdb) finds them by the same rpath: BasedOS has no FFmpeg.
+ifneq ($(filter brick gkdb,$(PLATFORM)),)
 MUSE_LDFLAGS := -Wl,--disable-new-dtags,-rpath,'$$ORIGIN/lib'
 endif
 MUSE_SRC := $(wildcard src/muse/*.c)

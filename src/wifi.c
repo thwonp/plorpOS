@@ -69,11 +69,19 @@ static int run(char *const argv[], char *out, size_t cap)
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
+/* Our own wpa_supplicant and udhcpc, where the system loads the driver and
+ * leaves the rest to the frontend: BaseOS on the H700, oakMOSS on the MagicX
+ * boards, and the BasedOS fork on the GKD (plorpos-gkd.94), which has no
+ * ConnMan. */
+#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS) || defined(PLATFORM_BASEDOS)
+#define WIFI_OWN_DAEMON 1
+#endif
+
 /* The TrimUI radio - and the H700's under BaseOS, which is the same
  * wpa_supplicant and BusyBox udhcpc with nothing around them: BaseOS loads the
  * driver and leaves the daemon, the credentials and the lease to the frontend
  * (plorpos-7ny.5). Where the two differ is marked PLATFORM_H700. */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLATFORM_GKD) || defined(PLATFORM_BASEDOS)
 
 #if defined(PLATFORM_MIYOO)
 /* The Miyoo Mini Flip (plorpos-f1p.21): the stock firmware's supplicant, under
@@ -90,7 +98,7 @@ static int run(char *const argv[], char *out, size_t cap)
 #define WPA_SUPP  "/usr/sbin/wpa_supplicant"
 #define IP_BIN    "/sbin/ip"
 #endif
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 #include "platform.h"
 #if defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)   /* no /run on either */
 #define WPA_SOCK "/var/run/wpa_supplicant"
@@ -170,7 +178,7 @@ static void dhcp_start(void);
 #else
 #define UDHCPC_S ""
 #endif
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 /* The lease, once the link is up - as launch_frontend.sh does at boot. Not
  * left to wifi_status: that asks only when something polls it, and the Wi-Fi
  * screen reads it once, after its scan, which finishes before the association
@@ -203,7 +211,7 @@ static void dhcp_after_join(void)
 }
 #endif
 
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 /* Network time on BaseOS (plorpos-2wl.25): its own ntpd supervisor, switched
  * with Wi-Fi. A never-set clock reads 1970 and every https download fails
  * until it is right; with Wi-Fi off nothing is left waking every 5 s for a
@@ -217,7 +225,9 @@ static void dhcp_after_join(void)
  * The Flip's firmware runs none either under plorpOS (plorpos-5tm.10), and its
  * BusyBox 1.20 ntpd exits at once if pool.ntp.org does not resolve, so the
  * one-shot waits for the lease's default route first (2 min at most, and only
- * while wpa_supplicant runs). launch.sh does the same at boot. */
+ * while wpa_supplicant runs). launch.sh does the same at boot.
+ *
+ * The BasedOS fork on the GKD runs none either, and does as the Zero 40. */
 static void net_time(bool on)
 {
 #if defined(PLATFORM_MIYOO)
@@ -229,7 +239,7 @@ static void net_time(bool on)
 		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
 
 	run(argv, NULL, 0);
-#elif defined(PLATFORM_OAKMOSS)
+#elif defined(PLATFORM_OAKMOSS) || defined(PLATFORM_BASEDOS)
 	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
 		? (char *)"(/usr/sbin/ntpd -n -q -p pool.ntp.org && /sbin/hwclock -w -u) > /dev/null 2>&1 &"
 		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
@@ -253,7 +263,7 @@ bool wifi_up(void)
 	if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
 	    strstr(out, "PONG")) return true;
 
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 	/* Our own daemon, on the card's config so saved networks survive a
 	 * BaseOS update. wlan0 can be late - BaseOS loads the driver in the
 	 * background, and a slow radio holds it until ~7 s uptime - so the start
@@ -330,7 +340,7 @@ bool wifi_up(void)
 		sleep(1);
 		if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
 		    strstr(out, "PONG")) {
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 			dhcp_after_join();
 			net_time(true);
 #else
@@ -363,7 +373,7 @@ static void lease_drop(void)
 void wifi_down(void)
 {
 	g_dhcp_asked = false;
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 	/* The daemon goes, and the lease with it (lease_drop). And the lease is
 	 * forgotten as asked for: wifi_status re-arms only on a state it can
 	 * read, and with no daemon it reads none - so the next association after
@@ -650,7 +660,7 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 		if (!g_dhcp_asked) { g_dhcp_asked = true; dhcp_start(); }
 		return WIFI_CONNECTING;
 	}
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 	g_dhcp_asked = false;              /* not associated: arm for the next one */
 #endif
 	/* Brick's client is already retrying while association completes. Keep
@@ -758,7 +768,7 @@ fail:
 	 * INACTIVE and the saved entry marked [DISABLED]. Put them back. */
 	if (!reused) wpa(out, sizeof out, "remove_network", id, NULL, NULL);
 	wpa(out, sizeof out, "enable_network", "all", NULL, NULL);
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 	/* And stay off: enabled, the saved list would rejoin the previous
 	 * network the moment this returns, and a failed join must not do that
 	 * (user, 2026-10-05). It rejoins at the next Wi-Fi on or boot. */
@@ -772,7 +782,7 @@ bool wifi_forget(const char *ssid)
 	char out[4096];
 	char *line, *save;
 	bool hit = false;
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 	char cur[64];
 
 	wifi_status(cur, sizeof cur, NULL, 0);
@@ -794,7 +804,7 @@ bool wifi_forget(const char *ssid)
 	if (hit) {
 		char tmp[128];
 		wpa(tmp, sizeof tmp, "save_config", NULL, NULL, NULL);
-#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS)
+#if defined(WIFI_OWN_DAEMON)
 		/* The network in use: its lease stayed on wlan0, and another saved
 		 * network rejoining read as connected on the old address, never
 		 * asking for its own (plorpos-7ny.5, 2026-10-06). */
@@ -841,6 +851,31 @@ bool wifi_svc_set(wifi_svc s, bool on)
 {
 	char *argv[] = { (char *)"/bin/sh", (char *)"/mnt/SDCARD/plorpOS/ssh.sh",
 	                 on ? (char *)"start" : (char *)"stop", NULL };
+	if (s != WIFI_SSH || !db_set_int(db_dev(), "ssh", on ? 1 : 0)) return false;
+	db_write_boot_env();
+	run(argv, NULL, 0);
+	return true;
+}
+#endif
+
+#if defined(PLATFORM_BASEDOS)
+#include "db.h"
+/* SSH on the BasedOS fork is the base's OpenSSH, which BasedOS leaves to the
+ * frontend: off on a fresh card (root has no password there). The switch is
+ * the "ssh" setting, which boot.env carries to launch_frontend.sh so it is
+ * still on after a reboot. Off stops the listener by its pid file and keeps
+ * the sessions already open. (unverified on the device: plorpos-gkd.94.1) */
+bool wifi_svc_on(wifi_svc s)
+{
+	return s == WIFI_SSH && db_get_int(db_dev(), "ssh", 0);
+}
+
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
+		? (char *)"[ -f /run/sshd.pid ] || /etc/init.d/sshd > /dev/null 2>&1"
+		: (char *)"kill $(cat /run/sshd.pid) > /dev/null 2>&1", NULL };
+
 	if (s != WIFI_SSH || !db_set_int(db_dev(), "ssh", on ? 1 : 0)) return false;
 	db_write_boot_env();
 	run(argv, NULL, 0);
