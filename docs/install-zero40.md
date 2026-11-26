@@ -124,7 +124,8 @@ What to expect:
 ## Limits
 
 - No Bluetooth yet.
-- No native PICO-8. The PICO-8 shelf plays carts on the fake08 core.
+- Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`;
+  without them the PICO-8 shelf plays carts on the fake08 core.
 - Plex downloads each track before playing it, as on the H700 devices.
 - Below and above a landscape game the screen is black.
 
