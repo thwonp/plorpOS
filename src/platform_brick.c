@@ -317,6 +317,12 @@ void plat_present(SDL_Renderer *r)
 			memcpy(ov_fb + ((size_t)v.yoffset + (size_t)y) * ov_fix.line_length +
 			       (size_t)v.xoffset * 4,
 			       (uint8_t *)ov_surf->pixels + (size_t)y * (size_t)ov_surf->pitch, row);
+#if defined(PLATFORM_ZERO28)
+		/* The panel shows a turned copy of the page (the panel is mounted
+		 * on its side), and the copy is made on a pan: pan to the page
+		 * already on glass, or the menu never shows (plorpos-08c.14). */
+		ioctl(ov_fd, FBIOPAN_DISPLAY, &v);
+#endif
 	}
 #endif
 }
