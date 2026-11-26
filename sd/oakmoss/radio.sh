@@ -1,18 +1,27 @@
-# plorpOS radio helpers for the MagicX Zero 40 on oakMOSS (plorpos-auv).
-# Sourced by launch.sh at boot and by plat_sleep() around a suspend
-# (radio_sh_call, src/platform_brick.c). oakMOSS loads no radio driver and
-# leaves the supplicant to the launcher, so both are ours here, started the
-# way src/wifi.c starts them: the XR829's xradio_wlan by name, our own
-# wpa_supplicant on the card's config, BusyBox udhcpc once associated.
+# plorpOS radio helpers for the MagicX boards on oakMOSS (plorpos-auv,
+# plorpos-08c). Sourced by launch.sh at boot and by plat_sleep() around a
+# suspend (radio_sh_call, src/platform_brick.c). oakMOSS leaves the supplicant
+# to the launcher, so it is ours here, started the way src/wifi.c starts it:
+# our own wpa_supplicant on the card's config, BusyBox udhcpc once associated.
+# The driver: the Zero 40's XR829 (xradio_wlan, by name; oakMOSS loads none),
+# the Zero 28's RTL8189ES (8189es; oakMOSS loads it at boot). Never xradio on
+# the Zero 28: its platform init rescans SDIO and knocks the Realtek off
+# (oakMOSS TODO.md).
 #
-# Bluetooth is not done yet on this device: bt_on/bt_off are no-ops.
+# Bluetooth: not done yet on the Zero 40, and the Zero 28 has no antenna.
+# bt_on/bt_off are no-ops.
 
 WPA_SOCK=/var/run/wpa_supplicant
-WPA_CONF=${USERDATA_PATH:-/mnt/SDCARD/.userdata/zero40}/wpa_supplicant.conf
+BOARD=$(cat /usr/magicx/device)
+WPA_CONF=${USERDATA_PATH:-/mnt/SDCARD/.userdata/$BOARD}/wpa_supplicant.conf
+case $BOARD in
+zero28) WIFI_MODS=8189es ;;
+*) WIFI_MODS="xradio_wlan xradio_core xradio_mac" ;;   # users first: see below
+esac
 
 wifi_on() {
 	i=0
-	[ -d /sys/class/net/wlan0 ] || modprobe xradio_wlan 2> /dev/null
+	[ -d /sys/class/net/wlan0 ] || modprobe ${WIFI_MODS%% *} 2> /dev/null
 	while [ ! -d /sys/class/net/wlan0 ] && [ $i -lt 10 ]; do sleep 1; i=$((i + 1)); done
 	ip link set dev wlan0 up 2> /dev/null
 	[ -f "$WPA_CONF" ] || echo "update_config=1" > "$WPA_CONF"
@@ -35,14 +44,15 @@ wifi_on() {
 
 # Before a suspend, and for Wi-Fi off at boot: the daemon, the lease, the
 # link and the driver. oakMOSS measured the Zero 40 sleeping only once its
-# radio module is unloaded (hardware-notes, "takes ~4 s longer to go to sleep").
+# radio module is unloaded (hardware-notes, "takes ~4 s longer to go to sleep");
+# the Zero 28's comes out the same way, and wifi_on loads it again.
 wifi_stop_once() {
 	wpa_cli -p $WPA_SOCK -i wlan0 terminate > /dev/null 2>&1
 	killall -q udhcpc 2> /dev/null
 	killall -q ntpd 2> /dev/null      # a sync still waiting for an answer
 	ip link set dev wlan0 down 2> /dev/null
 	# One at a time, users first: BusyBox rmmod given all three unloads none.
-	rmmod xradio_wlan 2> /dev/null; rmmod xradio_core 2> /dev/null; rmmod xradio_mac 2> /dev/null
+	for m in $WIFI_MODS; do rmmod $m 2> /dev/null; done
 }
 
 radio_off() { wifi_stop_once; }

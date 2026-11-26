@@ -57,8 +57,8 @@
 const char *P_ROOT = "/mnt/SDCARD/plorpOS";
 const char *P_CARD = "/mnt/SDCARD";
 const char *P_ROMS = "/mnt/SDCARD/Roms";
-#ifdef PLATFORM_ZERO40
-const char *P_USERDATA = "/mnt/SDCARD/.userdata/zero40";
+#ifdef PLATFORM_OAKMOSS
+const char *P_USERDATA = "/mnt/SDCARD/.userdata/" OAKMOSS_BOARD;
 #else
 const char *P_USERDATA = "/mnt/SDCARD/.userdata/tg3040";
 #endif
@@ -71,8 +71,8 @@ const char *P_FONT = "/mnt/SDCARD/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
-#ifdef PLATFORM_ZERO40
-	"PLATFORM=zero40", "DEVICE=zero40",
+#ifdef PLATFORM_OAKMOSS
+	"PLATFORM=" OAKMOSS_BOARD, "DEVICE=" OAKMOSS_BOARD,
 #else
 	"PLATFORM=tg3040", "DEVICE=brick",
 #endif
@@ -82,7 +82,7 @@ const char *const plat_child_env[] = {
 	"SAVES_PATH=/mnt/SDCARD/Saves",
 	NULL
 };
-#ifdef PLATFORM_ZERO40
+#ifdef PLATFORM_OAKMOSS
 const char plat_child_libpath[] = ":/usr/magicx/lib";   /* oakMOSS's SDL2 (TrimUI's) */
 #else
 const char plat_child_libpath[] = ":/usr/trimui/lib";
@@ -99,7 +99,7 @@ const char *plat_bright_keys(void) { return "Menu+Vol"; }   /* plorpos-reo.22 */
  * hwserial names the model and nothing else on the device does. */
 bool plat_is_brick_pro(void)
 {
-#ifdef PLATFORM_ZERO40
+#ifdef PLATFORM_OAKMOSS
 	return false;
 #endif
 	static int pro = -1;
@@ -115,7 +115,11 @@ bool plat_is_brick_pro(void)
 	return pro;
 }
 
+#ifdef PLATFORM_ZERO28
+bool plat_two_sticks(void) { return true; }
+#else
 bool plat_two_sticks(void) { return plat_is_brick_pro(); }
+#endif
 
 /* SDL joystick button indices on the Brick's "TRIMUI Player1" device.
  *
@@ -142,6 +146,20 @@ enum {
 	JOY_SELECT = 8, JOY_START = 9, JOY_L3 = 10,
 	JOY_UP = 11, JOY_LEFT = 12, JOY_RIGHT = 13, JOY_DOWN = 14,
 	JOY_VOLDN = 15, JOY_VOLUP = 16, JOY_MENU = 17,
+};
+#define CODE_MENU KEY_BACK
+#elif defined(PLATFORM_ZERO28)
+/* The Zero 28's "magicx-input" (oakMOSS simplepad, plorpos-08c): the Zero
+ * 40's codes plus R3 (318), which SDL numbers after L3, so every index from
+ * the d-pad on is one higher: 304 305 307 308 310 311 312 313 314 315 317 318,
+ * then 103 105 106 108 114 115 158 (and 272/273, the kernel's virtual mouse
+ * buttons, never pressed). */
+enum {
+	JOY_B = 0, JOY_A = 1, JOY_Y = 2, JOY_X = 3,
+	JOY_L1 = 4, JOY_R1 = 5, JOY_L2 = 6, JOY_R2 = 7,
+	JOY_SELECT = 8, JOY_START = 9, JOY_L3 = 10, JOY_R3 = 11,
+	JOY_UP = 12, JOY_LEFT = 13, JOY_RIGHT = 14, JOY_DOWN = 15,
+	JOY_VOLDN = 16, JOY_VOLUP = 17, JOY_MENU = 18,
 };
 #define CODE_MENU KEY_BACK
 #else
@@ -299,6 +317,12 @@ void plat_present(SDL_Renderer *r)
 			memcpy(ov_fb + ((size_t)v.yoffset + (size_t)y) * ov_fix.line_length +
 			       (size_t)v.xoffset * 4,
 			       (uint8_t *)ov_surf->pixels + (size_t)y * (size_t)ov_surf->pitch, row);
+#if defined(PLATFORM_ZERO28)
+		/* The panel shows a turned copy of the page (the panel is mounted
+		 * on its side), and the copy is made on a pan: pan to the page
+		 * already on glass, or the menu never shows (plorpos-08c.14). */
+		ioctl(ov_fd, FBIOPAN_DISPLAY, &v);
+#endif
 	}
 #endif
 }
@@ -333,7 +357,7 @@ static void open_joystick(void)
 	}
 }
 
-#if defined(PLATFORM_ZERO40) && defined(__linux__)
+#if defined(PLATFORM_OAKMOSS) && defined(__linux__)
 /* An input node by its kernel name, or -1. */
 static int input_open_named(const char *want)
 {
@@ -350,7 +374,9 @@ static int input_open_named(const char *want)
 	}
 	return -1;
 }
+#endif
 
+#if defined(PLATFORM_ZERO40) && defined(__linux__)
 /* The touch panel (axs_ts): five type-B slots in panel pixels, 480x800 as the
  * picture is drawn. Read straight from evdev - the firmware SDL's fbdev
  * driver delivers no fingers - and handed to touch.c as the SDL finger events
@@ -444,12 +470,14 @@ bool plat_input_init(void)
 		open_joystick();
 	}
 #ifdef __linux__
-#ifdef PLATFORM_ZERO40
-	/* By name: the touch panel's module loads after boot (launch.sh) and
+#ifdef PLATFORM_OAKMOSS
+	/* By name: the Zero 40's touch module loads after boot (launch.sh) and
 	 * shifts nothing, but the numbers are an enumeration order, not a promise. */
 	if (fd_power < 0) fd_power = input_open_named("axp2202-pek");
 	if (fd_joy < 0) fd_joy = input_open_named("magicx-input");
+#ifdef PLATFORM_ZERO40
 	touch_open();
+#endif
 #else
 	if (fd_power < 0) fd_power = open("/dev/input/event1", O_RDONLY | O_NONBLOCK);
 	if (fd_keys < 0) fd_keys = open("/dev/input/event0", O_RDONLY | O_NONBLOCK);
@@ -585,7 +613,7 @@ void child_quiet(pid_t pid, bool on)
 	fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
 }
 
-#ifdef PLATFORM_ZERO40
+#ifdef PLATFORM_OAKMOSS
 /* The d-pad's four buttons, as hat_dir's index (left, right, up, down). */
 static int joy_dir(int jb)
 {
@@ -610,6 +638,9 @@ static in_button map_joy_button(int jb)
 	case JOY_L2: return IN_L2;
 	case JOY_R2: return IN_R2;
 	case JOY_L3: return IN_L3;
+#ifdef PLATFORM_ZERO28
+	case JOY_R3: return IN_R3;
+#endif
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
@@ -654,6 +685,9 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 {
 #ifdef PLATFORM_ZERO40
 	static const int codes[] = { 304, 305, 307, 308, 310, 311, 312, 313, 314, 315, 317,
+	                             103, 105, 106, 108, 114, 115, 158 };
+#elif defined(PLATFORM_ZERO28)
+	static const int codes[] = { 304, 305, 307, 308, 310, 311, 312, 313, 314, 315, 317, 318,
 	                             103, 105, 106, 108, 114, 115, 158 };
 #else
 	static const int codes[] = { 304, 305, 307, 308, 310, 311, 314, 315, 316 };
@@ -710,7 +744,7 @@ static void poll_raw_fd(int fd, in_state *st)
 			continue;
 		}
 		if (ev.code == KEY_POWER) b = IN_POWER;
-#ifndef PLATFORM_ZERO40   /* its 317 is L3, and it has no function keys */
+#ifndef PLATFORM_OAKMOSS   /* its 317 is L3, and it has no function keys */
 		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_LEFT : CODE_FN_LEFT))
 			b = IN_FN1;
 		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT))
@@ -815,6 +849,15 @@ void plat_input_poll(in_state *st)
 				set_dirs(st);
 			}
 			break;
+#elif defined(PLATFORM_ZERO28)
+			/* Two plain sticks: left on axes 0/1 (ABS_X/Y), right on 2/3
+			 * (ABS_Z/RZ), as the Pro's left and right. L2/R2 are buttons. */
+			if (e.jaxis.axis <= 3) {
+				bool *d = e.jaxis.axis <= 1 ? stick_dir : rstick_dir;
+				stick_axis(&d[e.jaxis.axis % 2 == 0 ? 0 : 2], e.jaxis.value);
+				set_dirs(st);
+			}
+			break;
 #endif
 			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
 				stick_axis(&stick_dir[e.jaxis.axis == 0 ? 0 : 2], e.jaxis.value);
@@ -853,7 +896,7 @@ void plat_input_poll(in_state *st)
 	menu_filter(st);
 }
 
-#if defined(__linux__) && !defined(PLATFORM_ZERO40)   /* the LEDs' helpers */
+#if defined(__linux__) && !defined(PLATFORM_OAKMOSS)   /* the LEDs' helpers */
 static void write_str(const char *path, const char *val)
 {
 	int fd = open(path, O_WRONLY);
@@ -876,7 +919,7 @@ static bool reads_zero(const char *path)
 
 void plat_leds_off(void)
 {
-#if defined(__linux__) && !defined(PLATFORM_ZERO40)   /* no LEDs there */
+#if defined(__linux__) && !defined(PLATFORM_OAKMOSS)   /* no LEDs there */
 	/* Stop the animation engine, scale every group to zero, then zero all 23
 	 * raw channels (both models have 23) directly -- so it holds whatever state the stock input
 	 * daemon left the engine in. Only channels that are lit get written: each
@@ -1271,7 +1314,7 @@ static bool mute_switch_down(void)
 {
 	char c = 0;
 
-#ifdef PLATFORM_ZERO40
+#ifdef PLATFORM_OAKMOSS
 	return false;        /* no mute switch; gpio243 is something else there */
 #endif
 
@@ -1812,14 +1855,14 @@ bool plat_battery(int *pct, bool *charging)
 	return battery_read("/sys/class/power_supply/axp2202-battery", pct, charging);
 }
 
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_OAKMOSS)
 /* USB Debugging (plorpos-auv.12). adbd always runs on oakMOSS, but the Zero
  * 40's OTG port reads its ID pin low on a computer's cable too, so the
  * vendor's OTG manager makes it a host - adb unreachable, and 5 V driven back
  * into the computer. Writing usb_device to otg_role forces device mode; it
  * also stops the manager's ID scan for the rest of the boot, and nothing
  * restarts that short of a reboot (SDK usbc0_platform.c device_chose). So on
- * is now and from every boot (sd/zero40/launch.sh reads the marker); off is
+ * is now and from every boot (sd/oakmoss/launch.sh reads the marker); off is
  * from the next boot, and the row says "off · restart needed" until then. Off by
  * default: the port is for gamepads and USB DACs until asked. */
 #define USB_OTG_ROLE "/sys/devices/platform/soc/usbc0/otg_role"

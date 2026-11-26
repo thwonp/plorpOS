@@ -16,7 +16,7 @@
 # this copy reads /tmp/plorpos32.pre, not /etc/ld.so.preload (same length),
 # so only a 32-bit process ever loads it.
 #
-# Needs docker. sd/zero40/portmaster/pm-run.sh mounts it for a run.
+# Needs docker. sd/oakmoss/portmaster/pm-run.sh mounts it for a run.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$ROOT/build/zero40

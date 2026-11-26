@@ -70,9 +70,10 @@ static int run(char *const argv[], char *out, size_t cap)
 }
 
 /* Our own wpa_supplicant and udhcpc, where the system loads the driver and
- * leaves the rest to the frontend: BaseOS on the H700, oakMOSS on the Zero 40,
- * and the BasedOS fork on the GKD (plorpos-gkd.94), which has no ConnMan. */
-#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO40) || defined(PLATFORM_BASEDOS)
+ * leaves the rest to the frontend: BaseOS on the H700, oakMOSS on the MagicX
+ * boards, and the BasedOS fork on the GKD (plorpos-gkd.94), which has no
+ * ConnMan. */
+#if defined(PLATFORM_H700) || defined(PLATFORM_OAKMOSS) || defined(PLATFORM_BASEDOS)
 #define WIFI_OWN_DAEMON 1
 #endif
 
@@ -99,7 +100,7 @@ static int run(char *const argv[], char *out, size_t cap)
 #endif
 #if defined(WIFI_OWN_DAEMON)
 #include "platform.h"
-#if defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)   /* no /run on either */
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)   /* no /run on either */
 #define WPA_SOCK "/var/run/wpa_supplicant"
 #else
 #define WPA_SOCK "/run/wpa_supplicant"
@@ -238,7 +239,7 @@ static void net_time(bool on)
 		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
 
 	run(argv, NULL, 0);
-#elif defined(PLATFORM_ZERO40) || defined(PLATFORM_BASEDOS)
+#elif defined(PLATFORM_OAKMOSS) || defined(PLATFORM_BASEDOS)
 	char *argv[] = { (char *)"/bin/sh", (char *)"-c", on
 		? (char *)"(/usr/sbin/ntpd -n -q -p pool.ntp.org && /sbin/hwclock -w -u) > /dev/null 2>&1 &"
 		: (char *)"killall -q ntpd > /dev/null 2>&1", NULL };
@@ -288,12 +289,19 @@ bool wifi_up(void)
 		}
 #else
 		snprintf(conf, sizeof conf, "%s/wpa_supplicant.conf", P_USERDATA);
-#if defined(PLATFORM_ZERO40)
-		/* oakMOSS loads no radio and leaves the supplicant to the launcher:
-		 * the XR829's driver by name (it pulls in xradio_core and _mac);
-		 * wlan0 is there ~3 s later (measured 2026-11-17). */
+#if defined(PLATFORM_OAKMOSS)
+		/* oakMOSS leaves the supplicant to the launcher, and on the Zero 40
+		 * loads no radio: the XR829's driver by name (it pulls in xradio_core
+		 * and _mac); wlan0 is there ~3 s later (measured 2026-11-17). The
+		 * Zero 28's RTL8189ES is loaded at boot, and again here after Wi-Fi
+		 * was switched off (radio.sh unloads it). Never xradio there: it
+		 * rescans SDIO and knocks the Realtek off (oakMOSS TODO.md). */
 		if (access("/sys/class/net/" WLAN, F_OK) != 0) {
+#if defined(PLATFORM_ZERO40)
 			char *drv[] = { (char *)"/usr/sbin/modprobe", (char *)"xradio_wlan", NULL };
+#else
+			char *drv[] = { (char *)"/usr/sbin/modprobe", (char *)"8189es", NULL };
+#endif
 			run(drv, NULL, 0);
 		}
 		{
@@ -827,7 +835,7 @@ bool wifi_svc_set(wifi_svc s, bool on)
 }
 #endif
 
-#if (defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)) && defined(__linux__)
+#if (defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)) && defined(__linux__)
 #include "db.h"
 /* SSH on the Flip is plorpOS's own dropbear (plorpos-f1p.62.2), off on a
  * fresh card. The switch is the "ssh" setting, which boot.env carries to
@@ -1427,7 +1435,7 @@ bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
 #endif
 
-#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)) && defined(__linux__))
+#if !defined(PLATFORM_GKD) && !((defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)) && defined(__linux__))
 /* no services to switch: WIFI_SVC_ROWS is 0 */
 bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
 bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }

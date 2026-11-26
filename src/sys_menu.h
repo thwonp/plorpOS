@@ -24,6 +24,13 @@
 #include "wifi.h"
 #include "audioout.h"
 
+/* Bluetooth: none on the Flip (f1p.57) or the Zero 28 (no antenna, plorpos-08c). */
+#if !defined(PLATFORM_MIYOO) && !defined(PLATFORM_ZERO28)
+#define SYS_HAS_BT 1
+#else
+#define SYS_HAS_BT 0
+#endif
+
 /* The plorpOS menu, in the order it is read.
  *
  * Play Time leads because it is the only row here anyone opens twice. Wi-Fi,
@@ -43,7 +50,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI,
-#if !defined(PLATFORM_MIYOO)   /* the Flip has no Bluetooth (f1p.57) */
+#if SYS_HAS_BT
 	PM_BT,
 #endif
 	PM_NET,
@@ -56,9 +63,9 @@ typedef enum {
 } pm_row;
 
 /* A side mute switch: the Bricks only. The GKD, the H700s (the Rotate
- * defines PLATFORM_H700 too) and the Zero 40 (Brick code, no switch) have
+ * defines PLATFORM_H700 too) and the oakMOSS boards (Brick code, no switch) have
  * none; Playback Settings' Sleep Button Lock is a plain software toggle there. */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && !defined(PLATFORM_ZERO40)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && !defined(PLATFORM_OAKMOSS)
 #define SYS_HAS_MUTESW 1
 #else
 #define SYS_HAS_MUTESW 0
@@ -84,7 +91,7 @@ typedef enum {
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 	ST_ADB,                     /* adb over USB (plorpos-rgds.11, auv.12) */
 #endif
 	ST_ROWS

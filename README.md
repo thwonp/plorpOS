@@ -45,6 +45,7 @@ plorpOS started as a fork of [TortOS](https://tortos.games/) for the TrimUI Bric
 | Anbernic RG SP, RG34xxSP, RG35XX H, RG35XX SP | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [Installing on an H700](docs/install-h700.md) |
 | Miyoo Mini Flip | From the card, on the stock firmware | [Installing on the Mini Flip](docs/install-flip.md) |
 | MagicX Zero 40 (next release) | As the launcher on [oakMOSS](https://github.com/spruceUI/oakMOSS), from its first card or a second | [Installing on the Zero 40](docs/install-zero40.md) |
+| MagicX Zero 28 (next release) | As the launcher on [oakMOSS](https://github.com/spruceUI/oakMOSS), from its first card or a second | [Installing on the Zero 28](docs/install-zero28.md) |
 | Anbernic RG Nano | **plorpOS nano**, a pared down music-first version, as a card image | [Installing on the RG Nano](docs/install-nano.md) |
 
 Everything below is about the full plorpOS. The Nano's guide lists what nano does.

@@ -107,7 +107,7 @@ What to expect:
   ends the port and returns to the shelf.
 - The screen is portrait, so most ports fit its width with black above and
   below. A few stretch to fill it (6 Feet Under, Ren'Py games) or draw past
-  its edge (Stardew Valley, Cave Story).
+  its edge (Cave Story).
 - Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
   have to be given them: put them where the port's page says. A port may
   download a runtime the first time, so do that on Wi-Fi.
@@ -124,7 +124,8 @@ What to expect:
 ## Limits
 
 - No Bluetooth yet.
-- No native PICO-8. The PICO-8 shelf plays carts on the fake08 core.
+- Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`;
+  without them the PICO-8 shelf plays carts on the fake08 core.
 - Plex downloads each track before playing it, as on the H700 devices.
 - Below and above a landscape game the screen is black.
 

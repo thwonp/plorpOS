@@ -1,5 +1,5 @@
 #!/bin/sh
-# RetroArch command-line shim for Zero 40 ports (plorpos-auv.7; the Brick's, plorpos-reo.17).
+# RetroArch command-line shim for MagicX (oakMOSS) ports (plorpos-auv.7; the Brick's, plorpos-reo.17).
 # There is no RetroArch on plorpOS: ports that ship a libretro core run
 # "$raloc/retroarch $raconf -L CORE [CONTENT]" (raloc is /usr/bin for ROCKNIX),
 # and pm-run.sh links /usr/bin/retroarch here. Diatom plays the core one-shot.

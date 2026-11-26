@@ -186,7 +186,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * Syncthing, Tailscale, Over The Hare, updates - is Network Services,
 	 * its own row since plorpos-eiz (owner). */
 	out[PM_WIFI]         = (menu_row){ "Wi-Fi", b->b, true };
-#if !defined(PLATFORM_MIYOO)
+#if SYS_HAS_BT
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
@@ -274,9 +274,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 	/* plorpos-rgds.11: a root shell for any computer on the cable, so off
-	 * until asked for. The Zero 40 can only give its OTG port back to
+	 * until asked for. The oakMOSS boards can only give their OTG port back to
 	 * gamepads and DACs at the next boot (plorpos-auv.12), and says so. */
 	out[ST_ADB]      = (menu_row){ "USB Debugging",
 	                               u->adb ? "on" : u->adb_restart ? "off · restart needed" : "off",

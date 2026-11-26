@@ -49,6 +49,7 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 | RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`), `mk/build-unzip.sh`; image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `mk/rotate-deploy.sh package` (update zip) and `mk/rotate-image.sh` (card image) |
 | Miyoo Mini Flip | `mk/fetch-miyoo-sysroot.sh` | `docker build -t miyoo-toolchain -f mk/miyoo-toolchain.Dockerfile mk`; cores: `sh mk/flip-cores/build-all.sh` | `make PLATFORM=miyoo`, then `mk/miyoo-deploy.sh package` and `verify` |
 | MagicX Zero 40 (oakMOSS) | the Brick's, `mk/fetch-sysroot.sh`; and the H700's (`mk/fetch-h700-sysroot.sh`) for Muse+'s FFmpeg | `mk/build-dsperate-brick.sh`, `mk/build-dropbear-zero40.sh`; diatom `make PORT=zero40` | `make PLATFORM=zero40 && make PLATFORM=zero40 payload` -> `out/zero40/`, zip |
+| MagicX Zero 28 (oakMOSS) | as the Zero 40 | as the Zero 40 (the oakMOSS tools in `build/zero40/` serve both); diatom `make PORT=zero28` | `make PLATFORM=zero28 && make PLATFORM=zero28 payload` -> `out/zero28/`, zip |
 | RG Nano | `mk/fetch-nano-sdk.sh` | none | `make nano-zip` (update zip), `make nano-kernel && make nano-image` (card image) |
 
 Notes:
@@ -81,7 +82,7 @@ releases by these rules, so every release follows them:
   built with (`1.10`, `1.10.1`). A release candidate is marked **pre-release**
   on GitHub; the devices skip pre-releases and drafts.
 - One zip per port, named `plorpOS-v<VER>-<port>.zip`, exactly as the
-  packagers above write it: `brick`, `gkd`, `h700`, `rgds`, `zero40`,
+  packagers above write it: `brick`, `gkd`, `h700`, `rgds`, `zero40`, `zero28`,
   `rotate-update` and `miyoominiflip`. A device takes the newest release that
   has its own port's zip, so a release for some ports only is fine.
 - A `SHA256SUMS` beside them, covering every asset:
@@ -139,7 +140,7 @@ Each shot prints the screen and focused item on stderr.
 | H700 | `mk/h700-deploy.sh elf\|diatom\|muse\|all\|ds` | adb; cable attached at power-on |
 | Rotate | `mk/rotate-deploy.sh elf\|diatom\|all\|boot\|stage` | ssh, `ROTATE_HOST`, `ROTATE_KEY` |
 | Flip | `mk/miyoo-deploy.sh all\|elf\|diatom\|cores\|hook` | ssh over Wi-Fi only (USB is charge-only), `MIYOO=root@<ip>` |
-| Zero 40 | `adb push` to `/mnt/SDCARD/plorpOS/` (`.new`, then `mv`), then kill `tortos.elf` (launch.sh restarts it) | adb over USB (oakMOSS's gadget, root); ssh once Wi-Fi is on |
+| Zero 40, Zero 28 | `adb push` to `/mnt/SDCARD/plorpOS/` (`.new`, then `mv`), then kill `tortos.elf` (launch.sh restarts it) | adb over USB (oakMOSS's gadget, root); ssh once Wi-Fi is on |
 
 ## Layout
 

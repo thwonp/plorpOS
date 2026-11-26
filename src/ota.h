@@ -27,8 +27,8 @@
 #define OTA_PORT "miyoominiflip"
 #elif defined(PLATFORM_H700)
 #define OTA_PORT "h700"
-#elif defined(PLATFORM_ZERO40)
-#define OTA_PORT "zero40"
+#elif defined(PLATFORM_OAKMOSS)
+#define OTA_PORT OAKMOSS_BOARD
 #elif defined(PLATFORM_BRICK)
 #define OTA_PORT "brick"
 #endif

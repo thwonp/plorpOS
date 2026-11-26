@@ -19,7 +19,7 @@ tar -C "$W" --strip-components=1 -xzf "$F"
 # device's NSS modules, and against oakMOSS's 2.38 they do not load - every
 # login was "nonexistent user" (2026-11-17). Built against the toolchain's
 # 2.31, it runs on the newer one. Key login only, keys from
-# plorpOS/ssh/authorized_keys (sd/zero40/ssh.sh).
+# plorpOS/ssh/authorized_keys (sd/oakmoss/ssh.sh).
 printf '#define DROPBEAR_SVR_PASSWORD_AUTH 0\n' > "$W/localoptions.h"
 git -C "$R" apply --directory=build/zero40/dropbear-src mk/flip-cores/patches/dropbear-keydir.patch
 docker run --rm -v "$R/build/zero40":/w -w /w/dropbear-src tortos-toolchain sh -c '

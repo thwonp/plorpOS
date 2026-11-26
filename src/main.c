@@ -564,8 +564,8 @@ static void display_load(app *a)
 	char key[CFG_STR + 16], name[CFG_STR];
 	int i, k;
 
-#if defined(PLATFORM_H700)
-	/* A 4:3 H700 (RG35XX H, 640x480) has no wide panel for Stretch to fill
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
+	/* A 4:3 H700 (RG35XX H, 640x480) or the Zero 28 has no wide panel for Stretch to fill
 	 * honestly: a 3:2 GBA or a 16:9 core would be pulled out of shape, so a
 	 * system nobody has configured keeps the shape its core asks for. The
 	 * 3:2 RG SP keeps Stretch, which is what its panel is shaped for. */
@@ -7828,10 +7828,10 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.sw_open = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
 		u.sw_game = db_get_int(db_dev(), "swivel.game", 1) != 0;
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 		u.adb = plat_adb_on();
 #endif
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_OAKMOSS)
 		u.adb_restart = plat_adb_restart();
 #endif
 #if defined(PLATFORM_RGDS)
@@ -9392,7 +9392,7 @@ static void art_screen(app *a, const char *only, const char *one,
 	 *
 	 * It brings the text with it. A cover fetched without the year and the
 	 * synopsis would mean asking again later for what was in hand now. */
-	if (one && stem && only && ss_signed_in()) {
+	if (one && stem && only && ss_have_dev()) {
 		const system_cfg *sys = NULL;
 		char dir[LIB_PATH * 2];
 		int i;
@@ -10081,8 +10081,8 @@ static void bt_await_route(const char *mac)
 	}
 }
 
-#if defined(PLATFORM_MIYOO)
-__attribute__((unused))   /* no Bluetooth row on the Flip (f1p.57) */
+#if !SYS_HAS_BT
+__attribute__((unused))   /* no Bluetooth row (the Flip f1p.57, the Zero 28) */
 #endif
 static void bt_screen(app *a)
 {
@@ -12992,9 +12992,9 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now
-	 * (on the Zero 40, off at the next boot - plorpos-auv.12). */
+	 * (on the oakMOSS boards, off at the next boot - plorpos-auv.12). */
 	if (sel == ST_ADB && (d || key == IN_ACCEPT)) {
 		plat_adb_set(!plat_adb_on());
 		return MENU_STAY;
@@ -13380,7 +13380,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_DUAL:         dual_settings_screen(a); break;
 #endif
 	case PM_GAME:         game_settings_screen(a); break;
-#if !defined(PLATFORM_MIYOO)
+#if SYS_HAS_BT
 	case PM_BT:           bt_screen(a); break;
 #endif
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
@@ -21371,8 +21371,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_H700)
 	snprintf(out, n, "%s/h700/portmaster/%s", P_ROOT, leaf);
-#elif defined(PLATFORM_ZERO40)
-	snprintf(out, n, "%s/zero40/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_OAKMOSS)
+	snprintf(out, n, "%s/" OAKMOSS_BOARD "/portmaster/%s", P_ROOT, leaf);
 #else
 	snprintf(out, n, "%s/brick/portmaster/%s", P_ROOT, leaf);
 #endif

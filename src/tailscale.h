@@ -30,8 +30,8 @@
  * would have gone. Every other port runs it in the kernel (TUN), where the
  * whole device is on the tailnet. */
 #define TS_PROXY "http://127.0.0.1:1055"
-#elif defined(PLATFORM_ZERO40)
-#define TS_HOST "plorpos-zero40"
+#elif defined(PLATFORM_OAKMOSS)
+#define TS_HOST "plorpos-" OAKMOSS_BOARD
 #elif defined(PLATFORM_ROTATE)
 #define TS_HOST "plorpos-rotate"
 #elif defined(PLATFORM_MIYOO)

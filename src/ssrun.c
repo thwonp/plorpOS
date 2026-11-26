@@ -74,7 +74,7 @@ bool ss_run_begin(const char *folder, const char *file, const char *stem,
 {
 	memset(&g_run, 0, sizeof g_run);
 	g_toomany = false;
-	if (!ss_signed_in() || !folder || !file || !stem) return false;
+	if (!ss_have_dev() || !folder || !file || !stem) return false;
 	if (ss_system_id(folder) == 0) return false;
 
 	snprintf(g_run.folder, sizeof g_run.folder, "%s", folder);

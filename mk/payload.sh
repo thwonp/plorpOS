@@ -38,13 +38,14 @@ elif [ "$PLATFORM" = rgds ]; then
 	OUT=$ROOT/out/rgds
 	CARD=$OUT/card
 	PORT=rgds
-elif [ "$PLATFORM" = zero40 ]; then
-	# The MagicX Zero 40 on oakMOSS (plorpos-auv): the zip's contents go on the
-	# card that hosts - SD1's SPRUCEOS partition or SD2.
-	B=$ROOT/build/zero40
-	OUT=$ROOT/out/zero40
+elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
+	# The MagicX Zero 40 (plorpos-auv) and Zero 28 (plorpos-08c) on oakMOSS:
+	# the zip's contents go on the card that hosts - SD1's SPRUCEOS partition
+	# or SD2.
+	B=$ROOT/build/$PLATFORM
+	OUT=$ROOT/out/$PLATFORM
 	CARD=$OUT
-	PORT=zero40
+	PORT=$PLATFORM
 elif [ "$PLATFORM" = h700 ]; then
 	B=$ROOT/build/h700
 	OUT=$ROOT/out/h700
@@ -135,15 +136,20 @@ elif [ "$PLATFORM" = rgds ]; then
 	cp -R "$ROOT/vendor/adbd-rgds/"* "$ROOT/sd/rgds/adb/adb.sh" "$B/adbroot.so" "$P/rgds/adb/"
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
-elif [ "$PLATFORM" = zero40 ]; then
+elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
+	# The tools oakMOSS lacks are the same for every board on it (one arch, one
+	# base image): built once, into build/zero40.
+	OB=$ROOT/build/zero40
 	cp "$B/musectl" "$P/"
-	cp "$ROOT/sd/zero40/launch.sh" "$ROOT/sd/zero40/radio.sh" "$ROOT/sd/zero40/ssh.sh" "$P/"
-	[ -f "$B/dropbearmulti" ] || { echo "no $B/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
-	cp "$B/dropbearmulti" "$P/"           # ssh: oakMOSS has no server (sd/zero40/ssh.sh)
-	[ -f "$B/curl" ] || { echo "no $B/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
-	cp "$B/curl" "$P/"                    # oakMOSS has no curl: net.c finds this one beside cacert.pem
+	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
+	cp "$ROOT/sd/oakmoss/launch.sh" "$ROOT/sd/oakmoss/radio.sh" "$ROOT/sd/oakmoss/ssh.sh" "$P/"
+	[ -f "$OB/dropbearmulti" ] || { echo "no $OB/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
+	cp "$OB/dropbearmulti" "$P/"          # ssh: oakMOSS has no server (sd/oakmoss/ssh.sh)
+	[ -f "$OB/curl" ] || { echo "no $OB/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
+	cp "$OB/curl" "$P/"                   # oakMOSS has no curl: net.c finds this one beside cacert.pem
 	mkdir -p "$OUT/.tmp_update"
-	cp "$ROOT/sd/zero40/updater" "$OUT/.tmp_update/"   # oakMOSS's hand-off (runmagicx.sh)
+	# oakMOSS's hand-off (runmagicx.sh), told which board this zip is for.
+	sed "s/@BOARD@/$PLATFORM/" "$ROOT/sd/oakmoss/updater" > "$OUT/.tmp_update/updater"
 	# Muse's FFmpeg: oakMOSS has none (TrimUI's firmware carries the Brick's).
 	# The H700's own build (mk/fetch-h700-sysroot.sh: from source, glibc 2.17
 	# symbols, no network), the sonames Muse links against.
@@ -154,17 +160,20 @@ elif [ "$PLATFORM" = zero40 ]; then
 			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
 	done
 	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
-	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
+	[ -f "$ROOT/docs/install-$PLATFORM.md" ] && cp "$ROOT/docs/install-$PLATFORM.md" "$OUT/INSTALL.md"
 	# PortMaster (plorpos-auv.7): the Brick's runner on oakMOSS's SDL, the H700's tools image.
-	[ -f "$B/pmtools.squashfs" ] ||
-		{ echo "no $B/pmtools.squashfs; run mk/build-pmtools-h700.sh zero40" >&2; exit 1; }
+	[ -f "$OB/pmtools.squashfs" ] ||
+		{ echo "no $OB/pmtools.squashfs; run mk/build-pmtools-h700.sh zero40" >&2; exit 1; }
 	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
 		{ echo "run mk/fetch-vendor.sh first" >&2; exit 1; }
-	[ -f "$B/lib32.squashfs" ] ||
-		{ echo "no $B/lib32.squashfs; run mk/build-lib32-zero40.sh" >&2; exit 1; }
-	mkdir -p "$P/zero40/portmaster"
-	cp "$ROOT/sd/zero40/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" \
-		"$B/lib32.squashfs" "$P/zero40/portmaster/"
+	[ -f "$OB/lib32.squashfs" ] ||
+		{ echo "no $OB/lib32.squashfs; run mk/build-lib32-zero40.sh" >&2; exit 1; }
+	mkdir -p "$P/$PLATFORM/portmaster"
+	cp "$ROOT/sd/oakmoss/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$OB/pmtools.squashfs" \
+		"$OB/lib32.squashfs" "$P/$PLATFORM/portmaster/"
+	[ -f "$OB/portsdl/libSDL2-2.0.so.0" ] || { echo "no $OB/portsdl; run make PLATFORM=zero40" >&2; exit 1; }
+	mkdir -p "$P/$PLATFORM/portmaster/sdl"
+	cp "$OB/portsdl/libSDL2-2.0.so.0" "$P/$PLATFORM/portmaster/sdl/"   # tools/portsdl.c
 elif [ "$PLATFORM" = gkdb ]; then
 	cp "$B/musectl" "$P/"
 	# BasedOS has no curl: the Zero 40's (static TLS, glibc 2.31; mk/build-curl-zero40.sh), beside
@@ -289,9 +298,9 @@ cp "$ROOT/config/systems.cfg" "$P/"
 [ "$PLATFORM" = h700 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # The Brick also has the DS (plorpos-reo.21): its own build of DSperate, one
 # screen at a time (mk/build-dsperate-brick.sh).
-# The Zero 40 has the DS shelf on the same DSperate build, and Ports
-# (plorpos-auv.7).
-[ "$PLATFORM" = zero40 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The Zero 40 and Zero 28 have the DS shelf on the same DSperate build, and
+# Ports (plorpos-auv.7, plorpos-08c).
+case $PLATFORM in zero40|zero28) grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg" ;; esac
 # The GKD on BasedOS: the DS and Ports shelves (plorpos-gkd.94.15).
 [ "$PLATFORM" = gkdb ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
@@ -311,8 +320,8 @@ elif [ "$PLATFORM" = gkdb ]; then
 elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
-elif [ "$PLATFORM" = brick ] || [ "$PLATFORM" = zero40 ]; then
-	# The Zero 40 is the Brick's CPU and C library family: its cores as they are.
+elif [ "$PLATFORM" = brick ] || [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
+	# The MagicX boards are the Brick's CPU and C library family: its cores as they are.
 	[ -f "$ROOT/vendor/cores-brick/dsperate_libretro.so" ] ||
 		{ echo "run mk/build-dsperate-brick.sh first" >&2; exit 1; }
 	plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
@@ -323,7 +332,7 @@ else
 	if [ "$PLATFORM" = h700 ]; then plorpos_files "$P" "$ROOT/vendor/cores-brick $ROOT/vendor/cores" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 	else plorpos_files "$P" "$ROOT/vendor/cores"; fi
 fi
-plorpos_tailscale "$P" "$B" || exit 1
+plorpos_tailscale "$P" "${OB:-$B}" || exit 1
 plorpos_syncthing "$P" || exit 1
 cp "$DIATOM_ELF" "$P/diatom"
 
@@ -349,7 +358,7 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
-zero40) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
+zero40|zero28) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
