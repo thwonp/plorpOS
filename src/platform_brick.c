@@ -115,7 +115,11 @@ bool plat_is_brick_pro(void)
 	return pro;
 }
 
+#ifdef PLATFORM_ZERO28
+bool plat_two_sticks(void) { return true; }
+#else
 bool plat_two_sticks(void) { return plat_is_brick_pro(); }
+#endif
 
 /* SDL joystick button indices on the Brick's "TRIMUI Player1" device.
  *
@@ -142,6 +146,20 @@ enum {
 	JOY_SELECT = 8, JOY_START = 9, JOY_L3 = 10,
 	JOY_UP = 11, JOY_LEFT = 12, JOY_RIGHT = 13, JOY_DOWN = 14,
 	JOY_VOLDN = 15, JOY_VOLUP = 16, JOY_MENU = 17,
+};
+#define CODE_MENU KEY_BACK
+#elif defined(PLATFORM_ZERO28)
+/* The Zero 28's "magicx-input" (oakMOSS simplepad, plorpos-08c): the Zero
+ * 40's codes plus R3 (318), which SDL numbers after L3, so every index from
+ * the d-pad on is one higher: 304 305 307 308 310 311 312 313 314 315 317 318,
+ * then 103 105 106 108 114 115 158 (and 272/273, the kernel's virtual mouse
+ * buttons, never pressed). */
+enum {
+	JOY_B = 0, JOY_A = 1, JOY_Y = 2, JOY_X = 3,
+	JOY_L1 = 4, JOY_R1 = 5, JOY_L2 = 6, JOY_R2 = 7,
+	JOY_SELECT = 8, JOY_START = 9, JOY_L3 = 10, JOY_R3 = 11,
+	JOY_UP = 12, JOY_LEFT = 13, JOY_RIGHT = 14, JOY_DOWN = 15,
+	JOY_VOLDN = 16, JOY_VOLUP = 17, JOY_MENU = 18,
 };
 #define CODE_MENU KEY_BACK
 #else
@@ -614,6 +632,9 @@ static in_button map_joy_button(int jb)
 	case JOY_L2: return IN_L2;
 	case JOY_R2: return IN_R2;
 	case JOY_L3: return IN_L3;
+#ifdef PLATFORM_ZERO28
+	case JOY_R3: return IN_R3;
+#endif
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
@@ -658,6 +679,9 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 {
 #ifdef PLATFORM_ZERO40
 	static const int codes[] = { 304, 305, 307, 308, 310, 311, 312, 313, 314, 315, 317,
+	                             103, 105, 106, 108, 114, 115, 158 };
+#elif defined(PLATFORM_ZERO28)
+	static const int codes[] = { 304, 305, 307, 308, 310, 311, 312, 313, 314, 315, 317, 318,
 	                             103, 105, 106, 108, 114, 115, 158 };
 #else
 	static const int codes[] = { 304, 305, 307, 308, 310, 311, 314, 315, 316 };
@@ -816,6 +840,15 @@ void plat_input_poll(in_state *st)
 			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
 				if (e.jaxis.axis == 0) stick_axis(&stick_dir[2], e.jaxis.value);
 				else stick_axis(&stick_dir[0], -e.jaxis.value);
+				set_dirs(st);
+			}
+			break;
+#elif defined(PLATFORM_ZERO28)
+			/* Two plain sticks: left on axes 0/1 (ABS_X/Y), right on 2/3
+			 * (ABS_Z/RZ), as the Pro's left and right. L2/R2 are buttons. */
+			if (e.jaxis.axis <= 3) {
+				bool *d = e.jaxis.axis <= 1 ? stick_dir : rstick_dir;
+				stick_axis(&d[e.jaxis.axis % 2 == 0 ? 0 : 2], e.jaxis.value);
 				set_dirs(st);
 			}
 			break;

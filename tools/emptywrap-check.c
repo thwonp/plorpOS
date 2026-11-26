@@ -22,7 +22,7 @@ static const struct { const char *name; int w, h; float font_k; int flip; } PORT
 	{ "rg ds",         640, 480, 1.00f, 0 },
 	{ "rotate",        720, 720, 0.88f, 0 },   /* the H700 macros: 4:3 or narrower */
 	{ "rg sp/34xx sp", 720, 480, 1.00f, 0 },
-	{ "rg35xx h/sp",   640, 480, 0.88f, 0 },
+	{ "rg35xx h/sp, zero 28", 640, 480, 0.88f, 0 },
 	{ "h700 720x720",  720, 720, 0.88f, 0 },
 	{ "zero 40",       480, 800, 1.00f, 0 },   /* portrait: 768 units across */
 	{ "miyoo flip",    752, 560, 1.00f, 1 },

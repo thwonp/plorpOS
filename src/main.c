@@ -558,8 +558,8 @@ static void display_load(app *a)
 	char key[CFG_STR + 16], name[CFG_STR];
 	int i, k;
 
-#if defined(PLATFORM_H700)
-	/* A 4:3 H700 (RG35XX H, 640x480) has no wide panel for Stretch to fill
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
+	/* A 4:3 H700 (RG35XX H, 640x480) or the Zero 28 has no wide panel for Stretch to fill
 	 * honestly: a 3:2 GBA or a 16:9 core would be pulled out of shape, so a
 	 * system nobody has configured keeps the shape its core asks for. The
 	 * 3:2 RG SP keeps Stretch, which is what its panel is shaped for. */

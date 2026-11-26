@@ -179,7 +179,7 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
 	ts = plat_scale();
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
 	if (plat_screen_w * 3 <= plat_screen_h * 4) font_k = 0.88f;
 #endif
 	/* Brick Pro: the Brick's scale reads too large on its panel (pky.21; the user chose 0.82) */
