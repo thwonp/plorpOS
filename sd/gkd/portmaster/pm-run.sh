@@ -63,6 +63,22 @@ if [ ! -e /run/plorpos-fullscreen ]; then
 		swaymsg 'for_window [shell="xwayland"] fullscreen enable' >/dev/null &&
 		: > /run/plorpos-fullscreen
 fi
+# Ren'Py is never resized, on the RG DS (plorpos-rgds.31), as on the Rotate
+# (plorpos-3yv.86.10): PortMaster's Ren'Py draws through SDL's window
+# surface, sized once to the game's aspect, and a later resize leaves it
+# drawing into the old one - black. Its own size, centred, no border; after
+# the rule above, so it runs later. Quoted: over IPC sway splits a command at
+# its commas and ran the rest on whatever had the focus. Its own marker:
+# added once per boot also on a card that already has the one above. And
+# portfullscreen.so leaves its window alone (PORTFS_PASS).
+if [ "$PLATFORM" = rgds ]; then
+	export PORTFS_PASS=startRENPY
+	if [ ! -e /run/plorpos-renpy ]; then
+		export SWAYSOCK=${SWAYSOCK:-$(ls "$XDG_RUNTIME_DIR"/sway-ipc.*.sock 2>/dev/null | head -1)}
+		swaymsg 'for_window [app_id="startRENPY"] "fullscreen disable, floating enable, border none, move position center"' >/dev/null &&
+			: > /run/plorpos-renpy
+	fi
+fi
 
 # Always: 2 KB, and ROCKNIX's BusyBox has no cmp.
 # PortMaster's first run on ROCKNIX copies /storage/.config/PortMaster/
@@ -77,4 +93,10 @@ cp "$HERE/control.txt" "$PM/control.txt"
 
 cd "$(dirname "$1")" || exit 1
 export LD_PRELOAD="$HERE/portfullscreen.so${LD_PRELOAD:+:$LD_PRELOAD}"
+# Westonpack's ROCKNIX mode nests its Weston in sway (XSkat, plorpos-rgds.31):
+# the wayland backend needs wl_egl_window_*, which Mesa's libEGL brings and
+# libmali's does not - "undefined symbol: wl_egl_window_destroy", no Weston,
+# and the port hung. westonwrap.sh preloads $weston_preload into Weston and
+# sets it itself for every other backend.
+export weston_preload=/usr/lib/libwayland-egl.so.1
 exec bash "$@"
