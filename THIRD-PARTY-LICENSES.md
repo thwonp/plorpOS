@@ -124,7 +124,7 @@ one of which ships in the device's own firmware. The eight compression and
 codec libraries TortOS once carried were a previous emulator's dependencies and
 left with it.
 
-### Anbernic H700 on BaseOS (`plorpOS/lib/` on the H700 card; FFmpeg on the Zero 40's too)
+### Anbernic H700 on BaseOS (`plorpOS/lib/` on the H700 card; FFmpeg on the Zero 40's and Zero 28's too)
 
 BaseOS has no aarch64 SDL2 and no FFmpeg, so the H700 card carries both,
 built from upstream source by `mk/fetch-h700-sysroot.sh` (tarball URLs and
@@ -153,8 +153,8 @@ and the script above rebuilds the shipped libraries from them. The licence
 texts ship on the card beside them in `plorpOS/lib/`: `COPYING.LGPLv3`,
 `COPYING.GPLv3` (which the LGPL 3 builds on) and `LICENSE.mbedtls`.
 
-The MagicX Zero 40's card carries the same five FFmpeg libraries, copied from
-this build, in its own `plorpOS/lib/` with the same licence texts: oakMOSS has
+The MagicX Zero 40's and Zero 28's cards carry the same five FFmpeg libraries, copied from
+this build, in their own `plorpOS/lib/` with the same licence texts: oakMOSS has
 no FFmpeg for Muse either. Its SDL2 is oakMOSS's own.
 
 The TrimUI Brick's card carries them too, the same way: the firmware's own
@@ -193,9 +193,9 @@ Debian source packages named in it and in `lib/VERSIONS`. The squashfs is
 loop-mounted read-only while a port runs, so any of the files can be replaced
 by rebuilding it.
 
-### Ports on the Zero 40 (`plorpOS/zero40/portmaster/`)
+### Ports on the Zero 40 and Zero 28 (`plorpOS/zero40/portmaster/`, `plorpOS/zero28/portmaster/`)
 
-PortMaster (MIT) runs the ports on the Zero 40 with these, none of them
+PortMaster (MIT) runs the ports on the MagicX boards with these, none of them
 modified except where said:
 
 | What | Version | License |
@@ -325,7 +325,7 @@ GPL core is that tarball plus the patches named there), by
 | `pcsx_rearmed_libretro.so` | PlayStation | libretro/pcsx_rearmed @ 7b0e8f8 + `mk/patches/pcsx-rearmed-flip-tc.patch` | GPL-2.0 |
 | `fake08_libretro.so` | PICO-8 | jtothebell/fake-08 @ 814991a + `mk/patches/fake08-{load,states,bound-lua}.patch` | MIT, components under their own terms (`LICENSE-fake08.md`) |
 
-## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40, Tailscale and Syncthing on every Wi-Fi device but the Flip, unzip on the Brick and Rotate)
+## Network tools (Miyoo Mini Flip; Dropbear on the Zero 40 and Zero 28, Tailscale and Syncthing on every Wi-Fi device but the Flip, unzip on the Brick and Rotate)
 
 - `plorpOS/curl` - **curl 8.10.1** (curl licence, MIT-style) statically linked with **Mbed TLS 3.6.2**
   (used under **Apache-2.0**; it is dual-licensed Apache-2.0 OR GPL-2.0-or-later). Built by
@@ -335,7 +335,7 @@ GPL core is that tarball plus the patches named there), by
   and contributors; its `LICENSE` also covers the bundled libtomcrypt/libtommath, public domain), built
   from the release tarball pinned in `mk/flip-cores/cores.lock` by `mk/flip-cores/build-dropbear.sh`.
   Off until switched on in Network Services; login plorpos / plorpos or a key.
-- `plorpOS/dropbearmulti` (MagicX Zero 40 only) - the same **Dropbear SSH** source and licence, built for
+- `plorpOS/dropbearmulti` (MagicX Zero 40 and Zero 28 only) - the same **Dropbear SSH** source and licence, built for
   aarch64 by `mk/build-dropbear-zero40.sh`. Off until switched on in Network Services; key login only.
 - `plorpOS/tailscaled` (every device with Wi-Fi but the Miyoo Mini Flip) - **Tailscale 1.104.7** (BSD-3-Clause, Tailscale Inc &
   contributors), one static binary with the `tailscale` CLI built in, from the release tarball pinned

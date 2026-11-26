@@ -1,0 +1,127 @@
+# Installing on the MagicX Zero 28
+
+*There is no Zero 28 release yet. This guide is for the next release.*
+
+On the Zero 28, plorpOS is the launcher on top of
+[oakMOSS](https://github.com/spruceUI/oakMOSS), the small base system that
+spruceOS uses on this handheld. oakMOSS starts the board and hands off to
+plorpOS on the card.
+
+The Zero 28's screen is 640x480, the same shape as the RG35XX H, and plorpOS
+looks the way it does there. oakMOSS turns the panel, which is mounted on its
+side, so everything comes out the right way up.
+
+You need the Zero 28, a microSD card for oakMOSS (and optionally a second one
+for your games) and a computer.
+
+## 1. Put oakMOSS on the first card
+
+Follow oakMOSS's own guide, [Using oakMOSS](https://github.com/spruceUI/oakMOSS/blob/main/docs/using.md).
+Back up the Zero 28's stock card first: it is the only way back. Then boot the
+new card once in the Zero 28. That first boot adds a FAT32 partition called
+`SPRUCEOS` to the free space on the card, which is where plorpOS can go.
+
+## 2. Copy plorpOS onto a card
+
+Unzip `plorpOS-v<version>-zero28.zip` onto either card:
+
+- **The first card's `SPRUCEOS` partition**, for one card that does
+  everything. A computer sees it as an ordinary drive.
+- **A second card (SD2)**, formatted FAT32. oakMOSS cannot read exFAT.
+
+If the second card has a launcher on it (spruceOS, say), it wins and plorpOS
+on the first card does not start. Take spruceOS off that card, or put plorpOS
+on it instead.
+
+```
+.tmp_update/updater   oakMOSS starts plorpOS through this
+plorpOS/              the launcher, its cores and settings
+Roms/                 one folder per system
+Saves/  Bios/  Music/  Audiobooks/
+```
+
+The zip is for the Zero 28 only. The Zero 40 has its own.
+
+## 3. Add games
+
+Games go in `Roms/<System>/`, in the folder named for their system. BIOS files
+go loose in `Bios/`. Music goes in `Music/`, one folder per album.
+
+## Controls
+
+The buttons work as on the other devices ([guide](guide.md)). The left stick
+moves like the d-pad. The right stick and the stick clicks (L3, R3) are free
+for hotkeys (game menu > Hotkeys). In a DS game, R3 taps the stylus until you
+set a hotkey on it.
+
+## Display
+
+Games start in **Aspect**: their own shape, as large as the screen allows. A
+system's menu has its Default Display Mode, and the game menu's Display
+changes it for one game. DS games start in **Overlay**; the game menu's Layout
+row has Single Screen and Hybrid.
+
+## Wi-Fi and ssh
+
+Switch Wi-Fi on in the plorpOS menu, under Wi-Fi. The **SSH** row in Network
+Services starts an ssh server on port 22. It is off on a fresh card. Log in as
+`root` with a key: put your public key (the contents of
+`~/.ssh/id_ed25519.pub`, for example) in `plorpOS/ssh/authorized_keys` on the
+card, one key per line. There is no password login. The server makes its own
+host key the first time it starts and keeps it in `plorpOS/ssh/`. There is no
+sftp, so `scp` fails; copy with `ssh root@<zero28> 'cat > /path' < file`.
+
+## USB
+
+On a computer's cable the Zero 28 can switch its USB port to host mode by
+itself, which drops adb. **System Settings > USB Debugging** keeps it a USB
+device for adb from the next boot on. It is off on a fresh card.
+
+## Ports
+
+The **Ports** shelf sits above Muse+. Its first entry is **PortMaster**; open
+it with the device on Wi-Fi to install ports, which land in `Roms/Ports/` and
+appear on the shelf. A port is a script (`Name.sh`) beside a folder of the
+same name, so ports can also be copied onto the card. PortMaster itself lives
+in `.userdata/shared/portmaster/`. This is unofficial support: report problems
+to plorpOS, not the PortMaster team.
+
+What to expect:
+
+- **Menu** opens the plorpOS menu over a port (Continue, Reset, Quit); Quit
+  ends the port and returns to the shelf.
+- Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
+  have to be given them: put them where the port's page says. A port may
+  download a runtime the first time, so do that on Wi-Fi.
+- 32-bit ports run on software graphics: the GPU has no 32-bit driver.
+  GameMaker ones play slowly. Ports that run through box86 (Braid, Shovel
+  Knight) do not work.
+- Dust Racing 2D does not start until PortMaster fixes the runtime name its
+  script asks for.
+- PortMaster's tools ship as read-only images in `plorpOS/zero28/portmaster/`,
+  mounted only while a port runs. The first port adds three things to
+  oakMOSS: a udev rule for the pad, `/run`, and the links a 32-bit port needs
+  (`/usr/lib32` and its neighbours).
+
+## Limits
+
+- No Bluetooth: the Zero 28 has no antenna for it.
+- No touch screen and no rumble.
+- Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`;
+  without them the PICO-8 shelf plays carts on the fake08 core.
+- Plex downloads each track before playing it, as on the H700 devices.
+
+## Updating
+
+**MENU > Network Services > Check for update** does this over Wi-Fi
+([guide](guide.md#check-for-update)). By hand:
+
+Copy everything in the new zip onto the card, replacing what is there. Your
+settings, saves, play time and achievements are in `.userdata/` and `Saves/`
+and stay as they are.
+
+## Removing plorpOS
+
+Delete `plorpOS/` and `.tmp_update/` from the card. oakMOSS then starts
+spruceOS from the other card if it has it, or shows its "No frontend" screen.
+Your `Roms/`, `Saves/` and `Bios/` stay.
