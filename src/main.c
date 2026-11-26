@@ -3676,8 +3676,8 @@ static const char *aout_usb_sink(void)
 	snprintf(sink, sizeof sink, "%s", plat_usb_audio() ? "usb" : "");
 	return sink;
 #else
-	static unsigned last;
-	static bool     primed;
+	static unsigned last, plugs;
+	static bool     primed, had;
 	unsigned now = plat_now_ms();
 	char  cards[2048], path[48];
 	size_t n = 0;
@@ -3693,16 +3693,24 @@ static const char *aout_usb_sink(void)
 		fclose(f);
 	}
 	cards[n] = '\0';
-	if (!aout_usb_card(cards, sink, (int)sizeof sink, &card)) return sink;
+	if (!aout_usb_card(cards, sink, (int)sizeof sink, &card)) { had = false; return sink; }
 	/* "003/002": the device number goes up on every plug, so a DAC pulled and
 	 * put back between two looks still reads as a new connection - which is
-	 * what g_bt_link is for a headset. */
+	 * what g_bt_link is for a headset. Not on oakMOSS, whose OTG manager
+	 * rebuilds the whole host controller on every unplug: the next plug is
+	 * "003/002" again, so nothing capped the DAC's volume and it woke at 0 dB
+	 * (plorpos-czp). Each time the card comes back from gone is counted
+	 * on the end of it too. */
+	if (!had) plugs++;
+	had = true;
 	snprintf(path, sizeof path, "/proc/asound/card%d/usbbus", card);
 	if ((f = fopen(path, "r"))) {
 		if (fgets(g_usb_link, sizeof g_usb_link, f))
 			g_usb_link[strcspn(g_usb_link, "\r\n")] = '\0';
 		fclose(f);
 	}
+	n = strlen(g_usb_link);
+	snprintf(g_usb_link + n, sizeof g_usb_link - n, "#%u", plugs);
 	return sink;
 #endif
 }
@@ -4281,7 +4289,10 @@ static void muse_screen_poll(void)
 	muse_queue_tick();
 #endif
 	year_fill();
-	if (musec_heard()) aout_apply(false);
+	/* Paused too, as the shelf's loop does: a DAC pulled out under the music
+	 * and put back was otherwise picked up only at play - uncapped, sitting at
+	 * the DAC's own 0 dB until then (plorpos-czp). */
+	aout_apply(false);
 }
 
 /* A sink that failed once is otherwise never tried again. aout_apply sends on

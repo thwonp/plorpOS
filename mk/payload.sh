@@ -147,6 +147,8 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	cp "$OB/dropbearmulti" "$P/"          # ssh: oakMOSS has no server (sd/oakmoss/ssh.sh)
 	[ -f "$OB/curl" ] || { echo "no $OB/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
 	cp "$OB/curl" "$P/"                   # oakMOSS has no curl: net.c finds this one beside cacert.pem
+	mkdir -p "$P/usb-audio"               # USB DACs: oakMOSS ships no USB audio modules, launch.sh loads these (plorpos-czp)
+	cp "$ROOT/sd/oakmoss/usb-audio/"*.ko "$P/usb-audio/"
 	mkdir -p "$OUT/.tmp_update"
 	# oakMOSS's hand-off (runmagicx.sh), told which board this zip is for.
 	sed "s/@BOARD@/$PLATFORM/" "$ROOT/sd/oakmoss/updater" > "$OUT/.tmp_update/updater"
