@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* Zero 40, 32-bit PortMaster ports only (plorpos-auv.7): the GE8300 has no
- * 32-bit driver, so an armhf port renders with Mesa's software GL into an
- * offscreen surface (SDL_VIDEODRIVER=offscreen) and nothing reaches the
- * panel. Preloaded into the port (sd/oakmoss/portmaster/pm-run.sh), this
+/* Zero 40 and Zero 28, 32-bit PortMaster ports only (plorpos-auv.7): the
+ * GE8300 has no 32-bit driver, so an armhf port renders with Mesa's
+ * software GL into an offscreen surface (SDL_VIDEODRIVER=offscreen) and
+ * nothing reaches the panel. Preloaded into the port (sd/oakmoss/portmaster/pm-run.sh), this
  * reads each finished frame back at eglSwapBuffers and copies it into the
  * framebuffer page on glass: fit to the panel's width (or height), centred,
  * nearest neighbour - a landscape frame on the portrait panel is a band
@@ -78,6 +78,10 @@ static uint32_t *frame;
 static size_t frame_px;
 static int *xmap;
 static int xmap_w, xmap_dw;
+/* The Zero 28's panel is mounted on its side: it shows a copy of the page
+ * turned by the display engine, made on a pan, so each frame ends with one
+ * (plorpos-08c.15). Not on the Zero 40, which scans the page itself. */
+static int pan;
 
 static int fb_open(void)
 {
@@ -90,6 +94,16 @@ static int fb_open(void)
 	}
 	fbmem = mmap(NULL, fix.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
 	if (fbmem == MAP_FAILED) fbmem = NULL;
+	{
+		char dev[16] = "";
+		FILE *f = fopen("/usr/magicx/device", "r");
+
+		if (f) {
+			if (!fgets(dev, sizeof dev, f)) dev[0] = '\0';
+			fclose(f);
+		}
+		pan = !strncmp(dev, "zero28", 6);
+	}
 	if (fbmem) {
 		/* The panel black once, every page: what the frame leaves uncovered. */
 		memset(fbmem, 0, fix.smem_len);
@@ -160,6 +174,7 @@ static void present(int w, int h, readpx_fn readpx)
 			dst[x] = 0xff000000u | (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
 		}
 	}
+	if (pan) ioctl(fb, FBIOPAN_DISPLAY, &v);
 }
 
 EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
