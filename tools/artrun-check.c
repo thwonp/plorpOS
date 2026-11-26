@@ -62,6 +62,15 @@ static const char *g_serve_dat;      /* the No-Intro list, or NULL for a 404 */
 static const char *INDEX_OTHER =
 	"<a href=\"Unrelated%20Title%20%28USA%29.png\">x</a>\n";
 static const char *g_index = NULL;   /* the catalog; INDEX_OTHER when NULL */
+/* thumbnails.libretro.com down, as it was on 2026-11-26, and libretro's GitHub
+ * mirror in its place: GitHub's tree listing for the catalog, PNGs for the
+ * covers it serves, and a symlink's answer - the target's name - for one. */
+static bool g_lr_down;
+static const char *g_mirror_tree;    /* api.github.com's JSON, or NULL */
+static const char *g_mirror_link;    /* served as a symlink, or NULL */
+static const char *g_mirror_link_to; /* what that symlink says */
+static const char *g_mirror_junk;    /* served as a page that is not a PNG */
+static const char *MIRROR_PNG = "\x89PNG mirror";
 static char g_pend_url[2048], g_pend_path[2048];
 static bool g_pending;
 static char g_urls[4096];            /* every URL asked for, one per line */
@@ -99,7 +108,15 @@ int net_async_poll(void)
 	if (!g_pending) return -1;
 	g_pending = false;
 
-	if (n && g_pend_url[n - 1] == '/') {
+	if (g_lr_down && strstr(g_pend_url, "thumbnails.libretro.com")) return -1;
+	if (strstr(g_pend_url, "api.github.com/repos/libretro-thumbnails/")) {
+		body = g_mirror_tree;
+	} else if (strstr(g_pend_url, "raw.githubusercontent.com/libretro-thumbnails/")) {
+		if (g_mirror_link && strstr(g_pend_url, g_mirror_link))      body = g_mirror_link_to;
+		else if (g_mirror_junk && strstr(g_pend_url, g_mirror_junk)) body = "<html>gone</html>";
+		else if ((g_serve_image && strstr(g_pend_url, g_serve_image)) ||
+		         (g_serve_also && strstr(g_pend_url, g_serve_also)))   body = MIRROR_PNG;
+	} else if (n && g_pend_url[n - 1] == '/') {
 		/* The catalog: by default other games only, so a fuzzy pass finds
 		 * nothing. */
 		body = g_index ? g_index : INDEX_OTHER;
@@ -316,6 +333,7 @@ int main(void)
 	CHECK(!strstr(g_urls, "Other%20Game"),
 	      "a one-game replace asked about another game:\n%s", g_urls);
 	CHECK(!part_left(), "a part-file was left beside the cover");
+	CHECK(!strstr(g_urls, "github"), "a run with libretro up asked the mirror:\n%s", g_urls);
 
 	printf("  a cover libretro has not got leaves the old one alone:\n");
 	set_cover("OLD");
@@ -475,6 +493,57 @@ int main(void)
 
 		g_ss_on = false;
 		g_ss_left = -1;
+	}
+
+	/* ---- libretro's server down: the GitHub mirror (plorpos-277) ---------
+	 *
+	 * On 2026-11-26 thumbnails.libretro.com listed nothing and 404'd every
+	 * cover; the same files were on GitHub. Pinned: no catalog from libretro
+	 * moves the run to the mirror and asks this shelf again, its catalog
+	 * comes from GitHub's tree listing, a cover that is a symlink there is
+	 * followed to its target, and an answer that is not a PNG is no cover. */
+	{
+		char p[512];
+
+		printf("  libretro down: the mirror's catalog and covers, a symlink followed:\n");
+		snprintf(p, sizeof p, "%s/Hit Game.png", g_media);  remove(p);
+		snprintf(p, sizeof p, "%s/Other Game.png", g_media); remove(p);
+		g_lr_down = true;
+		g_mirror_tree =
+			"{\n  \"tree\": [\n"
+			"    { \"path\": \"Hit Game (USA).png\", \"mode\": \"100644\" },\n"
+			"    { \"path\": \"Other Game (Linked).png\", \"mode\": \"120000\" },\n"
+			"    { \"path\": \"Other Game (Target).png\", \"mode\": \"100644\" }\n"
+			"  ], \"truncated\": false\n}\n";
+		g_serve_image = "/Hit%20Game%20%28USA%29.png";
+		g_serve_also = "/Other%20Game%20%28Target%29.png";
+		g_mirror_link = "/Other%20Game%20%28Linked%29.png";
+		g_mirror_link_to = "Other Game (Target).png\n";
+		CHECK(run(NULL, &st) == 0, "the run did not finish");
+		CHECK(strstr(g_urls, "api.github.com/repos/libretro-thumbnails/Nintendo_-_Game_Boy/"
+		                     "git/trees/master:Named_Boxarts") != NULL,
+		      "the mirror's catalog was not asked for:\n%s", g_urls);
+		CHECK(strstr(g_urls, "raw.githubusercontent.com/libretro-thumbnails/Nintendo_-_Game_Boy/"
+		                     "master/Named_Boxarts/Hit%20Game%20%28USA%29.png") != NULL,
+		      "the cover was not asked of the mirror:\n%s", g_urls);
+		CHECK(!memcmp(cover_of("Hit Game"), "\x89PNG", 4),
+		      "Hit Game's cover reads \"%s\", wanted the mirror's PNG", cover_of("Hit Game"));
+		CHECK(!memcmp(cover_of("Other Game"), "\x89PNG", 4),
+		      "the symlink was not followed: Other Game's cover reads \"%s\"",
+		      cover_of("Other Game"));
+		CHECK(st.found == 2, "found %d, wanted 2", st.found);
+
+		printf("  a mirror answer that is not a PNG is no cover:\n");
+		snprintf(p, sizeof p, "%s/Hit Game.png", g_media);  remove(p);
+		g_mirror_link = NULL;
+		g_mirror_junk = "/Hit%20Game%20%28USA%29.png";
+		CHECK(run(NULL, &st) == 0, "the run did not finish");
+		CHECK(!strcmp(cover_of("Hit Game"), "(none)"),
+		      "a page that is not an image became the cover: \"%s\"", cover_of("Hit Game"));
+
+		g_lr_down = false;
+		g_mirror_tree = g_mirror_link_to = g_mirror_junk = NULL;
+		g_serve_image = g_serve_also = NULL;
 	}
 
 	printf("  an arcade set is asked for by FBNeo's name and kept under its own:\n");

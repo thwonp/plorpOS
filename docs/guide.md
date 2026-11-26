@@ -820,7 +820,8 @@ Card art comes from, in order:
    records its ROM's CRC, which names the game in No-Intro's list - the catalog
    libretro files its covers under - so a file still carrying an older name
    finds its box anyway. On the main card that found 29 more, every one the
-   right game. Fetched art is shrunk to the size it is drawn at - libretro
+   right game. When libretro's server is down, the run fetches the same
+   covers from libretro's copy on GitHub instead. Fetched art is shrunk to the size it is drawn at - libretro
    ships covers at its own resolution, which on some systems is two to three
    times the pixels this screen can show, and every one of those pixels is
    decode time on every scroll past. Art you put there yourself is never

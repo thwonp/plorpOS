@@ -24,6 +24,16 @@
 
 #define BASE "https://thumbnails.libretro.com"
 
+/* libretro's own mirror of the same thumbnails, one GitHub repo per catalog:
+ * "Nintendo - Nintendo DS" is libretro-thumbnails/Nintendo_-_Nintendo_DS. The
+ * rest of a run asks it once thumbnails.libretro.com cannot give a catalog -
+ * on 2026-11-26 that server listed nothing and 404'd every cover for hours,
+ * while every file was still here (plorpos-277). Its catalog comes from
+ * GitHub's API, one request per catalog against 60 an hour unsigned; its
+ * covers from raw.githubusercontent.com, which has no such limit. */
+#define MIRROR_RAW "https://raw.githubusercontent.com/libretro-thumbnails"
+#define MIRROR_API "https://api.github.com/repos/libretro-thumbnails"
+
 /* No-Intro's list for a collection, as libretro-database carries it: every dump
  * with its CRC32, under the name libretro files its covers by. Fetched when a
  * run needs it, like the index, rather than shipped. See the checksum pass. */
@@ -39,7 +49,7 @@
  * the only place it shows up. */
 #define NAME_MAX_   192
 #define ARTPATH_MAX (LIB_PATH + NAME_MAX_ * 2 + 32)
-#define ARTURL_MAX  (sizeof BASE + 384 + NAME_MAX_ * 3 + 32)
+#define ARTURL_MAX  (sizeof MIRROR_RAW + 384 + NAME_MAX_ * 3 + 48)
 
 /* MEASURED, 2026-08-30, not guessed:
  *
@@ -443,6 +453,8 @@ enum { P_SYSTEM, P_SS, P_SS_WAIT, P_TRY, P_TRY_WAIT, P_INDEX, P_INDEX_WAIT,
 #endif
 static int  g_phase;
 static char g_pending[ARTPATH_MAX];       /* the image being fetched */
+static bool g_mirror;                     /* this run asks the GitHub mirror */
+static bool g_hopped;                     /* the fetch in flight follows a symlink */
 
 /* ROMs still without art after the direct pass, as indices into g_roms. */
 static int  g_retry[ENTRIES_MAX];
@@ -596,13 +608,79 @@ static void read_roms(const char *dir, const char *exts)
  * listing, not a document. */
 #define INDEX_TMP "/tmp/tortos-artindex"
 
+/* A catalog's repo on the mirror: its name with spaces as underscores. Checked
+ * for every catalog in MAP on 2026-11-26; no other character differs. */
+static void repo_of(const char *remote, char *out, size_t outn)
+{
+	size_t k;
+
+	for (k = 0; remote[k] && k < outn - 1; k++) out[k] = remote[k] == ' ' ? '_' : remote[k];
+	out[k] = '\0';
+}
+
+/* Where the covers are coming from, for the log. */
+static const char *src(void) { return g_mirror ? "the GitHub mirror" : "libretro"; }
+
 static bool start_index(const char *remote)
 {
 	char url[ARTURL_MAX], enc[384];
 
-	urlenc(remote, enc, sizeof enc);
-	snprintf(url, sizeof url, BASE "/%s/Named_Boxarts/", enc);
+	if (g_mirror) {
+		repo_of(remote, enc, sizeof enc);
+		snprintf(url, sizeof url, MIRROR_API "/%s/git/trees/master:Named_Boxarts", enc);
+	} else {
+		urlenc(remote, enc, sizeof enc);
+		snprintf(url, sizeof url, BASE "/%s/Named_Boxarts/", enc);
+	}
 	return net_get_async(url, INDEX_TMP, 60);
+}
+
+/* The mirror's catalog, GitHub's JSON tree of Named_Boxarts, rewritten in
+ * g_html as the href list libretro's own index is, so match() reads one
+ * format. Every "path" is a cover's file name; names only escape a quote or
+ * a backslash (none in NES's 13,896 do). Two passes: size, then write. */
+static bool mirror_listing(void)
+{
+	char name[NAME_MAX_ * 2], enc[NAME_MAX_ * 6 + 1], *out = NULL;
+	size_t need = 1, o = 0;
+	int pass;
+
+	for (pass = 0; pass < 2; pass++) {
+		const char *p;
+
+		for (p = g_html; (p = strstr(p, "\"path\"")); ) {
+			size_t k = 0;
+			bool ok = true;
+
+			p += 6;
+			while (*p == ' ' || *p == ':') p++;
+			if (*p++ != '"') continue;
+			for (; *p && *p != '"'; p++) {
+				char c = *p;
+
+				if (c == '\\') {
+					c = *++p;
+					if (c != '"' && c != '\\' && c != '/') ok = false;
+					if (!c) break;
+				}
+				if (k < sizeof name - 1) name[k++] = c;
+				else ok = false;
+			}
+			name[k] = '\0';
+			if (!ok || k < 5 || strcmp(name + k - 4, ".png")) continue;
+			name[k - 4] = '\0';
+			urlenc(name, enc, sizeof enc);
+			if (pass == 0) need += strlen(enc) + 12;
+			else o += (size_t)snprintf(out + o, need - o, "href=\"%s.png\"\n", enc);
+		}
+		if (pass == 0) {
+			if (need > INDEX_MAX || !(out = malloc(need))) return false;
+			out[0] = '\0';
+		}
+	}
+	memcpy(g_html, out, o + 1);
+	free(out);
+	return true;
 }
 
 /* Every .png href in one directory listing.
@@ -628,6 +706,7 @@ static bool parse_index(void)
 	 * against a fraction of the catalog and report the difference as
 	 * missing art. */
 	if (n >= INDEX_MAX - 1) return false;
+	if (g_mirror && !mirror_listing()) return false;
 
 	for (p = g_html; (p = strstr(p, "href=\"")); ) {
 		const char *q;
@@ -864,6 +943,7 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_d
 	g_nretry = g_qi = 0;
 	g_nleft = g_rem = 0;
 	g_ss_stop = g_ss_retried = false;
+	g_mirror = g_hopped = false;
 	g_ss_until = 0;
 	g_ss_note[0] = '\0';
 	g_run_t0 = now_ms();
@@ -951,12 +1031,48 @@ static bool start_image(const char *remote, const char *name, const char *dest)
 {
 	char url[ARTURL_MAX], er[384], en[NAME_MAX_ * 3 + 1];
 
-	urlenc(remote, er, sizeof er);
 	urlenc(name, en, sizeof en);
-	snprintf(url, sizeof url, BASE "/%s/Named_Boxarts/%s.png", er, en);
+	if (g_mirror) {
+		repo_of(remote, er, sizeof er);
+		snprintf(url, sizeof url, MIRROR_RAW "/%s/master/Named_Boxarts/%s.png", er, en);
+	} else {
+		urlenc(remote, er, sizeof er);
+		snprintf(url, sizeof url, BASE "/%s/Named_Boxarts/%s.png", er, en);
+	}
 	snprintf(g_pending, sizeof g_pending, "%s", dest);
 	snprintf(g_asked, sizeof g_asked, "%s", name);
+	g_hopped = false;
 	return net_get_async(url, g_pending, 60);
+}
+
+/* What a finished cover fetch brought: 1 an image, 0 a second fetch now in
+ * flight, -1 nothing usable (the file is removed). libretro's server answers
+ * with the image. The mirror answers a cover that is a symlink in its repo -
+ * 474 of NES's 13,896 - with the name it points at, so that is followed once;
+ * anything else that is not a PNG is a miss, never a cover. */
+static int landed(void)
+{
+	char buf[NAME_MAX_ * 2], dest[ARTPATH_MAX];
+	const char *b;
+	FILE *f;
+	size_t n;
+
+	if (!g_mirror) return 1;
+	if (!(f = fopen(g_pending, "rb"))) return -1;
+	n = fread(buf, 1, sizeof buf - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+	if (n >= 4 && !memcmp(buf, "\x89PNG", 4)) return 1;
+	remove(g_pending);
+	while (n && (buf[n - 1] == '\n' || buf[n - 1] == '\r')) buf[--n] = '\0';
+	if (g_hopped || n < 5 || n >= sizeof buf - 1 || strlen(buf) != n ||
+	    strchr(buf, '\n') || strcmp(buf + n - 4, ".png")) return -1;
+	buf[n - 4] = '\0';
+	b = strrchr(buf, '/');
+	snprintf(dest, sizeof dest, "%s", g_pending);
+	if (!start_image(remote_nth(g_sys[g_si].folder, g_rem), b ? b + 1 : buf, dest)) return -1;
+	g_hopped = true;
+	return 0;
 }
 
 /* The name to ask libretro for ROM i by: its own, or on an fbneo shelf
@@ -1185,7 +1301,8 @@ int art_step(void)
 		int r = net_async_poll();
 
 		if (r == 0) return 1;
-		say("art: %s from libretro by its own name: %s, %s\n", g_roms[g_ri],
+		if (r > 0 && (r = landed()) == 0) return 1;
+		say("art: %s from %s by its own name: %s, %s\n", g_roms[g_ri], src(),
 		    r > 0 ? "found" : "not there", answer());
 		/* A miss here is ordinary - it means libretro spells this game
 		 * differently, which is exactly what the catalog is for. It is not
@@ -1210,13 +1327,26 @@ int art_step(void)
 		int r = net_async_poll();
 
 		if (r == 0) return 1;
-		say("art: %s catalog %s: %s\n", g_sys[g_si].folder,
-		    remote_nth(g_sys[g_si].folder, g_rem), answer());
+		say("art: %s catalog %s from %s: %s\n", g_sys[g_si].folder,
+		    remote_nth(g_sys[g_si].folder, g_rem), src(), answer());
+		/* No catalog from libretro's server: the rest of the run asks the
+		 * mirror, starting this system again from its first pass, since every
+		 * miss so far may have been the server rather than the game
+		 * (plorpos-277). Covers already fetched are on the card and are not
+		 * asked for twice. */
+		if ((r < 0 || !parse_index()) && !g_mirror) {
+			g_mirror = true;
+			say("art: no catalog from libretro's server; the GitHub mirror for the rest of the run\n");
+			g_ri = g_nretry = g_nleft = g_rem = 0;
+			g_crc_tried = false;
+			g_phase = P_TRY;
+			return 1;
+		}
 		/* Distinguished on purpose: a network or TLS failure is not "these
 		 * games have no art", and reporting it as one is how a certificate
 		 * change gets mistaken for a library full of missing games. */
 		if (r < 0) { g_st.missing += g_nretry; return next_system("index fetch failed"); }
-		if (!parse_index()) {
+		if (!g_nnames) {
 			g_st.missing += g_nretry;
 			return next_system("index unreadable or empty");
 		}
@@ -1283,7 +1413,8 @@ int art_step(void)
 		int r = net_async_poll();
 
 		if (r == 0) return 1;
-		say("art: %s from libretro as \"%s\": %s, %s\n", g_roms[g_retry[g_qi]],
+		if (r > 0 && (r = landed()) == 0) return 1;
+		say("art: %s from %s as \"%s\": %s, %s\n", g_roms[g_retry[g_qi]], src(),
 		    g_asked, r > 0 ? "found" : "not there", answer());
 		if (r > 0) { art_shrink(g_pending); g_st.found++; }
 		else       g_left[g_nleft++] = g_retry[g_qi];
@@ -1351,7 +1482,8 @@ int art_step(void)
 		int r = net_async_poll();
 
 		if (r == 0) return 1;
-		say("art: %s from libretro as \"%s\": %s, %s\n", g_roms[g_retry[g_qi]],
+		if (r > 0 && (r = landed()) == 0) return 1;
+		say("art: %s from %s as \"%s\": %s, %s\n", g_roms[g_retry[g_qi]], src(),
 		    g_asked, r > 0 ? "found" : "not there", answer());
 		if (r > 0) { art_shrink(g_pending); g_st.found++; }
 		else       g_left[g_nleft++] = g_retry[g_qi];
