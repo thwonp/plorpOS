@@ -7822,10 +7822,10 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.sw_open = db_get_int(db_dev(), "swivel.open", SWO_WAKE);
 		u.sw_game = db_get_int(db_dev(), "swivel.game", 1) != 0;
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 		u.adb = plat_adb_on();
 #endif
-#if defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_OAKMOSS)
 		u.adb_restart = plat_adb_restart();
 #endif
 #if defined(PLATFORM_RGDS)
@@ -12985,9 +12985,9 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 	/* USB Debugging (plorpos-rgds.11): a toggle; adb starts or stops now
-	 * (on the Zero 40, off at the next boot - plorpos-auv.12). */
+	 * (on the oakMOSS boards, off at the next boot - plorpos-auv.12). */
 	if (sel == ST_ADB && (d || key == IN_ACCEPT)) {
 		plat_adb_set(!plat_adb_on());
 		return MENU_STAY;
@@ -21362,8 +21362,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_H700)
 	snprintf(out, n, "%s/h700/portmaster/%s", P_ROOT, leaf);
-#elif defined(PLATFORM_ZERO40)
-	snprintf(out, n, "%s/zero40/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_OAKMOSS)
+	snprintf(out, n, "%s/" OAKMOSS_BOARD "/portmaster/%s", P_ROOT, leaf);
 #else
 	snprintf(out, n, "%s/brick/portmaster/%s", P_ROOT, leaf);
 #endif

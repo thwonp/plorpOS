@@ -84,7 +84,7 @@ bool wifi_forget(const char *ssid);
 typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_NSVC } wifi_svc;
 #ifdef PLATFORM_GKD
 #define WIFI_SVC_ROWS WIFI_NSVC
-#elif defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_ZERO40)
+#elif defined(PLATFORM_ROTATE) || defined(PLATFORM_MIYOO) || defined(PLATFORM_OAKMOSS)
 #define WIFI_SVC_ROWS 1
 #else
 #define WIFI_SVC_ROWS 0

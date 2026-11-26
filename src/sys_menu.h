@@ -56,9 +56,9 @@ typedef enum {
 } pm_row;
 
 /* A side mute switch: the Bricks only. The GKD, the H700s (the Rotate
- * defines PLATFORM_H700 too) and the Zero 40 (Brick code, no switch) have
+ * defines PLATFORM_H700 too) and the oakMOSS boards (Brick code, no switch) have
  * none; Playback Settings' Sleep Button Lock is a plain software toggle there. */
-#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && !defined(PLATFORM_ZERO40)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && !defined(PLATFORM_OAKMOSS)
 #define SYS_HAS_MUTESW 1
 #else
 #define SYS_HAS_MUTESW 0
@@ -84,7 +84,7 @@ typedef enum {
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
 #endif
-#if defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)
+#if defined(PLATFORM_RGDS) || defined(PLATFORM_OAKMOSS)
 	ST_ADB,                     /* adb over USB (plorpos-rgds.11, auv.12) */
 #endif
 	ST_ROWS
