@@ -71,6 +71,20 @@ BOOT_ENV=$USERDATA_PATH/boot.env
 [ "$BOARD" = zero40 ] && { grep -q '^axs15205 ' /proc/modules ||
 	( insmod "/lib/modules/$(uname -r)/axs15205.ko" 2> /dev/null ) & }
 
+# USB DACs (plorpos-czp): oakMOSS's kernel has the USB audio driver as modules
+# but its image ships none, so a DAC enumerates and gets no sound card. These
+# are built from MagicX's own 4.9.191 tree and match only that build; insmod
+# refuses any other. In the background: a DAC already plugged in is probed when
+# the module arrives. If oakMOSS ever ships its own, this does nothing.
+if [ ! -d /sys/module/snd_usb_audio ] && [ "$(uname -r)" = 4.9.191 ]; then
+	(
+		for m in snd-hwdep snd-rawmidi snd-usbmidi-lib snd-usb-audio; do
+			insmod "$TORTOS_DIR/usb-audio/$m.ko" || { echo "usb audio: $m did not load"; exit; }
+		done
+		echo "usb audio: modules loaded"
+	) >> "$LOGS_PATH/tortos.log" 2>&1 &
+fi
+
 TZNAME=$TIMEZONE
 if [ -n "$TZNAME" ] && [ -f "/usr/share/zoneinfo/$TZNAME" ]; then
 	ln -sf "/usr/share/zoneinfo/$TZNAME" /tmp/localtime
