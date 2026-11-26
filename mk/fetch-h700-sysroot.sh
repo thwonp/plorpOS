@@ -161,7 +161,7 @@ cd /src/ffmpeg-$FF_VER
 	--enable-version3 --enable-mbedtls --pkg-config=false \
 	--extra-cflags=-I/out/usr/include --extra-ldflags=-L/out/usr/lib \
 	--disable-avdevice --disable-swscale --disable-postproc --disable-everything \
-	--enable-swresample --enable-protocol=file,http,https,tcp,tls \
+	--enable-swresample --enable-protocol=file,http,https,tcp,tls,httpproxy \
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \
@@ -171,6 +171,10 @@ cd /src/ffmpeg-$FF_VER
 		{ tail -30 /tmp/ffmpeg.log; echo "!! ffmpeg failed" >&2; exit 1; }
 grep -q "^License: LGPL version 3" /tmp/ffmpeg.log || { echo "!! ffmpeg is not LGPL-3.0-only" >&2; exit 1; }
 grep -q "^#define CONFIG_HTTPS_PROTOCOL 1" config_components.h || { echo "!! ffmpeg has no https" >&2; exit 1; }
+# https through an HTTP proxy is a CONNECT tunnel, FFmpeg's httpproxy: the
+# GKD's streams go through tailscaled's proxy (TS_PROXY), and without it every
+# podcast episode failed there while Tailscale was on (plorpos-gkd.94.28).
+grep -q "^#define CONFIG_HTTPPROXY_PROTOCOL 1" config_components.h || { echo "!! ffmpeg has no httpproxy" >&2; exit 1; }
 echo "  built  ffmpeg $FF_VER (\$(grep ^License: /tmp/ffmpeg.log))"
 for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
          libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
