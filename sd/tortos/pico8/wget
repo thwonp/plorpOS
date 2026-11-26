@@ -27,5 +27,12 @@ done
 # beside this folder there, and nowhere else.
 CURL=curl
 [ -x "${0%/*}/../curl" ] && CURL=${0%/*}/../curl
-exec "$CURL" -fsSL --cacert /mnt/SDCARD/plorpOS/cacert.pem -o "$out" \
+# The GKD on the BasedOS fork has none either: the stock firmware's, run by its
+# own loader and libraries from the /stock BasedOS keeps (plorpos-gkd.94.18).
+if [ "$CURL" = curl ] && ! command -v curl > /dev/null && [ -x /stock/usr/bin/curl ]; then
+	set -- /stock/usr/lib/ld-linux-aarch64.so.1 --library-path /stock/usr/lib /stock/usr/bin/curl
+else
+	set -- "$CURL"
+fi
+exec "$@" -fsSL --cacert /mnt/SDCARD/plorpOS/cacert.pem -o "$out" \
 	${post:+--data-binary "@$post"} "$url"

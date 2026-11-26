@@ -12,9 +12,13 @@
  * No drawing here: main.c's update screen polls an ota_job once a frame. */
 
 /* The port's name in the release's zip names. The RG DS also defines
- * PLATFORM_GKD, and the Rotate and the Flip PLATFORM_H700: they go first. */
+ * PLATFORM_GKD, and the Rotate and the Flip PLATFORM_H700: they go first.
+ * So does the GKD on the BasedOS fork, and its name stays its own for good:
+ * "gkd" is what a GKD on ROCKNIX downloads (plorpos-gkd.94). */
 #if defined(PLATFORM_RGDS)
 #define OTA_PORT "rgds"
+#elif defined(PLATFORM_BASEDOS)
+#define OTA_PORT "gkdb"
 #elif defined(PLATFORM_GKD)
 #define OTA_PORT "gkd"
 #elif defined(PLATFORM_ROTATE)

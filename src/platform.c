@@ -2750,7 +2750,7 @@ bool plat_light_sleep(unsigned waited_ms)
 
 	plat_input_flush();                   /* PAD_reset */
 	backlight_off();
-#if !defined(PLATFORM_ROTATE)
+#if !defined(PLATFORM_ROTATE) && !defined(PLATFORM_BASEDOS)
 	if (mixer_fd >= 0) apply_volume(0);
 #endif
 	/* Dark first: the SRAM write can take a second or two on a slow card, and
@@ -2798,10 +2798,12 @@ bool plat_light_sleep(unsigned waited_ms)
 	if (awake)    /* going on to power off: stay dark, no flash of the shelf */
 #endif
 	apply_brightness(cur_bright);
-#if !defined(PLATFORM_ROTATE)
+#if !defined(PLATFORM_ROTATE) && !defined(PLATFORM_BASEDOS)
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
 #else
-	/* Not on the Rotate: its volume is a PipeWire sink's, which WirePlumber
+	/* Not on the Rotate, nor the GKD on the BasedOS fork (plorpos-gkd.94.18,
+	 * the WF-C510 came back at 0 after a sleep in a game): its volume is a
+	 * PipeWire sink's, which WirePlumber
 	 * saves - the 0 became a headset's stored level - and the default sink
 	 * here can be another than at the mute, a headset gone across the
 	 * suspend, so the speaker took the headset's level (plorpos-3yv.76).

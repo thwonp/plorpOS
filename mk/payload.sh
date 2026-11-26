@@ -15,6 +15,12 @@
 # describes it - System/launch_frontend.sh (BaseOS's frontend hook), plorpOS/
 # with the SDL2 and FFmpeg libraries BaseOS lacks in plorpOS/lib/, and the empty
 # folders - plus that guide as INSTALL.md. BaseOS itself is the user's, on TF1.
+#
+# GKD on BasedOS (PLATFORM=gkdb, plorpos-gkd.94): out/gkdb/, the card's root -
+# System/launch_frontend.sh (BasedOS's frontend hook), plorpOS/ with Muse's
+# FFmpeg in plorpOS/lib/, the empty folders, and docs/install-gkdb.md as
+# INSTALL.md. Asset gkdb, never gkd: ROCKNIX
+# GKDs download gkd.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/mk/plorpos-files.sh"
@@ -44,6 +50,11 @@ elif [ "$PLATFORM" = h700 ]; then
 	OUT=$ROOT/out/h700
 	CARD=$OUT
 	PORT=h700
+elif [ "$PLATFORM" = gkdb ]; then
+	B=$ROOT/build/gkdb
+	OUT=$ROOT/out/gkdb
+	CARD=$OUT
+	PORT=gkdb
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
@@ -72,7 +83,10 @@ if grep -q '^#define SS_DEVID *""' "$B/ss_creds.h" 2>/dev/null ||
 	fi
 	echo "payload: WARNING: packaging without the ScreenScraper developer pair" >&2
 fi
-DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/$PLATFORM/diatom}
+# The GKD on BasedOS runs diatom's GKD build as it is: the same device, and it
+# draws through SDL, KMSDRM there instead of sway (plorpos-gkd.94.14).
+DPORT=$PLATFORM; [ "$PLATFORM" = gkdb ] && DPORT=gkd
+DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/$DPORT/diatom}
 [ -f "$DIATOM_ELF" ] || { echo "no diatom at $DIATOM_ELF (set DIATOM_ELF)"; exit 1; }
 [ -f "$ROOT/vendor/cores/fceumm_libretro.so" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }
 
@@ -151,6 +165,42 @@ elif [ "$PLATFORM" = zero40 ]; then
 	mkdir -p "$P/zero40/portmaster"
 	cp "$ROOT/sd/zero40/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" \
 		"$B/lib32.squashfs" "$P/zero40/portmaster/"
+elif [ "$PLATFORM" = gkdb ]; then
+	cp "$B/musectl" "$P/"
+	mkdir -p "$OUT/System" "$P/gkdb" "$P/lib" "$P/pico8"
+	cp "$ROOT/sd/gkdb/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/docs/install-gkdb.md" "$OUT/INSTALL.md"
+	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS: stock's curl (the shim says why)
+	# PortMaster: the H700's runner on BasedOS (plorpos-gkd.94.15), with the
+	# H700's python image and port shims as they are (mk/build-pmtools-h700.sh,
+	# tools/portcompat.c); BasedOS brings its own SDL2, 64- and 32-bit.
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "no vendor/portmaster/PortMaster.zip; run mk/fetch-vendor.sh" >&2; exit 1; }
+	[ -f "$B/portscale.so" ] || { echo "no $B/portscale.so; run make PLATFORM=gkdb" >&2; exit 1; }
+	for f in pmtools.squashfs portcompat.so; do
+		[ -f "$ROOT/build/h700/$f" ] ||
+			{ echo "no build/h700/$f; run mk/build-pmtools-h700.sh (and make PLATFORM=h700)" >&2; exit 1; }
+	done
+	mkdir -p "$P/gkdb/portmaster"
+	cp "$ROOT/sd/gkdb/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" \
+	   "$ROOT/build/h700/pmtools.squashfs" "$ROOT/build/h700/portcompat.so" "$B/portscale.so" "$P/gkdb/portmaster/"
+	# Its libgl_ROCKNIX.txt is PortMaster's own (sd/gkdb/portmaster): gl4es on
+	# GBM (LIBGL_FB=4), as the GKD's libmali needs; the H700's drops it for fbdev.
+	cp "$ROOT/sd/h700/portmaster/launch_hooks.txt" "$ROOT/sd/h700/portmaster/retroarch" "$P/gkdb/portmaster/"
+	cp "$ROOT/sd/gkdb/asound.conf" "$P/gkdb/"   # ALSA's default on PipeWire (the launch script's ALSA_CONFIG_PATH)
+	# The boot logos, put on the eMMC by the launch script (plorpos-gkd.94.26):
+	# U-Boot's, and BasedOS's with the boot keys labelled
+	python3 "$ROOT/mk/gkdb-bootlogo.py" "$ROOT/res/boot/plorpos-wordmark.png" "$ROOT/res/fonts/menu.ttf" \
+		"$P/gkdb/bootlogo.bmp.gz" || exit 1
+	python3 "$ROOT/mk/gkdb-bootlogo.py" "$ROOT/res/boot/plorpos-wordmark.png" "$ROOT/res/fonts/menu.ttf" \
+		"$P/gkdb/bootlogo-keys.bmp.gz" --keys || exit 1
+	# Muse's FFmpeg: BasedOS has none. The H700's own build, as on the Zero 40.
+	L=$ROOT/sysroot-h700/usr/lib
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
+			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	done
+	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
@@ -237,6 +287,8 @@ cp "$ROOT/config/systems.cfg" "$P/"
 # The Zero 40 has the DS shelf on the same DSperate build, and Ports
 # (plorpos-auv.7).
 [ "$PLATFORM" = zero40 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The GKD on BasedOS: the DS and Ports shelves (plorpos-gkd.94.15).
+[ "$PLATFORM" = gkdb ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -248,6 +300,8 @@ fi
 if [ "$PLATFORM" = rgds ]; then
 	# The DS and Ports shelves, as the GKD (plorpos-rgds.9).
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
+elif [ "$PLATFORM" = gkdb ]; then
 	plorpos_files "$P" "$ROOT/vendor/cores-gkd $ROOT/vendor/cores $ROOT/vendor/cores-brick" "pokedaisy_gba pokedaisy_gbc pokedaisy_ds mgba"
 elif [ "$PLATFORM" = gkd ]; then
 	cat "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
@@ -298,11 +352,13 @@ rgds) chmod +x "$P/launch.sh" "$P/musectl" "$P/rgds/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $CARD"
       rm -f "$ZIP"; ( cd "$CARD" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
+gkdb) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
+	"$P/gkdb/portmaster/pm-run.sh" "$P/gkdb/portmaster/retroarch" ;;
 h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" \
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
 esac
-if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then
+if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
 	du -sh "$OUT"
 	echo "payload ready: $OUT"
 	rm -f "$ZIP"

@@ -37,17 +37,27 @@
  * and libmali as on the GKD. PLATFORM_RGDS marks where its hardware differs -
  * the pad (InputPlumber's virtual one) and the top panel's backlight - and its
  * own userdata folder. */
-const char *P_ROOT = "/storage/games-external/plorpOS";
-const char *P_CARD = "/storage/games-external";
-const char *P_ROMS = "/storage/games-external/Roms";
-#ifdef PLATFORM_RGDS
-const char *P_USERDATA = "/storage/games-external/.userdata/rgds";
+/* And the GKD on the BasedOS fork (plorpos-gkd.94, PLATFORM=gkdb): the same
+ * device and kernel under another system - no sway, systemd or ConnMan.
+ * PLATFORM_BASEDOS marks where that shows here: the card's mount point, the
+ * sleep, and the window (to come). The folders under the card, userdata
+ * included, are the ROCKNIX build's, so a card moves over with its settings. */
+#if defined(PLATFORM_BASEDOS)
+#define CARD "/mnt/SDCARD"
 #else
-const char *P_USERDATA = "/storage/games-external/.userdata/gkd";
+#define CARD "/storage/games-external"
 #endif
-const char *P_SHARED = "/storage/games-external/.userdata/shared";
-const char *P_WEB = "/storage/games-external/plorpOS/res/web";
-const char *P_FONT = "/storage/games-external/plorpOS/menu.ttf";
+const char *P_ROOT = CARD "/plorpOS";
+const char *P_CARD = CARD;
+const char *P_ROMS = CARD "/Roms";
+#ifdef PLATFORM_RGDS
+const char *P_USERDATA = CARD "/.userdata/rgds";
+#else
+const char *P_USERDATA = CARD "/.userdata/gkd";
+#endif
+const char *P_SHARED = CARD "/.userdata/shared";
+const char *P_WEB = CARD "/plorpOS/res/web";
+const char *P_FONT = CARD "/plorpOS/menu.ttf";
 
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
@@ -56,15 +66,20 @@ const char *const plat_child_env[] = {
 #else
 	"PLATFORM=gkd350h", "DEVICE=gkd350h",
 #endif
-	"SDCARD_PATH=/storage/games-external",
-	"BIOS_PATH=/storage/games-external/Bios",
-	"CHEATS_PATH=/storage/games-external/Cheats",
-	"SAVES_PATH=/storage/games-external/Saves",
+	"SDCARD_PATH=" CARD,
+	"BIOS_PATH=" CARD "/Bios",
+	"CHEATS_PATH=" CARD "/Cheats",
+	"SAVES_PATH=" CARD "/Saves",
 	NULL
 };
 const char plat_child_libpath[] = "";
 const char *const plat_pico8_preload = NULL;
+#if defined(PLATFORM_BASEDOS)
+/* BusyBox's wget, as on the H700: the shim's folder first. (unverified) */
+const char *const plat_pico8_path = CARD "/plorpOS/pico8";
+#else
 const char *const plat_pico8_path = NULL;   /* ROCKNIX's wget is GNU, with TLS */
+#endif
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }
@@ -647,6 +662,83 @@ void screen_yield(bool to_game)
 	}
 }
 
+#if defined(PLATFORM_BASEDOS)
+/* The display a native child leaves behind (plorpos-gkd.94.15). An SDL child
+ * puts back the scanout it found when it quits (KMSDRM_VideoQuit); one that
+ * does not - gmloader's GameMaker ports - leaves the primary plane with no
+ * framebuffer once its own go with its fd, and every page flip of ours then
+ * fails with EBUSY: the launcher black for good. So the launcher's scanout is
+ * noted before a native child - its front buffer stays SDL's until our next
+ * flip - and set again on the way back if the CRTC has none. Raw ioctls: the
+ * sysroot has no libdrm, and these four are all it takes. The sysroot's SDL
+ * headers come from a build without KMSDRM; the device's SDL has it, and the
+ * kmsdrm member of SDL_SysWMinfo is unchanged since 2.0.16. */
+#ifndef SDL_VIDEO_DRIVER_KMSDRM
+#define SDL_VIDEO_DRIVER_KMSDRM 1
+#endif
+#include <SDL_syswm.h>
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
+
+static struct drm_mode_crtc kms_saved;
+static uint32_t kms_conn;
+static int kms_fd = -1;
+
+static void kms_note(void)
+{
+	struct drm_mode_card_res res = { 0 };
+	uint32_t crtcs[8], conns[8];
+	SDL_SysWMinfo wm;
+	int fd;
+
+	kms_fd = -1;
+	SDL_VERSION(&wm.version);
+	if (!win || !SDL_GetWindowWMInfo(win, &wm) || wm.subsystem != SDL_SYSWM_KMSDRM) return;
+	fd = wm.info.kmsdrm.drm_fd;
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) != 0 ||
+	    res.count_crtcs > 8 || res.count_connectors > 8) return;
+	res.count_fbs = res.count_encoders = 0;
+	res.fb_id_ptr = res.encoder_id_ptr = 0;
+	res.crtc_id_ptr = (uintptr_t)crtcs;
+	res.connector_id_ptr = (uintptr_t)conns;
+	if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) != 0) return;
+	for (uint32_t i = 0; i < res.count_crtcs; i++) {
+		struct drm_mode_crtc c = { .crtc_id = crtcs[i] };
+
+		if (ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &c) != 0 || !c.fb_id || !c.mode_valid) continue;
+		/* The panel's connector, once: the one whose encoder drives this CRTC. */
+		for (uint32_t j = 0; !kms_conn && j < res.count_connectors; j++) {
+			struct drm_mode_get_connector k = { .connector_id = conns[j] };
+			struct drm_mode_get_encoder e = { 0 };
+
+			if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &k) != 0 || !k.encoder_id) continue;
+			e.encoder_id = k.encoder_id;
+			if (ioctl(fd, DRM_IOCTL_MODE_GETENCODER, &e) == 0 && e.crtc_id == c.crtc_id)
+				kms_conn = conns[j];
+		}
+		if (!kms_conn) return;
+		kms_saved = c;
+		kms_fd = fd;
+		return;
+	}
+}
+
+static void kms_restore(void)
+{
+	struct drm_mode_crtc c = { .crtc_id = kms_saved.crtc_id };
+
+	if (kms_fd < 0) return;
+	if (ioctl(kms_fd, DRM_IOCTL_MODE_GETCRTC, &c) == 0 && c.fb_id) return;   /* put back already */
+	c = kms_saved;
+	c.set_connectors_ptr = (uintptr_t)&kms_conn;
+	c.count_connectors = 1;
+	if (ioctl(kms_fd, DRM_IOCTL_MODE_SETCRTC, &c) != 0)
+		fprintf(stderr, "run: the child left no scanout, and ours would not go back: %s\n", strerror(errno));
+	else
+		fprintf(stderr, "run: the child left no scanout; ours put back\n");
+}
+#endif
+
 /* A native child's run (run_alone) and its menu keep the launcher's window,
  * as on the Rotate - but moved between workspaces, never unmapped, for the
  * reason screen_yield gives (f5d). Shown: its next frame is drawn off-screen
@@ -658,12 +750,18 @@ void plat_window_show(bool on)
 {
 	if (!win) return;
 	if (on) {
+#if defined(PLATFORM_BASEDOS)
+		kms_restore();
+#endif
 		SDL_RenderSetVSync(ren, 0);
 		resident_away_pending = true;
 #ifdef PLATFORM_RGDS
 		cp_pending = false;           /* the child is done: its windows too */
 #endif
 	} else {
+#if defined(PLATFORM_BASEDOS)
+		kms_note();
+#endif
 		resident_away_pending = false;
 		launcher_place(false);
 #ifdef PLATFORM_RGDS
@@ -920,20 +1018,26 @@ void plat_adb_set(bool on)
  * its own down for it, and its menu's goes again before the child thaws), so
  * whatever is on workspace 1 is the child's, and whatever is on HIDE_WS. One
  * swaymsg each way: the menu's own time to come up is the budget. */
+#if !defined(PLATFORM_BASEDOS)
 static bool sway_cmd(const char *cmd)
 {
 	char *argv[] = { "swaymsg", (char *)cmd, NULL };
 
 	return helper(argv);
 }
+#endif
 
 bool child_hide(pid_t pid)
 {
 	(void)pid;
+#if !defined(PLATFORM_BASEDOS)
+	/* BasedOS has no compositor: the frozen child flips no more, and the
+	 * menu's first present puts the launcher's frame on the panel. */
 	if (!sway_cmd("[workspace=1] move container to workspace " HIDE_WS)) {
 		fprintf(stderr, "run: sway would not hide the child\n");
 		return false;
 	}
+#endif
 	if (fd_pad >= 0 && ioctl(fd_pad, EVIOCGRAB, 1) != 0)
 		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
 	return true;
@@ -943,6 +1047,7 @@ void child_restore(pid_t pid, bool show)
 {
 	(void)pid;
 	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
+#if !defined(PLATFORM_BASEDOS)
 #ifdef PLATFORM_RGDS
 	/* A fullscreen window stays fullscreen across the move, and Ren'Py's
 	 * floating one must keep its size (plorpos-rgds.31). */
@@ -951,6 +1056,9 @@ void child_restore(pid_t pid, bool show)
 	if (show && !sway_cmd("[workspace=" HIDE_WS "] move container to workspace 1, focus, fullscreen enable"))
 #endif
 		fprintf(stderr, "run: sway would not show the child\n");
+#else
+	(void)show;   /* the thawed child's next flip is on the panel again */
+#endif
 	/* Then the launcher's window off, also when the child is not coming
 	 * back: a reset's new child maps next, and after a quit run_alone
 	 * shows the window again (plat_window_show). */
@@ -961,21 +1069,42 @@ void child_restore(pid_t pid, bool show)
  * ~30 ms each way (measured 2026-10-02), so the stream is looked for at most
  * twice a second until it appears - a cart may never open one - and a mute
  * is sent only when it changes. */
+/* The child's, or a process in its group's: a port's game is its script's
+ * grandchild (plorpos-46o.5, as platform_rotate.c). */
+static bool child_pid(pid_t p, pid_t pid) { return p > 0 && (p == pid || getpgid(p) == pid); }
+
 static int quiet_stream(pid_t pid)
 {
+	enum { MAX_IN = 32 };
 	char line[256];
-	int cur = -1, idx = -1;
+	int cur = -1, idx = -1, n = 0, in_idx[MAX_IN], in_client[MAX_IN];
 	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
 
 	if (!f) return -1;
-	/* The child's, or a process in its group's: a port's game is its
-	 * script's grandchild (plorpos-46o.5, as platform_rotate.c). */
 	while (fgets(line, sizeof line, f)) {
 		const char *k = strstr(line, "application.process.id = \"");
-		pid_t p = k ? (pid_t)atoi(k + 26) : 0;
 
-		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
-		else if (idx < 0 && p > 0 && (p == pid || getpgid(p) == pid)) idx = cur;
+		if (!strncmp(line, "Sink Input #", 12)) {
+			cur = atoi(line + 12);
+			if (n < MAX_IN) in_idx[n] = cur, in_client[n++] = -1;
+		} else if (!strncmp(line, "\tClient: ", 9) && n > 0 && in_idx[n - 1] == cur)
+			in_client[n - 1] = atoi(line + 9);
+		else if (idx < 0 && k && child_pid((pid_t)atoi(k + 26), pid)) idx = cur;
+	}
+	pclose(f);
+	if (idx >= 0 || n == 0) return idx;
+	/* A native PipeWire stream - ALSA through the pipewire plugin, as SDL's
+	 * ALSA-only build on BasedOS plays (plorpos-gkd.94.19) - carries the pid
+	 * on its client only. */
+	if (!(f = popen("pactl list clients 2>/dev/null", "r"))) return -1;
+	cur = -1;
+	while (idx < 0 && fgets(line, sizeof line, f)) {
+		const char *k = strstr(line, "application.process.id = \"");
+
+		if (!strncmp(line, "Client #", 8)) cur = atoi(line + 8);
+		else if (k && cur >= 0 && child_pid((pid_t)atoi(k + 26), pid))
+			for (int i = 0; i < n; i++)
+				if (in_client[i] == cur) { idx = in_idx[i]; break; }
 	}
 	pclose(f);
 	return idx;
@@ -1250,7 +1379,10 @@ void plat_input_poll(in_state *st)
 #endif
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
-		if (e.type == SDL_QUIT) st->quit_requested = true;
+		if (e.type == SDL_QUIT) {
+			if (!st->quit_requested) fprintf(stderr, "input: SDL_QUIT\n");
+			st->quit_requested = true;
+		}
 #ifdef PLATFORM_RGDS
 		/* The secondary's fingers are its own (Details, Muse); the
 		 * launcher's are the touch engine's, every gesture the Rotate has
@@ -2098,6 +2230,37 @@ static bool button_lock;
 void plat_mute_switch_lock(bool lock) { button_lock = lock; }
 bool plat_hold_switch(void) { return button_lock; }
 
+#if defined(PLATFORM_BASEDOS)
+/* No systemd on the BasedOS fork and no hook to wait out: basedos-suspend
+ * writes "mem" itself and returns once the device is awake, the DAC's volume
+ * put back (the stock driver wakes the chip at full volume). The backlight is
+ * written again for the reason given below: the panel wakes at full
+ * brightness whatever the file says. Sleep and wake verified on the device
+ * (pre.8, 2026-11-25). */
+bool plat_sleep_supported(void) { return true; }
+
+bool plat_sleep(void)
+{
+	extern char **environ;
+	char *argv[] = { "/usr/sbin/basedos-suspend", NULL };
+	pid_t pid;
+	int st = -1;
+
+	/* The kernel can refuse for a moment - the Wi-Fi driver answered EBUSY
+	 * mid-transfer (2026-11-25) - and a refusal here means power off
+	 * (plat_light_sleep's caller). It refuses at once, so ask again. */
+	for (int tries = 0; tries < 3 && st != 0; tries++) {
+		if (tries) sleep(2);
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) != 0) return false;
+		waitpid(pid, &st, 0);
+	}
+	apply_brightness(cur_bright);
+	fprintf(stderr, "sleep: basedos-suspend %s\n", st == 0 ? "woke" : "failed");
+	/* The press that woke it, which would otherwise read as a tap. */
+	drain(fd_power);
+	return st == 0;
+}
+#else
 /* Real suspend through systemd, so ROCKNIX's system-sleep hook runs - it
  * brings Wi-Fi back, among other things. By starting suspend.target, not
  * `systemctl suspend`: that returns before the device has even gone down
@@ -2224,6 +2387,7 @@ bool plat_sleep(void)
 	drain(fd_power);
 	return st == 0;
 }
+#endif /* PLATFORM_BASEDOS */
 
 bool plat_battery(int *pct, bool *charging)
 {

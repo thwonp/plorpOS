@@ -480,7 +480,13 @@ static void enter_system(app *a);
 static int  menu_std_width(app *a);
 
 static volatile sig_atomic_t want_quit;
-static void on_sigterm(int sig) { (void)sig; want_quit = 1; plat_terminate(); }
+static void on_sigterm(int sig)
+{
+	static const char m[] = "launcher: SIGTERM or SIGINT, quitting\n";
+
+	if (write(2, m, sizeof m - 1) < 0) {}   /* who ended it, in the log; write is signal-safe */
+	(void)sig; want_quit = 1; plat_terminate();
+}
 
 /* Boot time is the one number a launcher cannot be careless about, so the
  * phases are timed and logged rather than guessed at. On the project this
@@ -12804,8 +12810,9 @@ static void scraping_screen(app *a)
  * The Brick's zone was already that key, New York unless chosen, and its
  * launch.sh points the system at it through boot.env. The GKD and the H700s
  * follow their own system's zone until one is chosen here: ROCKNIX has a zone
- * setting of its own, and a launcher default would quietly overrule it. */
-#if defined(PLATFORM_GKD) || defined(PLATFORM_H700)
+ * setting of its own, and a launcher default would quietly overrule it. The
+ * GKD on the BasedOS fork has no system zone, so it takes the Brick's. */
+#if (defined(PLATFORM_GKD) && !defined(PLATFORM_BASEDOS)) || defined(PLATFORM_H700)
 #define TZ_DEFAULT ""
 #else
 #define TZ_DEFAULT "America/New_York"
@@ -21356,6 +21363,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 {
 #if defined(PLATFORM_RGDS)	/* before GKD: the RG DS build defines both */
 	snprintf(out, n, "%s/rgds/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_BASEDOS)	/* before GKD, likewise */
+	snprintf(out, n, "%s/gkdb/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_GKD)
 	snprintf(out, n, "%s/gkd/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_ROTATE)	/* before H700: the Rotate build defines both */

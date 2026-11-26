@@ -44,6 +44,7 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 |---|---|---|---|
 | TrimUI Brick / Brick Pro | `mk/fetch-sysroot.sh` (adb) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-brick.sh`, `mk/build-unzip.sh` | `make && make payload` -> `out/sd/`, `out/plorpOS-v<VER>-brick.zip` |
 | GKD 350H Ultra | `mk/fetch-gkd-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`) | `make PLATFORM=gkd && make PLATFORM=gkd payload` -> `out/gkd/`, zip |
+| GKD 350H Ultra on the BasedOS fork (in progress) | `mk/fetch-gkdb-sysroot.sh`: the fork's Buildroot output (`BR_OUT`) and the H700's sysroot for Muse+'s FFmpeg; no device | | `make PLATFORM=gkdb` (no payload yet) |
 | Anbernic H700 (BaseOS) | `mk/fetch-h700-sysroot.sh` (~10 min) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-h700.sh`, `mk/build-sdl2-armhf.sh` | `make PLATFORM=h700 && make PLATFORM=h700 payload` -> `out/h700/`, zip |
 | RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`), `mk/build-unzip.sh`; image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `mk/rotate-deploy.sh package` (update zip) and `mk/rotate-image.sh` (card image) |
 | Miyoo Mini Flip | `mk/fetch-miyoo-sysroot.sh` | `docker build -t miyoo-toolchain -f mk/miyoo-toolchain.Dockerfile mk`; cores: `sh mk/flip-cores/build-all.sh` | `make PLATFORM=miyoo`, then `mk/miyoo-deploy.sh package` and `verify` |
