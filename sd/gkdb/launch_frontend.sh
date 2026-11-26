@@ -76,7 +76,11 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 		ntpd -n -q -p pool.ntp.org && hwclock -w -u
 	) > /dev/null 2>&1 &
 fi
-# SSH is the frontend's too, off unless switched on in Network Settings.
+# SSH is the frontend's too, off unless switched on in Network Settings. It
+# signs in as root / plorpos, as on the Rotate (plorpos-gkd.94.22): BasedOS
+# leaves root's password empty, so it is set while it still is - one changed
+# with passwd stays. In /data, so BasedOS's maintenance mode asks for it too.
+grep -q '^root::' /etc/shadow && echo root:plorpos | chpasswd -c sha512 >> "$LOG" 2>&1
 [ "$SSH" = 1 ] && [ ! -f /run/sshd.pid ] && /etc/init.d/sshd
 
 # Bluetooth as the player left it, off unless asked for (battery), in the
