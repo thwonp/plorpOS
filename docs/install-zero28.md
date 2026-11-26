@@ -96,7 +96,6 @@ What to expect:
 - 32-bit ports run on software graphics: the GPU has no 32-bit driver.
   GameMaker ones play slowly (MEGA MAN Sunrise about 13 fps). Ports that run
   through box86 (Braid, Shovel Knight) do not work.
-- Stardew Valley shows only the top-left part of its picture.
 - Dust Racing 2D does not start until PortMaster fixes the runtime name its
   script asks for.
 - PortMaster's tools ship as read-only images in `plorpOS/zero28/portmaster/`,

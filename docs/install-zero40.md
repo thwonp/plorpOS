@@ -107,7 +107,7 @@ What to expect:
   ends the port and returns to the shelf.
 - The screen is portrait, so most ports fit its width with black above and
   below. A few stretch to fill it (6 Feet Under, Ren'Py games) or draw past
-  its edge (Stardew Valley, Cave Story).
+  its edge (Cave Story).
 - Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
   have to be given them: put them where the port's page says. A port may
   download a runtime the first time, so do that on Wi-Fi.

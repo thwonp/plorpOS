@@ -67,7 +67,9 @@ if mount -t squashfs -o loop,ro "$HERE/lib32.squashfs" "$LIB32"; then
     done
     echo "$LIB32/lib/arm-linux-gnueabihf/fbpresent32.so" > /tmp/plorpos32.pre
 fi
-export LD_LIBRARY_PATH=$TOOLS/lib:/usr/magicx/lib:$CARD/plorpOS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+# sdl/ first: the firmware SDL by name, with the resize event its panel-sized
+# windows never send (tools/portsdl.c; Stardew Valley drew off the panel).
+export LD_LIBRARY_PATH=$HERE/sdl:$TOOLS/lib:/usr/magicx/lib:$CARD/plorpOS/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export SSL_CERT_FILE=$CARD/plorpOS/cacert.pem
 export SDL_AUDIODRIVER=alsa
 # oakMOSS sets none, and Weston (Westonpack's ports) will not start without it.

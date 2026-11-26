@@ -38,9 +38,9 @@ all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portful
 else ifeq ($(PLATFORM),gkdb)
 all: build/gkdb/tortos.elf build/gkdb/muse build/gkdb/musectl build/gkdb/portscale.so
 else ifeq ($(PLATFORM),zero40)
-all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so
+all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so build/zero40/portsdl/libSDL2-2.0.so.0
 else ifeq ($(PLATFORM),zero28)
-all: build/zero28/tortos.elf build/zero28/muse build/zero28/musectl build/zero28/pico8sdl.so
+all: build/zero28/tortos.elf build/zero28/muse build/zero28/musectl build/zero28/pico8sdl.so build/zero40/portsdl/libSDL2-2.0.so.0
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -189,6 +189,16 @@ build/gkdb/portscale.so: tools/portscale.c
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra \
 		-I/work/sysroot-gkdb/usr/include/SDL2 -o $@ $< -ldl
+
+# The MagicX boards' SDL for PortMaster ports, by name ahead of the firmware's
+# (tools/portsdl.c): one build for both, beside their other oakMOSS tools. It
+# needs the firmware's SDL by absolute path, so it links a stub of that name.
+build/zero40/portsdl/libSDL2-2.0.so.0: tools/portsdl.c
+	@mkdir -p $(@D)
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) sh -c '\
+		aarch64-linux-gnu-gcc -shared -o /tmp/stub.so -Wl,-soname,/usr/magicx/lib/libSDL2-2.0.so.0 -x c /dev/null && \
+		aarch64-linux-gnu-gcc -shared -fPIC -O2 -Wall -Wextra -I/work/sysroot/usr/include/SDL2 \
+			-Wl,-soname,libSDL2-2.0.so.0 -o $@ $< -Wl,--no-as-needed /tmp/stub.so -ldl'
 
 build/gkd/portfullscreen.so: tools/portfullscreen.c
 	@mkdir -p $(@D)

@@ -171,6 +171,9 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	mkdir -p "$P/$PLATFORM/portmaster"
 	cp "$ROOT/sd/oakmoss/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$OB/pmtools.squashfs" \
 		"$OB/lib32.squashfs" "$P/$PLATFORM/portmaster/"
+	[ -f "$OB/portsdl/libSDL2-2.0.so.0" ] || { echo "no $OB/portsdl; run make PLATFORM=zero40" >&2; exit 1; }
+	mkdir -p "$P/$PLATFORM/portmaster/sdl"
+	cp "$OB/portsdl/libSDL2-2.0.so.0" "$P/$PLATFORM/portmaster/sdl/"   # tools/portsdl.c
 elif [ "$PLATFORM" = gkdb ]; then
 	cp "$B/musectl" "$P/"
 	# BasedOS has no curl: the Zero 40's (static TLS, glibc 2.31; mk/build-curl-zero40.sh), beside
