@@ -280,10 +280,11 @@ carry on out loud.
 is for charging and a computer, and a DAC plugged in there gets no power.
 Elsewhere, use the device's USB-C port.
 
-**On the MagicX Zero 40 and Zero 28, turn USB Debugging off first** (System
-Settings, then restart): with it on the port stays in computer mode and gives a
-DAC no power. With a DAC in the only USB-C port the device runs on its battery
-and adb is gone. After waking from sleep the DAC takes about five seconds to
+**On the MagicX Zero 40 and Zero 28, the DAC goes in the OTG port** (the one
+adb uses; the other port is for charging, and it keeps charging while the DAC
+plays). Turn USB Debugging off first (System Settings, then restart): with it on
+the port stays in computer mode and gives a DAC no power. With a DAC in the OTG
+port, adb is gone. After waking from sleep the DAC takes about five seconds to
 come back; sound played before then comes out of the speaker.
 
 A DAC with no volume control of its own plays at full volume; the device's
