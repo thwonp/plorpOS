@@ -92,11 +92,39 @@ There is no password login. The server makes its own host key the first time
 it starts and keeps it in `plorpOS/ssh/`. There is no sftp, so `scp` fails;
 copy with `ssh root@<zero40> 'cat > /path' < file`.
 
+## Ports
+
+The **Ports** shelf sits above Muse+. Its first entry is **PortMaster**; open
+it with the device on Wi-Fi to install ports, which land in `Roms/Ports/` and
+appear on the shelf. A port is a script (`Name.sh`) beside a folder of the
+same name, so ports can also be copied onto the card. PortMaster itself lives
+in `.userdata/shared/portmaster/`. This is unofficial support: report problems
+to plorpOS, not the PortMaster team.
+
+What to expect:
+
+- **Menu** opens the plorpOS menu over a port (Continue, Reset, Quit); Quit
+  ends the port and returns to the shelf.
+- The screen is portrait, so most ports fit its width with black above and
+  below. A few stretch to fill it (6 Feet Under, Ren'Py games) or draw past
+  its edge (Stardew Valley, Cave Story).
+- Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
+  have to be given them: put them where the port's page says. A port may
+  download a runtime the first time, so do that on Wi-Fi.
+- 32-bit ports run on software graphics: the Zero 40's GPU has no 32-bit
+  driver. GameMaker ones play slowly (MEGA MAN Sunrise about 15 fps). Ports
+  that run through box86 (Braid, Shovel Knight) do not work.
+- Dust Racing 2D does not start until PortMaster fixes the runtime name its
+  script asks for.
+- PortMaster's tools ship as read-only images in `plorpOS/zero40/portmaster/`,
+  mounted only while a port runs. The first port adds three things to
+  oakMOSS: a udev rule for the pad, `/run`, and the links a 32-bit port needs
+  (`/usr/lib32` and its neighbours).
+
 ## Limits
 
 - No Bluetooth yet.
-- No Ports shelf (PortMaster), and no native PICO-8. The PICO-8 shelf plays
-  carts on the fake08 core.
+- No native PICO-8. The PICO-8 shelf plays carts on the fake08 core.
 - Plex downloads each track before playing it, as on the H700 devices.
 - Below and above a landscape game the screen is black.
 

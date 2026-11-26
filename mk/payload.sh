@@ -141,6 +141,16 @@ elif [ "$PLATFORM" = zero40 ]; then
 	done
 	cp "$L/COPYING.LGPLv3" "$L/COPYING.GPLv3" "$L/LICENSE.mbedtls" "$P/lib/"   # FFmpeg LGPL 3 + Mbed TLS (7ni.1)
 	[ -f "$ROOT/docs/install-zero40.md" ] && cp "$ROOT/docs/install-zero40.md" "$OUT/INSTALL.md"
+	# PortMaster (plorpos-auv.7): the Brick's runner on oakMOSS's SDL, the H700's tools image.
+	[ -f "$B/pmtools.squashfs" ] ||
+		{ echo "no $B/pmtools.squashfs; run mk/build-pmtools-h700.sh zero40" >&2; exit 1; }
+	[ -f "$ROOT/vendor/portmaster/PortMaster.zip" ] ||
+		{ echo "run mk/fetch-vendor.sh first" >&2; exit 1; }
+	[ -f "$B/lib32.squashfs" ] ||
+		{ echo "no $B/lib32.squashfs; run mk/build-lib32-zero40.sh" >&2; exit 1; }
+	mkdir -p "$P/zero40/portmaster"
+	cp "$ROOT/sd/zero40/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$B/pmtools.squashfs" \
+		"$B/lib32.squashfs" "$P/zero40/portmaster/"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
@@ -224,8 +234,9 @@ cp "$ROOT/config/systems.cfg" "$P/"
 [ "$PLATFORM" = h700 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 # The Brick also has the DS (plorpos-reo.21): its own build of DSperate, one
 # screen at a time (mk/build-dsperate-brick.sh).
-# The Zero 40 has the DS shelf on the same DSperate build; no Ports yet.
-[ "$PLATFORM" = zero40 ] && grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
+# The Zero 40 has the DS shelf on the same DSperate build, and Ports
+# (plorpos-auv.7).
+[ "$PLATFORM" = zero40 ] && grep -E '^sys\|(Nintendo DS|Ports)\|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 if [ "$PLATFORM" = brick ]; then
 	grep '^sys|Nintendo DS|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"
 	grep '^sys|Ports|' "$ROOT/config/systems-rotate.cfg" >> "$P/systems.cfg"

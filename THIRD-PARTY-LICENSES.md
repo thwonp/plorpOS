@@ -193,6 +193,24 @@ Debian source packages named in it and in `lib/VERSIONS`. The squashfs is
 loop-mounted read-only while a port runs, so any of the files can be replaced
 by rebuilding it.
 
+### Ports on the Zero 40 (`plorpOS/zero40/portmaster/`)
+
+PortMaster (MIT) runs the ports on the Zero 40 with these, none of them
+modified except where said:
+
+| What | Version | License |
+|---|---|---|
+| `pmtools.squashfs`: everything in the H700's (above), `mk/build-pmtools-h700.sh zero40` | as above | as above |
+| `pmtools.squashfs`: SDL2_image (the H700 sysroot's, stb_image decoders) | 2.6.3 | zlib |
+| `pmtools.squashfs`: libpng16, cairo, pixman, fontconfig, freetype, brotli, libpulse, libasyncns, libsystemd, libcap, liblzma, liblz4, libzstd, libtheora, libmodplug, libX11, libX11-xcb, libXau, libxcb, libxcb-render, libxcb-shm, libXdmcp, libXext, libXrender | Debian bookworm arm64 packages | MIT, BSD, LGPL 2.1 or later, FTL or GPL 2, public domain and others; each package's `copyright` file is in `lib/licenses/` |
+| `pmtools.squashfs`: libjpeg-turbo8 | Ubuntu 22.04, 2.1.2-0ubuntu1 | IJG, BSD, zlib |
+| `lib32.squashfs`: a 32-bit ARM userland - glibc, libstdc++, SDL2, OpenAL, ALSA, Mesa (llvmpipe) with LLVM, and what they link - `mk/build-lib32-zero40.sh` | Debian bookworm armhf packages, listed in `VERSIONS` | LGPL 2.1 or later (glibc, OpenAL, ALSA), GPL 3 with the runtime exception (libstdc++), MIT (Mesa), Apache 2.0 with LLVM exception (LLVM), zlib (SDL2) and others; each package's `copyright` file is in `share/doc/` |
+| `lib32.squashfs`: `ld-linux-armhf.so.3` | glibc 2.36, its preload path changed from `/etc/ld.so.preload` to `/tmp/plorpos32.pre` | LGPL 2.1 or later |
+
+The same applies: both images are built from pinned downloads and Debian or
+Ubuntu packages, loop-mounted read-only while a port runs, and can be replaced
+by rebuilding them.
+
 ---
 
 ### USB audio modules on the H700 (`plorpOS/h700/usb-audio/`)

@@ -1,0 +1,7 @@
+# The Zero 40's pad as a joystick, and ports' virtual devices classified
+# (sd/zero40/portmaster/pm-run.sh installs this; plorpos-auv.7).
+# SPDX-License-Identifier: MIT
+ACTION=="remove", GOTO="plorpos_zero40_end"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="magicx-input", ENV{ID_INPUT}="1", ENV{ID_INPUT_JOYSTICK}="1"
+SUBSYSTEM=="input", KERNEL=="event*", DEVPATH=="/devices/virtual/input/*", IMPORT{builtin}="input_id"
+LABEL="plorpos_zero40_end"

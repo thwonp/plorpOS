@@ -1,0 +1,5 @@
+# pysdl2 searches unversioned names in our tools image.
+# SPDX-License-Identifier: MIT
+pm_hook_gui_env() {
+    export PYSDL2_DLL_PATH="$LD_LIBRARY_PATH"
+}

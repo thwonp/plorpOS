@@ -21362,6 +21362,8 @@ static void pm_here(char *out, size_t n, const char *leaf)
 	snprintf(out, n, "%s/rotate/portmaster/%s", P_ROOT, leaf);
 #elif defined(PLATFORM_H700)
 	snprintf(out, n, "%s/h700/portmaster/%s", P_ROOT, leaf);
+#elif defined(PLATFORM_ZERO40)
+	snprintf(out, n, "%s/zero40/portmaster/%s", P_ROOT, leaf);
 #else
 	snprintf(out, n, "%s/brick/portmaster/%s", P_ROOT, leaf);
 #endif
