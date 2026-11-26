@@ -35,9 +35,9 @@ all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscr
 else ifeq ($(PLATFORM),rgds)
 all: build/rgds/tortos.elf build/rgds/muse build/rgds/musectl build/rgds/portfullscreen.so build/rgds/adbroot.so
 else ifeq ($(PLATFORM),zero40)
-all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl
+all: build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so
 else ifeq ($(PLATFORM),zero28)
-all: build/zero28/tortos.elf build/zero28/muse build/zero28/musectl
+all: build/zero28/tortos.elf build/zero28/muse build/zero28/musectl build/zero28/pico8sdl.so
 else ifeq ($(PLATFORM),nano)
 all: nano
 else ifeq ($(PLATFORM),h700)
@@ -259,16 +259,16 @@ build/rgds/tortos.elf build/rgds/muse build/rgds/musectl &: \
 build/zero40/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/zero40 creds
 
-build/zero40/tortos.elf build/zero40/muse build/zero40/musectl &: \
+build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so &: \
                       $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/zero40/ss_creds.h \
-                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c tools/pico8sdl.c
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
 	@[ -d sysroot/usr/include/SDL2 ] || { \
 		echo "no sysroot; run: mk/fetch-sysroot.sh (needs the Brick)" >&2; exit 1; }
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
 		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=zero40 BUILD=build/zero40 SYSROOT=/work/sysroot \
-		VERSION=$(VERSION) creds build/zero40/tortos.elf build/zero40/muse build/zero40/musectl
+		VERSION=$(VERSION) creds build/zero40/tortos.elf build/zero40/muse build/zero40/musectl build/zero40/pico8sdl.so
 	@for src in $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk build/zero40/ss_creds.h; do \
 		if [ "$$src" -nt build/zero40/tortos.elf ]; then \
 			echo "STALE: build/zero40/tortos.elf is older than $$src" >&2; \
@@ -282,16 +282,16 @@ build/zero40/tortos.elf build/zero40/muse build/zero40/musectl &: \
 build/zero28/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/zero28 creds
 
-build/zero28/tortos.elf build/zero28/muse build/zero28/musectl &: \
+build/zero28/tortos.elf build/zero28/muse build/zero28/musectl build/zero28/pico8sdl.so &: \
                       $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/zero28/ss_creds.h \
-                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c tools/pico8sdl.c
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
 	@[ -d sysroot/usr/include/SDL2 ] || { \
 		echo "no sysroot; run: mk/fetch-sysroot.sh (needs the Brick)" >&2; exit 1; }
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
 		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=zero28 BUILD=build/zero28 SYSROOT=/work/sysroot \
-		VERSION=$(VERSION) creds build/zero28/tortos.elf build/zero28/muse build/zero28/musectl
+		VERSION=$(VERSION) creds build/zero28/tortos.elf build/zero28/muse build/zero28/musectl build/zero28/pico8sdl.so
 	@for src in $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk build/zero28/ss_creds.h; do \
 		if [ "$$src" -nt build/zero28/tortos.elf ]; then \
 			echo "STALE: build/zero28/tortos.elf is older than $$src" >&2; \

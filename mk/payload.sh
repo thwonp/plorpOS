@@ -127,6 +127,7 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	# base image): built once, into build/zero40.
 	OB=$ROOT/build/zero40
 	cp "$B/musectl" "$P/"
+	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
 	cp "$ROOT/sd/oakmoss/launch.sh" "$ROOT/sd/oakmoss/radio.sh" "$ROOT/sd/oakmoss/ssh.sh" "$P/"
 	[ -f "$OB/dropbearmulti" ] || { echo "no $OB/dropbearmulti; run mk/build-dropbear-zero40.sh" >&2; exit 1; }
 	cp "$OB/dropbearmulti" "$P/"          # ssh: oakMOSS has no server (sd/oakmoss/ssh.sh)
