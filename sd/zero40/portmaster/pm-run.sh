@@ -57,9 +57,10 @@ export PATH=$TOOLS/bin:$TOOLS/python/bin:$PATH
 # fbpresent32.so copies each frame to the panel (mk/build-lib32-zero40.sh).
 # Linked in as a multiarch system has it - the loader, its own library
 # folder, and /usr/lib32 for ports written for ROCKNIX - and the shim named
-# in the one preload file only this loader reads.
-mkdir -p "$LIB32"
-if mount -t squashfs -o loop,ro "$HERE/lib32.squashfs" "$LIB32"; then
+# in the one preload file only this loader reads. Not shipped yet
+# (plorpos-auv.7.4): without the image PortMaster offers 64-bit ports only.
+if [ -f "$HERE/lib32.squashfs" ] && mkdir -p "$LIB32" &&
+    mount -t squashfs -o loop,ro "$HERE/lib32.squashfs" "$LIB32"; then
     for l in /lib/ld-linux-armhf.so.3:lib/arm-linux-gnueabihf/ld-linux-armhf.so.3 \
              /usr/lib/arm-linux-gnueabihf:lib/arm-linux-gnueabihf /usr/lib32:lib/arm-linux-gnueabihf; do
         [ "$(readlink "${l%%:*}")" = "$LIB32/${l#*:}" ] || ln -sfn "$LIB32/${l#*:}" "${l%%:*}"

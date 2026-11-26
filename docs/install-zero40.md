@@ -111,15 +111,12 @@ What to expect:
 - Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
   have to be given them: put them where the port's page says. A port may
   download a runtime the first time, so do that on Wi-Fi.
-- 32-bit ports run on software graphics: the Zero 40's GPU has no 32-bit
-  driver. GameMaker ones play slowly (MEGA MAN Sunrise about 15 fps). Ports
-  that run through box86 (Braid, Shovel Knight) do not work.
+- Only 64-bit ports are offered. 32-bit ports are not supported yet.
 - Dust Racing 2D does not start until PortMaster fixes the runtime name its
   script asks for.
 - PortMaster's tools ship as read-only images in `plorpOS/zero40/portmaster/`,
-  mounted only while a port runs. The first port adds three things to
-  oakMOSS: a udev rule for the pad, `/run`, and the links a 32-bit port needs
-  (`/usr/lib32` and its neighbours).
+  mounted only while a port runs. The first port adds two things to
+  oakMOSS: a udev rule for the pad, and `/run`.
 
 ## Limits
 
