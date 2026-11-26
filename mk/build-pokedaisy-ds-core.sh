@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build PokeDaisy DS as a libretro core for every port: DSperate (the dsperate-lr wrapper) with the PokeDaisy
-# companion layered over it (thwonp/pokedaisy-lr, linux/libretro-ds/). It is the DS shelf's Core row alternative
+# companion layered over it (gitlab.com/thwonp/pokedaisy-lr, linux/libretro-ds/). It is the DS shelf's Core row alternative
 # beside DSperate-lr, chosen per game (plorpos-oe0.44). Built in the tortos-toolchain image (Debian, GCC 10, glibc 2.17
 # symbols): the Brick's firmware glibc is 2.33. The same file runs on the H700 (BaseOS glibc 2.35), GKD (2.40) and
 # Rotate (2.41); it is installed to vendor/cores-brick only, and every payload ships it from there as an extra core.
@@ -14,14 +14,15 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-ds-core}
-REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 + open PRs, the same commit as pokedaisy_gba, 2026-11-14
-SHA=${PD_SHA:-297daac1476b052b07fd7fb6dd199df998c2f1ef72e9963441137791a8ead914} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
+REPO=${POKEDAISY_PLORP:-https://gitlab.com/thwonp/pokedaisy-lr.git}
+PD=${PD_COMMIT:-6304f8211f71bdaeaf98a3f374e941cab779a107} # GitLab plorp: upstream dev 9ca8961b (2026-11-26), fixtures filtered out, 3 plorp commits; moved off GitHub (plorpos-inp)
+SHA=${PD_SHA:-5a6a8ab50f3b879a8c59ed1e5ae0f7f77e70e6ef8fced9624c77c3899276c713} # sha256 of the stripped core; PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 if [ -z "$POKEDAISY_SRC" ]; then
 	[ -d "$SRC/.git" ] || git clone -q "$REPO" "$SRC"
+	git -C "$SRC" remote set-url origin "$REPO"
 	git -C "$SRC" fetch -q origin 2>/dev/null || true
 	git -C "$SRC" checkout -q -f "$PD"
 	git -C "$SRC" submodule -q update --init --force third_party/dsperate-lr

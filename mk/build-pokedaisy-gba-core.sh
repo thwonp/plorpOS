@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build pokedaisy_gba, the PokeDaisy Game Boy Advance core over armGBA (a recompiler), for every port: the same companion as the mGBA-based
-# pokedaisy core (thwonp/pokedaisy-lr, libretro/armgba/), with the GBA run by armGBA. It is the Game Boy Advance shelf's Core
+# pokedaisy core (gitlab.com/thwonp/pokedaisy-lr, libretro/armgba/), with the GBA run by armGBA. It is the Game Boy Advance shelf's Core
 # row "PokeDaisy" (plorpos-oe0.45); the Game Boy and Color shelves keep pokedaisy_gbc (mk/build-pokedaisy-gbc-core.sh) (armGBA runs those on Gambatte, GPL-2.0
 # only). On the Brick (A53, EXPAND on) a frame takes 4.2 ms against 7.1. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols; the core pins exp / pow to the base glibc version): the Brick's firmware glibc is 2.33. The same file runs
@@ -14,14 +14,15 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gba-core}
-REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 (armGBA ratherDashing d528d09 = v1.6 GBA work) + open PRs + FF hidden-frame skip + GBA canvas 1x in gameplay, 2026-11-14 (plorpos-oe0.45.7/.8, 881.7)
-SHA=${PD_SHA:-6817116061a42f394830ffffb8c02cf438ae7a203436e1918d1d333a085bf932} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
+REPO=${POKEDAISY_PLORP:-https://gitlab.com/thwonp/pokedaisy-lr.git}
+PD=${PD_COMMIT:-6304f8211f71bdaeaf98a3f374e941cab779a107} # GitLab plorp: upstream dev 9ca8961b (2026-11-26), fixtures filtered out, 3 plorp commits; moved off GitHub (plorpos-inp)
+SHA=${PD_SHA:-29ad88a4fd11ce7ab89407f36e1541ff96d5d710fceae9299d7b6341fa88bea6} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 if [ -z "$POKEDAISY_SRC" ]; then
 	[ -d "$SRC/.git" ] || git clone -q "$REPO" "$SRC"
+	git -C "$SRC" remote set-url origin "$REPO"
 	git -C "$SRC" fetch -q origin 2>/dev/null || true
 	git -C "$SRC" checkout -q -f "$PD"
 	# Only the two this core needs: armGBA's own Armulators submodule (its app) is not built.

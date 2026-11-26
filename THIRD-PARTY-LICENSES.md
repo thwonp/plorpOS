@@ -91,14 +91,14 @@ Advance shelf's default core (plorpos-9i7). The source is at that tag.
 
 A libretro core, loaded by Diatom and never linked into the launcher: PokeDaisy,
 https://github.com/lidor30/pokedaisy, by Lidor Itzhari, **GPL-3.0**, as our fork
-https://github.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
+https://gitlab.com/thwonp/pokedaisy-lr (its `libretro/` core, plus our commits,
 GPL-3.0 like the code they change) over mGBA's own libretro core (MPL-2.0) at the
 commit the fork pins, built by `mk/build-pokedaisy-gbc-core.sh`. The Game Boy and Color shelves' Core row offers it per game.
 
 ## PokeDaisy for Game Boy Advance, over armGBA (`pokedaisy_gba_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
-(https://github.com/thwonp/pokedaisy-lr, its `libretro/armgba/` core, **GPL-3.0**) with the Game Boy Advance run by
+(https://gitlab.com/thwonp/pokedaisy-lr, its `libretro/armgba/` core, **GPL-3.0**) with the Game Boy Advance run by
 armGBA as ratherDashing's fork https://github.com/ratherDashing/armGBA (3ds-v0.0.3-alpha, d528d09: MagnominusGit/armGBA's
 v1.6 Game Boy Advance work plus its own; **MPL-2.0** for its own code, carrying Jeffrey Pfau's and mGBA
 contributors' MPL-2.0 notices where it follows mGBA's, built with libretro.h (MIT), RetroArch's libretro-common and the LZMA
@@ -109,7 +109,7 @@ as "PokeDaisy"; the Game Boy and Color shelves keep `pokedaisy_gbc` above.
 ## PokeDaisy DS (`pokedaisy_ds_libretro.so`, `vendor/cores-brick/`)
 
 A libretro core, loaded by Diatom and never linked into the launcher: the same PokeDaisy fork
-(https://github.com/thwonp/pokedaisy-lr, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
+(https://gitlab.com/thwonp/pokedaisy-lr, its `linux/libretro-ds/` core, **GPL-3.0**) over DSperate
 (https://github.com/beebono/DSperate, GPL-3.0) in our libretro wrapper https://github.com/thwonp/dsperate-lr,
 at the commits the fork pins, built by `mk/build-pokedaisy-ds-core.sh`. The DS shelf's Core row offers it per game.
 

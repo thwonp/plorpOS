@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build pokedaisy_gbc, PokeDaisy for the Game Boy and Game Boy Color shelves, as a libretro core for every port: mGBA's own
-# libretro core with the PokeDaisy companion layered over it (thwonp/pokedaisy-lr, libretro/), built from the same fork commit
+# libretro core with the PokeDaisy companion layered over it (gitlab.com/thwonp/pokedaisy-lr, libretro/), built from the same fork commit
 # as pokedaisy_gba (mk/build-pokedaisy-gba-core.sh). The mGBA core also runs Game Boy Advance games, but the Game Boy Advance
 # shelf offers pokedaisy_gba. Offered in the Core row of the Game Boy and Game Boy Color shelves beside mGBA. Built in the tortos-toolchain image (Debian, GCC 10,
 # glibc 2.17 symbols): the Brick's firmware glibc is 2.33.
@@ -15,14 +15,15 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${POKEDAISY_SRC:-$HOME/.cache/tortos-pokedaisy-gbc-core}
-REPO=${POKEDAISY_PLORP:-https://github.com/thwonp/pokedaisy-lr.git}
-PD=${PD_COMMIT:-c797ae905e0c7d0f062a47c81cbc7ef66cf819eb} # fork main: upstream dev 05e98fd8 + open PRs + the GBA FF skip and canvas fix, the same commit as pokedaisy_gba, 2026-11-14
-SHA=${PD_SHA:-7ab055d83029fbf5862e1bf59e70a9bdb8646b32cbf349cf1ad3ca88c093b66a} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
+REPO=${POKEDAISY_PLORP:-https://gitlab.com/thwonp/pokedaisy-lr.git}
+PD=${PD_COMMIT:-6304f8211f71bdaeaf98a3f374e941cab779a107} # GitLab plorp: upstream dev 9ca8961b (2026-11-26), fixtures filtered out, 3 plorp commits; moved off GitHub (plorpos-inp)
+SHA=${PD_SHA:-4476d6ed15259bac1e3576c7c4813dbdbb208fdc66dca7ac9bd1e93a8662dd3b} # sha256 of the stripped core (identical from a fresh clone and a local checkout); PD_SHA=- builds an unpinned tree
 IMAGE=${TOOLCHAIN_IMAGE:-tortos-toolchain}
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 if [ -z "$POKEDAISY_SRC" ]; then
 	[ -d "$SRC/.git" ] || git clone -q "$REPO" "$SRC"
+	git -C "$SRC" remote set-url origin "$REPO"
 	git -C "$SRC" fetch -q origin 2>/dev/null || true
 	git -C "$SRC" checkout -q -f "$PD"
 	git -C "$SRC" submodule -q update --init --force third_party/mgba
