@@ -54,6 +54,7 @@
 #include "muse_empty.h"
 #include "textwrap.h"
 #include "playlist.h"
+#include "touch.h"
 #include "ss.h"
 #include "ssrun.h"
 #include "sys_menu.h"
@@ -80,6 +81,7 @@
 #include <signal.h>
 #include <spawn.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1262,8 +1264,33 @@ static int muse_album_of(const char *track)
 static app *g_rgds_app;   /* main's, for the secondary's ticks */
 static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
 static bool g_panel_fresh;/* the resting page redraws in full next time */
+/* Where Muse on the secondary was when a press on the primary ended it
+ * (plorpos-rgds.37): its last frame rests there (plat_bottom_snap_*) and a
+ * touch opens it at that place again, until the display goes off. */
+enum { SP_LIST, SP_ALBUM, SP_PLAYLIST };
+static struct {
+	bool set, now;            /* kept; on Now Playing (nothing to keep) */
+	bool books;
+	int tab, artist, asel, psel, album;   /* the list: tab, filter, rows, card */
+	int open, id, sel;        /* SP_*, the album, the track row */
+	char pl[PL_NAME_MAX];     /* the playlist's name, checked on the way back */
+	unsigned gen;             /* g_muse_gen it is good for */
+} g_sp;
+static int g_tset_sel0 = -1;  /* the row a track list opens on, once */
+static void sec_place_now(bool now)
+{
+	g_sp.now = now;
+	plat_bottom_snap_want(!now);
+}
+static void sec_place_drop(void)
+{
+	if (g_sp.set) g_panel_fresh = true;
+	g_sp.set = false;
+	plat_bottom_snap_drop();
+}
 #else
 #define g_muse_sec false
+#define sec_place_list(v) ((void)(v))
 #endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
@@ -4703,27 +4730,6 @@ static void on_shot(bool ok, const char *path)
 		plat_resident_line("OVERLAY\tpath=%s\tms=2000", p);
 }
 
-/* Turbo Assign (plorpos-tkh): Diatom asked, the map is already sent; this is
- * the notice, mid-game like the screenshot's. Cancelling takes the "press a
- * button" one down at once rather than leaving it to time out. */
-static void on_turbo(plat_turbo_event ev, const char *btn)
-{
-	char p[CFG_STR * 2], line[32];
-
-	snprintf(p, sizeof p, "%s/notice.dtov", P_USERDATA);
-	switch (ev) {
-	case PLAT_TURBO_CANCEL:  plat_resident_line("OVERLAY\tpath=%s\tms=0", p); return;
-	case PLAT_TURBO_ARMED:   snprintf(line, sizeof line, "Press a button"); break;
-	case PLAT_TURBO_PICKED:  snprintf(line, sizeof line, "%s on: press a button", btn); break;
-	case PLAT_TURBO_ON:      snprintf(line, sizeof line, "On: %s", btn);   break;
-	case PLAT_TURBO_OFF:     snprintf(line, sizeof line, "Off: %s", btn);  break;
-	case PLAT_TURBO_CLEARED: snprintf(line, sizeof line, "Cleared");       break;
-	}
-	if (notice_render("Turbo", line, p))
-		plat_resident_line("OVERLAY\tpath=%s\tms=%d", p,
-		                   ev == PLAT_TURBO_ARMED || ev == PLAT_TURBO_PICKED ? 4000 : 1500);
-}
-
 /* ---------- where you were ------------------------------------------------ */
 
 /* Coming back to the shelf you left is worth four lines of file handling: the
@@ -5170,6 +5176,9 @@ static unsigned muse_pause_delay_ms(const app *a)
 static bool idle_due(app *a)
 {
 	int b, secs;
+#if !defined(PLATFORM_MIYOO)
+	bool screen_off;          /* Muse's Screen Off is the clock: nothing holds it */
+#endif
 
 	/* Whichever of the two is armed - never both (ST_SLEEP/ST_AUTO_OFF) -
 	 * except while music plays, when Playback Settings' Screen Off says how
@@ -5185,14 +5194,21 @@ static bool idle_due(app *a)
 	{
 		int so = db_get_int(db_dev(), "muse.screenoff", -1);
 
-		secs = musec_playing() && so >= 0 ? so
-		     : a->auto_off ? a->auto_off : a->auto_poweroff;
+		screen_off = musec_playing() && so >= 0;
+		secs = screen_off ? so : a->auto_off ? a->auto_off : a->auto_poweroff;
 	}
 #endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
 	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
+	/* A finger is input too, a drag included - not only the taps that come
+	 * out as presses (plorpos-rgds.42). */
+	{
+		static unsigned seen;
+
+		if (touch_activity() != seen) { seen = touch_activity(); b = 0; }
+	}
 
 	/* Music does NOT hold the clock (it did until TortOS-a5k): an album is
 	 * somebody using the device with nobody touching it, so running out
@@ -5204,9 +5220,10 @@ static bool idle_due(app *a)
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, !musec_playing() && muse_syncing());
 #else
 	/* A sync holds it as the charger does - not while music plays, when the
-	 * clock only turns the screen off (music_dark waits for the sync). */
+	 * clock only turns the screen off (music_dark waits for the sync). Nor
+	 * does the charger then: Screen Off is always honored (plorpos-rgds.39). */
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
-	                  keep_awake() || (!musec_playing() && muse_syncing()));
+	                  !screen_off && (keep_awake() || (!musec_playing() && muse_syncing())));
 #endif
 }
 
@@ -10189,7 +10206,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
-static void turbo_screen(app *a, const char *tag, const char *file);
+static void turbo_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, bool live,
+                         unsigned accent);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -10441,9 +10459,6 @@ static menu_result go_key(app *a, void *ctx, in_button key, int sel)
 	}
 	case GO_HOTKEYS:
 		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME, s->accent);
-		break;
-	case GO_TURBO:
-		if (key == IN_ACCEPT) turbo_screen(a, s->tag, g->file);
 		break;
 	default:
 		break;
@@ -13973,7 +13988,10 @@ static void shelf_resort(app *a, int sys)
  * (turbomap.<TAG>/<file>, from its Game Overrides), the format the platform
  * reads at RUN. Saved on every change; a game's first change makes a full copy
  * of the shelf's. No game is running here, so nothing is sent. */
-typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own; char v[BM_SRC_N][12]; } te_ctx;
+/* live: the running game's, from the in-game Hotkeys (plorpos-5tm.26) - read
+ * from and sent to the platform at once, over the paused frame `bg`. */
+typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own, live; SDL_Texture *bg;
+                 char v[BM_SRC_N][12]; } te_ctx;
 
 static void te_key(char *k, size_t n, const char *tag, const char *file)
 {
@@ -13987,6 +14005,7 @@ static void te_load(te_ctx *c)
 {
 	char key[LIB_PATH + 48], v[96];
 
+	if (c->live) { plat_live_turbo(c->t); return; }
 	te_key(key, sizeof key, c->tag, c->file);
 	c->own = c->file && db_get_str(db_lib(), key, v, sizeof v, NULL);
 	if (!c->own) {
@@ -13999,7 +14018,10 @@ static void te_load(te_ctx *c)
 static void te_save(te_ctx *c)
 {
 	char key[LIB_PATH + 48], v[96];
-	int n = bm_turbo_format(c->t, v, sizeof v);
+	int n;
+
+	if (c->live) { plat_live_turbo_set(c->t); return; }
+	n = bm_turbo_format(c->t, v, sizeof v);
 
 	te_key(key, sizeof key, c->tag, c->file);
 	if (c->file) { db_set_str(db_lib(), key, v); c->own = true; }   /* "" is the game's none */
@@ -14018,7 +14040,7 @@ static int te_build(void *ctx, menu_row *rows, int max, const char **heading)
 		snprintf(c->v[i], sizeof c->v[i], "Turbo %s", c->t[i] ? BM_SRC_LABEL[c->t[i] - 1] : "");
 		rows[n++] = (menu_row){ BM_SRC_LABEL[i], c->t[i] ? c->v[i] : "None", true };
 	}
-	if (c->file) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
+	if (c->file && !c->live) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
 	return n;
 }
 
@@ -14032,7 +14054,7 @@ static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
 	if (sel >= 0 && sel < BM_SRC_N) {
 		c->t[sel] = (c->t[sel] + d + BM_SRC_N + 1) % (BM_SRC_N + 1);
 		te_save(c);
-	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file) {
+	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file && !c->live) {
 		char k[LIB_PATH + 48];
 
 		te_key(k, sizeof k, c->tag, c->file);
@@ -14042,14 +14064,23 @@ static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-/* `file` NULL: the shelf's default. */
-static void turbo_screen(app *a, const char *tag, const char *file)
+static void chv_backdrop(app *a, SDL_Texture *bg, bool over_shelf);
+static void te_backdrop(app *a, void *ctx) { chv_backdrop(a, ((te_ctx *)ctx)->bg, false); }
+static menu_result gm_power(app *a, void *ctx);
+
+/* `file` NULL: the shelf's default. Opened from the Hotkeys screen
+ * (plorpos-5tm.26); `live`, in a game: the running game's, over its paused
+ * frame `bg`, power stopping the game as the in-game menu's does. */
+static void turbo_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, bool live,
+                         unsigned accent)
 {
-	te_ctx c = { .a = a, .tag = tag, .file = file };
+	te_ctx c = { .a = a, .tag = tag, .file = file, .live = live, .bg = bg };
 
 	te_load(&c);
-	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
-	                           .fixed_w = menu_std_width(a) },
+	menu_run(a, &(menu_style){ .accent = accent ? accent : MENU_ACCENT, .follow_tint = !accent,
+	                           .fixed_w = menu_std_width(a),
+	                           .backdrop = live ? te_backdrop : NULL,
+	                           .on_power = live ? gm_power : NULL },
 	         te_build, te_key_fn, &c);
 }
 
@@ -14130,9 +14161,6 @@ static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	case SD_HOTKEYS:
 		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF, a->tint);   /* as Defaults' follow_tint */
-		break;
-	case SD_TURBO:
-		if (!d) turbo_screen(a, sc->tag, NULL);
 		break;
 	default:
 		break;
@@ -16872,6 +16900,9 @@ static muse_exit muse_now_screen(app *a)
 		char next[128] = "";
 		unsigned now;
 		bool touched = false;
+#if defined(PLATFORM_RGDS)
+		if (g_muse_sec) sec_place_now(true);
+#endif
 		int b;
 
 		muse_screen_poll();
@@ -17620,6 +17651,10 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		for (i = 0; p[0] && i < ts->n; i++)
 			if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
 	}
+#if defined(PLATFORM_RGDS)
+	if (g_tset_sel0 >= 0 && g_tset_sel0 < ts->n) sel = g_tset_sel0;
+	g_tset_sel0 = -1;
+#endif
 
 	if (now) {
 		how = muse_now_screen(a);
@@ -17638,6 +17673,15 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		int n = 0, items;
 		const char *playing;
 
+#if defined(PLATFORM_RGDS)
+		if (g_muse_sec) {
+			g_sp.open = ts->pl ? SP_PLAYLIST : SP_ALBUM;
+			g_sp.id = ts->album;
+			g_sp.sel = sel;
+			snprintf(g_sp.pl, sizeof g_sp.pl, "%s", ts->pl ? ts->pl : "");
+			sec_place_now(false);
+		}
+#endif
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		mn = musec_now();
@@ -19525,6 +19569,47 @@ static int muse_artist_jump(int sel, int dir)
 /* Muse, until it closes: the tabs, the Coverflow tab among them. `*vp` is
  * found again after a rescan. `now` with `playing`: straight to that album's
  * tracks, over the tab it was played from, which B comes back to (owner). */
+#if defined(PLATFORM_RGDS)
+/* The list's part of the place, as it stands (plorpos-rgds.37). */
+static void sec_place_list(const sysview *v)
+{
+	if (!g_muse_sec) return;
+	g_sp.tab = muse_tab();
+	g_sp.artist = muse_artist_filter();
+	g_sp.asel = g_mls_asel;
+	g_sp.psel = g_mls_psel;
+	g_sp.books = muse_books_shown();
+	g_sp.album = v->album && v->list.count > 0 ? v->album[v->cursor] : -1;
+	g_sp.open = SP_LIST;
+	sec_place_now(false);
+}
+
+/* Muse on the secondary opened again where it was left (plorpos-rgds.37). */
+static muse_exit sec_place_enter(app *a, sysview *v)
+{
+	bool ok = g_sp.gen == g_muse_gen;
+
+	g_sp.set = false;
+	plat_bottom_snap_drop();
+	if (!ok) return MUSE_BACK;
+	if (g_sp.books != muse_books_shown()) muse_show(v, g_sp.books);
+	muse_tab_set(g_sp.tab);
+	g_muse_favs = g_sp.tab == MT_FAVORITES;
+	muse_set_filter(v, g_sp.artist, g_sp.album);
+	g_mls_asel = g_sp.asel;
+	g_mls_psel = g_sp.psel;
+	g_tset_sel0 = g_sp.sel;
+	if (g_sp.open == SP_ALBUM) return muse_tracks(a, g_sp.id, false);
+	if (g_sp.open == SP_PLAYLIST) {
+		muse_playlists_load();
+		if (g_sp.psel < g_npls && !strcmp(g_pls[g_sp.psel].name, g_sp.pl))
+			return muse_playlist_open(a, g_sp.psel, false);
+	}
+	g_tset_sel0 = -1;
+	return MUSE_BACK;
+}
+#endif
+
 static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
@@ -19535,6 +19620,18 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	g_mls_asel = g_mls_psel = 0;
 	g_muse_list_up = true;
 	muse_artists_build();
+#if defined(PLATFORM_RGDS)
+	if (g_muse_sec && g_sp.set) {
+		muse_exit how = sec_place_enter(a, v);
+
+		if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return; }
+		if (how == MUSE_REBUILT) {
+			if (!(v = muse_shelf_refind(a))) { g_muse_list_up = false; return; }
+			*vp = v;
+			muse_artists_build();
+		}
+	} else
+#endif
 	if (playing >= 0 && g_muse.albums[playing].book == muse_books_shown()) {
 		int pa = muse_artist_of(playing);
 
@@ -19548,6 +19645,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (fp >= 0) {
 				muse_tab_set(MT_PLAYLISTS);
 				g_mls_psel = fp;
+				sec_place_list(v);
 				how = muse_playlist_open(a, fp, true);
 			} else {
 				int ft = g_muse_from.tab;
@@ -19562,6 +19660,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					g_muse_favs = false;
 					muse_set_filter(v, pa, playing);
 				}
+				sec_place_list(v);
 				/* A book's Now Playing goes back to its list (plorpos-i8d.2). */
 				how = g_muse.albums[playing].book ? muse_now_screen(a)
 				                                  : muse_tracks(a, playing, true);
@@ -19594,6 +19693,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		unsigned ft0, ft1;
 
 		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
+#if defined(PLATFORM_RGDS)
+		sec_place_list(v);
+#endif
 		/* A podcast download landed, or a copy went: Downloads and the rows. */
 		if (g_muse_pod && pod_download_take_changed())
 			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
@@ -20326,7 +20428,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
 static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Off" };
 #define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
-#define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
+#define HK_SCREEN_ROWS (HK_ROW_COUNT + 2)
 
 /* Press-to-bind's inputs, the stick ahead of the d-pad: a stick push also
  * sets the plain direction in the same frame, and the first match wins. */
@@ -20504,7 +20606,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
 	 * and its spare row is Button Mapping's (plorpos-c4l). The rule and
 	 * legend are drawn after them and are never selected. */
-	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
+	/* Turbo Assignments under it (plorpos-5tm.26). */
+	enum { R_MAPPING = 0, R_TURBO = 1, FIRST_ACT = 2, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 3];
 	hk_edit e = { tag, file, mode, "", "", false, accent };
@@ -20566,6 +20669,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 			if (vis[i] == 2 /* Rewind */) rw_dead = FIRST_ACT + i;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
+	rows[R_TURBO] = (menu_row){ "Turbo Assignments", "", true };
 	for (i = 0; i < nact; i++)   /* live flags before the first poll */
 		rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], "", FIRST_ACT + i != rw_dead };
 	if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
@@ -20616,6 +20720,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, &e);
+				pace = (ui_pace){0};
+			} else if (a->in.pressed[IN_ACCEPT] && sel == R_TURBO) {
+				turbo_screen(a, bg, tag, file, mode == HK_LIVE, mode == HK_SHELF ? 0 : e.accent);
 				pace = (ui_pace){0};
 			} else if (a->in.pressed[IN_ACCEPT] && sel == R_DEFAULT) {
 				plat_game_keys_clear(tag, file);
@@ -21073,6 +21180,9 @@ static dark_end music_dark(app *a, unsigned *waited)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	plat_screen(false);
+#if defined(PLATFORM_RGDS)
+	sec_place_drop();                     /* Now Playing again on a wake (rgds.37) */
+#endif
 #if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
 	(void)plat_lid_opened();              /* an opening from before the dark */
 #endif
@@ -21090,9 +21200,19 @@ static dark_end music_dark(app *a, unsigned *waited)
 		 * the speaker and left it there until a wake (2026-10-06). */
 		if (musec_heard()) aout_apply(false);
 		now = plat_now_ms();
-		if (musec_playing() || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
-		else if (!stopped)                 stopped = now ? now : 1;
-		else if (grace && now - stopped >= grace) break;
+		/* Playing that has not moved for a minute is an output wedged under
+		 * Muse (the Rotate's DSP after a DAC, plorpos-3yv.102): not music to
+		 * stay awake for, or the battery runs out in the dark. */
+		{
+			static bool told;
+			bool stuck = musec_stuck(60000);
+
+			if (stuck && !told) fprintf(stderr, "muse: playing but stuck for 60 s; sleeping anyway\n");
+			told = stuck;
+			if ((musec_playing() && !stuck) || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
+			else if (!stopped)                 stopped = now ? now : 1;
+			else if (grace && now - stopped >= grace) break;
+		}
 		plat_input_poll(&a->in);
 		{
 			bool down = a->in.down[IN_POWER];
@@ -21173,6 +21293,9 @@ static bool sleep_cycle(app *a)
 	unsigned t0, waited = 0;
 	bool awake;
 
+#if defined(PLATFORM_RGDS)
+	sec_place_drop();                     /* Now Playing again on a wake (rgds.37) */
+#endif
 	/* Dark before the checkpoint, not after: it is a synced state write, 1-4 s
 	 * on the RG35XX H's card, and the screen sat on for all of it after the
 	 * power tap. The save is still made before anything sleeps
@@ -23209,12 +23332,13 @@ static void launch_one(app *a)
 		 * emulator hands us on the way into its pause. */
 		aout_before_launch();
 		char shf[1024];
+		preview_path(a, o, &v->list.items[v->cursor], apv, sizeof apv);
 		plat_game g = {
 			.tag = s->tag, .core = core, .rom = rom,
 			/* Games Auto-Resume Off (plorpos-pyz.1): the Auto state is not
 			 * loaded, but still written on the way out, as always. */
 			.resume = gs_auto_resume() ? st : NULL, .exit_state = st,
-			.preview = pv, .save = save,
+			.preview = pv, .exit_preview = apv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
@@ -24729,11 +24853,37 @@ static void build_muse_shelf(app *a, bool bg)
 }
 
 /* `bg`: Muse's library may still be being read on return - see muse_walk. */
+/* The scan's per-system log lines, gathered and written once: stderr is the
+ * log on the card, and on the Brick's sync-mounted FAT32 card each of ~40
+ * unbuffered lines was its own synchronous write - 0.8 s of the boot scan
+ * against nothing on exFAT (plorpos-act.7). Same lines, one write. */
+typedef struct { char buf[16384]; size_t len; } scanlog;
+
+static void scanlog_flush(scanlog *l)
+{
+	if (l->len) fwrite(l->buf, 1, l->len, stderr);
+	l->len = 0;
+}
+
+static void scanlog_add(scanlog *l, const char *fmt, ...)
+{
+	va_list ap;
+	int n;
+
+	if (sizeof l->buf - l->len < 1024) scanlog_flush(l);
+	va_start(ap, fmt);
+	n = vsnprintf(l->buf + l->len, sizeof l->buf - l->len, fmt, ap);
+	va_end(ap);
+	if (n > 0) l->len += (size_t)n < sizeof l->buf - l->len ? (size_t)n : sizeof l->buf - l->len - 1;
+}
+
 static void scan_all(app *a, bool bg)
 {
+	scanlog sl = { .len = 0 };
+
 	/* Where the scan's time goes, one line at the end: lib_scan (directory
 	 * reads), titles_apply (names, art lookups), the rest. */
-	Uint32 t_lib = 0, t_titles = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
+	Uint32 t_lib = 0, t_titles = 0, t_adds = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
 
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
@@ -24754,8 +24904,10 @@ static void scan_all(app *a, bool bg)
 			             strcmp(core, "fbneo") && strncmp(core, "fbalpha2012", 11) && strcmp(core, "mame2000") ? NULL : fbneo_dat(), map);
 		}
 		t_titles += SDL_GetTicks() - t1;
+		t1 = SDL_GetTicks();
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
+		t_adds += SDL_GetTicks() - t1;
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
@@ -24769,7 +24921,7 @@ static void scan_all(app *a, bool bg)
 				lib_free(&v->list);
 			}
 		}
-		fprintf(stderr, "scan: %-16s %d game%s\n", a->sys.systems[i].folder,
+		scanlog_add(&sl, "scan: %-16s %d game%s\n", a->sys.systems[i].folder,
 		        v->list.count, v->list.count == 1 ? "" : "s");
 		/* What was left out, and what the folder takes, so a game that is
 		 * on the card and not on the shelf has its reason in the log. */
@@ -24784,18 +24936,19 @@ static void scan_all(app *a, bool bg)
 				snprintf(names + at, sizeof names - at, "%s\"%s\"", k ? ", " : "",
 				         v->list.skipped_eg[k]);
 			}
-			fprintf(stderr, "scan: %-16s left out %d (it takes %s): %s%s\n",
+			scanlog_add(&sl, "scan: %-16s left out %d (it takes %s): %s%s\n",
 			        a->sys.systems[i].folder, v->list.skipped,
 			        a->sys.systems[i].exts[0] ? a->sys.systems[i].exts : "anything",
 			        names, v->list.skipped > shown ? ", and more" : "");
 		}
 	}
+	scanlog_flush(&sl);
 	t_rest = SDL_GetTicks();
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
 	build_muse_shelf(a, bg);
-	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, shelves %u ms, total %u ms\n",
-	        t_lib, t_titles, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
+	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, splore+ports %u ms, shelves %u ms, total %u ms\n",
+	        t_lib, t_titles, t_adds, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the
@@ -25437,6 +25590,14 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 	 * panel, beside a game too (plorpos-rgds.27). */
 	if (epoch != plat_bottom_epoch()) fresh = true, epoch = plat_bottom_epoch();
 	while (plat_bottom_tap(&x, &y)) { }          /* a tap opens Muse: details_tick */
+	if (g_sp.set && g_sp.gen != g_muse_gen) { sec_place_drop(); fresh = true; g_panel_fresh = false; }
+	if (g_sp.set) {
+		/* Muse's place, kept: its frame as it was left (plorpos-rgds.37). */
+		if (fresh && (r = plat_bottom_begin(&w, &h))) {
+			if (!plat_bottom_snap_draw(r)) { sec_place_drop(); g_panel_fresh = false; }
+			else { plat_bottom_end(); shown[0] = 0; return; }
+		} else return;
+	}
 	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
 		if (np_b.tex) SDL_DestroyTexture(np_b.tex);
 		np_b = (struct np_cover){ .album = -1 };
@@ -25508,6 +25669,7 @@ static int sec_edge(app *a, void (*tick)(void))
 
 	if (e > 0) {
 		g_dual_muse = !g_dual_muse;
+		sec_place_drop();
 		fprintf(stderr, "secondary: %s\n", g_dual_muse ? "Muse+" : "Details");
 	}
 	if (e < 0 && a) switcher_on_secondary(a, tick);
@@ -25707,8 +25869,15 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	muse_textures_forget(a);
 	SDL_RenderSetScale(r, 1.0f, 1.0f);
 	a->r = was;
-	/* The resting Now Playing at once, not Muse's last frame - a menu on the
-	 * primary does not tick the secondary. */
+	/* Its last frame stays, its place kept, when the primary took it and it
+	 * was not on Now Playing (plorpos-rgds.37); else the resting Now Playing
+	 * at once - a menu on the primary does not tick the secondary. */
+	if (g_dual_muse && !g_sp.now && plat_bottom_snapped()) {
+		g_sp.set = true;
+		g_sp.gen = g_muse_gen;
+		fprintf(stderr, "muse: place kept on the secondary (tab %d, open %d, row %d)\n",
+		        g_sp.tab, g_sp.open, g_sp.sel);
+	} else sec_place_drop();
 	muse_panel_tick(true, false, false);
 	ui_redraw_now();
 	memset(&a->in, 0, sizeof a->in);
@@ -25780,7 +25949,7 @@ static void sec_end(app *a, void (*tick)(void), sec_sess *ss)
 	memset(&a->in, 0, sizeof a->in);
 	plat_bottom_session(false, tick != NULL);
 	/* The swipe that closed it is not one to open it again. */
-	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse;
+	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse, sec_place_drop();
 }
 
 /* The recent games there (plorpos-rgds.33.4). A pick launches from the
@@ -25817,7 +25986,20 @@ static void switcher_on_secondary(app *a, void (*tick)(void))
 /* gm first: gm_key takes it as its own context. armed: Reset or Quit tapped
  * once - a finger beside a running game slips more easily than a button, so
  * those two want a second tap whatever Confirm Quit says. */
-typedef struct { gm_ctx gm; int armed; } qs_ctx;
+/* armed: the row a first tap armed; said: the row that just did its work,
+ * which reads `said_txt` until the next key (plorpos-rgds.43). */
+typedef struct { gm_ctx gm; int armed, said; const char *said_txt; } qs_ctx;
+
+/* The Auto state of the game beside it, and its card's picture: what Quick
+ * Save and Quick Load use, as Diatom's save and load hotkeys do. */
+static void qs_auto_paths(app *a, char *st, size_t sn, char *pv, size_t pn)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+	state_path(a, o, &sv->list.items[sv->cursor], st, sn);
+	preview_path(a, o, &sv->list.items[sv->cursor], pv, pn);
+}
 
 static int qs_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -25830,24 +26012,56 @@ static int qs_build(void *ctx, menu_row *rows, int max, const char **heading)
 	*heading = NULL;       /* as the in-game menu: every row fits without one */
 	n = gm_compact(all, gm_build(c->a, all, &c->bufs), ids);
 	for (int i = 0; i < n; i++) {
-		if (ids[i] == GM_CONTINUE) continue;
+		/* No Hotkeys here: its capture is the pad's, which is the game's
+		 * beside it (plorpos-rgds.43). */
+		if (ids[i] == GM_CONTINUE || ids[i] == GM_HOTKEYS) continue;
 		rows[k] = all[i];
+		if (ids[i] == GM_SAVE) rows[k].label = "Quick Save";
+		if (ids[i] == GM_LOAD) {
+			char st[LIB_PATH * 2], pv[LIB_PATH * 2];
+
+			qs_auto_paths(c->a, st, sizeof st, pv, sizeof pv);
+			rows[k].label = "Quick Load";
+			rows[k].live = access(st, F_OK) == 0;   /* nothing saved yet */
+		}
 		if (ids[i] == q->armed) rows[k].value = "Tap again";
+		else if (ids[i] == q->said) rows[k].value = q->said_txt;
 		c->ids[k++] = ids[i];
 	}
 	return k;
 }
 
-/* As the in-game menu's, but Save and Load stay on the secondary, and a save
- * has no paused frame to show what it holds: that slot's old picture goes
- * rather than stand for the new state. */
+/* As the in-game menu's, but Save and Load are Quick Save and Quick Load,
+ * the Auto state's, and Reset and Save and Quit take a second tap. */
 static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 {
 	qs_ctx *q = ctx;
 	gm_ctx *c = &q->gm;
 	int row = c->ids[sel], armed = q->armed;
 
-	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1;
+	/* A finger held 500 ms is a long press: the row, then Y - which nothing
+	 * here has. A slower tap is still a tap (plorpos-rgds.41). */
+	if (key == IN_Y) key = IN_ACCEPT;
+
+	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1, q->said = -1;
+	/* Quick Save and Quick Load (plorpos-rgds.43): the Auto state, as the
+	 * hotkeys, the game running on; a load asks for a second tap. The
+	 * in-game menu keeps Save and Load to slots. */
+	if (key == IN_ACCEPT && (row == GM_SAVE || row == GM_LOAD)) {
+		char st[LIB_PATH * 2], pv[LIB_PATH * 2];
+
+		if (row == GM_LOAD && armed != row) { q->armed = row; return MENU_STAY; }
+		qs_auto_paths(a, st, sizeof st, pv, sizeof pv);
+		if (row == GM_SAVE) {
+			unlink(pv);   /* before the line: never after Diatom's new one */
+			plat_resident_line("SAVE\tpath=%s\tpreview=%s", st, pv);
+		} else {
+			plat_resident_line("LOAD\tpath=%s", st);
+		}
+		q->said = row;
+		q->said_txt = row == GM_SAVE ? "Saved" : "Loaded";
+		return MENU_STAY;
+	}
 	if (key == IN_ACCEPT && (row == GM_RESET || row == GM_QUIT)) {
 		if (armed != row) { q->armed = row; return MENU_STAY; }
 		/* Quit as the in-game menu's: the exit state may follow behind. */
@@ -25855,25 +26069,6 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_DONE;
 	}
 
-	if (key == IN_ACCEPT && (row == GM_SAVE || row == GM_LOAD)) {
-		int slot = slot_strip(a, NULL, row == GM_SAVE);
-		sysview *sv = &a->view[a->sys_cursor];
-		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
-
-		plat_input_flush();
-		memset(&a->in, 0, sizeof a->in);
-		if (!slot) return MENU_STAY;
-		slot_state_path(a, o, &sv->list.items[sv->cursor], slot, sp, sizeof sp);
-		if (row == GM_SAVE) {
-			plat_resident_line("SAVE\tpath=%s", sp);
-			slot_preview_path(a, o, &sv->list.items[sv->cursor], slot, pp, sizeof pp);
-			unlink(pp);
-		} else {
-			plat_resident_line("LOAD\tpath=%s", sp);
-		}
-		return MENU_DONE;
-	}
 	return gm_key(a, c, key, sel);
 }
 
@@ -25884,7 +26079,7 @@ static void qs_style(app *a, qs_ctx *q)
 	q->gm.st.accent   = MENU_ACCENT;     /* as drawn at rest */
 	q->gm.st.backdrop = gm_backdrop;     /* no paused frame: black */
 	q->gm.st.on_power = gm_power;
-	q->armed = -1;
+	q->armed = q->said = -1;
 }
 
 /* The Disc row is the in-game menu's g_disc, which only that menu asked
@@ -26552,7 +26747,6 @@ int main(int argc, char *argv[])
 		chv_earned_load();
 		plat_resident_on_unlock(on_cheevo_unlocked);
 		plat_resident_on_shot(on_shot);
-		plat_resident_on_turbo(on_turbo);
 		plat_resident_on_tick(on_game_tick);
 
 		/* Without this every HTTPS request fails verification, because the

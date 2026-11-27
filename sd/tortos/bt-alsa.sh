@@ -48,8 +48,25 @@
 # /var/lib/bluetooth only when bluetoothd starts, ~20 s into boot, and by then
 # bt_write_asoundrc has run and found nothing - an empty .asoundrc, and every
 # headset on the speaker until the next pairing (TortOS-pky.12).
+#
+# The grep reads the whole binary when it finds nothing - the Brick's 1.2 MB,
+# 0.4 s of a cold boot - so its answer is kept on the card per bluetoothd
+# build, keyed by size and date from ls -l (no stat on the device), and asked
+# again only when a firmware update changes the binary (plorpos-act.7).
 if [ -z "$TORTOS_BT_BONDS" ]; then
-	if grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null; then
+	_bk=$(ls -l /usr/bin/bluetoothd 2> /dev/null | awk '{print $5, $6, $7, $8}')
+	_bc=${USERDATA_PATH:+$USERDATA_PATH/.bt_bluez}
+	_bv=
+	if [ -n "$_bc" ] && [ -f "$_bc" ]; then
+		{ read _ck; read _cv; } < "$_bc"
+		[ "$_ck" = "$_bk" ] && _bv=$_cv
+	fi
+	if [ -z "$_bv" ]; then
+		_bv=etc
+		grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null && _bv=var
+		[ -n "$_bc" ] && [ -n "$_bk" ] && printf '%s\n%s\n' "$_bk" "$_bv" > "$_bc"
+	fi
+	if [ "$_bv" = var ]; then
 		TORTOS_BT_BONDS=/var/lib/bluetooth
 		[ -d /etc/bluetooth/keys ] && TORTOS_BT_BONDS=/etc/bluetooth/keys
 	else

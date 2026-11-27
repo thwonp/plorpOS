@@ -182,6 +182,17 @@ static void resident_place(bool on_screen);
 static bool helper(char *const argv[]);
 static bool launcher_place(bool on_screen);
 
+#ifdef PLATFORM_RGDS
+/* Muse's last frame, kept (plorpos-rgds.37): a press on the primary lets it
+ * draw once more, read at its present, before the session ends. */
+#define SNAP_WAIT_MS 150
+static bool b_snap_want;
+static int b_snap_state;                  /* 0, 1 asked for, 2 read */
+static Uint32 b_snap_t0;
+static SDL_Texture *b_snap;
+static SDL_Renderer *b_snap_r;
+static void snap_read(SDL_Renderer *r);
+#endif
 void plat_present(SDL_Renderer *r)
 {
 #ifdef PLATFORM_RGDS
@@ -194,6 +205,7 @@ void plat_present(SDL_Renderer *r)
 
 		SDL_RenderGetScale(r, &sx, &sy);
 		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		if (b_snap_state == 1) { snap_read(r); b_snap_state = 2; }
 		osd2_draw();
 		SDL_RenderSetScale(r, sx, sy);
 	}
@@ -567,6 +579,7 @@ void plat_bottom_session(bool on, bool game)
 {
 	b_session = on;
 	b_game = on && game;
+	if (on) b_snap_state = 0, b_snap_want = false;
 	b_session_t0 = on ? SDL_GetTicks() : 0;
 	b_down = false;
 	b_tap_x = b_tap_y = -1;
@@ -593,6 +606,46 @@ void plat_bottom_end(void)
 	if (!bren || !b_shown) return;
 	osd2_draw();
 	SDL_RenderPresent(bren);
+}
+
+static void snap_read(SDL_Renderer *r)
+{
+	SDL_Surface *s;
+	int w, h;
+
+	if (SDL_GetRendererOutputSize(r, &w, &h) ||
+	    !(s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888))) return;
+	if (b_snap && b_snap_r != r) plat_bottom_snap_drop();
+	if (!b_snap) {
+		b_snap = SDL_CreateTexture(r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+		b_snap_r = r;
+	}
+	if (b_snap && (SDL_RenderReadPixels(r, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch) ||
+	               SDL_UpdateTexture(b_snap, NULL, s->pixels, s->pitch)))
+		plat_bottom_snap_drop();
+	SDL_FreeSurface(s);
+}
+
+void plat_bottom_snap_want(bool on) { b_snap_want = on; }
+bool plat_bottom_snapped(void) { return b_snap_state == 2 && b_snap && b_snap_r == bren; }
+
+bool plat_bottom_snap_draw(SDL_Renderer *r)
+{
+	float sx, sy;
+
+	if (!b_snap || r != b_snap_r) return false;
+	SDL_RenderGetScale(r, &sx, &sy);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	SDL_RenderCopy(r, b_snap, NULL, NULL);
+	SDL_RenderSetScale(r, sx, sy);
+	return true;
+}
+
+void plat_bottom_snap_drop(void)
+{
+	if (b_snap) SDL_DestroyTexture(b_snap);
+	b_snap = NULL;
+	b_snap_r = NULL;
 }
 
 /* The secondary window onto the secondary panel, lit; false while sway has
@@ -1584,6 +1637,7 @@ void plat_input_poll(in_state *st)
 			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
 
 			if (sec && sec_dark()) continue;   /* dark: its touches are nobody's */
+			touch_note();                      /* the secondary's resting touches too */
 			if (sec && edge_watch(&e)) continue;
 
 			if (b_session) {
@@ -1665,7 +1719,13 @@ void plat_input_poll(in_state *st)
 		st->pressed[IN_SWITCHER] = false;
 	}
 	end = b_session && b_primary_tap;
-	b_primary_tap = false;
+	/* Muse's place is kept (plorpos-rgds.37): one more frame of it first,
+	 * read at its present - not for an edge swipe, which turns Muse+ off. */
+	if (end && b_snap_want && !b_edge && b_snap_state != 2 &&
+	    !(b_snap_state == 1 && SDL_GetTicks() - b_snap_t0 >= SNAP_WAIT_MS)) {
+		if (!b_snap_state) { b_snap_state = 1; b_snap_t0 = SDL_GetTicks(); ui_redraw_now(); }
+		end = false;                       /* b_primary_tap stays: next poll */
+	} else b_primary_tap = false;
 #endif
 #endif
 	menu_filter(st);

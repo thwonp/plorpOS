@@ -13,12 +13,13 @@
 
 /* The port's name in the release's zip names. The RG DS also defines
  * PLATFORM_GKD, and the Rotate and the Flip PLATFORM_H700: they go first.
- * So does the GKD on the BasedOS fork, and its name stays its own for good:
- * "gkd" is what a GKD on ROCKNIX downloads (plorpos-gkd.94). */
+ * So does the GKD on the BasedOS fork (PLATFORM=gkdb): its zip is
+ * "gkd350based", never "gkd", which a GKD on ROCKNIX downloads. Each name
+ * here must equal the one its packager writes: make check-ota-names. */
 #if defined(PLATFORM_RGDS)
 #define OTA_PORT "rgds"
 #elif defined(PLATFORM_BASEDOS)
-#define OTA_PORT "gkdb"
+#define OTA_PORT "gkd350based"
 #elif defined(PLATFORM_GKD)
 #define OTA_PORT "gkd"
 #elif defined(PLATFORM_ROTATE)

@@ -1488,8 +1488,6 @@ void plat_resident_on_unlock(void (*fn)(int id)) { d_on_unlock = fn; }
 static void (*d_on_shot)(bool ok, const char *path);
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path)) { d_on_shot = fn; }
 
-static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
-void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
 /* Per host button (BM_SRC index), the turbo it fires plus one; 0 is none.
  * This game only (plorpos-c4l: any turbo on any button). */
 static int  d_turbo[BM_SRC_N];
@@ -1714,12 +1712,13 @@ bool plat_resident_send(const plat_game *g)
 		 * flash above over again). */
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
+		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots\texit_preview=%s",
 		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD))
+		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD,
+		           g->exit_preview ? g->exit_preview : ""))
 			return false;
 
 		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.
@@ -2011,9 +2010,9 @@ static void d_note_shot(const char *l)
 	d_on_shot(ok[4] == '1', path);
 }
 
-/* ---- turbo, chosen in the game (plorpos-tkh, Diatom's ADR-0045) ----------
- * Diatom reports Turbo Assign; this keeps which turbo each button fires for
- * the game now running and answers each change with the whole map (ADR-0020,
+/* ---- turbo (plorpos-tkh; Turbo Assignments under Hotkeys, plorpos-5tm.26) --
+ * This keeps which turbo each button fires for the game now running and
+ * sends each change as the whole map (ADR-0020,
  * ADR-0028: `x:a~3` is X sending A pressed three frames and released three,
  * about ten a second). Emptied at RUN, so a game's turbo ends with it; the
  * menu and Muse leave it alone, and so does Diatom's map across PAUSE.
@@ -2142,41 +2141,13 @@ void plat_live_keys_set(const char *hk, const char *bm, bool save)
 	if (save) plat_game_keys_set(d_tag, d_file, d_hk, d_bm);
 }
 
-/* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tpick=a", "TURBO\tbtn=a\ton=x",
- * "TURBO\tclear=1". A Diatom before plorpos-c4l sends btn= alone: its own. */
-static void d_note_turbo(const char *l)
+void plat_live_turbo(int *t) { memcpy(t, d_turbo, sizeof d_turbo); }
+
+void plat_live_turbo_set(const int *t)
 {
-	const char *v;
-	char what[16];
-	int t, h;
-
-	if ((v = strstr(l, "arm="))) {
-		if (d_on_turbo) d_on_turbo(v[4] == '1' ? PLAT_TURBO_ARMED : PLAT_TURBO_CANCEL, "");
-	} else if ((v = strstr(l, "pick="))) {
-		if ((t = bm_src_index(v + 5)) >= 0 && d_on_turbo)
-			d_on_turbo(PLAT_TURBO_PICKED, BM_SRC_LABEL[t]);
-	} else if (strstr(l, "clear=1")) {
-		memset(d_turbo, 0, sizeof d_turbo);
-		d_turbo_send();
-		d_turbo_save();
-		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
-	} else if ((v = strstr(l, "btn="))) {
-		char name[4];
-		const char *on = strstr(l, "\ton=");
-
-		snprintf(name, sizeof name, "%.*s", (int)strcspn(v + 4, "\t"), v + 4);
-		t = bm_src_index(name);
-		h = on ? bm_src_index(on + 4) : t;
-		if (t < 0 || h < 0) return;
-		/* The same pair again takes it off; another turbo replaces it. */
-		d_turbo[h] = d_turbo[h] == t + 1 ? 0 : t + 1;
-		d_turbo_send();
-		d_turbo_save();
-		if (h == t) snprintf(what, sizeof what, "%s", BM_SRC_LABEL[t]);
-		else        snprintf(what, sizeof what, "%s on %s", BM_SRC_LABEL[t], BM_SRC_LABEL[h]);
-		if (d_on_turbo)
-			d_on_turbo(d_turbo[h] ? PLAT_TURBO_ON : PLAT_TURBO_OFF, what);
-	}
+	memcpy(d_turbo, t, sizeof d_turbo);
+	d_turbo_send();
+	d_turbo_save();
 }
 
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
@@ -2525,7 +2496,6 @@ static int diatom_wait(void)
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
 			else if (strncmp(l, "SHOT\t", 5) == 0) d_note_shot(l);
-			else if (strncmp(l, "TURBO\t", 6) == 0) d_note_turbo(l);
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and

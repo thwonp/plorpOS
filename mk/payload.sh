@@ -9,7 +9,10 @@
 # GKD (PLATFORM=gkd): out/gkd/, the two folders the ROCKNIX GKD build (not released since 2.0) -
 # copy_to_sd/ (plorpOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
 # Saves/) for the card and system.d/ for the GKD's storage - and that guide as
-# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
+# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot. Development only
+# since 2.0 (plorpos-qylg): the GKD ships as gkdb, so this writes no zip and
+# deletes any old plorpOS-v<ver>-gkd.zip from out/, where a release's
+# `sha256sum plorpOS-v<VER>-*.zip` would pick it up.
 #
 # H700 (PLATFORM=h700): out/h700/, the TF2 card's root as docs/install-h700.md
 # describes it - System/launch_frontend.sh (BaseOS's frontend hook), plorpOS/
@@ -19,8 +22,8 @@
 # GKD on BasedOS (PLATFORM=gkdb, plorpos-gkd.94): out/gkdb/, the card's root -
 # System/launch_frontend.sh (BasedOS's frontend hook), plorpOS/ with Muse's
 # FFmpeg in plorpOS/lib/, the empty folders, and docs/install-gkdb.md as
-# INSTALL.md. Asset gkdb, never gkd: ROCKNIX
-# GKDs download gkd.
+# INSTALL.md. Asset gkd350based (plorpOS-v<ver>-gkd350based.zip), never gkd:
+# ROCKNIX GKDs download gkd. src/ota.h's OTA_PORT must match.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/mk/plorpos-files.sh"
@@ -55,7 +58,7 @@ elif [ "$PLATFORM" = gkdb ]; then
 	B=$ROOT/build/gkdb
 	OUT=$ROOT/out/gkdb
 	CARD=$OUT
-	PORT=gkdb
+	PORT=gkd350based
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
@@ -146,6 +149,11 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	cp "$OB/dropbearmulti" "$P/"          # ssh: oakMOSS has no server (sd/oakmoss/ssh.sh)
 	[ -f "$OB/curl" ] || { echo "no $OB/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
 	cp "$OB/curl" "$P/"                   # oakMOSS has no curl: net.c finds this one beside cacert.pem
+	if [ "$PLATFORM" = zero40 ]; then     # Bluetooth (plorpos-auv.6); the Zero 28 has no antenna
+		cp "$B/btplayer" "$P/"            # a headset's volume reports and buttons (tools/btplayer.c)
+		cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # one ALSA PCM per bonded headset, as on the Brick
+		cp "$ROOT/sd/oakmoss/uinput.ko" "$P/" # headset buttons: the kernel has no uinput (radio.sh)
+	fi
 	mkdir -p "$P/usb-audio"               # USB DACs: oakMOSS ships no USB audio modules, launch.sh loads these (plorpos-czp)
 	cp "$ROOT/sd/oakmoss/usb-audio/"*.ko "$P/usb-audio/"
 	mkdir -p "$OUT/.tmp_update"
@@ -357,8 +365,11 @@ done
 
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
-gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh"
+      du -sh "$OUT"; echo "payload ready: $OUT"
+      rm -f "$ZIP"; echo "no release zip: ROCKNIX GKD is development only (plorpos-qylg)"; exit 0 ;;
 zero40|zero28) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
+      [ -f "$P/btplayer" ] && chmod +x "$P/btplayer"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
@@ -372,7 +383,7 @@ h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/p
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
 esac
-if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
+if [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
 	du -sh "$OUT"
 	echo "payload ready: $OUT"
 	rm -f "$ZIP"

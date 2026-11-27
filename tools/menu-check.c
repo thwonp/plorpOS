@@ -566,9 +566,9 @@ static void system_menu(void)
 		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
 		printf("shelf defaults:\n");
 		ck(!strcmp(heading, "Game Boy Defaults"), "headed with the shelf's name");
-		ck(n == 5 && ids[0] == SD_CORE && ids[1] == SD_DISPLAY && ids[2] == SD_SHADER &&
-		   ids[3] == SD_HOTKEYS && ids[4] == SD_TURBO,
-		   "Core, Display Mode, Shader, Hotkeys, Turbo Assignments; no Palette or DS Display");
+		ck(n == 4 && ids[0] == SD_CORE && ids[1] == SD_DISPLAY && ids[2] == SD_SHADER &&
+		   ids[3] == SD_HOTKEYS,
+		   "Core, Display Mode, Shader, Hotkeys (Turbo inside it); no Palette or DS Display");
 		ck(!strcmp(val(&rows[0]), "gambatte") && !rows[0].live, "one core: a fact, greyed");
 		ck(!strcmp(rows[1].label, "Display Mode") && !strcmp(val(&rows[1]), "Sharp"),
 		   "display mode is passed through");
@@ -577,7 +577,7 @@ static void system_menu(void)
 		u.engine = "PokeDaisy"; u.palette = "Auto";
 		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
 		ck(rows[0].live && !strcmp(val(&rows[0]), "PokeDaisy"), "two cores: the default, live");
-		ck(n == 6 && ids[4] == SD_PALETTE && !strcmp(val(&rows[4]), "Auto"),
+		ck(n == 5 && ids[4] == SD_PALETTE && !strcmp(val(&rows[4]), "Auto"),
 		   "a Game Boy shelf's Palette, under Hotkeys");
 		u.engine = NULL; u.palette = NULL;
 		u.overrides = false;
@@ -594,7 +594,7 @@ static void system_menu(void)
 		 * or Stretch - sits under it where the panel is not 4:3. */
 		u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
 		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
-		ck(n == 6 && ids[2] == SD_FILL && !strcmp(rows[1].label, "Layout")
+		ck(n == 5 && ids[2] == SD_FILL && !strcmp(rows[1].label, "Layout")
 #if !defined(PLATFORM_RGDS)
 		   && !strcmp(val(&rows[1]), "Top Overlay") && !strcmp(rows[2].label, "Display")
 		   && !strcmp(val(&rows[2]), "Stretch") && rows[2].live
@@ -602,7 +602,7 @@ static void system_menu(void)
 		   , "DS: Layout, then Display");
 		u.fill = NULL;
 		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
-		ck(n == 5 && ids[2] == SD_SHADER, "DS on a 4:3 panel: no Display row");
+		ck(n == 4 && ids[2] == SD_SHADER, "DS on a 4:3 panel: no Display row");
 		u.nds = false; u.dmode = "Sharp";
 	}
 
@@ -1093,8 +1093,8 @@ static void game_overrides(void)
 	memset(&u, 0, sizeof u);
 	n = go_rows(&u, rows, ids);
 	printf("game overrides, a one-core shelf on a Brick:\n");
-	ck(n == 4 && ids[0] == GO_CORE && ids[1] == GO_DISPLAY && ids[2] == GO_HOTKEYS && ids[3] == GO_TURBO,
-	   "Core, Display Mode, Hotkeys, Turbo Assignments");
+	ck(n == 3 && ids[0] == GO_CORE && ids[1] == GO_DISPLAY && ids[2] == GO_HOTKEYS,
+	   "Core, Display Mode, Hotkeys (Turbo Assignments inside it, plorpos-5tm.26)");
 	ck(!rows[0].live && !strcmp(rows[0].value, GO_DEFAULT), "one core: greyed");
 	for (int i = 0; i < n; i++) ck(!strcmp(rows[i].value, GO_DEFAULT), "every row the shelf's default");
 
@@ -1102,7 +1102,7 @@ static void game_overrides(void)
 	u.palette_shown = true; u.hotkeys = true; u.dmode = "Aspect";
 	n = go_rows(&u, rows, ids);
 	printf("game overrides, a Game Boy game with its own:\n");
-	ck(n == 6 && ids[2] == GO_SHADER && ids[3] == GO_HOTKEYS && ids[4] == GO_PALETTE,
+	ck(n == 5 && ids[2] == GO_SHADER && ids[3] == GO_HOTKEYS && ids[4] == GO_PALETTE,
 	   "Shader under Display, Palette under Hotkeys");
 	ck(rows[0].live && !strcmp(rows[0].value, "PokeDaisy"), "the game's core");
 	ck(!strcmp(rows[1].value, "Aspect") && !strcmp(rows[3].value, "custom") &&
@@ -1112,8 +1112,14 @@ static void game_overrides(void)
 	u.nds = true; u.fill_shown = true; u.fill = "Stretch";
 	n = go_rows(&u, rows, ids);
 	printf("game overrides, a DS game:\n");
-	ck(n == 5 && !strcmp(rows[1].label, "Layout") && ids[2] == GO_FILL && !strcmp(rows[2].label, "Display"),
+	ck(n == 4 && !strcmp(rows[1].label, "Layout") && ids[2] == GO_FILL && !strcmp(rows[2].label, "Display"),
 	   "Layout, then Display");
+
+	memset(&u, 0, sizeof u);
+	u.turbo = true;
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a game with its own turbo only:\n");
+	ck(ids[2] == GO_HOTKEYS && !strcmp(rows[2].value, "custom"), "Hotkeys says custom (turbo is inside it)");
 }
 
 

@@ -167,9 +167,10 @@ static inline sm_row sm_row_at(bool reset, int i) { return (sm_row)(!reset && i 
 
 /* <Shelf> Defaults (plorpos-bn9.3): what a game on this shelf plays with until
  * it has its own. Fill is the DS's Display, shown where the panel has more
- * than one; Palette a Game Boy shelf's; Hotkeys and Turbo Assignments only
- * where diatom plays. sys_menu_defaults_build says which rows are there. */
-typedef enum { SD_CORE, SD_DISPLAY, SD_FILL, SD_SHADER, SD_HOTKEYS, SD_PALETTE, SD_TURBO,
+ * than one; Palette a Game Boy shelf's; Hotkeys (Turbo Assignments inside it,
+ * plorpos-5tm.26) only where diatom plays. sys_menu_defaults_build says which
+ * rows are there. */
+typedef enum { SD_CORE, SD_DISPLAY, SD_FILL, SD_SHADER, SD_HOTKEYS, SD_PALETTE,
                SD_ROWS } sd_row;
 
 /* Reset Overrides (plorpos-bn9.3): one row per kind of per-game setting,

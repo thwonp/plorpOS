@@ -235,6 +235,7 @@ extern const char plat_pico8_pad[];
 typedef struct {
 	const char *tag, *core, *rom;
 	const char *resume, *exit_state, *preview;
+	const char *exit_preview;   /* exit_state's card picture: a save hotkey writes it (plorpos-rgds.43) */
 	const char *save;
 	int         console;
 	const char *cheevos;
@@ -266,14 +267,6 @@ void plat_resident_on_unlock(void (*fn)(int id));
 /* The same, when the Screenshot hotkey's file is on the card or failed
  * (Diatom's SHOT, plorpos-gkd.86.2): whether it worked, and the file. */
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path));
-
-/* The same, when the player uses Turbo Assign (Diatom's TURBO, plorpos-tkh):
- * what happened and, for on/off, the button ("A", "L2", "A on X" for a turbo
- * on another button), for picked the turbo button waiting for its host; ""
- * otherwise. The map is already sent; this is for the notice. */
-typedef enum { PLAT_TURBO_ARMED, PLAT_TURBO_PICKED, PLAT_TURBO_CANCEL, PLAT_TURBO_ON,
-               PLAT_TURBO_OFF, PLAT_TURBO_CLEARED } plat_turbo_event;
-void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
 
 /* Called from inside plat_resident_wait roughly ten times a second, which is
  * the rate its socket poll already runs at. For work the launcher wants to do
@@ -369,6 +362,11 @@ void        plat_game_keys_clear(const char *tag, const char *file);
  * with `save`, keeps them as its own. */
 void        plat_live_keys(const char **hk, const char **bm);
 void        plat_live_keys_set(const char *hk, const char *bm, bool save);
+/* The running game's turbo, BM_SRC_N entries (plorpos-5tm.26): the in-game
+ * Turbo Assignments screen reads it, and its changes go to Diatom at once and
+ * are kept as this game's own when Save Per-Game Overrides is on. */
+void        plat_live_turbo(int *t);
+void        plat_live_turbo_set(const int *t);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the
@@ -504,6 +502,14 @@ void plat_rgds_child_tick(void);   /* a port's window onto the primary */
  * during one. */
 void plat_bottom_keep(bool on);
 void plat_bottom_pump(void);
+/* Muse's last frame on the secondary, kept when a press on the primary ends
+ * it, to rest there until it is opened again at that place (plorpos-rgds.37).
+ * snap_want: the session's frame is one to keep; snapped: it was read at the
+ * session's end; snap_draw: it, into the secondary's renderer (false: none). */
+void plat_bottom_snap_want(bool on);
+bool plat_bottom_snapped(void);
+bool plat_bottom_snap_draw(SDL_Renderer *r);
+void plat_bottom_snap_drop(void);
 #endif
 /* Paused Sleep Delay for a run's music dark, in ms; 0 never (plorpos-5tm.22). */
 void plat_set_music_grace(unsigned ms);

@@ -28,6 +28,9 @@ export USERDATA_PATH=$SDCARD/.userdata/$BOARD
 export SHARED_USERDATA_PATH=$SDCARD/.userdata/shared
 export LOGS_PATH=$USERDATA_PATH/logs
 export HOME=$USERDATA_PATH
+# .asoundrc as a top-level ALSA file, so a headset paired after Diatom or Muse
+# started is found at their next open (the Brick's, sd/tortos/launch.sh).
+export ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$HOME/.asoundrc
 # oakMOSS's SDL2 (TrimUI's 2.26.1, with image, mixer and ttf) lives here and
 # must come first (oakMOSS hardware-notes); then plorpOS/lib, Muse's FFmpeg.
 export LD_LIBRARY_PATH=/usr/magicx/lib:$TORTOS_DIR/lib:$LD_LIBRARY_PATH
@@ -69,6 +72,7 @@ mkdir -p "$BIOS_PATH" "$ROMS_PATH" "$SAVES_PATH" "$USERDATA_PATH" "$LOGS_PATH" \
 
 # What the launcher saved for the next boot (db_write_boot_env).
 WIFI=0
+BLUETOOTH=0
 SSH=0
 TIMEZONE=America/New_York
 BOOT_ENV=$USERDATA_PATH/boot.env
@@ -106,8 +110,16 @@ elif [ -n "$TZRULE" ]; then
 	export TZ="$TZRULE"
 fi
 
+wifi_up=:
 if [ "$WIFI" = "1" ] || [ -f "$TORTOS_DIR/.devwifi" ]; then
-	wifi_on &
+	wifi_up=wifi_on
+fi
+# Bluetooth after Wi-Fi in one job, as on the Brick: both radios are the one
+# XR829 (plorpos-pky.11). The Zero 28's bt_on is a no-op.
+if [ "$BLUETOOTH" = "1" ]; then
+	{ $wifi_up; bt_on; } &
+else
+	$wifi_up &
 fi
 
 # oakMOSS boots on performance; interactive as on the Brick. Diatom pins it
@@ -136,6 +148,9 @@ start_resident() {
 		--cores "$CORES_PATH" \
 		--save "$SDCARD/Saves" --system "$SDCARD/Bios" >> "$LOG" 2>&1 &
 }
+# Before the resident's first PCM open, which caches ALSA's config (the Brick's
+# order). No bt-alsa.sh on the Zero 28.
+command -v bt_write_asoundrc > /dev/null && bt_write_asoundrc
 start_resident
 
 rm -f /tmp/tortos_poweroff /tmp/tortos_reboot

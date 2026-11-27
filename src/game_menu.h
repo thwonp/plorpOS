@@ -107,7 +107,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
  * its own, else that one. Core is greyed where the shelf has one core (and on
  * PICO-8); Display (the DS's fill), Shader and Palette are there only where
  * they mean something, as in the in-game menu. */
-typedef enum { GO_CORE, GO_DISPLAY, GO_FILL, GO_SHADER, GO_HOTKEYS, GO_PALETTE, GO_TURBO,
+typedef enum { GO_CORE, GO_DISPLAY, GO_FILL, GO_SHADER, GO_HOTKEYS, GO_PALETTE,
                GO_ROWS } go_row;
 
 /* Each value NULL for the shelf's default, else the game's own label. */
