@@ -24324,6 +24324,10 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 static void muse_on_secondary(app *a, void (*tick)(void));
 
 static void switcher_on_secondary(app *a, void (*tick)(void));
+static void qs_on_secondary(app *a, void (*tick)(void));
+static void qs_rest_draw(app *a);
+/* Quick Settings drawn again at the game's next tick (plorpos-rgds.33.3). */
+static bool g_qs_dirty = true;
 /* Details drawn again at its next tick: something else had the panel. */
 static bool g_details_stale;
 static void details_redraw(void) { g_details_stale = true; }
@@ -24347,14 +24351,23 @@ static void muse_panel_game_tick(void (*tick)(void))
 {
 	bool fresh;
 
+	static unsigned epoch;
+
 	if (g_muse_sec) return;   /* Muse runs it */
 	plat_bottom_queue(false);
 	plat_bottom_pump();
 	fresh = sec_edge(g_rgds_app, tick) != 0;
-	plat_bottom_keep(g_dual_muse);
-	if (!g_dual_muse) return;
-	if (plat_bottom_want() && g_rgds_app) { muse_on_secondary(g_rgds_app, tick); return; }
-	muse_panel_tick(fresh, false, false);
+	if (epoch != plat_bottom_epoch()) { epoch = plat_bottom_epoch(); fresh = true; }
+	/* Beside a port: its Details stay; Quick Settings are a Diatom game's. */
+	if (!g_dual_muse && tick != on_game_tick) { plat_bottom_keep(false); return; }
+	plat_bottom_keep(true);           /* a finger on it opens it there */
+	if (plat_bottom_want() && g_rgds_app) {
+		if (g_dual_muse) muse_on_secondary(g_rgds_app, tick);
+		else qs_on_secondary(g_rgds_app, tick);
+		return;
+	}
+	if (g_dual_muse) muse_panel_tick(fresh, false, false);
+	else if ((fresh || g_qs_dirty) && g_rgds_app) { g_qs_dirty = false; qs_rest_draw(g_rgds_app); }
 }
 
 /* The queue on the secondary while Muse is open on the primary
@@ -24530,37 +24543,38 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	fprintf(stderr, "muse: back from the secondary\n");
 }
 
-/* The recent games on the secondary, by touch (plorpos-rgds.33.4), as Muse
- * runs there: the primary's screen or game goes on, a pad press or a touch
- * on the primary closes it. A pick launches from the shelf; beside a Diatom
- * game it ends that game (its Auto state written, as Quit) and launch()
- * starts the pick. Not beside a port: no STOP to send it. */
-static void switcher_on_secondary(app *a, void (*tick)(void))
-{
-	SDL_Renderer *was = a->r, *r;
-	int w, h, ph = shot_phase;
-	sw_pick pk;
-	bool powered, picked;
+/* A screen of the launcher's run on the secondary by touch, as Muse runs
+ * there (plorpos-rgds.33.3, .33.4): the primary's screen or game goes on, a
+ * pad press or a touch on the primary ends it. */
+typedef struct { SDL_Renderer *was; int ph; } sec_sess;
 
-	if (tick && tick != on_game_tick) return;
-	if (!(r = plat_bottom_begin(&w, &h))) return;
+static bool sec_begin(app *a, void (*tick)(void), sec_sess *ss)
+{
+	SDL_Renderer *r;
+	int w, h;
+
+	if (!(r = plat_bottom_begin(&w, &h))) return false;
+	ss->was = a->r;
+	ss->ph = shot_phase;
 	muse_textures_forget(a);
 	a->r = r;
 	SDL_RenderSetScale(r, plat_scale(), plat_scale());
 	ui_hit_set(1);
-	g_sw_sec = true;
 	plat_bottom_session(true, tick != NULL);
 	if (tick) { g_sec_tick = tick; shot_phase = 0; plat_input_flush(); }
-	fprintf(stderr, "switcher: on the secondary%s\n", tick ? " beside a game" : "");
-	picked = switcher_run(a, NULL, tick != NULL, &pk, &powered);
+	return true;
+}
+
+static void sec_end(app *a, void (*tick)(void), sec_sess *ss)
+{
 	g_sec_tick = NULL;
-	shot_phase = ph;
-	g_sw_sec = false;
+	shot_phase = ss->ph;
 	ui_hit_set(0);
 	muse_textures_forget(a);
-	SDL_RenderSetScale(r, 1.0f, 1.0f);
-	a->r = was;
+	SDL_RenderSetScale(a->r, 1.0f, 1.0f);
+	a->r = ss->was;
 	/* What the secondary showed before, at once. */
+	g_qs_dirty = true;
 	if (g_dual_muse) muse_panel_tick(true, false, false);
 	else details_redraw();
 	ui_redraw_now();
@@ -24568,6 +24582,24 @@ static void switcher_on_secondary(app *a, void (*tick)(void))
 	plat_bottom_session(false, tick != NULL);
 	/* The swipe that closed it is not one to open it again. */
 	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse;
+}
+
+/* The recent games there (plorpos-rgds.33.4). A pick launches from the
+ * shelf; beside a Diatom game it ends that game (its Auto state written, as
+ * Quit) and launch() starts the pick. Not beside a port: no STOP to send. */
+static void switcher_on_secondary(app *a, void (*tick)(void))
+{
+	sec_sess ss;
+	sw_pick pk;
+	bool powered, picked;
+
+	if (tick && tick != on_game_tick) return;
+	if (!sec_begin(a, tick, &ss)) return;
+	g_sw_sec = true;
+	fprintf(stderr, "switcher: on the secondary%s\n", tick ? " beside a game" : "");
+	picked = switcher_run(a, NULL, tick != NULL, &pk, &powered);
+	g_sw_sec = false;
+	sec_end(a, tick, &ss);
 	if (tick) {
 		const char *tag, *file;
 
@@ -24579,6 +24611,119 @@ static void switcher_on_secondary(app *a, void (*tick)(void))
 		snprintf(g_switch_file, sizeof g_switch_file, "%s", file);
 		plat_resident_line("STOP");
 	} else if (picked) switcher_launch(a, &pk);
+}
+
+/* Quick Settings (plorpos-rgds.33.3): the in-game menu's rows on the
+ * secondary beside a running Diatom game, by touch, and the game not paused
+ * - every row is a line Diatom takes while it runs. No Continue: there is
+ * nothing to continue. */
+/* gm first: gm_key takes it as its own context. armed: Reset or Quit tapped
+ * once - a finger beside a running game slips more easily than a button, so
+ * those two want a second tap whatever Confirm Quit says. */
+typedef struct { gm_ctx gm; int armed; } qs_ctx;
+
+static int qs_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	qs_ctx *q = ctx;
+	gm_ctx *c = &q->gm;
+	menu_row all[GM_ROWS];
+	int ids[GM_ROWS], n, k = 0;
+
+	(void)max;
+	*heading = NULL;       /* as the in-game menu: every row fits without one */
+	n = gm_compact(all, gm_build(c->a, all, &c->bufs), ids);
+	for (int i = 0; i < n; i++) {
+		if (ids[i] == GM_CONTINUE) continue;
+		rows[k] = all[i];
+		if (ids[i] == q->armed) rows[k].value = "Tap again";
+		c->ids[k++] = ids[i];
+	}
+	return k;
+}
+
+/* As the in-game menu's, but Save and Load stay on the secondary, and a save
+ * has no paused frame to show what it holds: that slot's old picture goes
+ * rather than stand for the new state. */
+static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
+{
+	qs_ctx *q = ctx;
+	gm_ctx *c = &q->gm;
+	int row = c->ids[sel], armed = q->armed;
+
+	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1;
+	if (key == IN_ACCEPT && (row == GM_RESET || row == GM_QUIT)) {
+		if (armed != row) { q->armed = row; return MENU_STAY; }
+		/* Quit as the in-game menu's: the exit state may follow behind. */
+		plat_resident_line(row == GM_RESET ? "RESET" : "STOP\tlazy=1");
+		return MENU_DONE;
+	}
+
+	if (key == IN_ACCEPT && (row == GM_SAVE || row == GM_LOAD)) {
+		int slot = slot_strip(a, NULL, row == GM_SAVE);
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
+
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
+		if (!slot) return MENU_STAY;
+		slot_state_path(a, o, &sv->list.items[sv->cursor], slot, sp, sizeof sp);
+		if (row == GM_SAVE) {
+			plat_resident_line("SAVE\tpath=%s", sp);
+			slot_preview_path(a, o, &sv->list.items[sv->cursor], slot, pp, sizeof pp);
+			unlink(pp);
+		} else {
+			plat_resident_line("LOAD\tpath=%s", sp);
+		}
+		return MENU_DONE;
+	}
+	return gm_key(a, c, key, sel);
+}
+
+static void qs_style(app *a, qs_ctx *q)
+{
+	q->gm.a = a;
+	q->gm.st.fixed_w  = gm_width(a);
+	q->gm.st.accent   = MENU_ACCENT;     /* as drawn at rest */
+	q->gm.st.backdrop = gm_backdrop;     /* no paused frame: black */
+	q->gm.st.on_power = gm_power;
+	q->armed = -1;
+}
+
+static void qs_on_secondary(app *a, void (*tick)(void))
+{
+	sec_sess ss;
+	qs_ctx q = { 0 };
+
+	if (!sec_begin(a, tick, &ss)) return;
+	qs_style(a, &q);
+	fprintf(stderr, "quick settings: on the secondary\n");
+	menu_run(a, &q.gm.st, qs_build, qs_key, &q);
+	g_menu_closing = false;
+	sec_end(a, tick, &ss);
+}
+
+/* Its rows at rest beside the game: a finger on them opens them as above. */
+static void qs_rest_draw(app *a)
+{
+	qs_ctx q = { 0 };
+	menu_row rows[GM_ROWS];
+	const char *heading;
+	SDL_Renderer *was = a->r, *r;
+	int w, h, n;
+
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	qs_style(a, &q);
+	n = qs_build(&q, rows, GM_ROWS, &heading);
+	a->r = r;
+	SDL_RenderSetScale(r, plat_scale(), plat_scale());
+	ui_hit_set(1);
+	gm_backdrop(a, &q.gm);
+	menu_draw(a, heading, rows, n, -1, q.gm.st.fixed_w, MENU_ACCENT);
+	ui_hit_set(0);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	a->r = was;
+	plat_bottom_end();
 }
 
 /* Any screen's poll, when a finger lands on the secondary's resting Muse
@@ -24620,6 +24765,7 @@ static void details_tick(app *a)
 		details_set_face(false, p, FONTS[g_font].scale);
 		init = true;
 	}
+	g_qs_dirty = true;                   /* the shelf has the panel */
 	if (sec_edge(a, NULL) < 0) return;   /* the switcher had the panel, may have launched */
 	if (g_details_stale) { g_details_stale = false; on = false; }
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
