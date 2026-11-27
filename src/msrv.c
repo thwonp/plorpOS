@@ -75,6 +75,7 @@ struct msrv {
 	/* resolve's connection, found on the worker */
 	volatile bool picking;
 	unsigned pick_failed;              /* when the last one found none; 0 never */
+	unsigned nobase_since, nobase_last; /* a track waiting on no connection (plorpos-5eq.29) */
 	/* the index read for a queue alone (vgr.19): asked once a run, reading now */
 	bool tab_asked;
 	volatile bool tab_reading;
@@ -1429,8 +1430,23 @@ bool msrv_resolve(msrv *m, const char *rel, musec_remote *out)
 		 * answering): one is found off this thread, the queue's, and the
 		 * player asks again on each poll (plorpos-1lw.19). A track fetched
 		 * first played above. */
-		bool ask = !m->picking && (!m->pick_failed || now_ms() - m->pick_failed > 10000);
+		unsigned now = now_ms();
+		bool ask = !m->picking && (!m->pick_failed || now - m->pick_failed > 10000);
 
+		/* The track stops and says so rather than Loading for good: once
+		 * the last look found none, or after 20 s of waiting - a look tries
+		 * each connection twice, 35 s and more, where one answering only
+		 * by relay is found in about 14. The look goes on; play asks
+		 * again (plorpos-5eq.29). Resolve is asked every 250 ms while a
+		 * track waits, so a longer gap is a new wait. */
+		if (!m->nobase_since || now - m->nobase_last > 2000) m->nobase_since = now | 1;
+		m->nobase_last = now;
+		if ((!ask && !m->picking) || now - m->nobase_since > 20000) {
+			m->nobase_since = 0;
+			UNLOCK();
+			out->unreachable = true;
+			return true;
+		}
 		if (ask) m->picking = true;
 		UNLOCK();
 		if (ask) { msrv_job *j = msrv_job_new(J_PICK); if (j) msrv_push(m, j, true); else m->picking = false; }

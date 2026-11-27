@@ -16202,8 +16202,9 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		ny = sy + lm + 16;
 	}
 
-	/* A book played to its end says so, rather than that it stopped. */
-	if (mn->state == MU_STOPPED && book >= 0 && g_book_done && g_book_done[book])
+	/* A book played to its end says so, rather than that it stopped - not
+	 * over its Loading when played again (plorpos-5eq.29). */
+	if (state && !strcmp(state, "Stopped") && book >= 0 && g_book_done && g_book_done[book])
 		state = "Finished";
 
 	SDL_SetRenderDrawColor(r, UI_BG_R, UI_BG_G, UI_BG_B, 255);
