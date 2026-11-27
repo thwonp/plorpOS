@@ -21117,9 +21117,19 @@ static dark_end music_dark(app *a, unsigned *waited)
 		 * the speaker and left it there until a wake (2026-10-06). */
 		if (musec_heard()) aout_apply(false);
 		now = plat_now_ms();
-		if (musec_playing() || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
-		else if (!stopped)                 stopped = now ? now : 1;
-		else if (grace && now - stopped >= grace) break;
+		/* Playing that has not moved for a minute is an output wedged under
+		 * Muse (the Rotate's DSP after a DAC, plorpos-3yv.102): not music to
+		 * stay awake for, or the battery runs out in the dark. */
+		{
+			static bool told;
+			bool stuck = musec_stuck(60000);
+
+			if (stuck && !told) fprintf(stderr, "muse: playing but stuck for 60 s; sleeping anyway\n");
+			told = stuck;
+			if ((musec_playing() && !stuck) || muse_syncing()) stopped = 0;   /* a sync: no suspend yet (vgr.10) */
+			else if (!stopped)                 stopped = now ? now : 1;
+			else if (grace && now - stopped >= grace) break;
+		}
 		plat_input_poll(&a->in);
 		{
 			bool down = a->in.down[IN_POWER];

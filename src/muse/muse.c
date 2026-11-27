@@ -639,7 +639,7 @@ static void on_term(int sig) { (void)sig; g_quit = 1; }
 static void save_syslog(void)
 {
 	const char *dir = getenv("LOGS_PATH");
-	char path[512], cmd[600];
+	char path[512], cmd[1024];
 	time_t now = time(NULL);
 	struct tm tm;
 
@@ -647,7 +647,12 @@ static void save_syslog(void)
 	snprintf(path, sizeof path, "%s/muse-stall-%04d%02d%02d-%02d%02d%02d.txt",
 	         dir && *dir ? dir : "/tmp", tm.tm_year + 1900, tm.tm_mon + 1,
 	         tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-	snprintf(cmd, sizeof cmd, "logread > '%s' 2>&1", path);
+	/* logread is BusyBox's; Armbian (the Rotate) has the journal instead,
+	 * and the kernel's ring for the audio driver (plorpos-3yv.103). */
+	snprintf(cmd, sizeof cmd,
+	         "{ if command -v logread >/dev/null; then logread; "
+	         "else journalctl -b --no-pager -n 400; echo '--- dmesg'; dmesg | tail -n 200; fi; } > '%s' 2>&1",
+	         path);
 	if (fork() == 0) {
 		execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
 		_exit(127);
