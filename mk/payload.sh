@@ -278,8 +278,7 @@ else
 	plorpos_unzip "$P" || exit 1            # the firmware has none (plorpos-koo)
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # sourced by launch.sh, run by the launcher
 	cp "$ROOT/sd/tortos/radio.sh" "$P/"   # sourced by launch.sh AND by plat_sleep()
-	cp "$ROOT/res/boot/tortos-boot.mp4" "$P/"
-	cp "$ROOT/res/boot/bootlogo.bmp" "$P/"    # u-boot splash, applied on first boot
+	cp "$ROOT/res/boot/bootlogo.bmp" "$P/"    # u-boot splash, applied per BOOT_ART (launch.sh)
 	cp "$ROOT/res/boot/splash.png" "$P/"      # the pic2fb loading splash, likewise
 	cp "$ROOT/docs/install-brick.md" "$OUT/INSTALL.md"  # lands on the card root; harmless
 fi

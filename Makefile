@@ -689,12 +689,12 @@ vendor:
 
 # Assets in res/ are committed ready to ship; nothing needs generating to build.
 #
-# The boot animation still has a generator. The system cards no longer do: they
+# The Brick's boot pictures still have a generator. The system cards do not: they
 # are drawn by hand, gencards.py could not reproduce any of the nine, and its
 # only remaining effect would have been to overwrite three of them. Their accent
 # rule is kept in step with config/systems.cfg by tools/recolor-cards.py.
 boot:
-	python3 tools/genboot.py
+	python3 mk/brick-bootlogo.py res/boot/plorpos-wordmark.png res/boot
 
 # What a session record costs to commit, measured on the filesystem you point
 # it at. Built here rather than described in a commit message, because the

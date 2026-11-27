@@ -121,12 +121,9 @@ case $WHAT in res|all)
 	$A shell "mkdir -p $P/res/web" > /dev/null
 	$A push "$ROOT/res/web/."               "$P/res/web/" > /dev/null
 	$A push "$ROOT/res/fonts/menu.ttf"      "$P/res/web/menu.ttf" > /dev/null
-	$A push "$ROOT/res/boot/tortos-boot.mp4" "$P/" > /dev/null
 	# The bootloader splash and the pic2fb splash. launch.sh installs these
-	# ONCE, guarded by .bootlogo_applied / .splash_applied, so pushing them
-	# is not enough on a device that has already been set up - clear the
-	# markers too when the animation's opening color changes, or the
-	# handoff into it steps from the old color to the new one.
+	# when its BOOT_ART differs from the one in .bootlogo_applied /
+	# .splash_applied, so a new picture needs BOOT_ART bumped too.
 	$A push "$ROOT/res/boot/bootlogo.bmp"   "$P/" > /dev/null
 	$A push "$ROOT/res/boot/splash.png"     "$P/" > /dev/null
 	# The device has curl and OpenSSL but no trust store, so without this

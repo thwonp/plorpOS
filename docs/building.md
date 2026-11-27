@@ -152,7 +152,7 @@ sd/             per-device boot and session scripts: tortos/ (Brick launch.sh), 
                 trimui/, gkd/, h700/, rotate/, miyoo/
 mk/             cross build, core builds, payload, deploy and image scripts;
                 flip-cores/, flip-fw/, patches/, pgo/
-res/            boot animation, system cards, fonts, shaders, CA bundle, Over The
+res/            boot pictures, system cards, fonts, shaders, CA bundle, Over The
                 Hare's page, Nano boot logo
 third_party/    vendored libchdr and rcheevos
 docs/           guides, install pages, how it works, menus, decisions/

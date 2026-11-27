@@ -566,33 +566,6 @@ static void present_black(app *a)
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 }
 
-/* The boot animation plays in a background process while everything below
- * runs -- the card scan, GL init, font and asset decode, the lot. Both it and
- * this process draw to /dev/fb0, so presenting now would fight it: last
- * writer wins, at 60fps against its 30. Wait for it to clear the marker, then
- * draw.
- *
- * Bounded, because a boot that hangs behind a stuck decoder would be a far
- * worse bug than a seam in an animation. An absent marker means no animation
- * is playing -- every launcher restart after this one -- and this returns at
- * once. */
-static void wait_for_boot_anim(void)
-{
-	const char *flag = getenv("TORTOS_ANIM_FLAG");
-	unsigned start;
-
-	if (!flag || !*flag || access(flag, F_OK) != 0) return;
-	start = plat_now_ms();
-	while (access(flag, F_OK) == 0) {
-		if (plat_now_ms() - start > 8000u) {
-			fprintf(stderr, "boot: animation flag stuck, drawing anyway\n");
-			break;
-		}
-		SDL_Delay(8);
-	}
-	t_mark("anim wait");
-}
-
 /* ---------- per-system display mode --------------------------------------- */
 
 /* Keyed on the system's tag rather than its folder or its place in the list,
@@ -26636,10 +26609,11 @@ int main(int argc, char *argv[])
 	/* Scan every system now, not when one is opened: it is three directory
 	 * reads, it happens behind the boot animation, and it means walking into
 	 * a system is a frame rather than a wait. */
-#ifdef PLATFORM_MIYOO
-	/* Cold vfat directory reads were 2.7 s of the Flip's boot: answer from the
-	 * last scan while the folders are unchanged. A rescan (menu, upload) reads
-	 * the card and refreshes it. */
+#if defined(PLATFORM_MIYOO) || defined(PLATFORM_BRICK)
+	/* Cold vfat directory reads were 2.7 s of the Flip's boot and 4.5 s of a
+	 * big Brick card's (plorpos-act.2): answer from the last scan while the
+	 * folders are unchanged. A rescan (menu, upload) reads the card and
+	 * refreshes it. */
 	{
 		char cdir[CFG_STR];
 
@@ -26865,10 +26839,6 @@ int main(int argc, char *argv[])
 			goto done;
 		}
 	}
-
-	/* Everything above ran while the boot animation was on screen. Only now
-	 * is it this process's turn to own the framebuffer. */
-	wait_for_boot_anim();
 
 	/* Swallow the input noise a boot produces -- replayed wake presses, the
 	 * bursts input devices emit as they come up -- before honoring anything.

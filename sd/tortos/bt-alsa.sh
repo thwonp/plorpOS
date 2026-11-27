@@ -39,13 +39,17 @@
 # before starting tortos.elf, whose bonds() reads it, and plat_sleep's shell
 # inherits it rather than grepping 8 MB again.
 #
+# One grep, not two: 5.54 has no /var/lib/bluetooth string at all, and the
+# second check (no /etc/lib string) read the Pro's whole 8.4 MB binary for
+# nothing - 3.4 s of every Pro boot (plorpos-act.1). A hit on /var/lib stops
+# early in the file.
+#
 # On the Pro, the link's target rather than the link: the init wrapper makes
 # /var/lib/bluetooth only when bluetoothd starts, ~20 s into boot, and by then
 # bt_write_asoundrc has run and found nothing - an empty .asoundrc, and every
 # headset on the speaker until the next pairing (TortOS-pky.12).
 if [ -z "$TORTOS_BT_BONDS" ]; then
-	if grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null &&
-		! grep -q /etc/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null; then
+	if grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null; then
 		TORTOS_BT_BONDS=/var/lib/bluetooth
 		[ -d /etc/bluetooth/keys ] && TORTOS_BT_BONDS=/etc/bluetooth/keys
 	else
