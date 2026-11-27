@@ -195,9 +195,6 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
 	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
 	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
-#if defined(PLATFORM_RGDS)
-	out[PM_DUAL]         = (menu_row){ "Dual Screen Settings", NULL, true };
-#endif
 	/* How games start, stop and rewind (plorpos-pyz). */
 	out[PM_GAME]         = (menu_row){ "Game Settings", NULL,   true  };
 	/* What every button does, per screen. Needs nothing of the device, which
@@ -300,16 +297,6 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_PORTS]    = (menu_row){ "Ports Tile",
 	                               u->ports_hidden ? "Hidden" : "Visible", true };
 	return u->has_ports ? US_ROWS : US_PORTS;
-}
-
-int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
-{
-	*heading = "Dual Screen Settings";
-	/* What the second panel shows on the shelf. It has no off here: its
-	 * brightness goes down to off (plorpos-rgds.30). */
-	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse+" : "Details", true };
-	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
-	return DU_ROWS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

@@ -1240,10 +1240,12 @@ static sys_order g_order;
  * read before the drop, so the setting row only exists where there is a tile. */
 static bool g_ports_hidden, g_has_ports;
 #if defined(PLATFORM_RGDS)
-/* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
- * once and kept here, as details_tick asks every frame. No on/off: the
- * secondary is off at brightness 0 (plorpos-rgds.30), drawn all the same so
- * that raising it - beside a game too - shows it at once. */
+/* The secondary panel (plorpos-rgds.33): g_dual_muse, Muse+ is up there
+ * rather than Details - a swipe down from its top edge turns it on and off,
+ * and it stays through games until then (not saved: Details at boot).
+ * g_dual_bottom, Primary Screen Bottom (db dual_bottom, Anbernic + Home). No
+ * on/off: the secondary is off at brightness 0 (plorpos-rgds.30), drawn all
+ * the same so that raising it - beside a game too - shows it at once. */
 static bool g_dual_muse, g_dual_bottom;
 #endif
 
@@ -7846,8 +7848,6 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.adb_restart = plat_adb_restart();
 #endif
 #if defined(PLATFORM_RGDS)
-		u.dual_muse = g_dual_muse;
-		u.dual_bottom = g_dual_bottom;
 #endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
@@ -13153,44 +13153,6 @@ static void ui_settings_screen(app *a)
 	         ui_settings_build, ui_settings_key, &c);
 }
 
-#if defined(PLATFORM_RGDS)
-/* Settings > Dual Screen Settings (plorpos-rgds.18.1): three toggles, each
- * saved at once and taken up by the shelf's next frame. */
-static int dual_settings_build(void *ctx, menu_row *rows, int max,
-                               const char **heading)
-{
-	subset_ctx *c = ctx;
-	char ss[WIFI_SSID_MAX];
-	sys_ui u;
-
-	(void)max;
-	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
-	return sys_menu_dual_build(&u, rows, heading);
-}
-
-static menu_result dual_settings_key(app *a, void *ctx, in_button key, int sel)
-{
-	bool *v = sel == DU_FUNCTION ? &g_dual_muse : sel == DU_PRIMARY ? &g_dual_bottom : NULL;
-	static const char *const id[DU_ROWS] = { "dual_muse", "dual_bottom" };
-
-	(void)a; (void)ctx;
-	if (!v || !(key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) return MENU_STAY;
-	*v = !*v;
-	db_set_int(db_dev(), id[sel], *v);
-	if (sel == DU_PRIMARY) plat_set_primary_bottom(g_dual_bottom);
-	return MENU_STAY;
-}
-
-static void dual_settings_screen(app *a)
-{
-	subset_ctx c = { .a = a };
-
-	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
-	                           .fixed_w = menu_std_width(a) },
-	         dual_settings_build, dual_settings_key, &c);
-}
-#endif
-
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -13387,9 +13349,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_NET:          net_screen(a); break;
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
-#if defined(PLATFORM_RGDS)
-	case PM_DUAL:         dual_settings_screen(a); break;
-#endif
 	case PM_GAME:         game_settings_screen(a); break;
 #if SYS_HAS_BT
 	case PM_BT:           bt_screen(a); break;
@@ -25082,7 +25041,6 @@ int main(int argc, char *argv[])
 		g_order = cfg_order_index(id);
 		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
 #if defined(PLATFORM_RGDS)
-		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
 		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
 #endif
 		order_systems(&a);
