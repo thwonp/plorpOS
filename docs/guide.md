@@ -104,22 +104,34 @@ cursor, behind a confirm. Forgetting the one you are connected through is
 allowed - refusing would leave a row that is visibly saved and visibly
 un-forgettable, which is worse to explain than the consequence.
 
-The system menu opens on a shelf of games and applies to that system alone:
+The system menu opens on a shelf of games and applies to that system alone.
+It holds system options only; a game's own settings are in its X menu.
 
 | | |
 |---|---|
-| **Core** | which core runs them. Switchable per game (the one under the cursor) on Game Boy, Game Boy Color, Game Boy Advance and Nintendo DS (and the Miyoo Mini Flip's SNES and Neo Geo Pockets); on PICO-8, fake-08 or native for the whole shelf. Elsewhere it only names the core |
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
-| **Default Display Mode** | `Stretch`, `Aspect`, `Integer`, and `Integer Overscale` (the next whole size, edges cropped) on the square GKD and RG Rotate screens. Left/right cycles it; saved the moment it changes. On the DS shelf it is **Default Layout**. A game whose Display you set in the in-game menu keeps its own |
-| **Default Palette** | Game Boy and Game Boy Color shelves: the palette a game starts with until you pick one in the in-game menu |
-| **Default Display** | DS shelf only: **Aspect**, **Stretch** or **Integer** for Top Only, Bottom Only and the Overlays' big screen; only the choices that change the picture on that panel, none on the Brick |
-| **Default Shader** | the console's shader (**Default Scanline Filter** on the Miyoo Mini Flip): left/right steps through the list, A opens it; a game whose Shader you set in the in-game menu keeps its own; greyed on PICO-8 running native |
-| **Box Art** | fetch what this system is missing, and nothing else |
+| **<Shelf> Defaults** | what every game on the shelf plays with until it has its own (below) |
+| **Reset Overrides** | every shelf but Ports: one row per kind of per-game setting, with how many games on this shelf have one. A asks Yes/No, then clears that kind for every game here. The defaults stay |
+| **Scrape Shelf** | fetch the art this system is missing, and nothing else (needs Wi-Fi) |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |
-| **Reset Display Overrides** | every shelf but Ports: asks Yes/No, then puts every game on the shelf back on its defaults (Display, Shader, Palette, DS Layout and Display) |
+
+**<Shelf> Defaults** (named for the shelf, e.g. "Super NES Defaults"):
+
+| | |
+|---|---|
+| **Core** | which core runs the shelf. A choice on Game Boy, Game Boy Color, Game Boy Advance and Nintendo DS (and the Miyoo Mini Flip's SNES and Neo Geo Pockets); on PICO-8, fake-08 or native. Elsewhere it only names the core |
+| **Display Mode** | `Stretch`, `Aspect`, `Integer`, and `Integer Overscale` (the next whole size, edges cropped) on the square GKD and RG Rotate screens. On the DS it is **Layout**, with **Display** (Aspect, Stretch or Integer for the big screen) under it where the panel offers more than one |
+| **Shader** | the shelf's shader (**Scanline Filter** on the Miyoo Mini Flip): left/right steps through the list, A opens it; greyed on PICO-8 running native |
+| **Hotkeys** | the shelf's hotkeys and Button Mapping, the same screen as in a game |
+| **Palette** | Game Boy and Game Boy Color: the palette a game starts with |
+| **Turbo Assignments** | the shelf's turbo buttons (below) |
+
+Left/right (and A) change a value, saved at once. A game that has its own
+keeps it whatever the default does later; Reset Overrides or the game's
+Game Overrides puts it back on the default.
 
 On Favorites the menu is only Sort By. The rest is about one
-console, and a game there keeps its own Display, or its console's default,
+console, and a game there keeps its own settings, or its console's defaults,
 wherever it was started from.
 
 **X** on a game opens its info screen:
@@ -131,13 +143,24 @@ wherever it was started from.
 | **Achievements** | earned / total; A opens the list |
 | **Get Box Art** / **Replace Box Art** | fetch a cover for this game alone (needs Wi-Fi); a cover already there stays unless a new one is found |
 | **Rename** | the name shown on the shelf, typed on the keyboard; the file keeps its name, and a rescrape never undoes it. Empty gives back the old name |
+| **Game Overrides** | this game's own settings (games played in diatom; not Ports or native PICO-8) |
 | **Delete Game** | asked first; removes the file from the card (saves stay). On Ports it runs PortMaster's uninstall, saves included |
 
-Display Mode is per-system, because a Game Boy and a Genesis do not want the
-same answer. Set here it applies from the next launch; the same row in the
-in-game menu changes the running game as you press it, which is the one to use
-when you want to see the difference rather than guess at it. Either way it is
-written the moment it changes - there is no confirm step to hang the save off.
+**Game Overrides** lists Core, Display Mode (Layout and Display on the DS),
+Shader, Hotkeys, Palette (Game Boy games without their own colours) and Turbo
+Assignments. Each reads **Shelf Default** until the game has its own. Left,
+right and A cycle through Shelf Default and the real values; choosing Shelf
+Default drops the game's own. Hotkeys and Turbo Assignments open their
+screens for this game, with a **Use Shelf Default** row; they read `custom`
+once the game has its own. From Favorites or Recents it works on the game's
+own console.
+
+Changes made in a game (the in-game menu's Display, Layout, Shader and
+Palette, the Hotkeys screen and Button Mapping, Turbo Assign, a DS game's
+swapped screens) are saved as that game's own while **Save Per-Game
+Overrides** is on in Game Settings, the default. Off, they last until the game
+quits. Saved ones always apply. The in-game screens never change the shelf's
+defaults: those are set from <Shelf> Defaults.
 
 Sort By is per-system for the same reason. Alphabetical is the only sane way
 to find a title you can name, and no help at all when you are coming back to
@@ -158,12 +181,16 @@ game, press it, then the button to turbo, then the button to put it on:
 Turbo Assign + A + X makes X a turbo A, pressing A about ten times a second
 for as long as you hold it; Turbo Assign + A + A makes A its own turbo. The
 same again turns it back. Hold
-Turbo Assign two seconds to clear every turbo button. It lasts until the game
-quits, unless **Persistent Turbo Assignments** is on in Game Settings: then each game keeps
-its own turbo buttons for next time. How it works is in [turbo.md](turbo.md).
+Turbo Assign two seconds to clear every turbo button. With **Save Per-Game
+Overrides** on, the game keeps its turbo buttons for next time; off, they last
+until it quits. **Turbo Assignments** (in <Shelf> Defaults, or a game's Game
+Overrides) sets the same thing as a list: each button, None or the turbo it
+fires. A game with none of its own uses the shelf's. How it works is in
+[turbo.md](turbo.md).
 
-**Button Mapping** (in-game menu > Hotkeys > Button Mapping) moves the game's
-buttons, for the whole console. Each row is a button as that console's pad
+**Button Mapping** (Hotkeys > Button Mapping, in a game or from <Shelf>
+Defaults) moves the game's buttons: for this game from in-game or Game
+Overrides, for the whole console from <Shelf> Defaults. Each row is a button as that console's pad
 names it - A, B, C, X, Y, Z on the Genesis, A to D on the Neo Geo, I and II on the
 TurboGrafx-16 -
 and holds the button that sends it: press A on a row, then the button. A
