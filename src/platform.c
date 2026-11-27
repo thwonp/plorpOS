@@ -1714,12 +1714,13 @@ bool plat_resident_send(const plat_game *g)
 		 * flash above over again). */
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
+		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots\texit_preview=%s",
 		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD))
+		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD,
+		           g->exit_preview ? g->exit_preview : ""))
 			return false;
 
 		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.

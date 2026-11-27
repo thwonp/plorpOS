@@ -235,6 +235,7 @@ extern const char plat_pico8_pad[];
 typedef struct {
 	const char *tag, *core, *rom;
 	const char *resume, *exit_state, *preview;
+	const char *exit_preview;   /* exit_state's card picture: a save hotkey writes it (plorpos-rgds.43) */
 	const char *save;
 	int         console;
 	const char *cheevos;
