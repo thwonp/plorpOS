@@ -172,6 +172,65 @@ enum {
 #define CODE_MENU BTN_MODE
 #endif
 
+#ifdef PLATFORM_ZERO40
+/* The Zero 40 image boots Dedicated OS's chain, whose device tree numbers the
+ * pad differently (launch.sh sets MAGICX_PAD=dedicated, plorpos-d98.18): A 304
+ * and also 353, B 305, X 307, Y 308. SDL sorts the 353 in after L3, so from
+ * the d-pad on every index is one higher. JOY_* stay this file's names; these
+ * turn the chain's SDL indices and raw codes into them. */
+static const signed char dedicated_idx[] = {
+	JOY_A, JOY_B, JOY_X, JOY_Y, JOY_L1, JOY_R1, JOY_L2, JOY_R2, JOY_SELECT, JOY_START,
+	JOY_L3, -1 /* 353: A's second code */, JOY_UP, JOY_LEFT, JOY_RIGHT, JOY_DOWN,
+	JOY_VOLDN, JOY_VOLUP, JOY_MENU,
+};
+
+static bool pad_dedicated(void)
+{
+	static int v = -1;
+
+	if (v < 0) {
+		const char *e = getenv("MAGICX_PAD");
+
+		v = e && !strcmp(e, "dedicated");
+	}
+	return v;
+}
+
+/* SDL's button index on this pad -> JOY_*, or -1 for one to ignore. */
+static int joy_index(int sdl)
+{
+	if (!pad_dedicated()) return sdl;
+	return sdl >= 0 && sdl < (int)sizeof dedicated_idx ? dedicated_idx[sdl] : -1;
+}
+
+/* JOY_* -> SDL's index on this pad. */
+static int joy_sdl(int ours)
+{
+	if (!pad_dedicated()) return ours;
+	for (int i = 0; i < (int)sizeof dedicated_idx; i++)
+		if (dedicated_idx[i] == ours) return i;
+	return -1;
+}
+
+/* A raw key code as our chain sends it, or -1 for 353. */
+static int raw_code(int code)
+{
+	if (!pad_dedicated()) return code;
+	switch (code) {
+	case 304: return 305;
+	case 305: return 304;
+	case 307: return 308;
+	case 308: return 307;
+	case 353: return -1;
+	default: return code;
+	}
+}
+#else
+static inline int joy_index(int sdl) { return sdl; }
+static inline int joy_sdl(int ours) { return ours; }
+static inline int raw_code(int code) { return code; }
+#endif
+
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static SDL_Joystick *joy;
@@ -500,7 +559,7 @@ void plat_input_flush(void)
 	memset(stick_dir, 0, sizeof stick_dir);
 	memset(rstick_dir, 0, sizeof rstick_dir);
 	SDL_JoystickUpdate();
-	menu_filter_reset(joy && SDL_JoystickGetButton(joy, JOY_MENU));
+	menu_filter_reset(joy && SDL_JoystickGetButton(joy, joy_sdl(JOY_MENU)));
 #ifdef PLATFORM_ZERO40
 	touch_reset();
 #endif
@@ -725,8 +784,11 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 	}
 #endif
 	if (ev->type != EV_KEY || ev->value == 2) return false;
+	int code = raw_code(ev->code);
+
+	if (code < 0) return true;
 	for (i = 0; i < sizeof codes / sizeof codes[0]; i++)
-		if (ev->code == codes[i]) {
+		if (code == codes[i]) {
 			int d = joy_dir((int)i);
 
 			if (d >= 0) { hat_dir[d] = ev->value == 1; set_dirs(st); }
@@ -835,16 +897,19 @@ void plat_input_poll(in_state *st)
 			st->quit_requested = true;
 			break;
 		case SDL_JOYBUTTONDOWN:
-		case SDL_JOYBUTTONUP:
+		case SDL_JOYBUTTONUP: {
+			int jb = joy_index(e.jbutton.button);
+
 			if (dbg_input && e.type == SDL_JOYBUTTONDOWN)
-				fprintf(stderr, "[in] joy button=%d\n", e.jbutton.button);
-			if (joy_dir(e.jbutton.button) >= 0) {
-				hat_dir[joy_dir(e.jbutton.button)] = e.type == SDL_JOYBUTTONDOWN;
+				fprintf(stderr, "[in] joy button=%d (%d)\n", e.jbutton.button, jb);
+			if (jb < 0) break;
+			if (joy_dir(jb) >= 0) {
+				hat_dir[joy_dir(jb)] = e.type == SDL_JOYBUTTONDOWN;
 				set_dirs(st);
 			} else
-				set_btn(st, map_joy_button(e.jbutton.button),
-				        e.type == SDL_JOYBUTTONDOWN);
+				set_btn(st, map_joy_button(jb), e.type == SDL_JOYBUTTONDOWN);
 			break;
+		}
 		case SDL_JOYHATMOTION:
 			hat_dir[0] = (e.jhat.value & SDL_HAT_LEFT)  != 0;
 			hat_dir[1] = (e.jhat.value & SDL_HAT_RIGHT) != 0;
