@@ -366,7 +366,6 @@ int sys_menu_defaults_build(const sys_ui *u, menu_row *out, sd_row *ids, menu_bu
 	                                            u->shader_live };
 	if (u->overrides) { ids[n] = SD_HOTKEYS; out[n++] = (menu_row){ "Hotkeys", NULL, true }; }
 	if (u->palette)   { ids[n] = SD_PALETTE; out[n++] = (menu_row){ "Palette", u->palette, true }; }
-	if (u->overrides) { ids[n] = SD_TURBO;   out[n++] = (menu_row){ "Turbo Assignments", NULL, true }; }
 	return n;
 }
 

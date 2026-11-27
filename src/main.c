@@ -4730,27 +4730,6 @@ static void on_shot(bool ok, const char *path)
 		plat_resident_line("OVERLAY\tpath=%s\tms=2000", p);
 }
 
-/* Turbo Assign (plorpos-tkh): Diatom asked, the map is already sent; this is
- * the notice, mid-game like the screenshot's. Cancelling takes the "press a
- * button" one down at once rather than leaving it to time out. */
-static void on_turbo(plat_turbo_event ev, const char *btn)
-{
-	char p[CFG_STR * 2], line[32];
-
-	snprintf(p, sizeof p, "%s/notice.dtov", P_USERDATA);
-	switch (ev) {
-	case PLAT_TURBO_CANCEL:  plat_resident_line("OVERLAY\tpath=%s\tms=0", p); return;
-	case PLAT_TURBO_ARMED:   snprintf(line, sizeof line, "Press a button"); break;
-	case PLAT_TURBO_PICKED:  snprintf(line, sizeof line, "%s on: press a button", btn); break;
-	case PLAT_TURBO_ON:      snprintf(line, sizeof line, "On: %s", btn);   break;
-	case PLAT_TURBO_OFF:     snprintf(line, sizeof line, "Off: %s", btn);  break;
-	case PLAT_TURBO_CLEARED: snprintf(line, sizeof line, "Cleared");       break;
-	}
-	if (notice_render("Turbo", line, p))
-		plat_resident_line("OVERLAY\tpath=%s\tms=%d", p,
-		                   ev == PLAT_TURBO_ARMED || ev == PLAT_TURBO_PICKED ? 4000 : 1500);
-}
-
 /* ---------- where you were ------------------------------------------------ */
 
 /* Coming back to the shelf you left is worth four lines of file handling: the
@@ -10227,7 +10206,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
-static void turbo_screen(app *a, const char *tag, const char *file);
+static void turbo_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, bool live,
+                         unsigned accent);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -10479,9 +10459,6 @@ static menu_result go_key(app *a, void *ctx, in_button key, int sel)
 	}
 	case GO_HOTKEYS:
 		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME, s->accent);
-		break;
-	case GO_TURBO:
-		if (key == IN_ACCEPT) turbo_screen(a, s->tag, g->file);
 		break;
 	default:
 		break;
@@ -14011,7 +13988,10 @@ static void shelf_resort(app *a, int sys)
  * (turbomap.<TAG>/<file>, from its Game Overrides), the format the platform
  * reads at RUN. Saved on every change; a game's first change makes a full copy
  * of the shelf's. No game is running here, so nothing is sent. */
-typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own; char v[BM_SRC_N][12]; } te_ctx;
+/* live: the running game's, from the in-game Hotkeys (plorpos-5tm.26) - read
+ * from and sent to the platform at once, over the paused frame `bg`. */
+typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own, live; SDL_Texture *bg;
+                 char v[BM_SRC_N][12]; } te_ctx;
 
 static void te_key(char *k, size_t n, const char *tag, const char *file)
 {
@@ -14025,6 +14005,7 @@ static void te_load(te_ctx *c)
 {
 	char key[LIB_PATH + 48], v[96];
 
+	if (c->live) { plat_live_turbo(c->t); return; }
 	te_key(key, sizeof key, c->tag, c->file);
 	c->own = c->file && db_get_str(db_lib(), key, v, sizeof v, NULL);
 	if (!c->own) {
@@ -14037,7 +14018,10 @@ static void te_load(te_ctx *c)
 static void te_save(te_ctx *c)
 {
 	char key[LIB_PATH + 48], v[96];
-	int n = bm_turbo_format(c->t, v, sizeof v);
+	int n;
+
+	if (c->live) { plat_live_turbo_set(c->t); return; }
+	n = bm_turbo_format(c->t, v, sizeof v);
 
 	te_key(key, sizeof key, c->tag, c->file);
 	if (c->file) { db_set_str(db_lib(), key, v); c->own = true; }   /* "" is the game's none */
@@ -14056,7 +14040,7 @@ static int te_build(void *ctx, menu_row *rows, int max, const char **heading)
 		snprintf(c->v[i], sizeof c->v[i], "Turbo %s", c->t[i] ? BM_SRC_LABEL[c->t[i] - 1] : "");
 		rows[n++] = (menu_row){ BM_SRC_LABEL[i], c->t[i] ? c->v[i] : "None", true };
 	}
-	if (c->file) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
+	if (c->file && !c->live) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
 	return n;
 }
 
@@ -14070,7 +14054,7 @@ static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
 	if (sel >= 0 && sel < BM_SRC_N) {
 		c->t[sel] = (c->t[sel] + d + BM_SRC_N + 1) % (BM_SRC_N + 1);
 		te_save(c);
-	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file) {
+	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file && !c->live) {
 		char k[LIB_PATH + 48];
 
 		te_key(k, sizeof k, c->tag, c->file);
@@ -14080,14 +14064,23 @@ static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
 	return MENU_STAY;
 }
 
-/* `file` NULL: the shelf's default. */
-static void turbo_screen(app *a, const char *tag, const char *file)
+static void chv_backdrop(app *a, SDL_Texture *bg, bool over_shelf);
+static void te_backdrop(app *a, void *ctx) { chv_backdrop(a, ((te_ctx *)ctx)->bg, false); }
+static menu_result gm_power(app *a, void *ctx);
+
+/* `file` NULL: the shelf's default. Opened from the Hotkeys screen
+ * (plorpos-5tm.26); `live`, in a game: the running game's, over its paused
+ * frame `bg`, power stopping the game as the in-game menu's does. */
+static void turbo_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, bool live,
+                         unsigned accent)
 {
-	te_ctx c = { .a = a, .tag = tag, .file = file };
+	te_ctx c = { .a = a, .tag = tag, .file = file, .live = live, .bg = bg };
 
 	te_load(&c);
-	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
-	                           .fixed_w = menu_std_width(a) },
+	menu_run(a, &(menu_style){ .accent = accent ? accent : MENU_ACCENT, .follow_tint = !accent,
+	                           .fixed_w = menu_std_width(a),
+	                           .backdrop = live ? te_backdrop : NULL,
+	                           .on_power = live ? gm_power : NULL },
 	         te_build, te_key_fn, &c);
 }
 
@@ -14168,9 +14161,6 @@ static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	case SD_HOTKEYS:
 		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF, a->tint);   /* as Defaults' follow_tint */
-		break;
-	case SD_TURBO:
-		if (!d) turbo_screen(a, sc->tag, NULL);
 		break;
 	default:
 		break;
@@ -20438,7 +20428,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
 static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Off" };
 #define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
-#define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
+#define HK_SCREEN_ROWS (HK_ROW_COUNT + 2)
 
 /* Press-to-bind's inputs, the stick ahead of the d-pad: a stick push also
  * sets the plain direction in the same frame, and the first match wins. */
@@ -20616,7 +20606,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
 	 * and its spare row is Button Mapping's (plorpos-c4l). The rule and
 	 * legend are drawn after them and are never selected. */
-	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
+	/* Turbo Assignments under it (plorpos-5tm.26). */
+	enum { R_MAPPING = 0, R_TURBO = 1, FIRST_ACT = 2, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 3];
 	hk_edit e = { tag, file, mode, "", "", false, accent };
@@ -20678,6 +20669,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 			if (vis[i] == 2 /* Rewind */) rw_dead = FIRST_ACT + i;
 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
+	rows[R_TURBO] = (menu_row){ "Turbo Assignments", "", true };
 	for (i = 0; i < nact; i++)   /* live flags before the first poll */
 		rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], "", FIRST_ACT + i != rw_dead };
 	if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
@@ -20728,6 +20720,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
 				button_map_screen(a, bg, &e);
+				pace = (ui_pace){0};
+			} else if (a->in.pressed[IN_ACCEPT] && sel == R_TURBO) {
+				turbo_screen(a, bg, tag, file, mode == HK_LIVE, mode == HK_SHELF ? 0 : e.accent);
 				pace = (ui_pace){0};
 			} else if (a->in.pressed[IN_ACCEPT] && sel == R_DEFAULT) {
 				plat_game_keys_clear(tag, file);
@@ -26752,7 +26747,6 @@ int main(int argc, char *argv[])
 		chv_earned_load();
 		plat_resident_on_unlock(on_cheevo_unlocked);
 		plat_resident_on_shot(on_shot);
-		plat_resident_on_turbo(on_turbo);
 		plat_resident_on_tick(on_game_tick);
 
 		/* Without this every HTTPS request fails verification, because the
