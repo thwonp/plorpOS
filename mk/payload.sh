@@ -153,6 +153,7 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	if [ "$PLATFORM" = zero40 ]; then     # Bluetooth (plorpos-auv.6); the Zero 28 has no antenna
 		cp "$B/btplayer" "$P/"            # a headset's volume reports and buttons (tools/btplayer.c)
 		cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # one ALSA PCM per bonded headset, as on the Brick
+		cp "$ROOT/sd/oakmoss/uinput.ko" "$P/" # headset buttons: the kernel has no uinput (radio.sh)
 	fi
 	mkdir -p "$P/usb-audio"               # USB DACs: oakMOSS ships no USB audio modules, launch.sh loads these (plorpos-czp)
 	cp "$ROOT/sd/oakmoss/usb-audio/"*.ko "$P/usb-audio/"

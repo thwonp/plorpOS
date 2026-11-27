@@ -10,9 +10,13 @@
 #
 # Bluetooth (plorpos-auv.6): the Zero 40's XR829, the Brick's chip, brought up
 # the Brick's way (sd/tortos/radio.sh has the reasoning for every step) on the
-# same BlueZ 5.54 and bluealsa. One difference: this kernel has no driver for
-# the device tree's btlpm node, so nothing raises bt_wake (PL4, gpio 356) and
-# the chip never answers the attach; bt_on raises it by hand. The Zero 28 has
+# same BlueZ 5.54, but bluealsa 4.0 (the Brick's is 3.1). Two differences.
+# bluealsa runs with --keep-alive=5: without it, Muse taking the headset back
+# from Diatom at a resume sometimes found the transport released under it and
+# its write never returned (2 hangs in 10 pause/resume cycles; 0 in 30 with it;
+# plorpos-auv.6.1). And this kernel has no driver for the device tree's
+# btlpm node, so nothing raises bt_wake (PL4, gpio 356) and the chip never
+# answers the attach; bt_on raises it by hand. The Zero 28 has
 # no antenna: bt_on/bt_off are no-ops there.
 
 WPA_SOCK=/var/run/wpa_supplicant
@@ -159,12 +163,19 @@ bt_on() {
 		return 1
 	fi
 	hciconfig hci0 up 2> /dev/null
+	# A headset's buttons: BlueZ presses them on a uinput keyboard, and the
+	# Zero 40's kernel has no uinput (plorpos-auv.6). uinput.ko is the oakMOSS
+	# 4.9.191 tree's drivers/input/misc/uinput.c built as an external module
+	# (same vermagic, no modversions), as the USB audio modules are.
+	[ -e /dev/uinput ] || [ "$(uname -r)" != 4.9.191 ] ||
+		insmod "$TORTOS_DIR/uinput.ko" 2>> "$LOGS_PATH/tortos.log"
 	# oakMOSS's dbus is up from boot (S10dbus). Bonds: BlueZ 5.54 keeps them
 	# in /etc/lib/bluetooth, on the overlay, as on the Brick.
 	pidof bluetoothd > /dev/null ||
 		setsid /usr/bin/bluetoothd -n > /dev/null 2>&1 < /dev/null &
 	pidof bluealsa > /dev/null ||
-		setsid bluealsa -S -p a2dp-source -p hfp-ag --a2dp-volume > /dev/null 2>&1 < /dev/null &
+		setsid bluealsa -S -p a2dp-source -p hfp-ag --a2dp-volume --keep-alive=5 \
+			> /dev/null 2>&1 < /dev/null &
 	sleep 3          # both profiles registered with BlueZ before any connect
 	bt_player
 	setsid /bin/sh -c '. "$0" && bt_reconnect' "$TORTOS_DIR/radio.sh" \
