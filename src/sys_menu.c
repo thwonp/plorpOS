@@ -317,7 +317,8 @@ int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading
 	bool net = u->wifi == WIFI_CONNECTED;
 
 	*heading = "Scraping";
-	out[SC_BOXART] = (menu_row){ "Box Art", NEEDS_WIFI(net), net };
+	/* Opens a checklist of systems (plorpos-bn9.2). */
+	out[SC_BOXART] = (menu_row){ "Scrape Systems", NEEDS_WIFI(net), net };
 	/* An account, named by the service it belongs to, reading "sign in"
 	 * until there is one - as Cheevos does in the menu above.
 	 *
@@ -331,4 +332,20 @@ int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading
 	/* Reads Roms/<system>/gamelist.xml off the card: no network, no account. */
 	out[SC_IMPORT] = (menu_row){ "Import gamelist.xml metadata", NULL, true };
 	return SC_ROWS;
+}
+
+int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
+                               menu_row *out, const char **heading)
+{
+	bool all = n > 0;
+	int i, k = 0;
+
+	*heading = "Scrape Systems";
+	for (i = 0; i < n; i++) all = all && on[i];
+	out[k++] = (menu_row){ "All", all ? "on" : "off", n > 0 };
+	for (i = 0; i < n; i++) out[k++] = (menu_row){ names[i], on[i] ? "on" : "off", true };
+	if (!n) out[k++] = (menu_row){ "No systems with games", NULL, false };
+	out[k++] = MENU_RULE;
+	out[k++] = MENU_NOTE("START: scrape");
+	return k;
 }

@@ -9362,8 +9362,10 @@ static const char *fbneo_dat(void)
  * difference between twenty images and a hundred and eighty. It is worth much
  * less afterwards: since the direct-name pass landed, a whole-library re-run
  * over a full card is nine directory sweeps and no network at all. */
-static void art_screen(app *a, const char *only, const char *one,
-                       const char *stem, const char *one_file, unsigned accent)
+/* `pick`, when not NULL, is one flag per a->sys entry instead of `only`: the
+ * shelves Scrape Systems checked, in one run (plorpos-bn9.2). */
+static void art_run(app *a, const char *only, const bool *pick, const char *one,
+                    const char *stem, const char *one_file, unsigned accent)
 {
 	menu_row     rows[3];
 	art_progress p;
@@ -9480,7 +9482,7 @@ static void art_screen(app *a, const char *only, const char *one,
 		}
 	}
 
-	if (only) {
+	if (only || pick) {
 		/* A one-entry library rather than a filter inside artscrape.c. The
 		 * scraper already takes the list it should work on; handing it a
 		 * shorter list is the same operation, and it keeps "which systems"
@@ -9490,10 +9492,9 @@ static void art_screen(app *a, const char *only, const char *one,
 
 		one.count = 0;
 		for (i = 0; i < a->sys.count; i++)
-			if (!strcmp(a->sys.systems[i].folder, only)) {
-				one.systems[0] = a->sys.systems[i];
-				one.count = 1;
-				break;
+			if (pick ? pick[i] : !strcmp(a->sys.systems[i].folder, only)) {
+				one.systems[one.count++] = a->sys.systems[i];
+				if (!pick) break;
 			}
 		art_begin(&one, P_ROMS, fbneo_dat(), stem);
 	} else {
@@ -9577,6 +9578,12 @@ static void art_screen(app *a, const char *only, const char *one,
 	free_all_textures(a);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+}
+
+static void art_screen(app *a, const char *only, const char *one,
+                       const char *stem, const char *one_file, unsigned accent)
+{
+	art_run(a, only, NULL, one, stem, one_file, accent);
 }
 
 /* Game Settings > Download Achievement Sets (plorpos-3yv.107.3): every shelf's
@@ -12793,12 +12800,71 @@ static void gamelist_import_screen(app *a)
 	note_panel(a, heading, rows, n);
 }
 
+/* Scraping > Scrape Systems (plorpos-bn9.2): check shelves, START scrapes
+ * them in one run. The shelves are the ones the whole-library run would visit
+ * (a folder of their own: not Favorites or Muse) that have games; Ports
+ * included, as that run copies its art in. Checks last only this visit. */
+typedef struct {
+	int         n, sys[CFG_MAX_SYSTEMS];     /* row -> a->sys index */
+	const char *name[CFG_MAX_SYSTEMS];
+	bool        on[CFG_MAX_SYSTEMS];
+} scrape_pick;
+
+static int scrape_pick_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	scrape_pick *sp = ctx;
+
+	(void)max;
+	return sys_menu_scrape_pick_build(sp->name, sp->on, sp->n, rows, heading);
+}
+
+static menu_result scrape_pick_key(app *a, void *ctx, in_button key, int sel)
+{
+	scrape_pick *sp = ctx;
+	int i;
+
+	if (key == IN_ACCEPT && sel == SP_ALL) {
+		bool all = true;
+
+		for (i = 0; i < sp->n; i++) all = all && sp->on[i];
+		for (i = 0; i < sp->n; i++) sp->on[i] = !all;
+	} else if (key == IN_ACCEPT && sel >= SP_FIRST && sel < SP_FIRST + sp->n) {
+		sp->on[sel - SP_FIRST] = !sp->on[sel - SP_FIRST];
+	} else if (key == IN_START) {
+		bool pick[CFG_MAX_SYSTEMS] = { false }, any = false;
+
+		for (i = 0; i < sp->n; i++)
+			if (sp->on[i]) pick[sp->sys[i]] = any = true;
+		if (!any) return MENU_STAY;
+		art_run(a, NULL, pick, NULL, NULL, NULL, MENU_ACCENT);
+		return MENU_DONE;
+	}
+	return MENU_STAY;
+}
+
+static void scrape_pick_screen(app *a)
+{
+	scrape_pick sp = { 0 };
+	int i;
+
+	for (i = 0; i < a->sys.count && sp.n < CFG_MAX_SYSTEMS; i++) {
+		const system_cfg *s = &a->sys.systems[i];
+
+		if (!s->folder[0] || is_muse(s) || !strcmp(s->tag, "FAV")
+		    || a->view[i].list.count <= 0) continue;
+		sp.sys[sp.n] = i;
+		sp.name[sp.n++] = s->name;
+	}
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         scrape_pick_build, scrape_pick_key, &sp);
+}
+
 static menu_result scraping_key(app *a, void *ctx, in_button key, int sel)
 {
 	(void)ctx;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
-	case SC_BOXART: art_screen(a, NULL, NULL, NULL, NULL, MENU_ACCENT); break;
+	case SC_BOXART: scrape_pick_screen(a); break;
 	case SC_SS:     ss_signin_screen(a); break;
 	case SC_IMPORT: gamelist_import_screen(a); break;
 	default: break;
@@ -19679,8 +19745,11 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_RUMBLE, GS_CHEEVOS, GS_RA,
-       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_OVERRIDES, GS_RUMBLE, GS_RA_MENU,
+       GS_SCRAPE, GS_ROWS };
+/* Game Settings > RetroAchievements (plorpos-bn9.1): the three rows that were
+ * on Game Settings itself, unchanged. */
+enum { RA_ENABLED, RA_SIGNIN, RA_SETS, RA_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -19714,21 +19783,18 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
-	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
-	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo Assignments",
-	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
+	/* Whether a change made in a game is kept for that game (plorpos-bn9.1):
+	 * the in-game menu reads "saveoverrides". */
+	rows[GS_OVERRIDES] = (menu_row){ "Save Per-Game Overrides",
+	                                 db_get_int(db_dev(), "saveoverrides", 1) ? "on" : "off", true };
 	/* A game's rumble on the device's motor; greyed where there is none
 	 * (plorpos-5tm.5). Told to Diatom before each RUN (platform.c). */
 	rows[GS_RUMBLE]   = (menu_row){ "Rumble Enabled",
 	                                plat_has_rumble() && db_get_int(db_dev(), "rumble", 1) ? "on" : "off",
 	                                plat_has_rumble() };
-	/* The account moved here from Network Services (plorpos-pyz.7), beside
-	 * the switch it is for. */
-	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
-	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
-	                                ra_signed_in() ? ra_user() : "sign in", true };
-	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
-	rows[GS_RA_SETS]  = (menu_row){ "Download Achievement Sets", NULL, true };
+	/* A door (plorpos-bn9.1); it names the account when there is one. */
+	rows[GS_RA_MENU]  = (menu_row){ "RetroAchievements",
+	                                ra_signed_in() ? ra_user() : NULL, true };
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
@@ -19757,26 +19823,60 @@ static void cheevos_warning(app *a)
 }
 #endif
 
+static int ra_menu_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)ctx; (void)max;
+	*heading = "RetroAchievements";
+	rows[RA_ENABLED] = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
+	/* The account moved here from Network Services (plorpos-pyz.7), beside
+	 * the switch it is for. */
+	rows[RA_SIGNIN]  = (menu_row){ "RetroAchievements Sign-In",
+	                               ra_signed_in() ? ra_user() : "sign in", true };
+	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
+	rows[RA_SETS]    = (menu_row){ "Download Achievement Sets", NULL, true };
+	return RA_ROWS;
+}
+
+/* Achievements Enabled flips on left, right and A; the other two are doors. */
+static menu_result ra_menu_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)ctx;
+	if (sel == RA_ENABLED && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		const int on = !gs_cheevos();
+
+		db_set_int(db_dev(), "cheevos", on);
+#if defined(PLATFORM_MIYOO)
+		if (on) cheevos_warning(a);
+#endif
+	} else if (key == IN_ACCEPT && sel == RA_SIGNIN) {
+		ra_signin_screen(a);
+	} else if (key == IN_ACCEPT && sel == RA_SETS) {
+		ra_sets_screen(a);
+	}
+	return MENU_STAY;
+}
+
 /* Left, right and A all change the row: the on/off ones flip, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
- * Download Achievement Sets and Scraping are doors, so only A opens them. */
+ * speeds step on with A too, as the shelf menus' cycling rows do.
+ * RetroAchievements and Scraping are doors, so only A opens them. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
-		[GS_RESUME]  = { "autoresume", 1 },
-		[GS_CONFIRM] = { "confirmquit", 0 },
-		[GS_TURBO]   = { "persistturbo", 0 },
-		[GS_RUMBLE]  = { "rumble", 1 },
-		[GS_CHEEVOS] = { "cheevos", CHEEVOS_DEFAULT },
+		[GS_RESUME]    = { "autoresume", 1 },
+		[GS_CONFIRM]   = { "confirmquit", 0 },
+		[GS_OVERRIDES] = { "saveoverrides", 1 },
+		[GS_RUMBLE]    = { "rumble", 1 },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
 	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
-	if (sel == GS_RA || sel == GS_RA_SETS || sel == GS_SCRAPE) {
+	if (sel == GS_RA_MENU || sel == GS_SCRAPE) {
 		if (key == IN_ACCEPT) {
-			if (sel == GS_RA) ra_signin_screen(a);
-			else if (sel == GS_RA_SETS) ra_sets_screen(a);
+			if (sel == GS_RA_MENU)
+				menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+				                           .fixed_w = menu_std_width(a) },
+				         ra_menu_build, ra_menu_key, NULL);
 			else scraping_screen(a);
 		}
 		return MENU_STAY;
@@ -19795,9 +19895,6 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		const int on = !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def);
 
 		db_set_int(db_dev(), onoff[sel].key, on);
-#if defined(PLATFORM_MIYOO)
-		if (sel == GS_CHEEVOS && on) cheevos_warning(a);
-#endif
 	}
 	return MENU_STAY;
 }

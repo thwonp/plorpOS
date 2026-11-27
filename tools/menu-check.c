@@ -263,9 +263,27 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
 	n = sys_menu_scraping_build(&u, rows, &heading);
 	ck(n == SC_ROWS && !strcmp(heading, "Scraping"), "Scraping submenu");
-	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
-	ck(!rows[SC_BOXART].live, "Box Art is not selectable offline");
+	ck(!strcmp(rows[SC_BOXART].label, "Scrape Systems"), "Box Art is Scrape Systems (plorpos-bn9.2)");
+	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Scrape Systems says why");
+	ck(!rows[SC_BOXART].live, "Scrape Systems is not selectable offline");
 	ck(rows[SC_IMPORT].live, "Import is selectable offline");
+	{
+		static const char *const names[] = { "Game Boy", "SNES" };
+		bool on[2] = { true, false };
+
+		n = sys_menu_scrape_pick_build(names, on, 2, rows, &heading);
+		ck(n == SP_FIRST + 2 + 2 && !strcmp(heading, "Scrape Systems"), "Scrape Systems: All, two systems, rule, note");
+		ck(!strcmp(rows[SP_ALL].label, "All") && !strcmp(val(&rows[SP_ALL]), "off"),
+		   "All reads off while one is unchecked");
+		ck(!strcmp(rows[SP_FIRST].label, "Game Boy") && !strcmp(val(&rows[SP_FIRST]), "on")
+		   && !strcmp(val(&rows[SP_FIRST + 1]), "off"), "each system shows its check");
+		ck(ROW_IS_NOTE(rows[n - 1]), "a note says what START does");
+		on[1] = true;
+		sys_menu_scrape_pick_build(names, on, 2, rows, &heading);
+		ck(!strcmp(val(&rows[SP_ALL]), "on"), "All reads on when every system is checked");
+		n = sys_menu_scrape_pick_build(names, on, 0, rows, &heading);
+		ck(!rows[SP_ALL].live && !rows[SP_FIRST].live, "no systems: nothing to check");
+	}
 	n = sys_menu_system_build(&u, rows, &b, &heading);
 	ck(n == ST_ROWS && !strcmp(heading, "System Settings"), "System Settings submenu");
 	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
