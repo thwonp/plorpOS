@@ -396,6 +396,9 @@ static void bottom_touch(const SDL_Event *e);
 
 void plat_bottom_keep(bool on) { b_keep = on; }
 void plat_bottom_close_key(in_button b) { b_close_key = b; }
+static void (*b_poll_fn)(void);
+void plat_bottom_poll_hook(void (*fn)(void)) { b_poll_fn = fn; }
+void plat_bottom_end_session(void) { if (b_session) b_primary_tap = true; }
 
 /* Edge swipes on the secondary (plorpos-rgds.33.4), whatever it shows: down
  * from its top edge is Muse+ on or off, up from its bottom edge the recent
@@ -443,7 +446,7 @@ void plat_bottom_pump(void)
 	SDL_Event e[8];
 	int n;
 
-	if (!bwin || !b_shown) return;
+	if (!bwin || !b_shown || b_session) return;   /* a session's poll reads them */
 	osd2_tick();                           /* its bar's end, beside a game */
 	SDL_PumpEvents();
 	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERMOTION)) > 0)
@@ -1472,6 +1475,7 @@ void plat_input_poll(in_state *st)
 #ifdef PLATFORM_RGDS
 	bool end;
 
+	if (b_poll_fn) b_poll_fn();
 	if (swap_req) { swap_req = false; swap_primary(); }
 	/* A finger on the secondary's resting Muse, from any screen's loop - a
 	 * menu, the in-game menu (plorpos-rgds.18.3.8): Muse opens there now,
@@ -1527,7 +1531,13 @@ void plat_input_poll(in_state *st)
 		pad_read(&ps);
 		for (int b = 0; b < IN_COUNT; b++) {
 			/* Home is half of brightness (Home + volume): not a press. */
-			if (ps.pressed[b] && !st->pressed[b] && b != IN_HOME) { b_pad_again[b] = true; b_primary_tap = true; }
+			if (!ps.pressed[b] || st->pressed[b] || b == IN_HOME) continue;
+			/* Beside a game the pad is the game's: Quick Settings and the
+			 * switcher stay up through play, and only Menu (the in-game
+			 * menu) ends them (plorpos-rgds.33.3). Muse ends on any. */
+			if (b_game && b_close_key == IN_MENU && b != IN_MENU) continue;
+			b_pad_again[b] = true;
+			b_primary_tap = true;
 		}
 	} else {
 		pad_read(st);

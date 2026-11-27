@@ -123,9 +123,11 @@ bottom one is only ever the game's.
 
 Touch works on both screens without tapping in first. Whichever screen your
 finger lands on takes over, and the same swipe carries on there. Muse+, Quick
-Settings and Recent games on the second screen are touch only: the buttons,
-a touch on the main screen, or playing your game hand control back. Swiping
-back at Muse+'s top level goes to Now Playing there.
+Settings and Recent games on the second screen are touch only. Beside a game,
+Quick Settings and Recent games stay open while you play: the Anbernic button
+or a swipe in from their side edge closes them. Muse+ hands control back on
+any button or a touch on the main screen. Swiping back at Muse+'s top level
+goes to Now Playing there.
 
 ## Ports
 

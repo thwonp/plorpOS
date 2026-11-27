@@ -1255,6 +1255,31 @@ static char *dline(int timeout_ms)
 	}
 }
 
+/* Whether Diatom has said EXIT or PAUSED and nobody has read it yet - or is
+ * gone. Reads what has arrived into the line buffer and consumes nothing:
+ * plat_resident_wait reads it as ever. For screens that run under a game
+ * without that loop turning (the RG DS's secondary, plorpos-rgds.33.3), so
+ * they end when the game does. */
+bool plat_resident_ending(void)
+{
+	struct pollfd p = { dsock, POLLIN, 0 };
+	size_t i;
+
+	if (dsock < 0) return true;
+	if (dused < sizeof dbuf && poll(&p, 1, 0) > 0 && (p.revents & (POLLIN | POLLHUP | POLLERR))) {
+		ssize_t n = read(dsock, dbuf + dused, sizeof dbuf - dused);
+
+		if (n <= 0) return true;   /* dline sees the EOF and closes */
+		dused += (size_t)n;
+	}
+	for (i = 0; i < dused; i++)
+		if ((i == 0 || dbuf[i - 1] == '\n') &&
+		    ((dused - i >= 6 && !memcmp(dbuf + i, "PAUSED", 6)) ||
+		     (dused - i >= 4 && !memcmp(dbuf + i, "EXIT", 4))))
+			return true;
+	return false;
+}
+
 /* Whoever is on the other end of the socket. Not a pid file: only the Brick's
  * launch.sh wrote one, so on the GKD - and on the Brick after respawn_resident
  * started Diatom - there was no pid to escalate to, and a core wedged inside

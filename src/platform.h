@@ -247,6 +247,8 @@ typedef struct {
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
 bool plat_resident_running(void);
+/* Diatom has said EXIT or PAUSED, unread (or is gone): see platform.c. */
+bool plat_resident_ending(void);
 void plat_resident_flush(unsigned timeout_ms);
 void plat_screen_off(void);
 
@@ -447,6 +449,11 @@ int  plat_bottom_swipe(void);
 int  plat_bottom_edge(void);
 /* The press that ends a session on the secondary: IN_SELECT (Muse) unless set. */
 void plat_bottom_close_key(in_button b);
+/* Run at the top of every input poll while set: the game's tick, while a session
+ * on the secondary beside it is up. */
+void plat_bottom_poll_hook(void (*fn)(void));
+/* Ends the session on the secondary at this poll, as a press on the primary would. */
+void plat_bottom_end_session(void);
 /* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
 bool plat_bottom_tap(int *x, int *y);
 /* Primary Screen = Bottom: the launcher and single-screen games on the bottom

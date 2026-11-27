@@ -4272,6 +4272,9 @@ static void muse_queue_tick(void);
  * own loop meanwhile (plorpos-rgds.18.3.5). NULL on the shelf. */
 static void (*g_sec_tick)(void);
 
+/* A session of sec_begin's is up: the game's tick must not start another. */
+static bool g_sec_busy;
+
 static void sec_tick_run(void)
 {
 	if (g_sec_tick) {
@@ -5813,9 +5816,16 @@ static void gl_poll(app *a, gl_scroll *s, bool list)
 }
 
 /* The drag or coast on *cur, of n rows. True when it moved. */
+static bool gl_scroll_apply_h(gl_scroll *s, int *cur, int n, int row_h);
 static bool gl_scroll_apply(gl_scroll *s, int *cur, int n)
 {
-	float sc = plat_scale() > 0 ? plat_scale() : 1, rh = gl_row_h() * sc;
+	return gl_scroll_apply_h(s, cur, n, gl_row_h());
+}
+
+/* The same, for rows of another pitch: a menu's (the achievement list). */
+static bool gl_scroll_apply_h(gl_scroll *s, int *cur, int n, int row_h)
+{
+	float sc = plat_scale() > 0 ? plat_scale() : 1, rh = row_h * sc;
 	unsigned now = plat_now_ms();
 	int to = *cur;
 
@@ -6906,10 +6916,14 @@ static int menu_notes_fit(void)
  * bug, it looks like a scroll that jumps. */
 /* A row as a touch target (ui_hit): the presses that walk the cursor to it,
  * by menu_step_sel's rule, so the rows it skips a tap skips too. */
-static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect *r)
+static void menu_hit(const menu_row *rows, int n, int sel, int i, const SDL_Rect *r,
+                     bool visits_all)
 {
 	int dir = i > sel ? 1 : -1, k = sel, c = 0;
 
+	/* visits_all: the cursor steps on every row, so a tap counts them all -
+	 * the achievement list's unearned rows were no target at all. */
+	if (visits_all) { ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, i > sel ? i - sel : sel - i); return; }
 	while (k != i && c < n) { k = menu_step_sel(rows, n, k, dir); c++; }
 	if (k == i) ui_hit_act(r, dir > 0 ? IN_DOWN : IN_UP, c);
 }
@@ -7459,9 +7473,9 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		ty = y + (ROW_H(rows[i]) - text_h) / 2 + ink_off;
 		/* What a tap can select: a live row in the window, or the pinned
 		 * footer - not the spare row drawn half-clipped past either end. */
-		if (sel >= 0 && rows[i].label && rows[i].live &&
+		if (sel >= 0 && rows[i].label && (rows[i].live || visits_all) &&
 		    ((i >= first && i < first + vis) || (pinned && i >= scroll_split)))
-			menu_hit(rows, n, sel, i, &(SDL_Rect){ panel.x, y, panel.w, ROW_H(rows[i]) });
+			menu_hit(rows, n, sel, i, &(SDL_Rect){ panel.x, y, panel.w, ROW_H(rows[i]) }, visits_all);
 
 		/* The same bar as the heading's, at the same alpha and width. If one
 		 * is ever retuned the other follows, which is the point. */
@@ -14010,9 +14024,6 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
-#if defined(PLATFORM_RGDS)
-		sec_tick_run();          /* on the secondary beside a game: its duties */
-#endif
 		{
 			int hint = ui_hit_take();   /* a footer hint tapped: its button */
 			if (hint >= 0) a->in.pressed[hint] = true;
@@ -19235,9 +19246,12 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	memset(&a->in, 0, sizeof a->in);
 
 	ui_pace pace = {0};
+	gl_scroll gs = {0};
 
 	while (!done && !want_quit) {
-		plat_input_poll(&a->in);
+		/* The rows follow a finger, as a game list's (plorpos-rgds.33.3). */
+		gl_poll(a, &gs, true);
+		gl_scroll_apply_h(&gs, &sel, n, menu_row_h());
 
 		if (in_repeat(&a->in, IN_UP))   sel = (sel + n - 1) % n;
 		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % n;
@@ -24349,7 +24363,7 @@ static void muse_panel_game_tick(void (*tick)(void))
 
 	static unsigned epoch;
 
-	if (g_muse_sec) return;   /* Muse runs it */
+	if (g_muse_sec || g_sec_busy) return;   /* Muse or a session runs it */
 	plat_bottom_queue(false);
 	plat_bottom_pump();
 	fresh = sec_edge(g_rgds_app, tick) != 0;
@@ -24539,6 +24553,15 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	fprintf(stderr, "muse: back from the secondary\n");
 }
 
+/* Every poll while a session is up beside a Diatom game: its tick, and the
+ * session's end once the game has ended or paused - the pad does not end
+ * these (plorpos-rgds.33.3), and the loop that would see it is under them. */
+static void sec_session_poll(void)
+{
+	sec_tick_run();
+	if (g_sec_tick == on_game_tick && plat_resident_ending()) plat_bottom_end_session();
+}
+
 /* A screen of the launcher's run on the secondary by touch, as Muse runs
  * there (plorpos-rgds.33.3, .33.4): the primary's screen or game goes on, a
  * pad press or a touch on the primary ends it. */
@@ -24558,7 +24581,10 @@ static bool sec_begin(app *a, void (*tick)(void), sec_sess *ss)
 	ui_hit_set(1);
 	plat_bottom_close_key(IN_MENU);   /* not SELECT: in these screens that is Muse */
 	plat_bottom_session(true, tick != NULL);
-	if (tick) { g_sec_tick = tick; shot_phase = 0; plat_input_flush(); }
+	g_sec_busy = true;
+	/* Beside a game its tick runs from every screen's poll while this is up
+	 * - the menus, Achievements, the slots - not only from Muse's. */
+	if (tick) { g_sec_tick = tick; shot_phase = 0; plat_input_flush(); plat_bottom_poll_hook(sec_session_poll); }
 	return true;
 }
 
@@ -24566,6 +24592,8 @@ static void sec_end(app *a, void (*tick)(void), sec_sess *ss)
 {
 	g_menu_closing = false;            /* the MENU that ended it is spent */
 	plat_bottom_close_key(IN_SELECT);
+	plat_bottom_poll_hook(NULL);
+	g_sec_busy = false;
 	g_sec_tick = NULL;
 	shot_phase = ss->ph;
 	ui_hit_set(0);
