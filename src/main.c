@@ -215,6 +215,44 @@ static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
 static int g_head = 0, g_font = 2;
+/* UI Settings > Fonts > Header Size and Body Size (plorpos-bn9.6), percent:
+ * 100 is the size the layout was drawn at. */
+#define FONT_SIZE_MIN  50
+#define FONT_SIZE_MAX  150
+#define FONT_SIZE_STEP 10
+static int g_head_size = 100, g_body_size = 100;
+
+/* With nothing saved: the trims these panels' type had in ui.c, now sizes
+ * the player can change. */
+static int font_size_default(void)
+{
+#if defined(PLATFORM_RGDS)
+	return 90;                                /* plorpos-rgds.26 */
+#else
+	if (plat_is_brick_pro()) return 80;       /* pky.21 */
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
+	if (plat_screen_w * 3 <= plat_screen_h * 4) return 90;   /* the RG35XX H */
+#endif
+	return 100;
+#endif
+}
+
+/* One step along FONT_SIZE_MIN..MAX, wrapping at either end. */
+static int font_size_step(int pct, int d)
+{
+	int n = (FONT_SIZE_MAX - FONT_SIZE_MIN) / FONT_SIZE_STEP + 1;
+	int i = (pct - FONT_SIZE_MIN) / FONT_SIZE_STEP;
+
+	if (i < 0 || i >= n) i = (100 - FONT_SIZE_MIN) / FONT_SIZE_STEP;
+	return FONT_SIZE_MIN + (i + d + n) % n * FONT_SIZE_STEP;
+}
+
+static float font_size_k(bool head) { return (head ? g_head_size : g_body_size) / 100.0f; }
+#if defined(PLATFORM_RGDS)
+/* The second screen's Details: a fixed card whose line pitches do not grow,
+ * so it follows a smaller size but stops at 100%. */
+static float details_size_k(bool head) { float k = font_size_k(head); return k < 1.0f ? k : 1.0f; }
+#endif
 #if defined(PLATFORM_RGDS)
 static unsigned g_face_gen;   /* bumped by a font change: Details draws again */
 #endif
@@ -234,10 +272,10 @@ static void font_apply(bool head, int k)
 	font_path(k, path, sizeof path);
 	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
 	*(head ? &g_head : &g_font) = k;
-	ui_set_face(head, path, FONTS[k].scale);
+	ui_set_face(head, path, FONTS[k].scale, font_size_k(head));
 #if defined(PLATFORM_RGDS)
-	/* The second screen's Details too (plorpos-g8i.1). */
-	details_set_face(head, path, FONTS[k].scale);
+	/* The second screen's Details too (plorpos-g8i.1), and the size. */
+	details_set_face(head, path, FONTS[k].scale * details_size_k(head));
 	g_face_gen++;
 #endif
 }
@@ -6027,14 +6065,15 @@ static void gl_draw(app *a, const gl_list *L)
 	if (n == 0 && L->empty) {
 		/* Wrapped when one line does not fit - a narrow screen, the Zero 40's
 		 * 480 px (plorpos-5tm.16.5) - at the last space that fits, and at a
-		 * '\n' first (5tm.23's two sentences): three lines at most. */
+		 * '\n' first (5tm.23's two sentences): three lines, or four at a
+		 * large Body Size (plorpos-bn9.6), tools/emptywrap-check.c. */
 		int y = g.top + (g.row_h - mline) / 2, room = TORTOS_SCREEN_W - 2 * GL_PAD, nl, l;
-		char lines[3][TEXTWRAP_LINE];
+		char lines[4][TEXTWRAP_LINE];
 
 		/* Portrait: a tab without art (Artists, Playlists) puts it where its
 		 * neighbours with art do, under their band (owner, plorpos-5tm.16.6). */
 		if (UI_PORTRAIT && !L->art && L->ntabs > 0) y += GL_ART_BAND + GL_PAD / 2;
-		nl = text_wrap(L->empty, room, gl_text_w, fm, lines, 3);
+		nl = text_wrap(L->empty, room, gl_text_w, fm, lines, 4);
 		for (l = 0; l < nl; l++)
 			ui_text(a->r, fm, lines[l], GL_PAD, y + l * g.row_h, -1, UI_TEXT_DIM);
 	}
@@ -7784,6 +7823,8 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.gamelist  = GAMELISTS[g_gl].name;
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
+		u.head_size = g_head_size;
+		u.body_size = g_body_size;
 		u.sys_order = SYS_ORDERS[g_order].name;
 		u.has_ports = g_has_ports;
 		u.ports_hidden = g_ports_hidden;
@@ -8257,6 +8298,8 @@ static Uint32 menu_fingerprint(const char *heading, const menu_row *rows,
 	return (h ^ (Uint32)n ^ ((Uint32)sel << 16)) * 16777619u;
 }
 
+static int menu_std_width(app *a);
+
 static menu_exit menu_run_body(app *a, const menu_style *st,
                                menu_build_fn build, menu_key_fn on_key,
                                void *ctx)
@@ -8265,6 +8308,9 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 	const char *heading = NULL;
 	int sel = st->start, n = 0, b;
 	ui_pace pace = {0};
+	/* A menu opened at the standard width keeps to it when a Fonts size
+	 * change remeasures it underneath (plorpos-bn9.6); cached, so free. */
+	const int std0 = st->fixed_w > 0 ? menu_std_width(a) : 0;
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -8367,7 +8413,8 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		} else {
 			shelf_dim_cached(a, 120);
 		}
-		menu_draw(a, heading, rows, n, sel, st->fixed_w,
+		menu_draw(a, heading, rows, n, sel,
+		          std0 && st->fixed_w == std0 ? menu_std_width(a) : st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
 		if (st->toasts && muse_toast_now()) toast_draw(a, muse_toast_now(), st->accent);
 		draw_chrome(a->r);
@@ -10948,6 +10995,9 @@ static int menu_shelf_width(app *a)
 		n = sys_menu_ui_build(&u, rows, &heading);
 		mw = menu_measure(rows, n, heading);
 		if (mw > w) w = mw;
+		n = sys_menu_fonts_build(&u, rows, &bufs, &heading);
+		mw = menu_measure(rows, n, heading);
+		if (mw > w) w = mw;
 	}
 
 	/* Every value that can be cycled on this menu, at its widest, so the
@@ -13321,6 +13371,8 @@ static int ui_settings_build(void *ctx, menu_row *rows, int max,
 	return sys_menu_ui_build(&u, rows, heading);
 }
 
+static void fonts_screen(app *a);
+
 static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
@@ -13358,16 +13410,9 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* A face, applied at once: the fonts are reopened under the open menu,
-	 * and the shelf's cards - some carry text - drawn again. */
-	if ((sel == US_FONT || sel == US_HEADFONT) && (d || key == IN_ACCEPT)) {
-		bool head = sel == US_HEADFONT;
-		int *k = head ? &g_head : &g_font;
-
-		font_apply(head, (*k + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
-		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
-		free_all_textures(a);
-		prime_sys_window(a);
+	/* A door (plorpos-bn9.6): only A opens it. */
+	if (sel == US_FONTS) {
+		if (key == IN_ACCEPT) fonts_screen(a);
 		return MENU_STAY;
 	}
 
@@ -13392,6 +13437,54 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	}
 
 	return MENU_STAY;
+}
+
+static int fonts_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_fonts_build(&u, rows, &c->bufs, heading);
+}
+
+/* A face or a size, applied at once: the fonts are reopened under the open
+ * menu, the panels remeasured, and the shelf's cards - some carry text -
+ * drawn again. Left, right and A step; every row wraps. */
+static menu_result fonts_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	bool head = sel == UF_HEADFONT || sel == UF_HEADSIZE;
+
+	(void)ctx;
+	if (!d || sel < 0 || sel >= UF_ROWS) return MENU_STAY;
+	if (sel == UF_HEADFONT || sel == UF_FONT) {
+		int *k = head ? &g_head : &g_font;
+
+		font_apply(head, (*k + d + FONT_COUNT) % FONT_COUNT);
+		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
+	} else {
+		int *p = head ? &g_head_size : &g_body_size;
+
+		*p = font_size_step(*p, d);
+		font_apply(head, head ? g_head : g_font);
+		db_set_int(db_dev(), head ? "headsize" : "bodysize", *p);
+	}
+	a->menu_w = 0;
+	free_all_textures(a);
+	prime_sys_window(a);
+	return MENU_STAY;
+}
+
+static void fonts_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         fonts_build, fonts_key, &c);
 }
 
 static void ui_settings_screen(app *a)
@@ -15634,6 +15727,13 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			ty = ly + ui_font_line(UI_F_META) + 24;
 			bar = NP_Y + NP_SIDE - 132;
 			ny = NP_Y + NP_SIDE - ui_font_height(UI_F_META);
+			/* At a large Header or Body Size the bar and Next move down
+			 * under the words, not through them (plorpos-bn9.6). */
+			{
+				int end = ty + ui_font_line(UI_F_TITLE) + 10 + 2 * ui_font_line(UI_F_MENU) + 12;
+
+				if (bar < end) { ny += end - bar; bar = end; }
+			}
 		}
 	} else {
 		int m = 10 + 2 * (ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6);  /* draw_battery's disc and its gap */
@@ -25066,9 +25166,9 @@ static void details_tick(app *a)
 		char p[512];
 
 		font_path(g_head, p, sizeof p);
-		details_set_face(true, p, FONTS[g_head].scale);
+		details_set_face(true, p, FONTS[g_head].scale * details_size_k(true));
 		font_path(g_font, p, sizeof p);
-		details_set_face(false, p, FONTS[g_font].scale);
+		details_set_face(false, p, FONTS[g_font].scale * details_size_k(false));
 		init = true;
 	}
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
@@ -25805,18 +25905,22 @@ int main(int argc, char *argv[])
 	/* The size the player chose beats the shipped default, the same way a
 	 * saved brightness does. Read before ui_init, which is when the scale is
 	 * applied. */
-	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	/* The faces and sizes first, so ui_init opens each font once at what
+	 * the player chose (plorpos-bn9.6): before it, font_apply only records. */
 	{
 		char id[32];
 		int k;
 
+		g_head_size = font_size_step(db_get_int(db_dev(), "headsize", font_size_default()), 0);
+		g_body_size = font_size_step(db_get_int(db_dev(), "bodysize", font_size_default()), 0);
 		db_get_str(db_dev(), "font", id, sizeof id, "quicksand");
-		for (k = 0; k < FONT_COUNT; k++)
-			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(false, k);
+		for (k = 0; k < FONT_COUNT && strcmp(FONTS[k].id, id); k++) ;
+		font_apply(false, k < FONT_COUNT ? k : g_font);
 		db_get_str(db_dev(), "headfont", id, sizeof id, "fredoka");
-		for (k = 0; k < FONT_COUNT; k++)
-			if (!strcmp(FONTS[k].id, id) && k != g_head) font_apply(true, k);
+		for (k = 0; k < FONT_COUNT && strcmp(FONTS[k].id, id); k++) ;
+		font_apply(true, k < FONT_COUNT ? k : g_head);
 	}
+	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
 	t_mark("font+settings");
 
 	/* The system cards asked for before the display came up, installed so the
