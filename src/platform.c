@@ -2193,9 +2193,44 @@ bool plat_resident_saved(const char *path, int timeout_ms)
 	return false;
 }
 
+/* Lines a wait read but is not the one to act on, put back in front of the
+ * rest in the order they came: plat_resident_wait reads them as ever. Asked
+ * of a RUNNING game (the RG DS's Quick Settings, plorpos-rgds.33.5) the
+ * reply can share the socket with an EXIT, PAUSED or CHEEVO, which this
+ * wait used to throw away. */
+static char d_back[1024];
+static size_t d_back_n;
+
+static void d_keep_back(const char *l)
+{
+	size_t n = strlen(l);
+
+	if (d_back_n + n + 1 > sizeof d_back) {
+		fprintf(stderr, "resident: no room to keep \"%.40s\"\n", l);
+		return;
+	}
+	memcpy(d_back + d_back_n, l, n);
+	d_back[d_back_n + n] = '\n';
+	d_back_n += n + 1;
+}
+
+static void d_put_back(void)
+{
+	if (!d_back_n) return;
+	if (d_back_n + dused > sizeof dbuf) {
+		fprintf(stderr, "resident: no room to put %zu bytes back\n", d_back_n);
+	} else {
+		memmove(dbuf + d_back_n, dbuf, dused);
+		memcpy(dbuf, d_back, d_back_n);
+		dused += d_back_n;
+	}
+	d_back_n = 0;
+}
+
 bool plat_resident_disc(int *index, int *count, int timeout_ms)
 {
 	unsigned t0 = SDL_GetTicks();
+	bool got = false;
 	char *l;
 
 	if (dsock < 0) return false;
@@ -2209,14 +2244,17 @@ bool plat_resident_disc(int *index, int *count, int timeout_ms)
 			const char *i = strstr(l, "\tindex="), *n = strstr(l, "\tcount=");
 			*index = i ? atoi(i + 7) : 0;
 			*count = n ? atoi(n + 7) : 0;
-			return true;
+			got = true;
+			break;
 		}
 		if (strncmp(l, "ERROR\t", 6) == 0) fprintf(stderr, "resident: %s\n", l);
 		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+		else d_keep_back(l);
 	}
-	return false;
+	d_put_back();
+	return got;
 }
 
 static void d_apply_levels(void)

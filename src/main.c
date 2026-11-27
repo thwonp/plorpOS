@@ -24727,12 +24727,29 @@ static void qs_style(app *a, qs_ctx *q)
 	q->armed = -1;
 }
 
+/* The Disc row is the in-game menu's g_disc, which only that menu asked
+ * Diatom for - stale from an earlier game, or missing (plorpos-rgds.33.5).
+ * Asked once a run here: Diatom answers DISC while running (its state plane),
+ * and a game that is no .m3u is answered at once without asking. */
+static char g_qs_disc_for[LIB_PATH + 16];
+
+static void qs_disc_once(app *a)
+{
+	char key[LIB_PATH + 16];
+
+	snprintf(key, sizeof key, "%s/%s", g_cur_tag, g_cur_file);
+	if (!strcmp(key, g_qs_disc_for)) return;
+	snprintf(g_qs_disc_for, sizeof g_qs_disc_for, "%s", key);
+	disc_query(a);
+}
+
 static void qs_on_secondary(app *a, void (*tick)(void))
 {
 	sec_sess ss;
 	qs_ctx q = { 0 };
 
 	if (!sec_begin(a, tick, &ss)) return;
+	qs_disc_once(a);
 	qs_style(a, &q);
 	fprintf(stderr, "quick settings: on the secondary\n");
 	menu_run(a, &q.gm.st, qs_build, qs_key, &q);
@@ -24749,6 +24766,7 @@ static void qs_rest_draw(app *a)
 	int w, h, n;
 
 	if (!(r = plat_bottom_begin(&w, &h))) return;
+	qs_disc_once(a);
 	qs_style(a, &q);
 	n = qs_build(&q, rows, GM_ROWS, &heading);
 	a->r = r;
@@ -24802,6 +24820,7 @@ static void details_tick(app *a)
 		init = true;
 	}
 	g_qs_dirty = true;                   /* the shelf has the panel */
+	g_qs_disc_for[0] = '\0';             /* the next game's discs asked anew */
 	if (sec_edge(a, NULL) < 0) return;   /* the switcher had the panel, may have launched */
 	if (g_details_stale) { g_details_stale = false; on = false; }
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
