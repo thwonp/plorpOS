@@ -30,7 +30,7 @@ static const struct { const char *name; int w, h; float size; int flip; } PORTS[
 };
 static const struct { const char *file; float scale; } FACES[] = {   /* main.c FONTS[] */
 	{ "head.ttf", 1.00f }, { "josefin.ttf", 1.00f }, { "menu.ttf", 0.98f }, { "lato.ttf", 1.03f },
-	{ "jp.ttf", 0.93f },
+	{ "jp.ttf", 0.96f },
 };
 
 /* UI Settings > Fonts > Body Size over the default (plorpos-bn9.6): at the

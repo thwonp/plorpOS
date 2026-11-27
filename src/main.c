@@ -211,7 +211,7 @@ static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
 	/* Latin plus Japanese - kana and the JIS kanji (plorpos-g8i): the face to
 	 * pick for Japanese tags and file names, which the four above have no
 	 * glyphs for. The id stays "japanese" whichever face jp.ttf holds. */
-	{ "japanese",  "M PLUS 1p",    "jp.ttf",      0.93f },
+	{ "japanese",  "Kosugi Maru",  "jp.ttf",      0.96f },
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
 static int g_head = 0, g_font = 2;
