@@ -504,6 +504,14 @@ void plat_rgds_child_tick(void);   /* a port's window onto the primary */
  * during one. */
 void plat_bottom_keep(bool on);
 void plat_bottom_pump(void);
+/* Muse's last frame on the secondary, kept when a press on the primary ends
+ * it, to rest there until it is opened again at that place (plorpos-rgds.37).
+ * snap_want: the session's frame is one to keep; snapped: it was read at the
+ * session's end; snap_draw: it, into the secondary's renderer (false: none). */
+void plat_bottom_snap_want(bool on);
+bool plat_bottom_snapped(void);
+bool plat_bottom_snap_draw(SDL_Renderer *r);
+void plat_bottom_snap_drop(void);
 #endif
 /* Paused Sleep Delay for a run's music dark, in ms; 0 never (plorpos-5tm.22). */
 void plat_set_music_grace(unsigned ms);
