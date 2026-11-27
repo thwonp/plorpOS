@@ -202,7 +202,7 @@ Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotk
 - **Press Turbo Assign again** before the last press to cancel.
 - **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
-A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse+ don't touch it, and the next game starts with none. To keep it, turn on **Persistent Turbo Assignments** in **MENU > Game Settings**: each game then starts with the turbo buttons you last gave it. A button the console doesn't use, like X on the NES, does nothing as turbo either.
+A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. The in-game menu and Muse+ don't touch it. With **Save Per-Game Overrides** on (**MENU > Game Settings**, the default) each game keeps the turbo buttons you last gave it; off, turbo lasts until you quit. A shelf's default turbo is under its menu's **Defaults > Turbo Assignments**, and a game's own under X > **Game Overrides**. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 
 </details>
 

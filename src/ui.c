@@ -81,11 +81,21 @@ static TTF_Font *f_mark;
  * every path below is the integer one it always was - the Brick draws exactly
  * what it drew before there was a scale. */
 static float ts = 1.0f;
-/* Type scale for the one panel narrower than the layout was tuned on: the
- * RG35XX H is 640x480, 11% less width than the RG SP's 720 at the same
- * height, so the SP's type crowds it - Muse's title scrolled and the hint
- * line ran to the edge. Everything sized from a font follows. */
-static float font_k = 1.0f;
+/* UI Settings > Fonts > Header Size and Body Size (plorpos-bn9.6): 1.0 is
+ * the size the layout was drawn at. The per-device trims that stood here
+ * (RG35XX H, Brick Pro, RG DS) are now those devices' default sizes, main.c. */
+static float head_size = 1.0f, body_size = 1.0f;
+
+/* A role's point size. The battery's number never grows past 100%: it sizes
+ * a disc in the corner that the shelf title and list headers stop short of. */
+static int role_pt(int i)
+{
+	float sz = is_head(i) ? head_size : body_size;
+
+	if (i == UI_F_BADGE && sz > 1.0f) sz = 1.0f;
+	return (int)(FONT_BASE * font_mul[i] * (is_head(i) ? head_scale : body_scale) *
+	             sz * ts + 0.5f);
+}
 
 static int px(int v) { return ts == 1.0f ? v : (int)(v * ts + 0.5f); }
 static int units(int v) { return ts == 1.0f ? v : (int)lroundf(v / ts); }
@@ -179,15 +189,6 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
 	ts = plat_scale();
-#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
-	if (plat_screen_w * 3 <= plat_screen_h * 4) font_k = 0.88f;
-#endif
-	/* Brick Pro: the Brick's scale reads too large on its panel (pky.21; the user chose 0.82) */
-	if (plat_is_brick_pro()) font_k = 0.82f;
-#if defined(PLATFORM_RGDS)
-	/* The RG DS: every role about 10% smaller (owner, plorpos-rgds.26). */
-	font_k = 0.90f;
-#endif
 	{
 		char head[512];
 		const char *slash = strrchr(font_path, '/');
@@ -198,8 +199,7 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 		if (head_path[0]) snprintf(head, sizeof head, "%s", head_path);
 		for (i = 0; i < UI_F_COUNT; i++) {
 			const char *path = is_head(i) ? head : body_path[0] ? body_path : font_path;
-			float k = is_head(i) ? head_scale : body_scale;
-			int pt = (int)(FONT_BASE * font_mul[i] * k * font_k * ts + 0.5f);
+			int pt = role_pt(i);
 
 			/* Nothing in landscape draws it: not opened there. */
 			if (i == UI_F_COLTITLE && !UI_PORTRAIT) { fonts[i] = NULL; continue; }
@@ -249,7 +249,7 @@ void ui_quit(void)
 	TTF_Quit();
 }
 
-void ui_set_face(bool head, const char *path, float scale)
+void ui_set_face(bool head, const char *path, float scale, float size)
 {
 	char *kept = head ? head_path : body_path;
 	float *k = head ? &head_scale : &body_scale;
@@ -257,6 +257,7 @@ void ui_set_face(bool head, const char *path, float scale)
 
 	snprintf(kept, sizeof body_path, "%s", path ? path : "");
 	*k = scale > 0 ? scale : head ? HEAD_SCALE : BODY_SCALE;
+	*(head ? &head_size : &body_size) = size > 0 ? size : 1.0f;
 	if (!fonts[UI_F_MENU]) return;            /* not open yet: ui_init will */
 	if (!kept[0]) return;
 	for (i = 0; i < UI_F_COUNT; i++) {
@@ -265,7 +266,7 @@ void ui_set_face(bool head, const char *path, float scale)
 
 		if (is_head(i) != head) continue;
 		if (!fonts[i]) continue;              /* UI_F_COLTITLE in landscape */
-		pt = (int)(FONT_BASE * font_mul[i] * *k * font_k * ts + 0.5f);
+		pt = role_pt(i);
 		if (!(f = TTF_OpenFont(kept, pt))) {
 			fprintf(stderr, "font %s @%d: %s\n", kept, pt, TTF_GetError());
 			continue;                         /* keep the face it had */
@@ -1208,9 +1209,13 @@ static int draw_wrapped(SDL_Surface *dst, TTF_Font *f, const char *title,
 	size_t len = 0;
 	int y = top_y;
 	int lines = 0;
+	/* Four lines, or as many as the card has room for at a large Header
+	 * Size (plorpos-bn9.6): a line cut off at the foot reads as a bug. */
+	int most = (dst->h - top_y) / (TTF_FontHeight(f) + px(4));
 
+	if (most > 4) most = 4;
 	line[0] = '\0';
-	while (*p && lines < 4) {
+	while (*p && lines < most) {
 		size_t n = 0, keep;
 		int w = 0;
 
@@ -1242,7 +1247,7 @@ static int draw_wrapped(SDL_Surface *dst, TTF_Font *f, const char *title,
 			len = n;
 		}
 	}
-	if (line[0] && lines < 4) blit_line(dst, f, line, &y, x);
+	if (line[0] && lines < most) blit_line(dst, f, line, &y, x);
 	return y;
 }
 

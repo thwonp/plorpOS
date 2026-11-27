@@ -119,9 +119,9 @@ typedef struct {
 	 * than fake08. Zero is fake08, so a card nobody has touched - a new
 	 * install included - plays in diatom. */
 	bool native;
-	/* A shelf with a second core (ALT_CORES) runs that one instead. Zero is
-	 * the shelf's own core from systems.cfg. */
-	bool alt;
+	/* A shelf with a second core (ALT_CORES): its default, alt_core_name's
+	 * index (plorpos-bn9.3). Zero is the shelf's own core from systems.cfg. */
+	int alt;
 	/* Index into SORTS. Zero is by name, which is what every shelf was
 	 * before this existed and what an untouched one still is. On Muse's
 	 * shelf an ml_order instead, whose zero is by artist. */
@@ -211,13 +211,52 @@ static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
 	/* Latin plus Japanese - kana and the JIS kanji (plorpos-g8i): the face to
 	 * pick for Japanese tags and file names, which the four above have no
 	 * glyphs for. The id stays "japanese" whichever face jp.ttf holds. */
-	{ "japanese",  "M PLUS 1p",    "jp.ttf",      0.93f },
+	{ "japanese",  "Kosugi Maru",  "jp.ttf",      0.96f },
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
 static int g_head = 0, g_font = 2;
+/* UI Settings > Fonts > Header Size and Body Size (plorpos-bn9.6), percent:
+ * 100 is the size the layout was drawn at. */
+#define FONT_SIZE_MIN  50
+#define FONT_SIZE_MAX  150
+#define FONT_SIZE_STEP 10
+static int g_head_size = 100, g_body_size = 100;
+
+/* With nothing saved: the trims these panels' type had in ui.c, now sizes
+ * the player can change. */
+static int font_size_default(void)
+{
 #if defined(PLATFORM_RGDS)
-static unsigned g_face_gen;   /* bumped by a font change: Details draws again */
+	return 90;                                /* plorpos-rgds.26 */
+#else
+	if (plat_is_brick_pro()) return 80;       /* pky.21 */
+#if defined(PLATFORM_H700) || defined(PLATFORM_ZERO28)
+	if (plat_screen_w * 3 <= plat_screen_h * 4) return 90;   /* the RG35XX H */
 #endif
+	return 100;
+#endif
+}
+
+/* One step along FONT_SIZE_MIN..MAX, wrapping at either end. */
+static int font_size_step(int pct, int d)
+{
+	int n = (FONT_SIZE_MAX - FONT_SIZE_MIN) / FONT_SIZE_STEP + 1;
+	int i = (pct - FONT_SIZE_MIN) / FONT_SIZE_STEP;
+
+	if (i < 0 || i >= n) i = (100 - FONT_SIZE_MIN) / FONT_SIZE_STEP;
+	return FONT_SIZE_MIN + (i + d + n) % n * FONT_SIZE_STEP;
+}
+
+static float font_size_k(bool head) { return (head ? g_head_size : g_body_size) / 100.0f; }
+#if defined(PLATFORM_RGDS)
+/* The second screen's Details: a fixed card whose line pitches do not grow,
+ * so it follows a smaller size but stops at 100%. */
+static float details_size_k(bool head) { float k = font_size_k(head); return k < 1.0f ? k : 1.0f; }
+#endif
+/* Bumped by a font change: the RG DS's Details draws again, and the lists'
+ * fitted titles and facts are fitted again - kept from the old size, they ran
+ * past the column into the art pane's "1 / 68" (plorpos-bn9.15). */
+static unsigned g_face_gen;
 
 static void font_path(int k, char *out, size_t n)
 {
@@ -234,12 +273,12 @@ static void font_apply(bool head, int k)
 	font_path(k, path, sizeof path);
 	if (access(path, R_OK) != 0) { fprintf(stderr, "font: no %s\n", path); return; }
 	*(head ? &g_head : &g_font) = k;
-	ui_set_face(head, path, FONTS[k].scale);
+	ui_set_face(head, path, FONTS[k].scale, font_size_k(head));
 #if defined(PLATFORM_RGDS)
-	/* The second screen's Details too (plorpos-g8i.1). */
-	details_set_face(head, path, FONTS[k].scale);
-	g_face_gen++;
+	/* The second screen's Details too (plorpos-g8i.1), and the size. */
+	details_set_face(head, path, FONTS[k].scale * details_size_k(head));
 #endif
+	g_face_gen++;
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   4
@@ -821,13 +860,6 @@ static void palette_save(const char *tag, const game_entry *g, int i)
 	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy shelf's
- * Default Palette. */
-static bool sm_extra_shown(const char *tag)
-{
-	return ds_fill_shown(tag) || gb_palette_tag(tag);
-}
-
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
  * 0-based as diatom counts them. Sent on RUN so a game resumed from its
  * auto-state finds the disc it was saved on in the drive. -1: not an .m3u,
@@ -946,17 +978,10 @@ static int alt_core(const system_cfg *s)
 	return -1;
 }
 
-/* engine.<TAG>/<file>: a per-game shelf's game turned to the alternative core. No row = the shelf's own core. */
+/* engine.<TAG>/<file>: a game turned to a core of its own. No row = the shelf's default, engine.<TAG> (plorpos-bn9.3). */
 static void engine_game_key(char *out, size_t n, const system_cfg *s, const char *file)
 {
 	snprintf(out, n, "engine.%s/%s", s->tag, file);
-}
-
-/* The game the shelf's cursor is on, or NULL for an empty shelf. */
-static const char *cursor_file(app *a, int sys)
-{
-	const sysview *v = &a->view[sys];
-	return v->list.count ? v->list.items[v->cursor].file : NULL;
 }
 
 /* Whether `name` is one of the comma-separated names in `list` (NULL = none). */
@@ -974,8 +999,9 @@ static bool name_listed(const char *list, const char *name)
 	return false;
 }
 
-/* The core a game launches with: its shelf's own, or the alternative the shelf
- * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
+/* The core a game launches with: the game's own (engine.<TAG>/<file>), else
+ * the shelf's default (engine.<TAG>), else systems.cfg's (plorpos-bn9.3).
+ * `file` NULL = the shelf's default. */
 static const char *shelf_core(app *a, int sys, const char *file)
 {
 	const system_cfg *s = &a->sys.systems[sys];
@@ -1001,22 +1027,23 @@ static const char *shelf_core(app *a, int sys, const char *file)
 	}
 #endif
 	if (k < 0) return s->core;
-	if (ALT_CORES[k].per_game) {
+	if (file) {
 		char key[LIB_PATH + 32], name[CFG_STR];
 
-		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
-		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) return s->core;
-		if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
-		if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
-		return s->core;
+		if (db_get_str(db_dev(), key, name, sizeof name, NULL)) {
+			if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
+			if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
+			if (!strcmp(name, s->core)) return s->core;   /* the shelf's own, chosen over its default */
+		}
 	}
-	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+	return alt_core_name(k, a->view[sys].alt);
 }
 
-/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
- * with two. No row means the default (fake08, the shelf's own core): only a
- * shelf someone has turned has one. */
+/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the default core
+ * of a shelf with more (plorpos-bn9.3). No row means the default (fake08, the
+ * shelf's own core): only a shelf someone has turned has one. Exact core names
+ * only: a legacy name is a game's, never a shelf's. */
 static void engine_load(app *a)
 {
 	char key[CFG_STR + 16], name[CFG_STR];
@@ -1024,11 +1051,14 @@ static void engine_load(app *a)
 
 	for (i = 0; i < a->sys.count; i++) {
 		k = alt_core(&a->sys.systems[i]);
-		if (!is_pico8(&a->sys.systems[i]) && (k < 0 || ALT_CORES[k].per_game)) continue;
+		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
-		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
-		else a->view[i].native = !strcmp(name, "native");
+		if (k >= 0) {
+			a->view[i].alt = 0;
+			for (int j = 1; j < alt_n(k); j++)
+				if (!strcmp(name, alt_core_name(k, j))) a->view[i].alt = j;
+		} else a->view[i].native = !strcmp(name, "native");
 	}
 }
 
@@ -1042,45 +1072,17 @@ static void engine_save(app *a, int sys)
 	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
-/* Which of a per-game shelf's cores (alt_core_name's j) the game under the cursor plays on. */
-static int engine_game_index(app *a, int sys)
-{
-	const char *core = shelf_core(a, sys, cursor_file(a, sys));
-	int k = alt_core(&a->sys.systems[sys]), j;
-
-	for (j = 1; j < alt_n(k); j++)
-		if (!strcmp(core, alt_core_name(k, j))) return j;
-	return 0;
-}
-
-/* Step the game under the shelf's cursor through a per-game shelf's cores, saved at once. The shelf's own core
- * is no row at all, so a game left on it follows the shelf's default when that changes. */
-static void engine_game_step(app *a, int sys, int d)
-{
-	const system_cfg *s = &a->sys.systems[sys];
-	const char *file = cursor_file(a, sys);
-	char key[LIB_PATH + 32];
-	int k = alt_core(s), j;
-
-	if (k < 0 || !file) return;
-	j = ((engine_game_index(a, sys) + d) % alt_n(k) + alt_n(k)) % alt_n(k);
-	engine_game_key(key, sizeof key, s, file);
-	if (j) db_set_str(db_dev(), key, alt_core_name(k, j));
-	else db_del(db_dev(), key);
-}
-
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
 
-/* The Core row's value: PICO-8's engine, the core of a shelf with two, or
- * NULL for a shelf whose row only reports. */
+/* The Core row's value: PICO-8's engine, the default core of a shelf with
+ * more, or NULL for a shelf whose row only reports. */
 static const char *engine_label(app *a, int sys)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
-	if (k >= 0 && ALT_CORES[k].per_game) return alt_core_label(k, engine_game_index(a, sys));
-	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
+	if (k >= 0) return alt_core_label(k, a->view[sys].alt);
 	return NULL;
 }
 
@@ -1235,10 +1237,6 @@ static int g_cards;
 static int g_gl;     /* Gamelist Layout, an index into GAMELISTS */
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
-/* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
- * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
- * read before the drop, so the setting row only exists where there is a tile. */
-static bool g_ports_hidden, g_has_ports;
 #if defined(PLATFORM_RGDS)
 /* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
  * once and kept here, as details_tick asks every frame. No on/off: the
@@ -1302,6 +1300,76 @@ static unsigned g_walk_ms;           /* how long it took, for the log */
 static bool is_muse(const system_cfg *s)
 {
 	return s && !strcmp(s->tag, "MUSE");
+}
+
+/* Visible Tiles (plorpos-bn9.10). A hidden shelf stays in a->sys - its games
+ * are still in Favorites, Recents, the switcher, resume and the scrape - and
+ * only the systems row leaves it out. The row counts in places, the shown
+ * shelves in order; these turn one into the other. At most CFG_MAX_SYSTEMS
+ * each, never a db read. db: "tile.<TAG>", 0 hidden, unset shown. */
+static void tile_key(char *k, size_t n, const char *tag) { snprintf(k, n, "tile.%s", tag); }
+
+static bool tile_shown(const char *tag)
+{
+	char k[24];
+
+	tile_key(k, sizeof k, tag);
+	return db_get_int(db_dev(), k, 1) != 0;
+}
+
+static int sys_shown_n(const app *a)
+{
+	int i, n = 0;
+
+	for (i = 0; i < a->sys.count; i++) n += !a->sys.systems[i].hidden;
+	return n;
+}
+
+/* The row place of shelf i: for a hidden one, the next shown one's. */
+static int sys_shown_at(const app *a, int i)
+{
+	int k, p = 0;
+
+	for (k = 0; k < i && k < a->sys.count; k++) p += !a->sys.systems[k].hidden;
+	return p;
+}
+
+/* The shelf at row place p (clamped to the last shown), or 0 with none. */
+static int sys_shown_real(const app *a, int p)
+{
+	int k, last = 0;
+
+	for (k = 0; k < a->sys.count; k++)
+		if (!a->sys.systems[k].hidden) {
+			if (p-- <= 0) return k;
+			last = k;
+		}
+	return last;
+}
+
+/* Every shelf's flag from the settings; at each scan and when the
+ * checklist closes. Favorites is not on the list: it is there while
+ * something is favorited. */
+static void tiles_mark(app *a)
+{
+	for (int i = 0; i < a->sys.count; i++) {
+		system_cfg *s = &a->sys.systems[i];
+
+		s->hidden = strcmp(s->tag, "FAV") != 0 && !tile_shown(s->tag);
+	}
+}
+
+/* The systems row on a shown shelf: back from a hidden shelf's games (a
+ * recent, the switcher, resume), or after the checklist hid the one it was
+ * on, it lands on the next shown one. */
+static void sys_cursor_show(app *a)
+{
+	int n = sys_shown_n(a), p;
+
+	if (n <= 0 || a->sys_cursor >= a->sys.count || !a->sys.systems[a->sys_cursor].hidden) return;
+	p = sys_shown_at(a, a->sys_cursor);
+	a->sys_cursor = sys_shown_real(a, p < n ? p : n - 1);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* What is known about each album's cover: one per album in g_muse, rebuilt
@@ -1959,7 +2027,7 @@ static void sleep_timer_game(bool on)
 	if (!on && g_sleep_held) { g_sleep_held = false; sleep_timer_arm(); }
 }
 
-/* Playback Settings' Play Resets Sleep Timer (i8d.6): a play or a pause
+/* Playback Settings' Games Reset Sleep Timer (i8d.6): a play or a pause
  * starts the countdown over. */
 static void sleep_timer_on_state(mu_state st)
 {
@@ -2736,8 +2804,9 @@ static void texload_drain(app *a)
 #define SYS_COVERS 2
 static int sys_dist(const app *a, int i)
 {
-	int n = a->sys.count, d = abs(i - a->sys_cursor);
+	int n = sys_shown_n(a), d = abs(sys_shown_at(a, i) - sys_shown_at(a, a->sys_cursor));
 
+	if (a->sys.systems[i].hidden) return SYS_KEEP + 1;   /* off the row (bn9.10) */
 	if (n >= CF_WINDOW) d = d > n / 2 ? n - d : d;
 	return d;
 }
@@ -2920,7 +2989,7 @@ static void prime_toward(app *a, int s, int center)
 static void sys_prefetch(app *a)
 {
 	static int cur = -1, step;
-	int n = a->sys.count, off, s;
+	int n = sys_shown_n(a), off, s;
 
 	if (n < 2) return;
 	if (a->sys_cursor != cur) { cur = a->sys_cursor; step = 0; }
@@ -2928,7 +2997,7 @@ static void sys_prefetch(app *a)
 	off = step / 2 + 1;
 	if (step % 2) off = -off;
 	step++;
-	s = ((cur + off) % n + n) % n;
+	s = sys_shown_real(a, ((sys_shown_at(a, cur) + off) % n + n) % n);
 	prime_toward(a, s, a->view[s].cursor);
 }
 #endif
@@ -2950,11 +3019,11 @@ static void prime_sys_window(app *a)
  * false past the last. */
 static bool sys_card_visible(const app *a, int n, int *item)
 {
-	int count = a->sys.count, half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
+	int count = sys_shown_n(a), half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
 	int k = (n + 1) / 2, side = n % 2 ? 1 : -1;
 
 	if (count <= 0 || k > half) return false;
-	*item = ((a->sys_cursor + side * k) % count + count) % count;
+	*item = sys_shown_real(a, ((sys_shown_at(a, a->sys_cursor) + side * k) % count + count) % count);
 	return true;
 }
 
@@ -3616,6 +3685,23 @@ static void aout_save(aout_policy p)
 	db_set_str(db_dev(), "audioout", p == AOUT_SPEAKER ? "speaker" : "auto");
 }
 
+/* Select Shortcut (plorpos-bn9.12): what SELECT opens wherever it opened
+ * Muse+ - an sc_action, db "shortcut.select". */
+static int  g_sc_select = SC_MUSE;
+/* Menu Hold (plorpos-bn9.13): what MENU held - a swipe up on the Rotate -
+ * opens, db "shortcut.hold". */
+static int  g_sc_hold = SC_SWITCHER;
+
+/* Volume Limiter (plorpos-bn9.9): db keys by aout_dest; the speaker has none. */
+static const char *const VLIM_KEY[AOUT_USB + 1] =
+	{ NULL, "vollimit.wired", "vollimit.bt", "vollimit.dac" };
+
+static void vlim_load(void)
+{
+	for (int d = AOUT_WIRED; d <= AOUT_USB; d++)
+		aout_limit_set((aout_dest)d, db_get_int(db_dev(), VLIM_KEY[d], 100));
+}
+
 /* The connected sink, published by bt_reconnect in launch.sh.
  *
  * A file rather than asking Bluetooth ourselves: asking means forking
@@ -3847,20 +3933,60 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
+/* The Volume Limiter's ceiling for the output in use, kept by vlim_follow
+ * (plorpos-bn9.9). */
+static int g_vlim_top = PLAT_VOL_MAX;
+
+/* Volume Limiter (plorpos-bn9.9): the volume keys stop at the limit of the
+ * output in use, and a level above it - a cable just plugged in, a headset
+ * just connected, the limit just lowered - comes down to it. Where it goes:
+ * Diatom in a game, which answers with its new level. Every frame, so only
+ * compares unless something is over. */
+static void vlim_follow(aout_dest d)
+{
+	/* The ceiling Diatom was last given in a game; RUN gives the current one
+	 * (plorpos-bn9.20). */
+	static int told = PLAT_VOL_MAX;
+	int count = 0, level;
+
+	aout_limit_in_use(d);
+	g_vlim_top = aout_limit_level(d, PLAT_VOL_MAX);
+	plat_volume_ceiling(g_vlim_top);
+	if (g_vlim_top >= PLAT_VOL_MAX && (!g_game_ticking || told == g_vlim_top)) return;
+	level = g_game_ticking ? plat_resident_volume(&count) : -1;
+	if (g_game_ticking) {
+		if (level < 0) level = plat_volume_get();
+		else if (count >= 2 && count != PLAT_VOL_MAX + 1)   /* on Diatom's own ladder */
+			level = (level * PLAT_VOL_MAX + (count - 1) / 2) / (count - 1);
+		/* A new limit or output: Diatom's ceiling follows (bn9.20). A level
+		 * still over it - an older Diatom, which ignores max= - comes down
+		 * from here, as before. */
+		if (level > g_vlim_top || told != g_vlim_top) {
+			told = g_vlim_top;
+			if (level >= 0) plat_resident_volume_set(level > g_vlim_top ? g_vlim_top : level);
+		}
+		return;
+	}
+	level = plat_volume_get();
+	if (level > g_vlim_top) plat_volume_nudge(g_vlim_top - level);
+}
+
 #if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
 /* The level lowered to PLAT_OUT_CAP when it is above, where it goes: Diatom in
- * a game. Returns the level now. */
+ * a game. Returns the level now. The Volume Limiter's limit is a second
+ * ceiling under it (plorpos-bn9.9). */
 static int cap_level(const char *out, int level)
 {
-	if (level <= PLAT_OUT_CAP) return level;
+	int cap = g_vlim_top < PLAT_OUT_CAP ? g_vlim_top : PLAT_OUT_CAP;
+
+	if (level <= cap) return level;
 	if (g_game_ticking)
-		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+		plat_resident_volume_set(cap);
 	else
-		plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+		plat_volume_nudge(cap - plat_volume_get());
 	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
-	        out, PLAT_OUT_CAP, level);
-	return PLAT_OUT_CAP;
+	        out, cap, level);
+	return cap;
 }
 
 /* Muse's sound landed on a DAC or headset - new, or back from the speaker it
@@ -3920,8 +4046,7 @@ static void bt_volume_follow(const char *out, bool fresh)
 				want = (hv * PLAT_VOL_MAX + 63) / 127;
 				if (!echo && want != have) {
 					if (g_game_ticking)
-						plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-						                   want, PLAT_VOL_MAX + 1);
+						plat_resident_volume_set(want);
 					else
 						plat_volume_nudge(want - have);
 					sent = (want * 127 + PLAT_VOL_MAX / 2) / PLAT_VOL_MAX;
@@ -3974,8 +4099,11 @@ static void aout_apply(bool force)
 {
 #if defined(PLAT_PIPEWIRE)
 	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
+	aout_state s = aout_now();
+
 	(void)force;
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
+	vlim_follow(aout_resolve(&s));
 #else
 	static char  link_seen[32];
 	static bool  on_usb, muse_was_heard;
@@ -4011,6 +4139,8 @@ static void aout_apply(bool force)
 	 * are already on. */
 	bool        fresh = named && link[0] && strcmp(link, link_seen);
 
+	/* Before any volume goes to a new headset or DAC (plorpos-bn9.9). */
+	vlim_follow(aout_resolve(&s));
 	if (!muse) {
 		musec_sink(codec);
 		if (named && !musec_sink_settled()) return;     /* Muse is still letting go */
@@ -4192,8 +4322,10 @@ static void music_keys(void)
  * Muse's pause/play, playing or not (plorpos-7wu.5), and then neither steps,
  * skips or repeats until both are up. The press steps at once, so volume
  * answers at the press and not at the release; a skip or a chord takes that
- * step back, so reaching for either leaves the level where it was. */
-static void vol_keys(in_state *st)
+ * step back, so reaching for either leaves the level where it was.
+ * `skips` false: a hold is only the repeat, whatever the Volume Held hotkeys
+ * say - Now Playing with the screen on (owner, plorpos-57h.1). */
+static void vol_keys_as(in_state *st, bool skips)
 {
 	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
 	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
@@ -4230,7 +4362,7 @@ static void vol_keys(in_state *st)
 			plat_volume_nudge(dir);
 			moved[k] = plat_volume_get() != before;
 			/* A hold set to None is a volume key held: it steps on. */
-			armed[k] = musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
+			armed[k] = skips && musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
 		} else if (!armed[k]) {
 			if (in_repeat(st, b)) plat_volume_nudge(dir);
 		} else {
@@ -4249,6 +4381,8 @@ static void vol_keys(in_state *st)
 		}
 	}
 }
+
+static void vol_keys(in_state *st) { vol_keys_as(st, true); }
 
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
  * the headset rather than reaching it a tick later. */
@@ -5282,8 +5416,14 @@ static unsigned rail_sys_hue(void *ctx, int i)
 {
 	app *a = ctx;
 
-	if (i < 0 || i >= a->sys.count) return 0;
-	return a->sys.systems[i].accent;
+	if (i < 0 || i >= sys_shown_n(a)) return 0;
+	return a->sys.systems[sys_shown_real(a, i)].accent;   /* a row place (bn9.10) */
+}
+
+/* The row's card at place i: the shown shelves only (plorpos-bn9.10). */
+static SDL_Texture *sys_row_tex(void *ctx, int i, int *w, int *h, float *cb)
+{
+	return sys_get_tex(ctx, sys_shown_real(ctx, i), w, h, cb);
 }
 
 /* How far the shelf's stage sits below the top of a screen taller than the one
@@ -5299,8 +5439,10 @@ static int gl_text_w(void *font, const char *s) { return ui_text_width((TTF_Font
 static void draw_systems(app *a)
 {
 	shelf_pacing(&a->cf_sys);
+	sys_cursor_show(a);
 
 	SDL_Rect focus;
+	int nshown = sys_shown_n(a), at = sys_shown_at(a, a->sys_cursor);
 	const system_cfg *s = &a->sys.systems[a->sys_cursor];
 	char line[128];
 
@@ -5317,8 +5459,8 @@ static void draw_systems(app *a)
 	 * and the cards in view are not (evict_far's rule). */
 	if (!cf_cutting(&a->cf_sys)) sys_evict_far(a);
 #endif
-	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
-	            sys_get_tex, a, &lay))
+	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, nshown,
+	            sys_row_tex, a, &lay))
 		ui_redraw_now();
 #if defined(PLATFORM_MIYOO)
 	else sys_prefetch(a);
@@ -5370,6 +5512,7 @@ static void draw_systems(app *a)
 		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
 		if (books)  snprintf(bk, sizeof bk, g_muse_pod ? "%d episode%s" : "%d book%s", books, books == 1 ? "" : "s");
 		snprintf(line, sizeof line, "%s%s%s", al, al[0] && bk[0] ? ", " : "", bk);
+		if (!line[0]) snprintf(line, sizeof line, "no music or books");   /* the empty card (bn9.10) */
 	} else {
 		int gc = a->view[(int)(label - a->sys.systems)].list.count;
 
@@ -5389,12 +5532,12 @@ static void draw_systems(app *a)
 	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, cy,
 	        0, ui_fade(UI_TEXT_DIM, label_a));
 	if (col) {
-		snprintf(line, sizeof line, "%d / %d", a->sys_cursor + 1, a->sys.count);
-		col_rail(a, a->cf_sys.pos, a->sys.count, line, s->accent,
+		snprintf(line, sizeof line, "%d / %d", at + 1, nshown);
+		col_rail(a, a->cf_sys.pos, nshown, line, s->accent,
 		         rail_sys_hue, a, 0);
 		return;
 	}
-	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, nshown,
 	        s->accent, rail_sys_hue, a);
 }
 
@@ -5933,7 +6076,7 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
  * the title's hash too, because a list's rows change under the same key (an
  * artist filter, a sort, a playlist edited) and a slot must not outlive the
  * words it was made from. */
-static struct { int key, idx, w; Uint32 h; bool used; char s[192]; } g_gl_fit[64];
+static struct { int key, idx, w; Uint32 h; unsigned gen; bool used; char s[192]; } g_gl_fit[64];
 
 static const char *gl_fit(int key, int idx, const char *title, int w)
 {
@@ -5942,13 +6085,14 @@ static const char *gl_fit(int key, int idx, const char *title, int w)
 
 	for (const unsigned char *p = (const unsigned char *)title; *p; p++) h = (h ^ *p) * 16777619u;
 	if (!g_gl_fit[k].used || g_gl_fit[k].key != key || g_gl_fit[k].idx != idx ||
-	    g_gl_fit[k].w != w || g_gl_fit[k].h != h) {
+	    g_gl_fit[k].w != w || g_gl_fit[k].h != h || g_gl_fit[k].gen != g_face_gen) {
 		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
 		g_gl_fit[k].used = true;
 		g_gl_fit[k].key = key;
 		g_gl_fit[k].idx = idx;
 		g_gl_fit[k].w = w;
 		g_gl_fit[k].h = h;
+		g_gl_fit[k].gen = g_face_gen;
 	}
 	return g_gl_fit[k].s;
 }
@@ -6064,14 +6208,15 @@ static void gl_draw(app *a, const gl_list *L)
 	if (n == 0 && L->empty) {
 		/* Wrapped when one line does not fit - a narrow screen, the Zero 40's
 		 * 480 px (plorpos-5tm.16.5) - at the last space that fits, and at a
-		 * '\n' first (5tm.23's two sentences): three lines at most. */
+		 * '\n' first (5tm.23's two sentences): three lines, or four at a
+		 * large Body Size (plorpos-bn9.6), tools/emptywrap-check.c. */
 		int y = g.top + (g.row_h - mline) / 2, room = TORTOS_SCREEN_W - 2 * GL_PAD, nl, l;
-		char lines[3][TEXTWRAP_LINE];
+		char lines[4][TEXTWRAP_LINE];
 
 		/* Portrait: a tab without art (Artists, Playlists) puts it where its
 		 * neighbours with art do, under their band (owner, plorpos-5tm.16.6). */
 		if (UI_PORTRAIT && !L->art && L->ntabs > 0) y += GL_ART_BAND + GL_PAD / 2;
-		nl = text_wrap(L->empty, room, gl_text_w, fm, lines, 3);
+		nl = text_wrap(L->empty, room, gl_text_w, fm, lines, 4);
 		for (l = 0; l < nl; l++)
 			ui_text(a->r, fm, lines[l], GL_PAD, y + l * g.row_h, -1, UI_TEXT_DIM);
 	}
@@ -6210,7 +6355,7 @@ static bool gl_active(const app *a)
 /* The facts, read once per focused game rather than per frame: one row from
  * the card's games table, kept until the cursor or the shelf moves. Fitted to
  * `w` when read. */
-static struct { int sys, idx, n; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, { "" } };
+static struct { int sys, idx, n; unsigned gen; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, 0, { "" } };
 
 static void gl_facts(app *a, sysview *v, int idx, int w)
 {
@@ -6218,7 +6363,8 @@ static void gl_facts(app *a, sysview *v, int idx, int w)
 	const system_cfg *gs;
 	int n = 0;
 
-	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx) return;
+	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx && g_gl_facts.gen == g_face_gen) return;
+	g_gl_facts.gen = g_face_gen;
 	g_gl_facts.sys = a->sys_cursor;
 	g_gl_facts.idx = idx;
 	g_gl_facts.n = 0;
@@ -6472,7 +6618,7 @@ static void draw_shelf(app *a)
 	 * draws none, so nothing else would ask, and a full queue turns an ask
 	 * away. Thirteen checks once they are all in. */
 	for (int i = 0; i < a->sys.count; i++)
-		if (!a->sys_tex[i]
+		if (!a->sys_tex[i] && !a->sys.systems[i].hidden
 #if defined(PLATFORM_MIYOO)
 		    && sys_wanted(a, i)    /* not the ones sys_evict_far just dropped */
 #endif
@@ -6499,7 +6645,7 @@ static void draw_shelf(app *a)
 			if (games) ui_glow(a->r, &focus, accent, 100, 2.3f);
 		}
 	}
-	if (a->sys.count <= 0) draw_no_games(a);
+	if (a->sys.count <= 0 || (a->screen == SCREEN_SYSTEMS && sys_shown_n(a) <= 0)) draw_no_games(a);
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
 }
@@ -6945,6 +7091,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	int notes_drawn = 0;   /* which marquee slot the next long note takes */
 	int scroll = 0;        /* pixels the body is lifted by, cursorless */
 	int scroll_h = 0;      /* the body viewport's height, 0 if nothing scrolls */
+	int scroll_in = 0;     /* its clip's inset at each end: see notes_drawn */
 	int scroll_span = 0;
 	int scroll_split = 0;  /* first pinned row: the rule, or n if there is none */
 	int scroll_foot = 0;   /* the pinned rows' total height */
@@ -7410,9 +7557,19 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	}
 
 	notes_drawn = 0;
+	/* A scrolling body is clipped where its text sits at rest, not at the
+	 * viewport's edge: the band between them - a row's centering and the
+	 * font's room above its capitals - is empty on a still card, and text
+	 * scrolled into it read as running past the panel's text area, up under
+	 * the heading rule and down into the bottom pad (plorpos-57h.3). */
+	if (scroll_h && fm) {
+		scroll_in = (note_h - text_h) / 2 + ink_off
+		          + ui_font_ascent(fm) - ui_font_cap(fm);
+		if (scroll_in < 0 || scroll_in * 4 > scroll_h) scroll_in = 0;
+	}
 	if (scroll_h)
-		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y,
-		                                         panel.w, scroll_h });
+		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y + scroll_in,
+		                                         panel.w, scroll_h - scroll_in * 2 });
 	/* Clipped to the panel, and ONE ROW BEYOND THE WINDOW at each end.
 	 * Offsetting the rows opens a gap at one edge and pushes the far row past
 	 * the other; without the extra row the gap is empty, and without the clip
@@ -7619,6 +7776,24 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 					ui_fit_text(fm, rows[i].value, val, sizeof val, room);
 					ui_text(a->r, fm, val, content_x + content_w, ty, 1, vc);
 				}
+			} else if (vw && content_w - (vw + gap) < vw) {
+				/* Two of a size that do not fit together: a setting and its
+				 * value at a big Body Size ("Gamelist Layout", "Detailed
+				 * List"). Neither is the caption, so each gives up its share
+				 * - not the "Gameli..." the rule below gave (plorpos-bn9.15). */
+				int lroom = (content_w - gap) * lw / (lw + vw);
+
+				room = content_w - gap - lroom;
+				ui_fit_text(fm, rows[i].label, lbl, sizeof lbl, lroom);
+				ui_text(a->r, fm, lbl, content_x, ty, -1, lc);
+				if (moves) {   /* the value whole, sliding, on the row picked */
+					ui_text_marquee(a->r, fm, rows[i].value,
+					                content_x + content_w - room, ty, room,
+					                mq_row_phase(i == sel, heading, n, sel), vc);
+				} else {
+					ui_fit_text(fm, rows[i].value, val, sizeof val, room);
+					ui_text(a->r, fm, val, content_x + content_w, ty, 1, vc);
+				}
 			} else {
 				/* The LABEL is the long one: a game's name, an SSID. */
 				room = content_w - (vw ? vw + gap : 0);
@@ -7686,11 +7861,12 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			SDL_SetRenderDrawColor(a->r, 22, 24, 32, al);
 			if (scroll > 0)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + e,
+					panel.x + UI_PANEL_BORDER, content_y + scroll_in + e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 			if (scroll < scroll_span)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + scroll_h - 1 - e,
+					panel.x + UI_PANEL_BORDER,
+					content_y + scroll_h - scroll_in - 1 - e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 		}
 		SDL_RenderSetClipRect(a->r, NULL);
@@ -7800,6 +7976,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
 		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
 		u.overrides  = !is_ports(sc);
+		u.core_game  = alt_core(sc) >= 0;
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -7820,9 +7997,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.gamelist  = GAMELISTS[g_gl].name;
 		u.font      = FONTS[g_font].name;
 		u.head_font = FONTS[g_head].name;
+		u.head_size = g_head_size;
+		u.body_size = g_body_size;
 		u.sys_order = SYS_ORDERS[g_order].name;
-		u.has_ports = g_has_ports;
-		u.ports_hidden = g_ports_hidden;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
@@ -7851,6 +8028,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 #endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
+		for (int d = AOUT_SPK; d <= AOUT_USB; d++) u.vlim[d] = aout_limit_pct((aout_dest)d);
+		u.sc_select = g_sc_select;
+		u.sc_hold = g_sc_hold;
 
 		/* The connected headset's name.
 		 *
@@ -8012,32 +8192,75 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 	return pick_panel_ex(a, heading, msg, opts, n, "Cancel");
 }
 
-/* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
- * wrote (display/shader/dsfill/dsswap.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
- * themselves stay. Asked first, No selected. */
-static void display_overrides_reset(app *a, int sys)
-{
-	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap" };
-	static const char *const YES[] = { "Yes" };
-	const char *tag = a->sys.systems[sys].tag;
-	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
-	char key[CFG_STR + 16];
+/* Every per-game override, by Reset Overrides' kind (plorpos-bn9.3; Display was
+ * Reset Display Overrides, plorpos-36e): the key prefixes before "<TAG><sep>",
+ * and which database holds them. */
+static const struct { const char *kind[3]; char sep; bool lib; } OVR_KINDS[SR_ROWS] = {
+	[SR_CORE]    = { { "engine" }, '/', false },
+	[SR_DISPLAY] = { { "display", "dsfill", "dsswap" }, '.', false },
+	[SR_SHADER]  = { { "shader" }, '.', false },
+	[SR_HOTKEYS] = { { "ghotkey", "gbtnmap" }, '/', true },
+	[SR_PALETTE] = { { "palette" }, '.', true },
+	[SR_TURBO]   = { { "turbomap" }, '/', true },
+};
 
-	if (pick_panel_ex(a, "Reset Display Overrides",
-	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nand Shader preferences"
-	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nand Shader preferences"
-	                  : "Are you sure? This will reset\nper-game Display Mode and\nShader preferences",
-	                  YES, 1, "No") != 0)
-		return;
-	for (size_t k = 0; k < sizeof KINDS / sizeof *KINDS; k++) {
-		snprintf(key, sizeof key, "%s.%s.", KINDS[k], tag);
-		db_del_prefix(db_dev(), key);
+/* The file names a kind's rows are for, collected by db_each_prefix. */
+typedef struct { size_t skip; char (*names)[LIB_PATH]; int n, cap; } ovr_names;
+
+static bool ovr_name_row(const char *key, const char *value, void *ctx)
+{
+	ovr_names *c = ctx;
+	const char *f = key + c->skip, *b = strrchr(f, '/');
+
+	(void)value;
+	if (c->n == c->cap) {
+		void *p = realloc(c->names, (size_t)(c->cap ? c->cap * 2 : 64) * sizeof *c->names);
+
+		if (!p) return false;
+		c->names = p;
+		c->cap = c->cap ? c->cap * 2 : 64;
 	}
-	if (pal) {
-		snprintf(key, sizeof key, "palette.%s.", tag);
-		db_del_prefix(db_lib(), key);
+	snprintf(c->names[c->n++], sizeof *c->names, "%s", b ? b + 1 : f);
+	return true;
+}
+
+/* How many games on shelf `sys` have a `kind` override. Asked only when Reset
+ * Overrides opens or clears one, never on a scroll: a scan of the rows, then
+ * the shelf's games against them. A row left by a game no longer on the card
+ * is not counted (it is still cleared). */
+static int ovr_count(app *a, int sys, sr_row kind)
+{
+	const sysview *v = &a->view[sys];
+	ovr_names c = { 0 };
+	char pre[CFG_STR + 16];
+	int i, j, n = 0;
+
+	for (i = 0; i < 3 && OVR_KINDS[kind].kind[i]; i++) {
+		snprintf(pre, sizeof pre, "%s.%s%c", OVR_KINDS[kind].kind[i], a->sys.systems[sys].tag,
+		         OVR_KINDS[kind].sep);
+		c.skip = strlen(pre);
+		db_each_prefix(OVR_KINDS[kind].lib ? db_lib() : db_dev(), pre, ovr_name_row, &c);
 	}
-	fprintf(stderr, "display overrides: %s reset\n", tag);
+	for (i = 0; c.n && i < v->list.count; i++) {
+		const char *f = v->list.items[i].file, *b = strrchr(f, '/');
+
+		for (j = 0; j < c.n; j++)
+			if (!strcmp(c.names[j], b ? b + 1 : f)) { n++; break; }
+	}
+	free(c.names);
+	return n;
+}
+
+static void ovr_clear(app *a, int sys, sr_row kind)
+{
+	char pre[CFG_STR + 16];
+
+	for (int i = 0; i < 3 && OVR_KINDS[kind].kind[i]; i++) {
+		snprintf(pre, sizeof pre, "%s.%s%c", OVR_KINDS[kind].kind[i], a->sys.systems[sys].tag,
+		         OVR_KINDS[kind].sep);
+		db_del_prefix(OVR_KINDS[kind].lib ? db_lib() : db_dev(), pre);
+	}
+	fprintf(stderr, "overrides: %s %s reset\n", a->sys.systems[sys].tag, OVR_KINDS[kind].kind[0]);
 }
 
 static bool confirm_panel(app *a, const char *heading, const char *msg,
@@ -8183,6 +8406,76 @@ typedef struct {
  * because it borrows two of its hooks. */
 static bool muse_open(app *a, const menu_style *over, void *ctx);
 static bool g_muse_card;              /* muse_open is the card's, not SELECT's */
+
+/* SELECT asked for the switcher away from the shelf: every menu and screen
+ * closes (g_menu_closing), and the shelf's loop - or, over a game, the game's
+ * menu - opens it, as a swivel turn is carried (plorpos-bn9.12). */
+static bool g_go_switcher;
+static int  g_muse_up;            /* muse_open's depth */
+/* The game was ended for the main shelf: the swivel's (plorpos-5eq.23), or
+ * Muse+ left without a hold (bn9.13). */
+static bool g_sw_shelf;
+/* Menu Hold on Muse+ (plorpos-bn9.13): this Muse+ is a hold's over a paused
+ * game; it was really shown; and a hold, not B or SELECT, closed it. */
+static bool g_hold_game, g_muse_shown, g_muse_held;
+/* A game is paused under the menus up now - the in-game or a native port's
+ * menu and what they opened (plorpos-bn9.22). */
+static bool g_game_under;
+/* Muse+'s own MENU is up (muse_menu), and the key that closed it to go back
+ * to Muse+ with: SELECT or a hold (plorpos-bn9.22). */
+static int       g_muse_menu_up;
+static in_button g_muse_menu_key = IN_NONE;
+static bool muse_hold_acts(void);
+
+/* The Controls page says what the setting does (src/controls.c). */
+static void shortcut_told(void)
+{
+	static char game_sel[32];
+
+	ctl_select_does = g_sc_select == SC_MUSE ? "Muse+"
+	                : g_sc_select == SC_SWITCHER ? "Recent" : NULL;
+	if (ctl_select_does) snprintf(game_sel, sizeof game_sel, "%s, in that menu", ctl_select_does);
+	ctl_select_game = ctl_select_does ? game_sel : NULL;
+	ctl_hold_does = g_sc_hold == SC_MUSE ? "Muse+"
+	              : g_sc_hold == SC_SWITCHER ? "Recent" : NULL;
+}
+
+/* SELECT where it opened Muse+ (plorpos-bn9.12), and a Menu hold there set
+ * to Muse+ (.13) - not from a menu over Muse+ itself. True when Muse ended
+ * what was underneath it - muse_open's answer. */
+static bool shortcut_keys(app *a, const menu_style *over, void *ctx)
+{
+	bool gone = false, opened = false;
+
+	/* In Muse+'s own MENU, or what it opened: a hold and SELECT (a swivel
+	 * turn's SELECT too) close back to Muse+, which then does what it does
+	 * with them - the hold, or closing, whatever Select Shortcut says, as
+	 * SELECT does in Muse+ itself (plorpos-bn9.22). */
+	if (g_muse_menu_up &&
+	    ((a->in.pressed[IN_SWITCHER] && muse_hold_acts()) || a->in.pressed[IN_SELECT])) {
+		g_muse_menu_key = a->in.pressed[IN_SWITCHER] ? IN_SWITCHER : IN_SELECT;
+		g_menu_closing = true;
+		return false;
+	}
+	if (a->in.pressed[IN_SWITCHER]) {
+		if (g_sc_hold != SC_MUSE || g_muse_up) return false;
+		gone = muse_open(a, over, ctx);
+		opened = true;
+	} else if (!a->in.pressed[IN_SELECT]) {
+		return false;
+	} else if (g_sc_select == SC_MUSE) {
+		gone = muse_open(a, over, ctx);
+		opened = true;
+	} else if (g_sc_select == SC_SWITCHER) {
+		g_go_switcher = true;
+	}
+	/* Muse's own menu may have asked for it too, and Muse cleared the flag. */
+	if (g_go_switcher) g_menu_closing = true;
+	/* A hold closed that Muse+ over a paused game's menu: back to the game,
+	 * not to the menu (plorpos-bn9.22), as from Muse+ a hold opened. */
+	if (opened && !gone && g_muse_held && g_game_under) g_menu_closing = true;
+	return gone;
+}
 #if defined(PLATFORM_ROTATE)
 /* The swivel (plorpos-5eq.1). A turn that asks for a screen - Muse, the
  * shelf, the switcher, the last game - is carried here to the shelf's loop,
@@ -8199,9 +8492,7 @@ enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
 #define SW_GO_MS 1500u
 static int      g_sw_go;
 static unsigned g_sw_at;
-static int      g_muse_up;            /* muse_open's depth */
 static bool     g_native_menu;        /* a port's or PICO-8's menu is up */
-static bool     g_sw_shelf;           /* the game was ended for the main shelf */
 
 static void swivel_apply(void)
 {
@@ -8250,6 +8541,8 @@ static Uint32 menu_fingerprint(const char *heading, const menu_row *rows,
 	return (h ^ (Uint32)n ^ ((Uint32)sel << 16)) * 16777619u;
 }
 
+static int menu_std_width(app *a);
+
 static menu_exit menu_run_body(app *a, const menu_style *st,
                                menu_build_fn build, menu_key_fn on_key,
                                void *ctx)
@@ -8258,6 +8551,9 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 	const char *heading = NULL;
 	int sel = st->start, n = 0, b;
 	ui_pace pace = {0};
+	/* A menu opened at the standard width keeps to it when a Fonts size
+	 * change remeasures it underneath (plorpos-bn9.6); cached, so free. */
+	const int std0 = st->fixed_w > 0 ? menu_std_width(a) : 0;
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -8295,8 +8591,8 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * borrows its backdrop and its power rule for as long as it is up.
 		 * Rebuilt on the way back, because anything may have changed while
 		 * Muse covered it - a Bluetooth headset connecting, for one. */
-		if (a->in.pressed[IN_SELECT]) {
-			if (muse_open(a, st, ctx)) return MENU_LEFT_GONE;
+		if (a->in.pressed[IN_SELECT] || a->in.pressed[IN_SWITCHER]) {
+			if (shortcut_keys(a, st, ctx)) return MENU_LEFT_GONE;
 			continue;
 		}
 
@@ -8360,7 +8656,8 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		} else {
 			shelf_dim_cached(a, 120);
 		}
-		menu_draw(a, heading, rows, n, sel, st->fixed_w,
+		menu_draw(a, heading, rows, n, sel,
+		          std0 && st->fixed_w == std0 ? menu_std_width(a) : st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
 		if (st->toasts && muse_toast_now()) toast_draw(a, muse_toast_now(), st->accent);
 		draw_chrome(a->r);
@@ -9248,7 +9545,7 @@ static void xfer_screen(app *a)
 /* The heading and rows, in one place so a shot cannot picture a screen that
  * does not exist - the lesson from --hare, where the fixture claimed a byte
  * count the code could not produce. */
-static void art_head(char *out, size_t n, const char *now)
+static void art_head(char *out, size_t n, const char *title, const char *now)
 {
 	char fit[128];
 
@@ -9259,7 +9556,7 @@ static void art_head(char *out, size_t n, const char *now)
 	 * the panel a margin it can keep. */
 	ui_fit_text(ui_font(UI_F_LABEL), now, fit, sizeof fit,
 	            TORTOS_SCREEN_W * 3 / 4);
-	snprintf(out, n, "Box Art\n%s", fit);
+	snprintf(out, n, "%s\n%s", title, fit);
 }
 
 static int art_rows(menu_row *out, const char *where, const char *counts,
@@ -9278,7 +9575,7 @@ void art_preview(app *a, const char *now, const char *where,
 	char head[192];
 	int n = art_rows(rows, where, counts, working);
 
-	art_head(head, sizeof head, now);
+	art_head(head, sizeof head, "Scrape Systems", now);
 	draw_shelf(a);
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
@@ -9296,6 +9593,8 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 
 	memset(gi, 0, sizeof *gi);
 	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
+	/* What diatom plays (plorpos-bn9.5): not Ports, not Splore, not PICO-8 on the owner's pico8_64. */
+	gi->overrides = !is_ports(s) && !is_splore(s, g->file) && !(is_pico8(s) && a->view[owner].native);
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -9362,8 +9661,10 @@ static const char *fbneo_dat(void)
  * difference between twenty images and a hundred and eighty. It is worth much
  * less afterwards: since the direct-name pass landed, a whole-library re-run
  * over a full card is nine directory sweeps and no network at all. */
-static void art_screen(app *a, const char *only, const char *one,
-                       const char *stem, const char *one_file, unsigned accent)
+/* `pick`, when not NULL, is one flag per a->sys entry instead of `only`: the
+ * shelves Scrape Systems checked, in one run (plorpos-bn9.2). */
+static void art_run(app *a, const char *only, const bool *pick, const char *one,
+                    const char *stem, const char *one_file, unsigned accent)
 {
 	menu_row     rows[3];
 	art_progress p;
@@ -9373,12 +9674,16 @@ static void art_screen(app *a, const char *only, const char *one,
 	/* Whether the one game already had a cover, so a miss can say it kept it
 	 * rather than read as though the cover went. */
 	bool         had = one && stem && only && has_box_art(only, stem);
+	/* The panel is headed by the row that started it (plorpos-bn9.16); one
+	 * game's Get/Replace Box Art keeps "Box Art". */
+	const char  *title = one ? "Box Art" : pick ? "Scrape Systems"
+	                     : only ? "Scrape Shelf" : "Box Art";
 
 	if (!net_online()) {
 		menu_row row = { "No network", NULL, false };
 
 		draw_shelf(a);
-		menu_draw(a, "Box Art", &row, 1, -1, 0, accent);
+		menu_draw(a, title, &row, 1, -1, 0, accent);
 		draw_chrome(a->r);
 		plat_present(a->r);
 		SDL_Delay(1600);
@@ -9442,7 +9747,7 @@ static void art_screen(app *a, const char *only, const char *one,
 					 * uses, so the two sources look like one feature. */
 					menu_row row[2];
 
-					art_head(head, sizeof head, one);
+					art_head(head, sizeof head, title, one);
 					row[0] = (menu_row){ "Box Art",
 					                     had ? "replaced" : "found", false };
 					row[1] = (menu_row){ "B to close", NULL, false };
@@ -9463,7 +9768,7 @@ static void art_screen(app *a, const char *only, const char *one,
 				}
 				if (st < 0) { ss_run_cancel(); ss_working = false; break; }
 
-				art_head(head, sizeof head, one);
+				art_head(head, sizeof head, title, one);
 				rows[0] = (menu_row){ "Box Art", ss_run_where(), false };
 				rows[1] = (menu_row){ "B to stop", NULL, false };
 				tick_tint(a);
@@ -9480,7 +9785,7 @@ static void art_screen(app *a, const char *only, const char *one,
 		}
 	}
 
-	if (only) {
+	if (only || pick) {
 		/* A one-entry library rather than a filter inside artscrape.c. The
 		 * scraper already takes the list it should work on; handing it a
 		 * shorter list is the same operation, and it keeps "which systems"
@@ -9490,10 +9795,9 @@ static void art_screen(app *a, const char *only, const char *one,
 
 		one.count = 0;
 		for (i = 0; i < a->sys.count; i++)
-			if (!strcmp(a->sys.systems[i].folder, only)) {
-				one.systems[0] = a->sys.systems[i];
-				one.count = 1;
-				break;
+			if (pick ? pick[i] : !strcmp(a->sys.systems[i].folder, only)) {
+				one.systems[one.count++] = a->sys.systems[i];
+				if (!pick) break;
 			}
 		art_begin(&one, P_ROMS, fbneo_dat(), stem);
 	} else {
@@ -9514,7 +9818,7 @@ static void art_screen(app *a, const char *only, const char *one,
 			/* Asked about one game, answer about one game: the run is that
 			 * game alone (art_begin's `only`), and "1 found, 19 already" would
 			 * be a true statement about work the player did not ask for. */
-			art_head(head, sizeof head, one);
+			art_head(head, sizeof head, title, one);
 			rows[0] = (menu_row){ "Box Art",
 			                      working ? "fetching"
 			                      : p.found ? (had ? "replaced" : "found")
@@ -9528,7 +9832,7 @@ static void art_screen(app *a, const char *only, const char *one,
 			 * that it is done - never the last game it happened to fetch,
 			 * which is what this said before and reads as still working
 			 * on it. */
-			art_head(head, sizeof head,
+			art_head(head, sizeof head, title,
 			         working ? (p.now[0] ? p.now : "starting")
 			         : p.problem[0] ? p.problem : "Done");
 			nrows = art_rows(rows, where, counts, working);
@@ -9577,6 +9881,12 @@ static void art_screen(app *a, const char *only, const char *one,
 	free_all_textures(a);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+}
+
+static void art_screen(app *a, const char *only, const char *one,
+                       const char *stem, const char *one_file, unsigned accent)
+{
+	art_run(a, only, NULL, one, stem, one_file, accent);
 }
 
 /* Game Settings > Download Achievement Sets (plorpos-3yv.107.3): every shelf's
@@ -9813,10 +10123,17 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+/* Whose hotkeys the Hotkeys screen edits (plorpos-bn9.3, .4): the shelf's
+ * defaults (from <Shelf> Defaults, over the shelf), one game's own (from its
+ * Game Overrides), or the running game's (in-game: sent at once, and kept as
+ * the game's own only under Save Per-Game Overrides). */
+enum { HK_SHELF, HK_GAME, HK_LIVE };
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode,
+                           unsigned accent);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
+static void turbo_screen(app *a, const char *tag, const char *file);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -9920,6 +10237,173 @@ static void game_rename(app *a, int owner, const game_entry *g, const char *name
 	}
 }
 
+/* Game Overrides (plorpos-bn9.5), from the X menu: this game's own settings,
+ * the rows the in-game menu writes plus Core, Hotkeys and Turbo. Left, right
+ * and A cycle a value through Shelf Default and the real ones; Shelf Default
+ * deletes the game's row. Read when the screen opens and after each change,
+ * not per frame. The owner's shelf throughout, so it works from Favorites. */
+typedef struct {
+	app *a; int owner; const game_entry *g;
+	/* Each value's index into its own list, -1 for Shelf Default. */
+	int core, dmode, fill, shader, pal;
+	bool hotkeys, turbo, pal_shown;
+	go_row ids[GO_ROWS];
+} go_ctx;
+
+static void go_refresh(go_ctx *c)
+{
+	app *a = c->a;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	const game_entry *g = c->g;
+	char key[LIB_PATH + 48], name[CFG_STR], hk[8], bm[8];
+	const char *b = strrchr(g->file, '/');
+	int k = alt_core(s), v, j;
+
+	c->core = -1;
+	engine_game_key(key, sizeof key, s, g->file);
+	if (k >= 0 && db_get_str(db_dev(), key, name, sizeof name, NULL)) {
+		const char *core = shelf_core(a, c->owner, g->file);
+
+		for (j = 0; j < alt_n(k); j++)
+			if (!strcmp(core, alt_core_name(k, j))) c->core = j;
+	}
+	/* A DS's swap is part of its layout: either row makes it the game's. */
+	ovr_key(key, sizeof key, "display", a, c->owner, g);
+	c->dmode = db_has(db_dev(), key) ? game_dmode(a, c->owner, g) : -1;
+	ovr_key(key, sizeof key, "dsswap", a, c->owner, g);
+	if (c->dmode < 0 && is_nds_tag(s->tag) && db_has(db_dev(), key)) c->dmode = game_dmode(a, c->owner, g);
+	ovr_key(key, sizeof key, "dsfill", a, c->owner, g);
+	v = db_get_int(db_dev(), key, -1);
+	c->fill = v >= 0 ? game_fill(a, c->owner, g) : -1;
+	ovr_key(key, sizeof key, "shader", a, c->owner, g);
+	c->shader = db_has(db_dev(), key) ? game_shader(a, c->owner, g) : -1;
+	c->pal = palette_of(a, c->owner, g);
+	c->pal_shown = c->pal >= 0;
+	snprintf(key, sizeof key, "palette.%s.%s", s->tag, b ? b + 1 : g->file);
+	if (!db_has(db_lib(), key)) c->pal = -1;
+	c->hotkeys = plat_game_keys(s->tag, g->file, hk, sizeof hk, bm, sizeof bm);
+	snprintf(key, sizeof key, "turbomap.%s/%s", s->tag, b ? b + 1 : g->file);
+	c->turbo = db_has(db_lib(), key);
+}
+
+static int go_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	go_ctx *c = ctx;
+	app *a = c->a;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	int k = alt_core(s);
+	go_ui u = { 0 };
+
+	(void)max;
+	*heading = c->g->title;
+	u.core_live = k >= 0;
+	u.core = k >= 0 && c->core >= 0 ? alt_core_label(k, c->core) : NULL;
+	u.nds = is_nds_tag(s->tag);
+	u.dmode = c->dmode >= 0 ? DMODES[c->dmode].label : NULL;
+	u.fill_shown = ds_fill_shown(s->tag);
+	u.fill = c->fill >= 0 ? FILL_LABEL[c->fill] : NULL;
+	u.shaders = a->shaders.count > 1;
+	u.shader = c->shader >= 0 ? a->shaders.e[c->shader].name : NULL;
+	u.palette_shown = c->pal_shown;
+	u.palette = c->pal >= 0 ? gbpal_label(c->pal) : NULL;
+	u.hotkeys = c->hotkeys;
+	u.turbo = c->turbo;
+	return go_rows(&u, rows, c->ids);
+}
+
+/* The step from `cur` through -1 (Shelf Default) and opts[0..n-1]. */
+static int go_step(const int *opts, int n, int cur, int d)
+{
+	int i = -1, j;
+
+	for (j = 0; j < n; j++) if (opts[j] == cur) i = j;
+	i = ((i + 1 + d) % (n + 1) + n + 1) % (n + 1) - 1;
+	return i < 0 ? -1 : opts[i];
+}
+
+static menu_result go_key(app *a, void *ctx, in_button key, int sel)
+{
+	go_ctx *c = ctx;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	const game_entry *g = c->g;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	int opts[DMODE_COUNT + GBPAL_COUNT + SL_MAX], n = 0, v, k;
+	char key_[LIB_PATH + 48];
+
+	if (!d || sel < 0 || sel >= GO_ROWS) return MENU_STAY;
+	switch (c->ids[sel]) {
+	case GO_CORE:
+		if ((k = alt_core(s)) < 0) break;
+		for (n = 0; n < alt_n(k); n++) opts[n] = n;
+		v = go_step(opts, n, c->core, d);
+		engine_game_key(key_, sizeof key_, s, g->file);
+		if (v < 0) db_del(db_dev(), key_);
+		else db_set_str(db_dev(), key_, alt_core_name(k, v));
+		break;
+	case GO_DISPLAY: {
+		/* This panel's modes for the system, from a fixed first so the
+		 * order does not move with the shelf's default. */
+		int first = dmode_step(s->tag, is_nds_tag(s->tag) ? DS_RING[0] : 0, 0), m = first;
+
+		do { opts[n++] = m; m = dmode_step(s->tag, m, 1); } while (m != first && n < DMODE_COUNT);
+		v = go_step(opts, n, c->dmode, d);
+		/* A layout chosen here is the whole answer: the swap it was
+		 * kept with goes. */
+		ovr_key(key_, sizeof key_, "dsswap", a, c->owner, g);
+		db_del(db_dev(), key_);
+		if (v >= 0) game_dmode_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "display", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	}
+	case GO_FILL: {
+		int o[3];
+
+		n = ds_fill_opts(o);
+		memcpy(opts, o, sizeof o);
+		v = go_step(opts, n, c->fill, d);
+		if (v >= 0) game_fill_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "dsfill", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	}
+	case GO_SHADER:
+		for (n = 0; n < a->shaders.count && n < SL_MAX; n++) opts[n] = n;
+		v = go_step(opts, n, c->shader, d);
+		if (v >= 0) game_shader_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "shader", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	case GO_PALETTE: {
+		const char *b = strrchr(g->file, '/');
+
+		for (n = 0; n < GBPAL_COUNT; n++) opts[n] = n;
+		v = go_step(opts, n, c->pal, d);
+		if (v >= 0) palette_save(s->tag, g, v);
+		else {
+			snprintf(key_, sizeof key_, "palette.%s.%s", s->tag, b ? b + 1 : g->file);
+			db_del(db_lib(), key_);
+		}
+		break;
+	}
+	case GO_HOTKEYS:
+		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME, s->accent);
+		break;
+	case GO_TURBO:
+		if (key == IN_ACCEPT) turbo_screen(a, s->tag, g->file);
+		break;
+	default:
+		break;
+	}
+	go_refresh(c);
+	return MENU_STAY;
+}
+
+static void game_overrides_screen(app *a, int owner, const game_entry *g, const menu_style *st)
+{
+	go_ctx c = { .a = a, .owner = owner, .g = g };
+
+	go_refresh(&c);
+	menu_run(a, st, go_build, go_key, &c);
+}
+
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
 	info_ctx *c = ctx;
@@ -9961,6 +10445,11 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		/* Closes the screen, as Delete does: the rescan moves the game. */
 		game_rename(a, c->owner, c->g, p);
 		return MENU_DONE;
+	}
+
+	if (!strcmp(rows[sel].label, "Game Overrides")) {
+		game_overrides_screen(a, c->owner, c->g, &c->st);
+		return MENU_STAY;
 	}
 
 	if (!strcmp(rows[sel].label, "Delete Game")) {
@@ -10140,7 +10629,7 @@ static void bt_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		if (in_repeat(&a->in, IN_DOWN) && sel < u.n) sel++;
 		if (in_repeat(&a->in, IN_UP)   && sel > 0)   sel--;
@@ -10466,7 +10955,7 @@ static bool stats_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return false; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		/* A goes to the row under the cursor: the game on its own shelf, or in
 		 * by-system mode that system's. Not a launch.
@@ -10609,7 +11098,7 @@ static void about_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
@@ -10665,7 +11154,7 @@ static void controls_screen(app *a)
 		if (menu_leaving(a)) done = true;
 		/* SELECT opens Muse here as it does on every other menu screen -
 		 * which is one of the things this page exists to tell you. */
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		if (in_repeat(&a->in, IN_RIGHT)) page = (ctl_page)((page + 1) % CTL_PAGES);
 		if (in_repeat(&a->in, IN_LEFT))
@@ -10754,6 +11243,9 @@ static int menu_shelf_width(app *a)
 		n = sys_menu_ui_build(&u, rows, &heading);
 		mw = menu_measure(rows, n, heading);
 		if (mw > w) w = mw;
+		n = sys_menu_fonts_build(&u, rows, &bufs, &heading);
+		mw = menu_measure(rows, n, heading);
+		if (mw > w) w = mw;
 	}
 
 	/* Every value that can be cycled on this menu, at its widest, so the
@@ -10789,39 +11281,36 @@ static int menu_shelf_width(app *a)
 				if (mw > w) w = mw;
 			}
 		}
-		for (k = 0; !own && k < DMODE_COUNT; k++) {
-			int mw;
-			rows[SM_DISPLAY].value = DMODES[k].label;
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
-		/* And every shader name, as the in-game menu measures them. */
-		for (k = 0; !own && k < a->shaders.count; k++) {
-			int mw;
-			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
-			int mw;
-			rows[SM_FILL].value = gbpal_label(k);
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
-			int mw;
-			rows[SM_CORE].value = ENGINE_LABEL(k);
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
-			int c = alt_core(&a->sys.systems[i]), mw;
+		/* And <Shelf> Defaults, a level down since plorpos-bn9.3, with
+		 * every value its rows can cycle to. */
+		if (!own) {
+			char ss[WIFI_SSID_MAX];
+			sys_ui u;
+			sd_row ids[SD_ROWS];
+			menu_row d[SD_ROWS];
+			const char *dh;
+			int dn, j, mw, c = alt_core(&a->sys.systems[i]);
 
-			for (k = 0; k < alt_n(c); k++) {
-				rows[SM_CORE].value = alt_core_label(c, k);
-				mw = menu_measure(rows, n, heading);
-				if (mw > w) w = mw;
+			menu_ui(a, SCREEN_GAMES, i, &u, ss, sizeof ss);
+			dn = sys_menu_defaults_build(&u, d, ids, &bufs, &dh);
+			mw = menu_measure(d, dn, dh);
+			if (mw > w) w = mw;
+			for (j = 0; j < dn; j++) {
+				int m = ids[j] == SD_DISPLAY ? DMODE_COUNT : ids[j] == SD_SHADER ? a->shaders.count
+				      : ids[j] == SD_PALETTE ? GBPAL_COUNT : ids[j] == SD_FILL ? 3
+				      : ids[j] == SD_CORE ? (c >= 0 ? alt_n(c) : is_pico8(&a->sys.systems[i]) ? 2 : 0) : 0;
+				const char *keep = d[j].value;
+
+				for (k = 0; d[j].live && k < m; k++) {
+					d[j].value = ids[j] == SD_DISPLAY ? DMODES[k].label
+					           : ids[j] == SD_SHADER ? a->shaders.e[k].name
+					           : ids[j] == SD_PALETTE ? gbpal_label(k)
+					           : ids[j] == SD_FILL ? FILL_LABEL[k]
+					           : c >= 0 ? alt_core_label(c, k) : ENGINE_LABEL(k);
+					mw = menu_measure(d, dn, dh);
+					if (mw > w) w = mw;
+				}
+				d[j].value = keep;
 			}
 		}
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
@@ -10988,7 +11477,7 @@ enum { PS_WAKE, PS_SCREEN_OFF,
 #if !defined(PLATFORM_MIYOO)
        PS_PAUSE_DELAY,
 #endif
-       PS_LOCK, PS_SLEEPRESET, PS_REWIND, PS_HOTKEYS, PS_COUNT };
+       PS_LOCK, PS_SLEEPRESET, PS_REWIND, PS_COUNT };
 
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
@@ -11019,7 +11508,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	rows[PS_LOCK] = (menu_row){ "Sleep Button Lock",
 	                      muse_hold() ? "On" : "Off", true };
 	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
-	rows[PS_SLEEPRESET] = (menu_row){ "Play Resets Sleep Timer",
+	rows[PS_SLEEPRESET] = (menu_row){ "Games Reset Sleep Timer",
 	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
 	/* Auto Rewind (owner, plorpos-5eq.4): books and podcasts; on a music
 	 * Source the row is there, off and not to be changed. */
@@ -11027,11 +11516,11 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 		rows[PS_REWIND] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[PS_REWIND] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	rows[PS_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };   /* Now-Playing Layout: UI Settings (plorpos-935) */
+	/* Now-Playing Layout: UI Settings (plorpos-935); Hotkeys: Muse+'s menu (bn9.14) */
 	return PS_COUNT;
 }
 
-/* Hotkeys, from Playback Settings (owner, plorpos-5eq.6, .26): a row an
+/* Hotkeys, from Muse+'s menu (plorpos-bn9.14; was Playback Settings) (owner, plorpos-5eq.6, .26): a row an
  * action, listing its buttons. A records one more: the row asks for a button
  * and the next L1/R1/L2/R2, D-pad or stick press is the action's, taken off
  * whichever action had it (storage stays a button's action). X clears the
@@ -11233,7 +11722,6 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
-	if (sel == PS_HOTKEYS && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -12793,12 +13281,71 @@ static void gamelist_import_screen(app *a)
 	note_panel(a, heading, rows, n);
 }
 
+/* Scraping > Scrape Systems (plorpos-bn9.2): check shelves, START scrapes
+ * them in one run. The shelves are the ones the whole-library run would visit
+ * (a folder of their own: not Favorites or Muse) that have games; Ports
+ * included, as that run copies its art in. Checks last only this visit. */
+typedef struct {
+	int         n, sys[CFG_MAX_SYSTEMS];     /* row -> a->sys index */
+	const char *name[CFG_MAX_SYSTEMS];
+	bool        on[CFG_MAX_SYSTEMS];
+} scrape_pick;
+
+static int scrape_pick_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	scrape_pick *sp = ctx;
+
+	(void)max;
+	return sys_menu_scrape_pick_build(sp->name, sp->on, sp->n, rows, heading);
+}
+
+static menu_result scrape_pick_key(app *a, void *ctx, in_button key, int sel)
+{
+	scrape_pick *sp = ctx;
+	int i;
+
+	if (key == IN_ACCEPT && sel == SP_ALL) {
+		bool all = true;
+
+		for (i = 0; i < sp->n; i++) all = all && sp->on[i];
+		for (i = 0; i < sp->n; i++) sp->on[i] = !all;
+	} else if (key == IN_ACCEPT && sel >= SP_FIRST && sel < SP_FIRST + sp->n) {
+		sp->on[sel - SP_FIRST] = !sp->on[sel - SP_FIRST];
+	} else if (key == IN_START) {
+		bool pick[CFG_MAX_SYSTEMS] = { false }, any = false;
+
+		for (i = 0; i < sp->n; i++)
+			if (sp->on[i]) pick[sp->sys[i]] = any = true;
+		if (!any) return MENU_STAY;
+		art_run(a, NULL, pick, NULL, NULL, NULL, MENU_ACCENT);
+		return MENU_DONE;
+	}
+	return MENU_STAY;
+}
+
+static void scrape_pick_screen(app *a)
+{
+	scrape_pick sp = { 0 };
+	int i;
+
+	for (i = 0; i < a->sys.count && sp.n < CFG_MAX_SYSTEMS; i++) {
+		const system_cfg *s = &a->sys.systems[i];
+
+		if (!s->folder[0] || is_muse(s) || !strcmp(s->tag, "FAV")
+		    || a->view[i].list.count <= 0) continue;
+		sp.sys[sp.n] = i;
+		sp.name[sp.n++] = s->name;
+	}
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         scrape_pick_build, scrape_pick_key, &sp);
+}
+
 static menu_result scraping_key(app *a, void *ctx, in_button key, int sel)
 {
 	(void)ctx;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
-	case SC_BOXART: art_screen(a, NULL, NULL, NULL, NULL, MENU_ACCENT); break;
+	case SC_BOXART: scrape_pick_screen(a); break;
 	case SC_SS:     ss_signin_screen(a); break;
 	case SC_IMPORT: gamelist_import_screen(a); break;
 	default: break;
@@ -12924,6 +13471,10 @@ static int system_settings_build(void *ctx, menu_row *rows, int max,
 	return sys_menu_system_build(&u, rows, &c->bufs, heading);
 }
 
+#if SYS_HAS_VLIM
+static void vollimit_screen(app *a);
+#endif
+
 static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
@@ -12993,6 +13544,33 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		aout_apply(true);
 		return MENU_STAY;
 	}
+#if SYS_HAS_VLIM
+	/* A door (plorpos-bn9.9): only A opens it. */
+	if (sel == ST_VOLLIM) {
+		if (key == IN_ACCEPT) vollimit_screen(a);
+		return MENU_STAY;
+	}
+#endif
+	/* Select Shortcut (plorpos-bn9.12): left/right and A go round. */
+	if (sel == ST_SELECT && (d || key == IN_ACCEPT)) {
+		g_sc_select = (g_sc_select + (d ? d : 1) + SC_COUNT) % SC_COUNT;
+		db_set_int(db_dev(), "shortcut.select", g_sc_select);
+		shortcut_told();
+		return MENU_STAY;
+	}
+	/* Menu Hold (plorpos-bn9.13): the same, in the owner's order
+	 * Switcher, Muse+, off (its default first). */
+	if (sel == ST_HOLD && (d || key == IN_ACCEPT)) {
+		static const sc_action ORDER[SC_COUNT] = { SC_SWITCHER, SC_MUSE, SC_OFF };
+		int i = 0;
+
+		while (i < SC_COUNT - 1 && (int)ORDER[i] != g_sc_hold) i++;
+		g_sc_hold = ORDER[(i + (d ? d : 1) + SC_COUNT) % SC_COUNT];
+		db_set_int(db_dev(), "shortcut.hold", g_sc_hold);
+		plat_menu_hold(g_sc_hold != SC_OFF);      /* the next RUN tells Diatom */
+		shortcut_told();
+		return MENU_STAY;
+	}
 #if defined(PLATFORM_MIYOO)
 	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
 	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
@@ -13011,7 +13589,6 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 #if defined(PLATFORM_ROTATE)
 	/* Rotate (Closed) / Rotate (Open) (plorpos-5eq.1): left/right and A go
 	 * round (owner). */
@@ -13030,11 +13607,6 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
-		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
-		battery_indicator_changed();
-		return MENU_STAY;
-	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
 #if SYS_HAS_MUTESW
@@ -13049,6 +13621,56 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 #endif
 	return MENU_STAY;
 }
+
+#if SYS_HAS_VLIM
+static int vollimit_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_vollimit_build(&u, rows, &c->bufs, heading);
+}
+
+/* A limit, a step of ten; left, right and A step, A wrapping from 100 to 10
+ * (plorpos-bn9.9). Saved at once; the menu loop's aout_apply brings the level
+ * down to it on its next frame if the output is in use. */
+static menu_result vollimit_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const aout_dest dest[VL_ROWS] = {
+#if VL_HAS_BT
+		AOUT_BT,
+#endif
+#if VL_HAS_DAC
+		AOUT_USB,
+#endif
+#if VL_HAS_WIRED
+		AOUT_WIRED,
+#endif
+	};
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	int pct;
+
+	(void)a; (void)ctx;
+	if (!d || sel < 0 || sel >= VL_ROWS) return MENU_STAY;
+	pct = aout_limit_pct(dest[sel]);
+	pct = key == IN_ACCEPT && pct >= 100 ? AOUT_LIMIT_MIN : aout_limit_step(pct, d);
+	aout_limit_set(dest[sel], pct);
+	db_set_int(db_dev(), VLIM_KEY[dest[sel]], pct);
+	return MENU_STAY;
+}
+
+static void vollimit_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         vollimit_build, vollimit_key, &c);
+}
+#endif
 
 static void system_settings_screen(app *a)
 {
@@ -13069,6 +13691,73 @@ static int ui_settings_build(void *ctx, menu_row *rows, int max,
 	(void)max;
 	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
 	return sys_menu_ui_build(&u, rows, heading);
+}
+
+static void fonts_screen(app *a);
+
+/* UI Settings > Visible Tiles (plorpos-bn9.10): Ports and Muse+ first, then
+ * every system with games in the row's order; Favorites is not listed (it is
+ * there while something is favorited). A, Left and Right toggle; the row
+ * changes once, when the list closes. */
+typedef struct {
+	int         n, sys[CFG_MAX_SYSTEMS];     /* row -> a->sys index */
+	const char *name[CFG_MAX_SYSTEMS];
+	bool        on[CFG_MAX_SYSTEMS];
+} tiles_pick;
+
+static int tiles_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	tiles_pick *tp = ctx;
+
+	(void)max;
+	return sys_menu_tiles_build(tp->name, tp->on, tp->n, rows, heading);
+}
+
+static menu_result tiles_key(app *a, void *ctx, in_button key, int sel)
+{
+	tiles_pick *tp = ctx;
+
+	(void)a;
+	if ((key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) && sel >= 0 && sel < tp->n)
+		tp->on[sel] = !tp->on[sel];
+	return MENU_STAY;
+}
+
+static void tiles_screen(app *a)
+{
+	tiles_pick tp = { 0 };
+	bool changed = false;
+	int pass, i;
+
+	/* Ports, Muse+, the rest: three passes over the same shelves. */
+	for (pass = 0; pass < 3; pass++)
+		for (i = 0; i < a->sys.count && tp.n < CFG_MAX_SYSTEMS; i++) {
+			const system_cfg *s = &a->sys.systems[i];
+			int kind = is_ports(s) ? 0 : is_muse(s) ? 1 : 2;
+
+			if (kind != pass || !strcmp(s->tag, "FAV")) continue;
+			tp.sys[tp.n] = i;
+			tp.name[tp.n] = s->name;
+			tp.on[tp.n++] = !s->hidden;
+		}
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         tiles_build, tiles_key, &tp);
+	for (i = 0; i < tp.n; i++) {
+		char k[24];
+
+		if (tp.on[i] == !a->sys.systems[tp.sys[i]].hidden) continue;
+		tile_key(k, sizeof k, a->sys.systems[tp.sys[i]].tag);
+		if (tp.on[i]) db_del(db_dev(), k);       /* shown is the default */
+		else db_set_int(db_dev(), k, 0);
+		changed = true;
+	}
+	if (!changed) return;
+	/* No rescan: the shelves are all still there, only the row's places
+	 * move. The cursor stays on its shelf, or the next shown one. */
+	tiles_mark(a);
+	if (a->screen == SCREEN_SYSTEMS) sys_cursor_show(a);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
+	ui_redraw_now();
 }
 
 static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
@@ -13108,16 +13797,17 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* A face, applied at once: the fonts are reopened under the open menu,
-	 * and the shelf's cards - some carry text - drawn again. */
-	if ((sel == US_FONT || sel == US_HEADFONT) && (d || key == IN_ACCEPT)) {
-		bool head = sel == US_HEADFONT;
-		int *k = head ? &g_head : &g_font;
+	/* A door (plorpos-bn9.6): only A opens it. */
+	if (sel == US_FONTS) {
+		if (key == IN_ACCEPT) fonts_screen(a);
+		return MENU_STAY;
+	}
 
-		font_apply(head, (*k + (d ? d : 1) + FONT_COUNT) % FONT_COUNT);
-		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
-		free_all_textures(a);
-		prime_sys_window(a);
+	/* Battery Percentage (from System Settings, plorpos-bn9.11): a toggle,
+	 * A or left/right, as Mute Switch. */
+	if (sel == US_BATTPCT && (d || key == IN_ACCEPT)) {
+		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
+		battery_indicator_changed();
 		return MENU_STAY;
 	}
 
@@ -13131,17 +13821,61 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* The Ports card, shown or dropped: the shelves are scanned again, which
-	 * is what puts it back or takes it off. A scan, so the panel says so. */
-	if (sel == US_PORTS && g_has_ports && (d || key == IN_ACCEPT)) {
-		g_ports_hidden = !g_ports_hidden;
-		db_set_int(db_dev(), "ports_hidden", g_ports_hidden ? 1 : 0);
-		wait_panel(a, "Ports Tile", "Scanning...");
-		rescan_all(a);
+	/* A door (plorpos-bn9.10): only A opens it. */
+	if (sel == US_TILES) {
+		if (key == IN_ACCEPT) tiles_screen(a);
 		return MENU_STAY;
 	}
 
 	return MENU_STAY;
+}
+
+static int fonts_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_fonts_build(&u, rows, &c->bufs, heading);
+}
+
+/* A face or a size, applied at once: the fonts are reopened under the open
+ * menu, the panels remeasured, and the shelf's cards - some carry text -
+ * drawn again. Left, right and A step; every row wraps. */
+static menu_result fonts_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	bool head = sel == UF_HEADFONT || sel == UF_HEADSIZE;
+
+	(void)ctx;
+	if (!d || sel < 0 || sel >= UF_ROWS) return MENU_STAY;
+	if (sel == UF_HEADFONT || sel == UF_FONT) {
+		int *k = head ? &g_head : &g_font;
+
+		font_apply(head, (*k + d + FONT_COUNT) % FONT_COUNT);
+		db_set_str(db_dev(), head ? "headfont" : "font", FONTS[*k].id);
+	} else {
+		int *p = head ? &g_head_size : &g_body_size;
+
+		*p = font_size_step(*p, d);
+		font_apply(head, head ? g_head : g_font);
+		db_set_int(db_dev(), head ? "headsize" : "bodysize", *p);
+	}
+	a->menu_w = 0;
+	free_all_textures(a);
+	prime_sys_window(a);
+	return MENU_STAY;
+}
+
+static void fonts_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         fonts_build, fonts_key, &c);
 }
 
 static void ui_settings_screen(app *a)
@@ -13233,6 +13967,254 @@ static void shelf_resort(app *a, int sys)
 	cf_reset(&v->cf, v->cursor);
 }
 
+/* Turbo Assignments (plorpos-bn9.4): what the Turbo Assign hotkey sets in a
+ * game, as a list - one row per host button, the turbo it fires or None. A
+ * shelf's default (turbomap.<TAG>, from <Shelf> Defaults) or one game's own
+ * (turbomap.<TAG>/<file>, from its Game Overrides), the format the platform
+ * reads at RUN. Saved on every change; a game's first change makes a full copy
+ * of the shelf's. No game is running here, so nothing is sent. */
+typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own; char v[BM_SRC_N][12]; } te_ctx;
+
+static void te_key(char *k, size_t n, const char *tag, const char *file)
+{
+	const char *b = file ? strrchr(file, '/') : NULL;
+
+	if (file) snprintf(k, n, "turbomap.%s/%s", tag, b ? b + 1 : file);
+	else      snprintf(k, n, "turbomap.%s", tag);
+}
+
+static void te_load(te_ctx *c)
+{
+	char key[LIB_PATH + 48], v[96];
+
+	te_key(key, sizeof key, c->tag, c->file);
+	c->own = c->file && db_get_str(db_lib(), key, v, sizeof v, NULL);
+	if (!c->own) {
+		te_key(key, sizeof key, c->tag, NULL);
+		db_get_str(db_lib(), key, v, sizeof v, "");
+	}
+	bm_turbo_parse(v, c->t);
+}
+
+static void te_save(te_ctx *c)
+{
+	char key[LIB_PATH + 48], v[96];
+	int n = bm_turbo_format(c->t, v, sizeof v);
+
+	te_key(key, sizeof key, c->tag, c->file);
+	if (c->file) { db_set_str(db_lib(), key, v); c->own = true; }   /* "" is the game's none */
+	else if (n)  db_set_str(db_lib(), key, v);
+	else         db_del(db_lib(), key);
+}
+
+static int te_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	te_ctx *c = ctx;
+	int i, n = 0;
+
+	(void)max;
+	*heading = "Turbo Assignments";
+	for (i = 0; i < BM_SRC_N; i++) {
+		snprintf(c->v[i], sizeof c->v[i], "Turbo %s", c->t[i] ? BM_SRC_LABEL[c->t[i] - 1] : "");
+		rows[n++] = (menu_row){ BM_SRC_LABEL[i], c->t[i] ? c->v[i] : "None", true };
+	}
+	if (c->file) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
+	return n;
+}
+
+static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
+{
+	te_ctx *c = ctx;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+
+	(void)a;
+	if (!d) return MENU_STAY;
+	if (sel >= 0 && sel < BM_SRC_N) {
+		c->t[sel] = (c->t[sel] + d + BM_SRC_N + 1) % (BM_SRC_N + 1);
+		te_save(c);
+	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file) {
+		char k[LIB_PATH + 48];
+
+		te_key(k, sizeof k, c->tag, c->file);
+		db_del(db_lib(), k);
+		te_load(c);
+	}
+	return MENU_STAY;
+}
+
+/* `file` NULL: the shelf's default. */
+static void turbo_screen(app *a, const char *tag, const char *file)
+{
+	te_ctx c = { .a = a, .tag = tag, .file = file };
+
+	te_load(&c);
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         te_build, te_key_fn, &c);
+}
+
+/* <Shelf> Defaults (plorpos-bn9.3): the rows the shelf menu carried until
+ * then - Core, Display Mode, Shader, Palette - plus the shelf's Hotkeys and
+ * Turbo Assignments. A game with its own keeps it; Reset Overrides takes
+ * that away. */
+typedef struct { app *a; int sys; menu_bufs bufs; sd_row ids[SD_ROWS]; } sd_ctx;
+
+static int sd_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	sd_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+	int n;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_GAMES, c->sys, &u, ss, sizeof ss);
+	n = sys_menu_defaults_build(&u, rows, c->ids, &c->bufs, heading);
+	return n;
+}
+
+/* Left and right step a row's value and A steps it forward, saved at once:
+ * there is no confirm to hang the write off. A opens a list where the row has
+ * one (Shader, Palette) and the Hotkeys screen. */
+static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
+{
+	sd_ctx *c = ctx;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0, sys = c->sys;
+	const system_cfg *sc = &a->sys.systems[sys];
+	sysview *v = &a->view[sys];
+
+	if (sel < 0 || sel >= SD_ROWS || (!d && key != IN_ACCEPT)) return MENU_STAY;
+	switch (c->ids[sel]) {
+	case SD_CORE: {
+		/* PICO-8's engine, fake08 or the owner's pico8_64, or the default
+		 * core of a shelf with more (ALT_CORES). No check for the binary
+		 * here: a missing one says so at launch, the same as Splore. */
+		int k = alt_core(sc);
+
+		if (is_pico8(sc)) v->native = !v->native;
+		else if (k >= 0) v->alt = ((v->alt + (d ? d : 1)) % alt_n(k) + alt_n(k)) % alt_n(k);
+		else return MENU_STAY;
+		engine_save(a, sys);
+		/* Each core keeps its own states, and a card with no art shows
+		 * its game's Auto preview: the other core's, until the cards are
+		 * read again (seq 139). */
+		free_view_textures(v);
+		break;
+	}
+	case SD_DISPLAY:
+		v->dmode = dmode_step(sc->tag, v->dmode, d ? d : 1);
+		display_save(a);
+		break;
+	case SD_FILL:
+		ds_fill_step(d ? d : 1);
+		break;
+	case SD_SHADER:
+		/* Shader (plorpos-8xu): left and right step through the list; A
+		 * opens it, as the in-game row does. */
+		if (a->shaders.count <= 1) break;
+		if (d) {
+			v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
+			shader_save(a, sys);
+		} else {
+#if defined(PLATFORM_MIYOO)
+			v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
+			shader_save(a, sys);
+#else
+			shelf_shader_screen(a, sys);
+#endif
+		}
+		break;
+	case SD_PALETTE:
+		/* Left and right step the list, A opens it. */
+		if (d) palette_default_save(sc->tag, (palette_default_of(sc->tag) + d + GBPAL_COUNT) % GBPAL_COUNT);
+		else default_palette_screen(a, sys);
+		break;
+	case SD_HOTKEYS:
+		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF, a->tint);   /* as Defaults' follow_tint */
+		break;
+	case SD_TURBO:
+		if (!d) turbo_screen(a, sc->tag, NULL);
+		break;
+	default:
+		break;
+	}
+	return MENU_STAY;
+}
+
+static void shelf_defaults_screen(app *a, int sys)
+{
+	sd_ctx c = { .a = a, .sys = sys };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         sd_build, sd_key, &c);
+}
+
+/* Reset Overrides (plorpos-bn9.3): each kind of per-game setting with how
+ * many of this shelf's games have one, counted when the screen opens and after
+ * each reset - never per frame. A clears that kind for every game here, asked
+ * first with No selected; the shelf's defaults stay. */
+typedef struct { app *a; int sys; int count[SR_ROWS]; menu_bufs bufs; sr_row ids[SR_MENU_ROWS]; } sr_ctx;
+
+static void sr_recount(sr_ctx *c)
+{
+	for (int k = 0; k < SR_ROWS; k++) c->count[k] = ovr_count(c->a, c->sys, (sr_row)k);
+}
+
+static int sr_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	sr_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_GAMES, c->sys, &u, ss, sizeof ss);
+	return sys_menu_reset_build(&u, c->count, rows, c->ids, &c->bufs, heading);
+}
+
+static menu_result sr_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const char *const YES[] = { "Yes" };
+	sr_ctx *c = ctx;
+	menu_row rows[SR_MENU_ROWS];
+	const char *heading;
+	char msg[160];
+	int n = sr_build(c, rows, SR_MENU_ROWS, &heading);
+	sr_row k;
+
+	if (key != IN_ACCEPT || sel < 0 || sel >= n || !rows[sel].live) return MENU_STAY;
+	k = c->ids[sel];
+	if (k == SR_ALL) {
+		int i;
+
+		if (pick_panel_ex(a, "Reset Overrides",
+		                  "Are you sure? This resets\nevery override on this shelf\nto the shelf defaults.",
+		                  YES, 1, "No") != 0)
+			return MENU_STAY;
+		for (i = 0; i < SR_ROWS; i++)
+			if (c->count[i]) ovr_clear(a, c->sys, (sr_row)i);
+		if (c->count[SR_CORE]) free_view_textures(&a->view[c->sys]);   /* previews are the core's */
+		sr_recount(c);
+		return MENU_STAY;
+	}
+	snprintf(msg, sizeof msg, "Are you sure? This resets\n%s for %d game%s\nto the shelf default.",
+	         rows[sel].label, c->count[k], c->count[k] == 1 ? "" : "s");
+	if (pick_panel_ex(a, "Reset Overrides", msg, YES, 1, "No") != 0) return MENU_STAY;
+	ovr_clear(a, c->sys, k);
+	if (k == SR_CORE) free_view_textures(&a->view[c->sys]);   /* previews are the core's */
+	sr_recount(c);
+	return MENU_STAY;
+}
+
+static void reset_overrides_screen(app *a, int sys)
+{
+	sr_ctx c = { .a = a, .sys = sys };
+
+	sr_recount(&c);
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         sr_build, sr_key, &c);
+}
+
 /* Left and right cycle the value on a row that has one; A opens whatever the
  * row leads to. Everything else the runner has already dealt with. */
 static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
@@ -13266,6 +14248,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
+				if (id == SMM_HOTKEYS) { muse_hotkeys_screen(a); return MENU_STAY; }
 				return MENU_STAY;
 			}
 		}
@@ -13273,70 +14256,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * SM_FAV_ROWS - so its Sort By is row 0 and not SM_SORT. */
 		if (a->view[a->sys_cursor].owner) sel = SM_SORT;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
-			sel = sm_row_at(sm_extra_shown(a->sys.systems[a->sys_cursor].tag), sel);
-		/* The DS's Display: left and right step it, A steps forward, saved
-		 * at once. */
-		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
-			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
-				const char *tg = a->sys.systems[a->sys_cursor].tag;
-
-				if (d) palette_default_save(tg, (palette_default_of(tg) + d + GBPAL_COUNT) % GBPAL_COUNT);
-				else default_palette_screen(a, a->sys_cursor);
-				return MENU_STAY;
-			}
-			ds_fill_step(d ? d : 1);
-			return MENU_STAY;
-		}
-		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
-		 * shelf with more (ALT_CORES). Left and right step it, A steps
-		 * forward, saved at once like Display Mode. No check for the
-		 * binary here: a missing one says so at launch, the same as Splore. */
-		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
-		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
-		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			int k = alt_core(&a->sys.systems[a->sys_cursor]);
-
-			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
-			else if (ALT_CORES[k].per_game) engine_game_step(a, a->sys_cursor, d ? d : 1);
-			else v->alt = !v->alt;
-			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
-			/* Each core keeps its own states, and a card with no art shows
-			 * its game's Auto preview: the other core's, until the cards are
-			 * read again (seq 139). */
-			free_view_textures(v);
-			return MENU_STAY;
-		}
-		/* Display mode, saved the moment it changes because there is no
-		 * confirm step to hang the write off. */
-		if (d && sel == SM_DISPLAY) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			v->dmode = dmode_step(a->sys.systems[a->sys_cursor].tag, v->dmode, d);
-			display_save(a);
-			return MENU_STAY;
-		}
-		/* Shader (plorpos-8xu): left and right step through the list, as
-		 * Display Mode does; A opens it, as the in-game row does. Saved for
-		 * the system, which is what a launch and the in-game row both read. */
-		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			if (d) {
-				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
-				shader_save(a, a->sys_cursor);
-			} else {
-#if defined(PLATFORM_MIYOO)
-				v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
-				shader_save(a, a->sys_cursor);
-#else
-				shelf_shader_screen(a, a->sys_cursor);
-#endif
-			}
-			return MENU_STAY;
-		}
+			sel = sm_row_at(!is_ports(&a->sys.systems[a->sys_cursor]), sel);
 		/* Sort order, on the same left/right idiom.
 		 *
 		 * The cursor follows the GAME, not its index. Re-sorting under a
@@ -13374,10 +14294,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			 * also what pressing it means. */
 			return MENU_DONE;
 		}
-		if (sel == SM_RESET) {
-			display_overrides_reset(a, a->sys_cursor);
-			return MENU_STAY;
-		}
+		if (sel == SM_DEFAULTS) shelf_defaults_screen(a, a->sys_cursor);
+		if (sel == SM_RESET) reset_overrides_screen(a, a->sys_cursor);
 		return MENU_STAY;
 	}
 
@@ -14105,8 +15023,12 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 				if (off != 0 || lift != 0) ui_redraw_now();
 			}
 		}
-		if (menu_leaving(a) || a->in.pressed[IN_SWITCHER]) done = -1;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		/* A hold closes it on Switcher; on Muse+ it is Muse+ over it
+		 * (plorpos-bn9.13, shortcut_keys). */
+		if (menu_leaving(a) || (a->in.pressed[IN_SWITCHER] && g_sc_hold == SC_SWITCHER)) done = -1;
+		/* SELECT set to the switcher closes it again (plorpos-bn9.12). */
+		if (a->in.pressed[IN_SELECT] && g_sc_select == SC_SWITCHER) done = -1;
+		else shortcut_keys(a, NULL, NULL);
 		if (n > 0 && a->in.pressed[IN_ACCEPT]) {
 			pick->sys = e[sel].sys;
 			pick->item = e[sel].item;
@@ -14204,6 +15126,10 @@ static bool muse_switch_unwind(app *a)
 {
 	bool powered;
 
+	/* Menu Hold on Muse+ (plorpos-bn9.13): the hold closes Muse+ - over a
+	 * game, back into it (game_menu). */
+	if (g_sc_hold == SC_MUSE) { g_muse_held = true; return true; }
+
 	if (!g_muse_sw_ok) { g_muse_sw = true; return true; }
 	if (switcher_run(a, NULL, false, &g_muse_pick, &powered)) { g_muse_sw = true; return true; }
 	plat_input_flush();
@@ -14239,6 +15165,11 @@ static void game_switch(app *a)
 	if (bg) SDL_DestroyTexture(bg);
 }
 
+/* What the in-game menu changed in this session but did not keep, with Save
+ * Per-Game Overrides off (plorpos-bn9.4): -1 = nothing, the saved one shows.
+ * Emptied at every launch. The display mode needs no slot: diatom says it. */
+static struct { int fill, shader, pal; } g_sess = { -1, -1, -1 };
+
 /* Change the mode, keep it, tell the running game, and take back the rect so
  * the backdrop behind the menu redraws where the game is about to be. */
 /* The mode the paused game is drawn in: Diatom's word for it when it has
@@ -14268,7 +15199,7 @@ static void gm_cycle_display(app *a, int d)
 	 * moved on from the saved one (plorpos-3yv.62). This game's own from
 	 * now on; the shelf's default stays as it was (plorpos-1a6). */
 	k = dmode_step(a->sys.systems[sys].tag, gm_dmode_now(a), d);
-	game_dmode_save(a, sys, g, k);
+	if (plat_save_overrides()) game_dmode_save(a, sys, g, k);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[k].name);
 	plat_resident_sync_rect(150);
 }
@@ -14279,8 +15210,9 @@ static void gm_fill_step(app *a, int d)
 	int sys, v;
 	const game_entry *g = playing(a, &sys);
 
-	v = ds_fill_next(game_fill(a, sys, g), d);
-	game_fill_save(a, sys, g, v);
+	v = ds_fill_next(g_sess.fill >= 0 ? g_sess.fill : game_fill(a, sys, g), d);
+	if (plat_save_overrides()) game_fill_save(a, sys, g, v);
+	else g_sess.fill = v;
 	plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[v]);
 	plat_resident_sync_rect(150);
 }
@@ -14300,14 +15232,16 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 
 		u.dmode  = DMODES[gm_dmode_now(a)].label;
 		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
-		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
-		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+		u.fill   = ds_fill_shown(a->sys.systems[sys].tag)
+		           ? FILL_LABEL[g_sess.fill >= 0 ? g_sess.fill : game_fill(a, sys, g)] : NULL;
+		u.shader = a->shaders.e[g_sess.shader >= 0 ? g_sess.shader : game_shader(a, sys, g)].name;
 	}
 	u.shaders = a->shaders.count > 1;
 	{
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
+		if (pal >= 0 && g_sess.pal >= 0) pal = g_sess.pal;
 		u.palette = pal < 0 ? NULL : gbpal_label(pal);
 	}
 	u.stylus = NULL;
@@ -14474,7 +15408,7 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 		/* Only over the shelf. Over a game this card is the in-game menu's,
 		 * and Muse would need that menu's power rule, which this screen does
 		 * not have to give it. SELECT from the in-game menu itself works. */
-		if (over_shelf && a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (over_shelf) shortcut_keys(a, NULL, NULL);
 		/* Same reasoning as the list below: this screen is not inside
 		 * plat_resident_wait, so nothing else is watching power for it. Over
 		 * the shelf there is no game to stop, and stopping one is not what
@@ -14997,6 +15931,13 @@ static const menu_style *g_muse_over;
 static void             *g_muse_over_ctx;
 static bool              g_muse_gone;    /* that rule ended what was underneath */
 
+/* A Menu hold inside Muse+ acts: on Switcher, not over a menu or game (as
+ * before); on Muse+, always - it closes Muse+ (plorpos-bn9.13). */
+static bool muse_hold_acts(void)
+{
+	return g_sc_hold == SC_MUSE || (g_sc_hold == SC_SWITCHER && !g_muse_over);
+}
+
 static void muse_backdrop(app *a)
 {
 	draw_shelf(a);
@@ -15206,6 +16147,13 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			ty = ly + ui_font_line(UI_F_META) + 24;
 			bar = NP_Y + NP_SIDE - 132;
 			ny = NP_Y + NP_SIDE - ui_font_height(UI_F_META);
+			/* At a large Header or Body Size the bar and Next move down
+			 * under the words, not through them (plorpos-bn9.6). */
+			{
+				int end = ty + ui_font_line(UI_F_TITLE) + 10 + 2 * ui_font_line(UI_F_MENU) + 12;
+
+				if (bar < end) { ny += end - bar; bar = end; }
+			}
 		}
 	} else {
 		int m = 10 + 2 * (ui_text_width(ui_font(UI_F_BADGE), "100") / 2 + 6);  /* draw_battery's disc and its gap */
@@ -15451,7 +16399,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		snprintf(help, sizeof help, "A: %s%s%s%s%s%s%s    %s", state ? "play" : "pause",
 		         trk[0] ? "    " : "", trk, trk[0] ? ": track" : "",
 		         sk[0] ? "    " : "", sk, sk[0] ? ": seek" : "",
-		         musec_is_book() ? "X: more" : "Y: mode");
+		         musec_is_book() ? "X: more" : "Y: mode    X: more");
 		np_help(r, fs, help);
 	}
 	draw_battery(r);
@@ -15469,14 +16417,24 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 static muse_exit muse_menu(app *a)
 {
 	unsigned gen = g_muse_gen;
+	in_button key;
 
+	g_muse_menu_up++;
 	tortos_menu_for(a, SCREEN_GAMES);
+	g_muse_menu_up--;
+	key = g_muse_menu_key;
+	g_muse_menu_key = IN_NONE;
 	/* MENU inside it closed it, and only it: Muse is still up, and may itself
 	 * be over a menu SELECT opened it from, which has to stay open. */
 	g_menu_closing = false;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
-	if (want_quit || !a->running) return MUSE_CLOSE;
+	/* SELECT there asked for the switcher: Muse closes on the way to it
+	 * (plorpos-bn9.12). SELECT there closes Muse+, as in Muse+ itself - and
+	 * so does a swivel turn's (bn9.22). */
+	if (want_quit || !a->running || g_go_switcher || key == IN_SELECT) return MUSE_CLOSE;
+	/* A hold there is a hold in Muse+ (plorpos-bn9.22). */
+	if (key == IN_SWITCHER && muse_switch_unwind(a)) return MUSE_CLOSE;
 	return g_muse_gen != gen ? MUSE_REBUILT : MUSE_BACK;
 }
 
@@ -15510,10 +16468,10 @@ static void np_under_draw(app *a, void *ctx)
 	np_draw(a, musec_now(), next, muse_hold());
 }
 
-/* ---- A book's More (plorpos-i8d.1) ---------------------------------------- *
+/* ---- Now Playing's More (plorpos-i8d.1) ------------------------------------ *
  *
  * X on a book's Now Playing, on either audiobook source: Speed, Sleep Timer,
- * Chapters and Timeline. */
+ * Chapters and Timeline. On music, the Sleep Timer alone (owner, 57h.2). */
 
 /* A list too long for a menu - a book's chapters, its timeline - on the
  * lists' own drawer: the row chosen, or -1 for B. */
@@ -15837,9 +16795,13 @@ static int np_more_build(void *ctx, menu_row *rows, int max, const char **headin
 	(void)ctx;
 	(void)max;
 	*heading = "More";
-	speed_label(musec_speed(), spd, sizeof spd);
 	if (left > 0) snprintf(slp, sizeof slp, "%d min", (left + 59) / 60);
 	else snprintf(slp, sizeof slp, "Off");
+	if (!musec_is_book()) {
+		rows[0] = (menu_row){ "Sleep Timer", slp, true };
+		return 1;
+	}
+	speed_label(musec_speed(), spd, sizeof spd);
 	if (musec_chapters() > 1) snprintf(chp, sizeof chp, "%d of %d", musec_chapter_now() + 1, musec_chapters());
 	else snprintf(chp, sizeof chp, "%d of %d", mn->index + 1, mn->count);
 	rows[0] = (menu_row){ "Speed", spd, true };
@@ -15857,6 +16819,7 @@ static menu_result np_more_key(app *a, void *ctx, in_button key, int sel)
 	bool step = key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT;
 
 	(void)ctx;
+	if (!musec_is_book()) sel = sel == 0 ? 1 : -1;     /* music: the timer alone */
 	if (sel == 0 && step) {
 		double x = round(musec_speed() * 10) / 10;
 
@@ -15924,7 +16887,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
 			memset(&drawn, 0, sizeof drawn);     /* the switcher drew over it */
 			continue;
@@ -15943,14 +16906,14 @@ static muse_exit muse_now_screen(app *a)
 		/* The mode, on music. A book plays in order whatever the mode says;
 		 * its speed is under X's More (plorpos-i8d.1). */
 		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
-		if (a->in.pressed[IN_X] && musec_is_book()) {
+		if (a->in.pressed[IN_X]) {
 			np_more(a);
 			memset(&drawn, 0, sizeof drawn);     /* the menu drew over it */
 			continue;
 		}
 		/* The shoulders, the D-pad and the stick: Muse's Hotkeys. */
 		muse_hk_poll(&a->in, true);
-		vol_keys(&a->in);
+		vol_keys_as(&a->in, false);      /* holds repeat, never skip (57h.1) */
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
@@ -16766,7 +17729,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
 			continue;
 		}
@@ -17025,10 +17988,12 @@ static void muse_src_follow(app *a)
 static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
+	/* A Muse+ opened from Muse+'s MENU has its own (plorpos-bn9.22). */
+	int menu_was = g_muse_menu_up;
 
-#if defined(PLATFORM_ROTATE)
+	g_muse_menu_up = 0;
 	g_muse_up++;
-#endif
+	g_muse_shown = g_muse_held = false;
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
@@ -17061,18 +18026,20 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	}
 	muse_src_follow(a);             /* the Source of what is playing (ps8.10) */
 	pod_apply_sync(a);              /* episodes a sync found since (plorpos-ps8.1) */
-	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
+	/* An empty library opens too (plorpos-bn9.10): the shelf says where
+	 * music goes, and MENU has Source and the sign-ins. */
+	if (g_walk_thread || !a->running || g_muse_gone) {
 		g_muse_over = NULL;
 		g_muse_over_ctx = NULL;
 		g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 		g_muse_up--;
-#endif
+		g_muse_menu_up = menu_was;
 		return g_muse_gone;
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
 	 * one left, whatever is playing (owner, plorpos-era.9). */
 	muse_offline_note();                /* "Offline Mode", once per Source (5tm.16) */
+	g_muse_shown = true;
 #if defined(PLATFORM_RGDS)
 	/* From the secondary: Now Playing whenever something is queued, the
 	 * albums when nothing is (owner, plorpos-rgds.18.3). */
@@ -17084,9 +18051,8 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = NULL;
 	/* Nothing Muse did closes the menu it may have been opened over. */
 	g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 	g_muse_up--;
-#endif
+	g_muse_menu_up = menu_was;
 	return g_muse_gone;
 }
 
@@ -18652,7 +19618,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); break; }
 		}
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) break;
 			continue;
 		}
@@ -18942,6 +19908,9 @@ static void muse_shelf_screen(app *a, bool now)
 
 	a->sys_cursor = muse;
 	enter_system(a);                      /* the screen, the coverflow, the window */
+	/* An empty shelf too, which enter_system leaves be: MENU in it is Muse's,
+	 * not the plorpOS menu's rows under Muse's labels (plorpos-bn9.10). */
+	a->screen = SCREEN_GAMES;
 	v = &a->view[muse];
 
 	/* On the album that is playing, so SELECT lands where the music is - on
@@ -19200,7 +20169,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
 		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT] || a->in.pressed[IN_X]) done = 1;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 		/* Nothing else watches power for this screen, the same as every other
 		 * loop the launcher runs outside plat_resident_wait. */
 		{
@@ -19279,7 +20248,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		if (in_repeat(&a->in, IN_L1))   sel = sel > 8 ? sel - 8 : 0;
 		if (in_repeat(&a->in, IN_R1))   sel = sel < n - 9 ? sel + 8 : n - 1;
 		if (menu_leaving(a)) done = 1;
-		if (over_shelf && a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (over_shelf) shortcut_keys(a, NULL, NULL);
 		/* A used to close this screen. It opens the achievement instead,
 		 * which is the only thing on it there was ever anything more to say
 		 * about; BACK and MENU still close, so nothing lost a way out. */
@@ -19394,8 +20363,44 @@ static const struct { in_button b; const char *src; } BM_CAPTURE[] = {
 	{ IN_L1, "l1" }, { IN_R1, "r1" }, { IN_L2, "l2" }, { IN_R2, "r2" },
 };
 
-static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
+/* What the Hotkeys screen and its Button Mapping edit, and where a change goes
+ * (plorpos-bn9.4): the shelf's two rows, the game's own (both written, a full
+ * copy), or the running game's - sent at once, kept as its own only under
+ * Save Per-Game Overrides. */
+typedef struct { const char *tag, *file; int mode; char hk[320], bm[160]; bool own;
+                 unsigned accent; /* the caller's panel's (plorpos-bn9.17) */ } hk_edit;
+
+static void hk_edit_load(hk_edit *e)
 {
+	const char *hk, *bm;
+
+	if (e->mode == HK_GAME) {
+		e->own = plat_game_keys(e->tag, e->file, e->hk, sizeof e->hk, e->bm, sizeof e->bm);
+		return;
+	}
+	if (e->mode == HK_LIVE) plat_live_keys(&hk, &bm);
+	else { hk = plat_hotkey_map(e->tag); bm = plat_btnmap(e->tag); }
+	snprintf(e->hk, sizeof e->hk, "%s", hk);
+	snprintf(e->bm, sizeof e->bm, "%s", bm);
+}
+
+static void hk_edit_commit(hk_edit *e)
+{
+	if (e->mode == HK_SHELF) {
+		plat_hotkey_set(e->tag, e->hk);
+		plat_btnmap_set(e->tag, e->bm);
+	} else if (e->mode == HK_GAME) {
+		plat_game_keys_set(e->tag, e->file, e->hk, e->bm);
+		e->own = true;
+	} else {
+		plat_live_keys_set(e->hk, e->bm, plat_save_overrides());
+	}
+}
+
+static void button_map_screen(app *a, SDL_Texture *bg, hk_edit *e)
+{
+	const char *tag = e->tag;
+	int mode = e->mode;
 	const bm_row *bm;
 	const int nr = bm_rows(tag, &bm), R_RESET = nr, NROWS = nr + 1;
 	int held[BM_ROWS_MAX], sel = 0, done = 0, i;
@@ -19404,7 +20409,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[160];
 	ui_pace pace = {0};
 
-	bm_parse(tag, plat_btnmap(tag), held);
+	bm_parse(tag, e->bm, held);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -19451,13 +20456,15 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		if (changed) {
 			bm_serialize(tag, held, spec, sizeof spec);
-			plat_btnmap_set(tag, spec);
+			snprintf(e->bm, sizeof e->bm, "%s", spec);
+			hk_edit_commit(e);
 			changed = false;
 		}
 
 		{
 			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) {
+			if (pa == PWR_POWEROFF && mode != HK_LIVE) { power_off(a); done = 1; }
+			else if (pa == PWR_POWEROFF) {
 				plat_note_power_pressed();
 				plat_resident_line("STOP");
 				done = 1;
@@ -19477,8 +20484,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		chv_backdrop(a, bg, false);
-		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, MENU_ACCENT);
+		chv_backdrop(a, bg, mode != HK_LIVE);
+		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, e->accent);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
@@ -19489,7 +20496,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 
 static int gs_rewind(void);
 
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode,
+                           unsigned accent)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -19497,7 +20505,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	 * legend are drawn after them and are never selected. */
 	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
-	menu_row rows[ROWS + 2];
+	menu_row rows[ROWS + 3];
+	hk_edit e = { tag, file, mode, "", "", false, accent };
 	char vals[HK_ROW_COUNT][40];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
@@ -19513,7 +20522,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	bool changed = false;
 	char spec[320];
 
-	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
+	hk_edit_load(&e);
+	hk_parse(e.hk, trig_for_row, mod_for_row);
 	/* Screen Layout and Swap Screens are the DS's (plorpos-jcj), Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
 	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
@@ -19542,7 +20552,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 		if (shown) vis[nact++] = i;
 	}
-	const int NROWS = FIRST_ACT + nact;
+	/* One game's own (plorpos-bn9.4): Use Shelf Default under the actions
+	 * gives back the shelf's hotkeys and Button Mapping. */
+	const int R_DEFAULT = mode == HK_GAME ? FIRST_ACT + nact : -1;
+	const int NROWS = FIRST_ACT + nact + (mode == HK_GAME);
 	/* Rewind Speed Off: the Rewind row is greyed, its binding kept for when
 	 * rewind is back on (plorpos-5tm.8). The cursor steps over it. */
 	int rw_dead = -1;
@@ -19554,6 +20567,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
 	for (i = 0; i < nact; i++)   /* live flags before the first poll */
 		rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], "", FIRST_ACT + i != rw_dead };
+	if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -19600,12 +20614,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_DOWN)) sel = menu_step_sel(rows, NROWS, sel, +1);
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
-				button_map_screen(a, bg, tag);
+				button_map_screen(a, bg, &e);
 				pace = (ui_pace){0};
+			} else if (a->in.pressed[IN_ACCEPT] && sel == R_DEFAULT) {
+				plat_game_keys_clear(tag, file);
+				hk_edit_load(&e);
+				hk_parse(e.hk, trig_for_row, mod_for_row);
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
-			} else if (a->in.pressed[IN_X] && sel >= FIRST_ACT &&
+			} else if (a->in.pressed[IN_X] && sel >= FIRST_ACT && sel < FIRST_ACT + nact &&
 			           trig_for_row[vis[sel - FIRST_ACT]]) {
 				trig_for_row[vis[sel - FIRST_ACT]] = 0;
 				changed = true;
@@ -19616,24 +20634,17 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		if (changed) {
 			hk_serialize(trig_for_row, mod_for_row, spec, sizeof spec);
-			plat_hotkey_set(tag, spec);
-			/* Live, not only persisted: this screen is only ever open
-			 * mid-session (reached from the in-game menu), so the change
-			 * should take hold without the player having to quit and
-			 * relaunch to see it. */
-			{
-				char wire[256];
-
-				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
-				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-				                   wire, legacy_wire);
-			}
+			snprintf(e.hk, sizeof e.hk, "%s", spec);
+			/* In-game, live too: the change takes hold without the player
+			 * having to quit and relaunch to see it. */
+			hk_edit_commit(&e);
 			changed = false;
 		}
 
 		{
 			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) {
+			if (pa == PWR_POWEROFF && mode != HK_LIVE) { power_off(a); done = 1; }
+			else if (pa == PWR_POWEROFF) {
 				plat_note_power_pressed();
 				plat_resident_line("STOP");
 				done = 1;
@@ -19659,6 +20670,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i],
 			                                  FIRST_ACT + i != rw_dead };
 		}
+		if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
 		rows[NROWS] = MENU_RULE;
 		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press button(s)    Menu: cancel"
 		                                     : "A: set    X: clear");
@@ -19667,8 +20679,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, MENU_ACCENT);
+		chv_backdrop(a, bg, mode != HK_LIVE);
+		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, e.accent);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
@@ -19679,8 +20691,11 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_RUMBLE, GS_CHEEVOS, GS_RA,
-       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_OVERRIDES, GS_RUMBLE, GS_RA_MENU,
+       GS_SCRAPE, GS_ROWS };
+/* Game Settings > RetroAchievements (plorpos-bn9.1): the three rows that were
+ * on Game Settings itself, unchanged. */
+enum { RA_ENABLED, RA_SIGNIN, RA_SETS, RA_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -19714,21 +20729,18 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
-	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
-	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo Assignments",
-	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
+	/* Whether a change made in a game is kept for that game (plorpos-bn9.1):
+	 * the in-game menu reads "saveoverrides". */
+	rows[GS_OVERRIDES] = (menu_row){ "Save Per-Game Overrides",
+	                                 db_get_int(db_dev(), "saveoverrides", 1) ? "on" : "off", true };
 	/* A game's rumble on the device's motor; greyed where there is none
 	 * (plorpos-5tm.5). Told to Diatom before each RUN (platform.c). */
 	rows[GS_RUMBLE]   = (menu_row){ "Rumble Enabled",
 	                                plat_has_rumble() && db_get_int(db_dev(), "rumble", 1) ? "on" : "off",
 	                                plat_has_rumble() };
-	/* The account moved here from Network Services (plorpos-pyz.7), beside
-	 * the switch it is for. */
-	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
-	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
-	                                ra_signed_in() ? ra_user() : "sign in", true };
-	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
-	rows[GS_RA_SETS]  = (menu_row){ "Download Achievement Sets", NULL, true };
+	/* A door (plorpos-bn9.1); it names the account when there is one. */
+	rows[GS_RA_MENU]  = (menu_row){ "RetroAchievements",
+	                                ra_signed_in() ? ra_user() : NULL, true };
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
@@ -19757,26 +20769,60 @@ static void cheevos_warning(app *a)
 }
 #endif
 
+static int ra_menu_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)ctx; (void)max;
+	*heading = "RetroAchievements";
+	rows[RA_ENABLED] = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
+	/* The account moved here from Network Services (plorpos-pyz.7), beside
+	 * the switch it is for. */
+	rows[RA_SIGNIN]  = (menu_row){ "RetroAchievements Sign-In",
+	                               ra_signed_in() ? ra_user() : "sign in", true };
+	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
+	rows[RA_SETS]    = (menu_row){ "Download Achievement Sets", NULL, true };
+	return RA_ROWS;
+}
+
+/* Achievements Enabled flips on left, right and A; the other two are doors. */
+static menu_result ra_menu_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)ctx;
+	if (sel == RA_ENABLED && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		const int on = !gs_cheevos();
+
+		db_set_int(db_dev(), "cheevos", on);
+#if defined(PLATFORM_MIYOO)
+		if (on) cheevos_warning(a);
+#endif
+	} else if (key == IN_ACCEPT && sel == RA_SIGNIN) {
+		ra_signin_screen(a);
+	} else if (key == IN_ACCEPT && sel == RA_SETS) {
+		ra_sets_screen(a);
+	}
+	return MENU_STAY;
+}
+
 /* Left, right and A all change the row: the on/off ones flip, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
- * Download Achievement Sets and Scraping are doors, so only A opens them. */
+ * speeds step on with A too, as the shelf menus' cycling rows do.
+ * RetroAchievements and Scraping are doors, so only A opens them. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
-		[GS_RESUME]  = { "autoresume", 1 },
-		[GS_CONFIRM] = { "confirmquit", 0 },
-		[GS_TURBO]   = { "persistturbo", 0 },
-		[GS_RUMBLE]  = { "rumble", 1 },
-		[GS_CHEEVOS] = { "cheevos", CHEEVOS_DEFAULT },
+		[GS_RESUME]    = { "autoresume", 1 },
+		[GS_CONFIRM]   = { "confirmquit", 0 },
+		[GS_OVERRIDES] = { "saveoverrides", 1 },
+		[GS_RUMBLE]    = { "rumble", 1 },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
 	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
-	if (sel == GS_RA || sel == GS_RA_SETS || sel == GS_SCRAPE) {
+	if (sel == GS_RA_MENU || sel == GS_SCRAPE) {
 		if (key == IN_ACCEPT) {
-			if (sel == GS_RA) ra_signin_screen(a);
-			else if (sel == GS_RA_SETS) ra_sets_screen(a);
+			if (sel == GS_RA_MENU)
+				menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+				                           .fixed_w = menu_std_width(a) },
+				         ra_menu_build, ra_menu_key, NULL);
 			else scraping_screen(a);
 		}
 		return MENU_STAY;
@@ -19795,9 +20841,6 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		const int on = !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def);
 
 		db_set_int(db_dev(), onoff[sel].key, on);
-#if defined(PLATFORM_MIYOO)
-		if (sel == GS_CHEEVOS && on) cheevos_warning(a);
-#endif
 	}
 	return MENU_STAY;
 }
@@ -20258,6 +21301,7 @@ typedef struct {
 /* The game's shader in-game, the shelf's default from its menu. */
 static int sh_cur(app *a, const sh_ctx *c)
 {
+	if (c->g && g_sess.shader >= 0) return g_sess.shader;
 	return c->g ? game_shader(a, c->sys, c->g) : a->view[c->sys].shader;
 }
 
@@ -20302,7 +21346,8 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
 		return MENU_DONE;
 	}
-	game_shader_save(a, c->sys, c->g, sel);
+	if (plat_save_overrides()) game_shader_save(a, c->sys, c->g, sel);
+	else g_sess.shader = sel;
 	return MENU_DONE;
 }
 
@@ -20381,7 +21426,8 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
 	}
-	palette_save(c->tag, c->g, sel);
+	if (plat_save_overrides()) palette_save(c->tag, c->g, sel);
+	else g_sess.pal = sel;
 	return MENU_DONE;
 }
 
@@ -20398,6 +21444,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 
 	c.cur = palette_of(a, o, c.g);
 	if (c.cur < 0) return;
+	if (g_sess.pal >= 0) c.cur = g_sess.pal;
 	st.fixed_w  = 0;
 	st.backdrop = pal_backdrop;
 	st.on_power = pal_power;
@@ -20628,7 +21675,8 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, sv->list.items[sv->cursor].file, HK_LIVE,
+		               MENU_ACCENT);
 		break;
 	}
 	case GM_RESET:
@@ -20757,11 +21805,36 @@ static void game_menu(app *a, bool muse_only)
 #if defined(PLATFORM_ROTATE)
 	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
 #endif
-	if (muse_only)
+	g_go_switcher = false;
+	g_game_under = true;
+	if (muse_only) {
+		bool held = g_hold_game;
+
+		g_hold_game = false;
 		c.resume = !muse_open(a, &c.st, &c);
-	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
+		/* Opened by a Menu hold (plorpos-bn9.13): only another hold goes
+		 * back to the game. Left any other way, it is the main shelf, and
+		 * the game ends as the swivel's "main shelf" ends it (STOP: saved
+		 * as Quit saves it) - so the next hold is Muse+ again. */
+		if (held && c.resume && g_muse_shown && !g_muse_held && !g_go_switcher) {
+			c.resume = false;
+			g_sw_shelf = true;
+			if (!want_quit) plat_resident_line("STOP");
+		}
+	} else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
+	g_game_under = false;
+	/* SELECT set to the switcher, somewhere under this menu: the switcher
+	 * over the paused game, as a Menu hold opens it (plorpos-bn9.12). */
+	if (g_go_switcher) {
+		g_go_switcher = false;
+		if (c.resume) {
+			if (c.bg) SDL_DestroyTexture(c.bg);
+			game_switch(a);
+			return;
+		}
+	}
 #if defined(PLATFORM_ROTATE)
 	/* Turned closed with this menu up, and the row says Muse: the menu has
 	 * closed for it (swivel_check), and Muse opens over the game. */
@@ -21056,12 +22129,24 @@ static run_choice native_menu(void *ctx)
 	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
 	 * held is the switcher: another game ends this one, and launch() starts
 	 * it (plorpos-gl5.3). */
+	g_game_under = true;      /* plorpos-bn9.22 */
 	if (plat_run_menu_why() == GESTURE_SHELF) {
 #if defined(PLATFORM_ROTATE)
 		g_sw_shelf = true;        /* the swivel: the game ends for the shelf */
 #endif
 		c.choice = RUN_QUIT;
-	} else if (plat_run_menu_why() == GESTURE_SWITCHER) {
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
+		/* Menu Hold off (plorpos-bn9.13): straight back to the game. */
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
+		/* Muse+ over the game; only a hold goes back to it, as in game_menu. */
+		if (muse_open(a, &st, &c)) {
+			if (want_quit || !a->running) c.choice = RUN_QUIT;
+		} else if (g_muse_shown && !g_muse_held && !g_go_switcher) {
+			g_sw_shelf = true;
+			c.choice = RUN_QUIT;
+		}
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER ||
+	           plat_run_menu_why() == GESTURE_RECENTS) {
 		bool powered;
 
 		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
@@ -21073,6 +22158,17 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+	g_game_under = false;
+	/* SELECT set to the switcher, as in game_menu (plorpos-bn9.12). */
+	if (g_go_switcher) {
+		bool powered;
+
+		g_go_switcher = false;
+		if (c.choice == RUN_CONTINUE && a->running && !want_quit &&
+		    (switcher_in_game(a, NULL, &powered) || powered || want_quit))
+			c.choice = RUN_QUIT;
+		g_menu_closing = false;
+	}
 #if defined(PLATFORM_ROTATE)
 	/* Turned closed with the menu up: Muse over the game, as in game_menu. */
 	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_MUSE_GAME && a->running && !want_quit) {
@@ -21884,6 +22980,7 @@ static void launch_one(app *a)
 	unsigned t_in = plat_now_ms(), t_prep, t_ready, t_a, t_b, t_c, t_d;
 
 	if (v->list.count == 0) return;
+	g_sess.fill = g_sess.shader = g_sess.pal = -1;   /* a new session (plorpos-bn9.4) */
 
 	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o, v->list.items[v->cursor].file));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
@@ -22186,7 +23283,20 @@ static void launch_one(app *a)
 				if (r == RES_PAUSED) {
 					gesture g = plat_resident_gesture_asked();
 
-					if (g == GESTURE_SWITCHER) { game_switch(a); continue; }
+					/* A Menu hold or a swipe up follows Menu Hold; the
+					 * swivel's "recents" is always the switcher (bn9.13).
+					 * Off: only a Diatom before hold=off (bn9.21) pauses
+					 * for it, so back. */
+					if (g == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
+						plat_resident_line("RESUME");
+						continue;
+					}
+					if (g == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
+						g_hold_game = true;
+						game_menu(a, true);
+						continue;
+					}
+					if (g == GESTURE_SWITCHER || g == GESTURE_RECENTS) { game_switch(a); continue; }
 #if defined(PLATFORM_ROTATE)
 					/* The swivel opened for the main shelf: the game ends
 					 * as Quit ends it (plorpos-5eq.23). */
@@ -22221,8 +23331,10 @@ static void launch_one(app *a)
 			 * on the path where the player is waiting for the shelf rather
 			 * than for a game to start. */
 			stats_end(NULL, plat_now_ms());
-			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj). */
-			game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
+			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj),
+			 * as its own only under Save Per-Game Overrides (plorpos-bn9.4). */
+			if (plat_save_overrides())
+				game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
 
 			/* Whatever was earned is sent now, behind the shelf rather than in
 			 * front of it - see ra_flush_start. It used to be sent right here,
@@ -22465,13 +23577,15 @@ static void load_ahead(app *a)
 
 static void update_systems(app *a)
 {
-	int n = a->sys.count;
+	int n = sys_shown_n(a), at;   /* the row's places: hidden tiles left out (bn9.10) */
 
 	/* No systems means the modulo below divides by zero. Reachable the moment
 	 * empty systems started being hidden: a card with no ROMs on it, or ROMs
 	 * one directory too deep, now leaves nothing on the shelf and the first
 	 * press of left or right took the launcher down with SIGFPE. */
 	if (n <= 0) return;
+	sys_cursor_show(a);
+	at = sys_shown_at(a, a->sys_cursor);
 
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
@@ -22481,15 +23595,15 @@ static void update_systems(app *a)
 	in_button back = col ? IN_UP : IN_LEFT, fwd = col ? IN_DOWN : IN_RIGHT;
 	int dir = 0;
 
-	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
-	if (in_repeat(&a->in, fwd))  { a->sys_cursor = (a->sys_cursor + 1) % n; dir = +1; }
-	if (dir) load_ahead(a);
+	if (in_repeat(&a->in, back)) { at = (at - 1 + n) % n; dir = -1; }
+	if (in_repeat(&a->in, fwd))  { at = (at + 1) % n; dir = +1; }
+	if (dir) { a->sys_cursor = sys_shown_real(a, at); load_ahead(a); }
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
 		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a, true);
 		else enter_system(a);
 	}
-	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
+	cf_set_cursor_dir(&a->cf_sys, at, n, dir);
 }
 
 /* The first alphanumeric character of a name, upper-cased, or '\0' for a name
@@ -22684,15 +23798,10 @@ static void hide_empty_systems(app *a)
 {
 	int i, n = 0;
 
-	g_has_ports = false;
-	for (i = 0; i < a->sys.count; i++)
-		if (is_ports(&a->sys.systems[i])) g_has_ports = true;
-
+	/* A shelf Visible Tiles hides is NOT dropped (plorpos-bn9.10; Ports Tile
+	 * dropped Ports here): tiles_mark below flags it, and only the systems
+	 * row leaves it out. */
 	for (i = 0; i < a->sys.count; i++) {
-		/* Ports Tile: Hidden. Dropped like an empty shelf, so the cursor,
-		 * the jump and the coverflow never see it. Its favorites and recents
-		 * stay in their files and come back when it is Visible again. */
-		if (g_ports_hidden && is_ports(&a->sys.systems[i])) continue;
 		if (a->view[i].list.count <= 0) continue;
 		if (n != i) {
 			a->sys.systems[n] = a->sys.systems[i];
@@ -22705,6 +23814,7 @@ static void hide_empty_systems(app *a)
 		fprintf(stderr, "scan: %d of %d systems have games\n", n, a->sys.count);
 	a->sys.count = n;
 	if (a->sys_cursor >= n) a->sys_cursor = n ? n - 1 : 0;
+	tiles_mark(a);
 }
 
 /* Build the Favorites shelf: one shelf whose games come from every other.
@@ -22925,7 +24035,7 @@ static void refresh_favorites_shelf(app *a)
 		a->sys_cursor = 0;
 		a->screen = SCREEN_SYSTEMS;
 	}
-	cf_reset(&a->cf_sys, a->sys_cursor);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* Two systems trade places, with everything their index keys: the games,
@@ -23457,17 +24567,8 @@ static void muse_install(app *a)
 	    !(g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done))) {
 		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
 		ml_free(&g_muse);
-		if (m >= a->sys.count) return;
-		/* Always the last card: it is appended after everything else. */
-		texload_bump();
-		if (a->sys_tex[m]) SDL_DestroyTexture(a->sys_tex[m]);
-		a->sys_tex[m] = NULL;
-		a->sys.count--;
-		if (a->sys_cursor >= a->sys.count) {
-			a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
-			a->screen = SCREEN_SYSTEMS;
-			cf_reset(&a->cf_sys, a->sys_cursor);
-		}
+		/* Its card stays, empty (plorpos-bn9.10): Muse+ opens on a Source
+		 * with none, saying where it goes, and its menu signs in. */
 		ui_redraw_now();
 		return;
 	}
@@ -23559,11 +24660,11 @@ static void build_muse_shelf(app *a, bool bg)
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
 		bool used = muse_dir_used(dir);
 		snprintf(dir, sizeof dir, "%s/Audiobooks", g_muse_root);
-		if (!used && !muse_dir_used(dir)) {
+		/* The card stays, empty: Muse+ is where streaming and podcasts are
+		 * signed in to (plorpos-bn9.10). */
+		if (!used && !muse_dir_used(dir))
 			fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse",
 			        g_muse_root);
-			return;
-		}
 	}
 	muse_tabs_load();
 	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_srv;
@@ -23578,6 +24679,7 @@ static void build_muse_shelf(app *a, bool bg)
 	snprintf(s->tag, sizeof s->tag, "%s", "MUSE");
 	snprintf(s->card, CFG_STR, "%s", "MUSE.png");
 	s->accent = MUSE_ACCENT;
+	s->hidden = !tile_shown(s->tag);   /* Visible Tiles (plorpos-bn9.10) */
 	memset(&a->view[i], 0, sizeof a->view[i]);
 	a->sys_tex[i] = NULL;
 	a->sys_w[i] = a->sys_h[i] = 0;
@@ -23757,7 +24859,7 @@ static void rescan_all(app *a)
 		a->view[a->sys_cursor].cursor = 0;
 		cf_reset(&a->view[a->sys_cursor].cf, 0);
 	}
-	cf_reset(&a->cf_sys, a->sys_cursor);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* Muse's library read again on its own (plorpos-ps8.1). rescan_all reads
@@ -23808,7 +24910,7 @@ static void muse_refresh(app *a)
 	if (a->sys_cursor >= a->sys.count) {
 		a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
 		a->screen = SCREEN_SYSTEMS;
-		cf_reset(&a->cf_sys, a->sys_cursor);
+		cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 	}
 	fprintf(stderr, "muse: library read again in %u ms\n", plat_now_ms() - t0);
 }
@@ -24559,9 +25661,9 @@ static void details_tick(app *a)
 		char p[512];
 
 		font_path(g_head, p, sizeof p);
-		details_set_face(true, p, FONTS[g_head].scale);
+		details_set_face(true, p, FONTS[g_head].scale * details_size_k(true));
 		font_path(g_font, p, sizeof p);
-		details_set_face(false, p, FONTS[g_font].scale);
+		details_set_face(false, p, FONTS[g_font].scale * details_size_k(false));
 		init = true;
 	}
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
@@ -25080,7 +26182,17 @@ int main(int argc, char *argv[])
 
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
-		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
+		/* Ports Tile: Hidden is Visible Tiles' Ports row off (bn9.10). */
+		if (db_get_int(db_dev(), "ports_hidden", 0) == 1) {
+			for (int i = 0; i < a.sys.count; i++)
+				if (is_ports(&a.sys.systems[i])) {
+					char k[24];
+
+					tile_key(k, sizeof k, a.sys.systems[i].tag);
+					db_set_int(db_dev(), k, 0);
+				}
+			db_del(db_dev(), "ports_hidden");
+		}
 #if defined(PLATFORM_RGDS)
 		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
 		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
@@ -25118,6 +26230,13 @@ int main(int argc, char *argv[])
 #endif
 		(void)muse_hk_get(0);     /* read, and the volume holds told (5eq.14) */
 		g_aout_policy = aout_load();
+		vlim_load();
+		g_sc_select = db_get_int(db_dev(), "shortcut.select", SC_MUSE);
+		if (g_sc_select < 0 || g_sc_select >= SC_COUNT) g_sc_select = SC_MUSE;
+		g_sc_hold = db_get_int(db_dev(), "shortcut.hold", SC_SWITCHER);
+		if (g_sc_hold < 0 || g_sc_hold >= SC_COUNT) g_sc_hold = SC_SWITCHER;
+		plat_menu_hold(g_sc_hold != SC_OFF);      /* plorpos-bn9.21 */
+		shortcut_told();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
 		net_set_ca_path(cp);
@@ -25236,7 +26355,7 @@ int main(int argc, char *argv[])
 	 * below, because that loads textures for whatever the cursor is on, and
 	 * a fallback to the shelf should find the right ones there. */
 	a.resume_menu = playing_restore(&a);
-	cf_reset(&a.cf_sys, a.sys_cursor);
+	cf_reset(&a.cf_sys, sys_shown_at(&a, a.sys_cursor));
 	a.tint = a.sys.systems[a.sys_cursor].accent;
 	t_mark("restore place");
 
@@ -25298,18 +26417,22 @@ int main(int argc, char *argv[])
 	/* The size the player chose beats the shipped default, the same way a
 	 * saved brightness does. Read before ui_init, which is when the scale is
 	 * applied. */
-	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	/* The faces and sizes first, so ui_init opens each font once at what
+	 * the player chose (plorpos-bn9.6): before it, font_apply only records. */
 	{
 		char id[32];
 		int k;
 
+		g_head_size = font_size_step(db_get_int(db_dev(), "headsize", font_size_default()), 0);
+		g_body_size = font_size_step(db_get_int(db_dev(), "bodysize", font_size_default()), 0);
 		db_get_str(db_dev(), "font", id, sizeof id, "quicksand");
-		for (k = 0; k < FONT_COUNT; k++)
-			if (!strcmp(FONTS[k].id, id) && k != g_font) font_apply(false, k);
+		for (k = 0; k < FONT_COUNT && strcmp(FONTS[k].id, id); k++) ;
+		font_apply(false, k < FONT_COUNT ? k : g_font);
 		db_get_str(db_dev(), "headfont", id, sizeof id, "fredoka");
-		for (k = 0; k < FONT_COUNT; k++)
-			if (!strcmp(FONTS[k].id, id) && k != g_head) font_apply(true, k);
+		for (k = 0; k < FONT_COUNT && strcmp(FONTS[k].id, id); k++) ;
+		font_apply(true, k < FONT_COUNT ? k : g_head);
 	}
+	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
 	t_mark("font+settings");
 
 	/* The system cards asked for before the display came up, installed so the
@@ -25350,8 +26473,8 @@ int main(int argc, char *argv[])
 		cf_clock_freeze();
 		if (shot_sysmove != 0.0f) {
 			shelf_pacing(&a.cf_sys);
-			cf_stage(&a.cf_sys, (float)a.sys_cursor,
-			         (float)a.sys_cursor + 1.0f, shot_sysmove);
+			cf_stage(&a.cf_sys, (float)sys_shown_at(&a, a.sys_cursor),
+			         (float)sys_shown_at(&a, a.sys_cursor) + 1.0f, shot_sysmove);
 		}
 		/* The games shelf, with the cursor ALREADY at the destination - which
 		 * is the state the device is in for the whole of a move, and the reason
@@ -25532,12 +26655,12 @@ int main(int argc, char *argv[])
 		/* Back on the shelf, so any menu MENU closed is closed: put the flag
 		 * down before anything here can open another. See menu_leaving. */
 		g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 		if (g_sw_shelf) {
 			g_sw_shelf = false;
 			a.screen = SCREEN_SYSTEMS;
 			ui_redraw_now();
 		}
+#if defined(PLATFORM_ROTATE)
 		if (g_sw_go) {
 			int go = g_sw_go;
 
@@ -25553,12 +26676,18 @@ int main(int argc, char *argv[])
 
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
-		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a, false); continue; }
+		 * it, so every layout gets it from this one line. Or the switcher, or
+		 * nothing: Select Shortcut (plorpos-bn9.12), whose switcher asked for
+		 * from a menu or screen opens here once they have all closed. */
+		if (g_go_switcher) { g_go_switcher = false; switcher_shelf(&a); continue; }
+		if (a.in.pressed[IN_SELECT] && g_sc_select == SC_MUSE) { muse_open_shelf(&a, false); continue; }
+		if (a.in.pressed[IN_SELECT] && g_sc_select == SC_SWITCHER) { switcher_shelf(&a); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
-		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */
-		if (a.in.pressed[IN_SWITCHER]) { switcher_shelf(&a); continue; }
+		 * panel) is the game switcher, here as in a game (plorpos-gl5.2) - or
+		 * Muse+, or nothing: Menu Hold (plorpos-bn9.13). */
+		if (a.in.pressed[IN_SWITCHER] && g_sc_hold == SC_SWITCHER) { switcher_shelf(&a); continue; }
+		if (a.in.pressed[IN_SWITCHER] && g_sc_hold == SC_MUSE) { muse_open_shelf(&a, false); continue; }
 
 		/* MENU on the shelf is TortOS's own menu, the counterpart to the one
 		 * MENU opens in a game. It draws over the shelf and returns here. */

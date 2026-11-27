@@ -34,14 +34,6 @@ void details_set_face(bool head, const char *path, float scale)
 
 static int S(int v) { return (int)(v * g_k + 0.5f); }
 
-/* The RG DS's text, about 10% smaller as the launcher's (plorpos-rgds.26):
- * the type only - the layout keeps its places. */
-#if defined(PLATFORM_RGDS)
-#define DETAILS_FONT_K 0.90f
-#else
-#define DETAILS_FONT_K 1.0f
-#endif
-
 /* The faces this layout was drawn with, Fredoka over Lato, at their width
  * corrections (main.c FONTS): another face is sized by its own against
  * them, so a line of it takes the room the layout gave it. */
@@ -51,7 +43,7 @@ static int S(int v) { return (int)(v * g_k + 0.5f); }
 static TTF_Font *font(bool head, int size)
 {
 	float k = g_face[head].scale / (head ? DETAILS_HEAD_REF : DETAILS_BODY_REF);
-	int px = (int)(size * g_k * DETAILS_FONT_K * k + 0.5f), i;
+	int px = (int)(size * g_k * k + 0.5f), i;
 
 	for (i = 0; i < 12 && g_fonts[i].f; i++)
 		if (g_fonts[i].head == head && g_fonts[i].px == px) return g_fonts[i].f;

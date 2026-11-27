@@ -43,4 +43,12 @@ const char *bm_target(const char *tag, const char *spec, int src);
 
 int bm_src_index(const char *name);   /* -1 if not a BM_SRC name */
 
+/* Turbo Assign's map as the db keeps it (turbomap.<TAG>[/<file>]): "x:a,a:a",
+ * host:turbo, BM_SRC names. turbo[h] is the BM_SRC index plus one that host
+ * button h fires as a turbo, 0 none. Here so the platform's RUN and the
+ * launcher's Turbo Assignments screen (plorpos-bn9.4) read one format. */
+void bm_turbo_parse(const char *v, int turbo[BM_SRC_N]);
+/* "" when no button has a turbo. Returns how many have one. */
+int  bm_turbo_format(const int turbo[BM_SRC_N], char *out, size_t n);
+
 #endif

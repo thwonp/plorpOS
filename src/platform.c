@@ -713,6 +713,11 @@ void menu_filter(in_state *st)
 	}
 }
 
+/* Menu Hold off (plorpos-bn9.21): SETHOTKEYS says hold=off, and no run loop
+ * here pauses a game for a hold. */
+static bool menu_hold_off;
+void plat_menu_hold(bool on) { menu_hold_off = !on; }
+
 static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
@@ -757,7 +762,7 @@ static gesture swivel_in_game(bool *tap)
 		else if (sw_closed_act == SWC_MUSE) return GESTURE_MUSE;
 		break;
 	case SWIVEL_OPENED:
-		if (sw_open_act == SWO_RECENTS) return GESTURE_SWITCHER;
+		if (sw_open_act == SWO_RECENTS) return GESTURE_RECENTS;
 		if (sw_open_act == SWO_SHELF && !sw_keep_game) return GESTURE_SHELF;
 		break;
 	default:
@@ -1021,6 +1026,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			menu_spent = true;
 			swipe = GESTURE_SWITCHER;
 		}
+		/* Menu Hold off (plorpos-bn9.21): a hold - or a swipe up - is
+		 * nothing, so the child is not frozen and the menu not set up for
+		 * a screen that would close at once. Its release stays spent. */
+		if (swipe == GESTURE_SWITCHER && menu_hold_off) swipe = GESTURE_NONE;
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
 		if (dark) { menu = false; swipe = GESTURE_NONE; }   /* no menu in the dark */
@@ -1388,56 +1397,64 @@ void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { 
 static int  d_turbo[BM_SRC_N];
 static bool d_turbo_gba;
 static char d_tag[16];            /* the running game's system, for its Button Mapping */
+static char d_file[512];          /* and its rom's file name, for its own settings (plorpos-bn9.4) */
 static char d_turbo_key[600];     /* "turbomap.<TAG>/<rom file>": this game's saved turbo */
 static char d_turbo_old[600];     /* "turbo.<TAG>/<rom file>": the bits it replaced */
+/* The running game's hotkeys and Button Mapping, resolved at RUN and changed
+ * by the in-game Hotkeys screen for this session (plorpos-bn9.4). */
+static char d_hk[320], d_bm[160];
+/* Every volume SETLEVEL carries the Volume Limiter's ceiling (plorpos-bn9.20):
+ * Diatom then never sets or shows a level above it. vol_top is set below. */
+#define SETLEVEL_VOLUME "SETLEVEL\tkind=volume\tindex=%d\tcount=%d\tmax=%d"
+static int vol_top;
 
-/* Persistent Turbo Assignments (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
- * the session - one row per game in the library db, beside its hotkeys, saved
- * on every change and read back at RUN. Off is session-only, as before, and
- * leaves saved rows alone, so turning it back On brings them back. */
-static bool d_turbo_persist(void) { return db_get_int(db_dev(), "persistturbo", 0) != 0; }
+bool plat_save_overrides(void) { return db_get_int(db_dev(), "saveoverrides", 1) != 0; }
 
-/* "x:a,a:a" - host:turbo - the same names SETMAP uses. */
+/* The shelf's default turbo, turbomap.<TAG> (plorpos-bn9.4); "" for none. */
+static void d_turbo_shelf(const char *tag, char *v, size_t n)
+{
+	char key[32];
+
+	snprintf(key, sizeof key, "turbomap.%s", tag);
+	db_get_str(db_lib(), key, v, n, "");
+}
+
+/* Every change, as this game's own when Save Per-Game Overrides is on
+ * (plorpos-bn9.4; it was Persistent Turbo Assignments, plorpos-pyz.9, whose
+ * persistturbo row is no longer read). Off is this session only. A game
+ * left with none where the shelf has some keeps an empty row: none is its
+ * choice, not the default's. */
 static void d_turbo_save(void)
 {
-	char v[64];
-	int i, n = 0;
+	char v[64], shelf[64];
 
-	if (!d_turbo_persist() || !d_turbo_key[0]) return;
-	v[0] = '\0';
-	for (i = 0; i < BM_SRC_N; i++)
-		if (d_turbo[i])
-			n += snprintf(v + n, sizeof v - (size_t)n, "%s%s:%s", n ? "," : "",
-			              BM_SRC[i], BM_SRC[d_turbo[i] - 1]);
-	if (n) db_set_str(db_lib(), d_turbo_key, v);
-	else   db_del(db_lib(), d_turbo_key);
+	if (!plat_save_overrides() || !d_turbo_key[0]) return;
+	d_turbo_shelf(d_tag, shelf, sizeof shelf);
+	if (bm_turbo_format(d_turbo, v, sizeof v) || shelf[0]) db_set_str(db_lib(), d_turbo_key, v);
+	else db_del(db_lib(), d_turbo_key);
 	db_del(db_lib(), d_turbo_old);   /* converted; never read back again */
 }
 
-/* At RUN: the saved turbo, or the bits a launcher before plorpos-c4l kept
- * (bit i: button i turbos itself), converted. */
+/* At RUN: the game's saved turbo, or the bits a launcher before plorpos-c4l
+ * kept (bit i: button i turbos itself), converted, or the shelf's default.
+ * A saved one always applies, whatever Save Per-Game Overrides says now. */
 static void d_turbo_load(void)
 {
-	char v[64], *save = NULL, *tok;
+	char v[64];
 	int i, bits;
 
-	memset(d_turbo, 0, sizeof d_turbo);
-	if (!d_turbo_persist()) return;
 	if (db_get_str(db_lib(), d_turbo_key, v, sizeof v, NULL)) {
-		for (tok = strtok_r(v, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
-			char *c = strchr(tok, ':');
-			int h, t;
-			if (!c) continue;
-			*c = '\0';
-			h = bm_src_index(tok);
-			t = bm_src_index(c + 1);
-			if (h >= 0 && t >= 0) d_turbo[h] = t + 1;
-		}
+		bm_turbo_parse(v, d_turbo);
 		return;
 	}
-	bits = db_get_int(db_lib(), d_turbo_old, 0);
-	for (i = 0; i < BM_SRC_N; i++)
-		if (bits & (1 << i)) d_turbo[i] = i + 1;
+	memset(d_turbo, 0, sizeof d_turbo);
+	if ((bits = db_get_int(db_lib(), d_turbo_old, 0))) {
+		for (i = 0; i < BM_SRC_N; i++)
+			if (bits & (1 << i)) d_turbo[i] = i + 1;
+		return;
+	}
+	d_turbo_shelf(d_tag, v, sizeof v);
+	bm_turbo_parse(v, d_turbo);
 }
 static void d_turbo_send(void);
 
@@ -1621,12 +1638,14 @@ bool plat_resident_send(const plat_game *g)
 		{
 			const char *f = g->rom ? strrchr(g->rom, '/') : NULL;
 
-			snprintf(d_turbo_key, sizeof d_turbo_key, "turbomap.%s/%s", tag ? tag : "",
-			         f ? f + 1 : g->rom ? g->rom : "");
-			snprintf(d_turbo_old, sizeof d_turbo_old, "turbo.%s/%s", tag ? tag : "",
-			         f ? f + 1 : g->rom ? g->rom : "");
+			snprintf(d_file, sizeof d_file, "%s", f ? f + 1 : g->rom ? g->rom : "");
+			snprintf(d_turbo_key, sizeof d_turbo_key, "turbomap.%s/%s", tag ? tag : "", d_file);
+			snprintf(d_turbo_old, sizeof d_turbo_old, "turbo.%s/%s", tag ? tag : "", d_file);
 		}
 		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
+		/* The game's own hotkeys and Button Mapping, else the shelf's
+		 * (plorpos-bn9.4): the mapping rides the turbo map just below. */
+		plat_game_keys(d_tag, d_file, d_hk, sizeof d_hk, d_bm, sizeof d_bm);
 		d_turbo_load();
 		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
 		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
@@ -1645,15 +1664,15 @@ bool plat_resident_send(const plat_game *g)
 		 * the same "a state that does nothing looks identical to a bug"
 		 * reasoning the comment above already gives). */
 		{
-			const char *hk = plat_hotkey_map(tag);
+			const char *hk = d_hk;
 			char kept[256];
 
 			plat_hotkeys_for_diatom(hk, kept, sizeof kept);
 			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
-			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
-			      plat_hotkey_modifier());
+			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", hk ? hk : "",
+			      plat_hotkey_modifier(), menu_hold_off ? "off" : "pause");
 		}
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
@@ -1688,8 +1707,7 @@ bool plat_resident_send(const plat_game *g)
 		 * Both are written off the shared maxima now. */
 		vol = plat_volume_get();
 		bri = plat_brightness_get();
-		if (vol >= 0) dsend("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                    vol, PLAT_VOL_MAX + 1);
+		if (vol >= 0) dsend(SETLEVEL_VOLUME, vol, PLAT_VOL_MAX + 1, vol_top);
 		if (bri >= 0) dsend("SETLEVEL\tkind=brightness\tindex=%d\tcount=%d",
 		                    bri, PLAT_BRIGHT_MAX + 1);
 #ifdef PLATFORM_RGDS
@@ -1801,6 +1819,11 @@ bool plat_resident_line(const char *fmt, ...)
 	 * connection, and nothing of the line reached the old one to repeat. */
 	if (!dconnect()) return false;
 	return dsend("%s", line);
+}
+
+bool plat_resident_volume_set(int index)
+{
+	return plat_resident_line(SETLEVEL_VOLUME, index, PLAT_VOL_MAX + 1, vol_top);
 }
 
 const char *plat_resident_last_preview(void) { return d_preview; }
@@ -1924,10 +1947,10 @@ const char *plat_btnmap(const char *tag)
 
 static void d_turbo_send(void)
 {
-	char map[200], spec[160];
+	char map[200];
+	const char *spec = d_bm;   /* the running game's, own or its shelf's (plorpos-bn9.4) */
 	int i, n = 0;
 
-	d_btnmap_get(d_tag, spec, sizeof spec);
 	map[0] = '\0';
 	for (i = 0; i < BM_SRC_N; i++) {
 		const char *tgt = bm_target(d_tag, spec, i), *tt = NULL;
@@ -1953,8 +1976,72 @@ void plat_btnmap_set(const char *tag, const char *spec)
 	snprintf(key, sizeof key, "btnmap.%s", tag);
 	if (spec && *spec) db_set_str(db_lib(), key, spec);
 	else               db_del(db_lib(), key);
-	/* Live, as the hotkeys are: this screen only opens mid-game. */
-	if (!strcmp(tag, d_tag)) d_turbo_send();
+}
+
+/* ---- one game's own hotkeys and Button Mapping (plorpos-bn9.4) -----------
+ * ghotkey.<TAG>/<file> and gbtnmap.<TAG>/<file> in the library db, beside
+ * turbomap.<TAG>/<file>: a full copy of the shelf's two taken at the first
+ * edit and written together, so later shelf changes do not reach a game that
+ * has its own. Not "hotkey.": hotkeys_load reads every row under that prefix
+ * into a table of one per shelf. The file is the rom's name, as turbo's is. */
+static void g_key(char *out, size_t n, const char *kind, const char *tag, const char *file)
+{
+	const char *b = file ? strrchr(file, '/') : NULL;
+
+	snprintf(out, n, "%s.%s/%s", kind, tag ? tag : "", b ? b + 1 : file ? file : "");
+}
+
+bool plat_game_keys(const char *tag, const char *file, char *hk, size_t hkn, char *bm, size_t bmn)
+{
+	char key[600];
+	bool own_hk, own_bm;
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	own_hk = file && db_get_str(db_lib(), key, hk, hkn, NULL);
+	if (!own_hk) snprintf(hk, hkn, "%s", plat_hotkey_map(tag));
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	own_bm = file && db_get_str(db_lib(), key, bm, bmn, NULL);
+	if (!own_bm) d_btnmap_get(tag ? tag : "", bm, bmn);
+	return own_hk || own_bm;
+}
+
+void plat_game_keys_set(const char *tag, const char *file, const char *hk, const char *bm)
+{
+	char key[600];
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	db_set_str(db_lib(), key, hk ? hk : "");
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	db_set_str(db_lib(), key, bm ? bm : "");
+}
+
+void plat_game_keys_clear(const char *tag, const char *file)
+{
+	char key[600];
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	db_del(db_lib(), key);
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	db_del(db_lib(), key);
+}
+
+void plat_live_keys(const char **hk, const char **bm)
+{
+	*hk = d_hk;
+	*bm = d_bm;
+}
+
+void plat_live_keys_set(const char *hk, const char *bm, bool save)
+{
+	char wire[256];
+
+	snprintf(d_hk, sizeof d_hk, "%s", hk ? hk : "");
+	snprintf(d_bm, sizeof d_bm, "%s", bm ? bm : "");
+	plat_hotkeys_for_diatom(d_hk, wire, sizeof wire);
+	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", wire, plat_hotkey_modifier(),
+	      menu_hold_off ? "off" : "pause");
+	d_turbo_send();
+	if (save) plat_game_keys_set(d_tag, d_file, d_hk, d_bm);
 }
 
 /* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tpick=a", "TURBO\tbtn=a\ton=x",
@@ -2423,6 +2510,8 @@ static int diatom_wait(void)
 #if defined(PLATFORM_ROTATE)
 			if (g == GESTURE_NONE) g = sw_swipe;
 #endif
+			/* A swipe up with Menu Hold off: nothing (plorpos-bn9.21). */
+			if (g == GESTURE_SWITCHER && menu_hold_off) g = GESTURE_NONE;
 			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
 			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
 				d_gesture_asked = g;
@@ -2964,10 +3053,19 @@ void plat_draw_osd(SDL_Renderer *r)
 	SDL_RenderFillRect(r, &(SDL_Rect){ 0, OSD_PAD, (int)(W * pct), OSD_LINE_H });
 }
 
+/* The Volume Limiter's ceiling for the output in use (plorpos-bn9.9): a step
+ * up stops there, and the OSD shows where it stopped. Set by the launcher. */
+static int vol_top = PLAT_VOL_MAX;
+void plat_volume_ceiling(int top) { vol_top = clampi(top, 0, VOL_MAX); }
+
 void plat_volume_nudge(int delta)
 {
+	int v;
+
 	if (mixer_fd < 0) return;
-	apply_volume(clampi((cur_vol < 0 ? 0 : cur_vol) + delta, 0, VOL_MAX));
+	v = clampi((cur_vol < 0 ? 0 : cur_vol) + delta, 0, VOL_MAX);
+	if (delta > 0 && v > vol_top) v = vol_top;
+	apply_volume(v);
 	levels_save();
 	plat_osd_show(2, cur_vol, VOL_MAX);
 }

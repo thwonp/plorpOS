@@ -72,6 +72,8 @@ static void names(void)
 	CHECK(!strcmp(out, "Orphan"), "number and dash: got \"%s\"", out);
 	ml_track_name("1979.mp3", out, sizeof out);
 	CHECK(!strcmp(out, "1979"), "a track CALLED a number keeps it: got \"%s\"", out);
+	ml_track_name("01.mp3", out, sizeof out);
+	CHECK(!strcmp(out, "01"), "a number and nothing else is its name, not the extension: got \"%s\"", out);
 	ml_track_name("Intro.opus", out, sizeof out);
 	CHECK(!strcmp(out, "Intro"), "no number: got \"%s\"", out);
 }

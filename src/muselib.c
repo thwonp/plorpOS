@@ -40,7 +40,7 @@ void ml_track_name(const char *file, char *out, int n)
 		const char *q = p;
 
 		while (*q == ' ' || *q == '-' || *q == '.' || *q == '_') q++;
-		if (q > p && *q && q != dot) p = q; else p = file;
+		if (q > p && *q && (!dot || q < dot)) p = q; else p = file;
 	} else {
 		p = file;
 	}

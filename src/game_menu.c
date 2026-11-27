@@ -82,24 +82,49 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 	 * is holding; publisher and developer run to 214 and 417 distinct values
 	 * of pure trivia. They stay stored - re-scraping to add a column is an
 	 * hour - and stay off this screen. */
-	out[n++] = (menu_row){ gi->has_art ? "Replace Box Art" : "Get Box Art",
-	                       net ? NULL : "needs Wi-Fi", net };
+	/* Owner's order (plorpos-bn9.23): Game Overrides, Rename, Box Art, then
+	 * Delete. Game Overrides is this one game's own settings, the shelf's
+	 * defaults until it has them (plorpos-bn9.5). */
+	if (gi->overrides)
+		out[n++] = (menu_row){ "Game Overrides", NULL, true };
 	/* The player's own name for it (plorpos-gkd.86.4): a game on the card,
 	 * like Delete - Splore's entry is not one to rename. */
 	if (gi->deletable)
 		out[n++] = (menu_row){ "Rename", NULL, true };
-	/* Last, under the one that adds: the one that cannot be undone, asked
+	out[n++] = (menu_row){ gi->has_art ? "Replace Box Art" : "Get Box Art",
+	                       net ? NULL : "needs Wi-Fi", net };
+	/* Last: the one that cannot be undone, asked
 	 * again before it happens (plorpos-gkd.69). */
 	if (gi->deletable)
 		out[n++] = (menu_row){ "Delete Game", NULL, true };
 	return n;
 }
 
+int go_rows(const go_ui *u, menu_row *out, go_row *ids)
+{
+#define V(x) ((x) ? (x) : GO_DEFAULT)
+	int n = 0;
+
+	ids[n] = GO_CORE;    out[n++] = (menu_row){ "Core", V(u->core), u->core_live };
+	ids[n] = GO_DISPLAY; out[n++] = (menu_row){ u->nds ? "Layout" : "Display Mode", V(u->dmode), true };
+	if (u->fill_shown) { ids[n] = GO_FILL; out[n++] = (menu_row){ "Display", V(u->fill), true }; }
+#if defined(PLATFORM_RGDS)
+	/* Both panels, always, on the RG DS: nothing to lay out or fit (plorpos-rgds.18.1). */
+	if (u->nds) for (int i = 1; i < n; i++) out[i].live = false;
+#endif
+	if (u->shaders) { ids[n] = GO_SHADER; out[n++] = (menu_row){ SHADER_LABEL, u->shader ? SHADER_VALUE(u->shader) : GO_DEFAULT, true }; }
+	ids[n] = GO_HOTKEYS; out[n++] = (menu_row){ "Hotkeys", u->hotkeys ? "custom" : GO_DEFAULT, true };
+	if (u->palette_shown) { ids[n] = GO_PALETTE; out[n++] = (menu_row){ "Palette", V(u->palette), true }; }
+	ids[n] = GO_TURBO;   out[n++] = (menu_row){ "Turbo Assignments", u->turbo ? "custom" : GO_DEFAULT, true };
+	return n;
+#undef V
+}
+
 /* The in-game rows, carrying the display mode's current label. */
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Display", SHADER_LABEL, "Palette", "Disc",
+		"Continue", "Save", "Load", "Display Mode", "Display", SHADER_LABEL, "Palette", "Disc",
 		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
 	};
 	int i;
@@ -164,7 +189,7 @@ int gm_compact(menu_row *rows, int n, int *ids)
 
 int gm_native_rows(bool in_splore, const char *display, menu_row *out)
 {
-	static const char *label[GMN_ROWS] = { "Continue", "Display", "Reset", "Splore", "Quit" };
+	static const char *label[GMN_ROWS] = { "Continue", "Display Mode", "Reset", "Splore", "Quit" };
 	int i;
 
 	for (i = 0; i < GMN_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };

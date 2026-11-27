@@ -1459,9 +1459,16 @@ bool plat_hold_switch(void) { return switch_locks && mute_switch_down(); }
 
 void plat_audio_jack_poll(void)
 {
-	if (!aout_should_reapply(jack_was, jack_present() != 0, cur_vol >= 0))
+	bool in = jack_present() != 0;
+	/* The DAC's limit if a DAC is what plays: the cable is not heard then
+	 * (plorpos-bn9.22). */
+	int top = aout_limit_plug_level(VOL_MAX);
+
+	if (!aout_should_reapply(jack_was, in, cur_vol >= 0))
 		return;
-	apply_volume(cur_vol);
+	/* A cable goes in no louder than its Volume Limiter limit, from the
+	 * first write (plorpos-bn9.9); the launcher keeps it there after. */
+	apply_volume(in && cur_vol > top ? top : cur_vol);
 }
 
 /* Forget which way the jack was, so the next poll re-applies whatever the

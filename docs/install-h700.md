@@ -74,14 +74,15 @@ updating moves whatever is still in it that the new `plorpOS/` does not have
 ## Nintendo DS
 
 Put `.nds` files in `Roms/Nintendo DS/`; no BIOS is needed for most games.
-The shelf's Core row picks DSperate-lr (the default) or PokeDaisy DS for the
-game under the cursor (the Pokemon games' companion: Party, Dex, Map, Bag and
+**Nintendo DS Defaults > Core** in the shelf menu picks DSperate-lr (the default)
+or PokeDaisy DS for the shelf, and a game's X menu > **Game Overrides > Core** for
+that game (the Pokemon games' companion: Party, Dex, Map, Bag and
 Guide from the game).
 
 There are three layouts: **Overlay**, one screen filling the display at 4:3 and
 the other, 80% opaque, over its bottom-right corner; **Single Screen**, one
 screen at full height; and **Hybrid**, one screen at twice the DS's size and the
-other in the width left over at its right. The shelf menu's **Default Layout**
+other in the width left over at its right. The shelf menu's **Nintendo DS Defaults > Layout**
 sets the shelf's; the in-game **Layout** row sets the game's own. The **Swap Screens** hotkey puts the other screen in the big place and is remembered for each game; **Screen Layout** steps through the layouts and keeps the screen you swapped to.
 The **Display** row under Layout picks how Single Screen and the
 Overlay's big screen fill the display: **Aspect** (4:3, the default),

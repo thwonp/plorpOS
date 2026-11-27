@@ -65,7 +65,7 @@ static inline int gm_save_slot(const bool *have)
 	return GM_SLOTS;
 }
 
-#define GI_MAX 7          /* four facts at most, three actions */
+#define GI_MAX 8          /* four facts at most, four actions */
 
 /* The genre line, from the scrape. Sized from the card rather than guessed:
  * measured 2026-09-17 over 1,704 rows, the whole comma-separated value has a
@@ -94,11 +94,36 @@ typedef struct {
 	bool  scraped;
 	bool  has_synopsis;
 	bool  deletable;       /* a file on the card: everything but Splore */
+	bool  overrides;       /* diatom plays it: Game Overrides is listed (plorpos-bn9.5) */
 } game_info;
 
 /* `net` is whether there is a network, asked by the caller and passed in: the
  * two rows that need one say so instead of quietly doing nothing. */
 int gi_rows(menu_row *out, const game_info *gi, bool net);
+
+/* ---------- Game Overrides (plorpos-bn9.5) ---------------------------------
+ *
+ * The X menu's per-game settings: each row "Shelf Default" until the game has
+ * its own, else that one. Core is greyed where the shelf has one core (and on
+ * PICO-8); Display (the DS's fill), Shader and Palette are there only where
+ * they mean something, as in the in-game menu. */
+typedef enum { GO_CORE, GO_DISPLAY, GO_FILL, GO_SHADER, GO_HOTKEYS, GO_PALETTE, GO_TURBO,
+               GO_ROWS } go_row;
+
+/* Each value NULL for the shelf's default, else the game's own label. */
+typedef struct {
+	const char *core;     bool core_live;   /* a shelf with more than one core */
+	const char *dmode;    bool nds;         /* the DS: the mode row is Layout */
+	const char *fill;     bool fill_shown;  /* the DS's Display, where the panel has more than one */
+	const char *shader;   bool shaders;     /* a list to pick from */
+	const char *palette;  bool palette_shown; /* a Game Boy game with no colour of its own */
+	bool        hotkeys, turbo;             /* the game has its own */
+} go_ui;
+
+#define GO_DEFAULT "Shelf Default"
+
+/* ids[i] is the go_row row i shows. Returns how many. */
+int go_rows(const go_ui *u, menu_row *out, go_row *ids);
 
 /* ---------- the in-game menu ---------------------------------------------- */
 

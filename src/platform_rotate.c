@@ -962,14 +962,18 @@ static void sink_resync(const char *name)
 		pclose(f);
 	}
 	/* Its stored level can be a loud one - the user's DAC came back at 10 -
-	 * so never above OUT_CAP on arrival (plorpos-3yv.73). The set is itself
-	 * the real change the re-sync needs. */
-	if (lv > OUT_CAP) {
+	 * so never above OUT_CAP on arrival (plorpos-3yv.73), nor above its
+	 * Volume Limiter limit (plorpos-bn9.9). The set is itself the real
+	 * change the re-sync needs. */
+	int top = aout_limit_level(strncmp(name, "bluez_output.", 13) ? AOUT_USB : AOUT_BT, VOL_MAX);
+
+	if (top > OUT_CAP) top = OUT_CAP;
+	if (lv > top) {
 		char cap[8];
 		char *set[] = { "wpctl", "set-volume", id, cap, NULL };
-		snprintf(cap, sizeof cap, "%.2f", (float)OUT_CAP / VOL_MAX);
+		snprintf(cap, sizeof cap, "%.2f", (float)top / VOL_MAX);
 		pactl_run(set);
-		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n", name, OUT_CAP, lv);
+		fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n", name, top, lv);
 		return;
 	}
 	{
@@ -1149,7 +1153,7 @@ void plat_sink_follow(bool game)
 	if (now - since < 500) return;
 	seen = -1;
 	fprintf(stderr, "audio: output is at level %d, was %d\n", want, have);
-	if (game) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", want, VOL_MAX + 1);
+	if (game) plat_resident_volume_set(want);
 	else      plat_volume_nudge(want - have);
 }
 

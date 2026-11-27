@@ -114,6 +114,23 @@ put down only outside the menus - the shelf's loop, `game_menu`, Muse+ - and
 never when a menu opens, so a screen that opens a second one after the first
 came back sees it still raised.
 
+## Where a setting lives (plorpos-bn9)
+
+- **Shelf MENU**: system options only. Sort By, `<Shelf> Defaults`, Reset
+  Overrides, Scrape Shelf, Rescan Folder (`sys_menu_build`). Defaults and
+  Reset are their own builds, `sys_menu_defaults_build` and
+  `sys_menu_reset_build`, so the check can hold their rows too.
+- **X menu > Game Overrides**: one game's own (`go_rows`). Every row reads
+  Shelf Default until the game has a row; choosing Shelf Default deletes it.
+- **In-game menu**: changes the running game, and writes the game's own row
+  only under Save Per-Game Overrides (`plat_save_overrides`). It never writes
+  a shelf default.
+
+A game's own row is a full copy, taken on the first change, so a later change
+to the default does not reach it. Hotkeys and Button Mapping are one override:
+both rows are written together. Reset Overrides counts per kind when it opens
+and after each reset, never per frame.
+
 ## Cheevos is not a menu, and should not be made one
 
 `cheevos_screen` draws with `menu_draw` and is not on the runner. That is

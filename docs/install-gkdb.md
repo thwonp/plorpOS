@@ -115,8 +115,9 @@ turn it on there. Sign in as **`root`**, password **`plorpos`**. Change it with
 
 ## Nintendo DS
 
-Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks
-DSperate-lr (the default) or PokeDaisy DS. The **Screen Layout** hotkey
+Put `.nds` files in `Roms/Nintendo DS/`. **Nintendo DS Defaults > Core**
+picks DSperate-lr (the default) or PokeDaisy DS; **Game Overrides** in a game's X
+menu sets one game's. The **Screen Layout** hotkey
 (MENU + X by default) steps through Overlay, Offset, Even Split and Single
 Screen. The stick moves a stylus cursor over the bottom screen and R2 touches.
 

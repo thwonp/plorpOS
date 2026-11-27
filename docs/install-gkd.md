@@ -130,12 +130,13 @@ share.
 
 ## Nintendo DS
 
-Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks
-DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the
+Put `.nds` files in `Roms/Nintendo DS/`. **Nintendo DS Defaults > Core**
+in the shelf menu picks DSperate-lr (the default) or PokeDaisy DS for the shelf, and
+a game's X menu > **Game Overrides > Core** picks it for that game (the
 Pokemon games' companion: Party, Dex, Map, Bag and Guide from the game).
 
 The layouts are **Overlay**, **Offset** (one screen big, the other small),
-**Even Split** and **Single Screen**: the shelf menu's **Default Layout** sets
+**Even Split** and **Single Screen**: the shelf menu's **Nintendo DS Defaults > Layout** sets
 the shelf's, the in-game **Layout** row the game's own. The **Screen Layout**
 hotkey (MENU + X by default) steps through them; the **Swap Screens** hotkey
 puts the other screen in the big place (nothing to swap on Even Split) and is
