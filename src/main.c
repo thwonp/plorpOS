@@ -24500,6 +24500,15 @@ static void muse_want_hook(void)
 	if (g_rgds_app && g_dual_muse && !g_muse_sec) muse_on_secondary(g_rgds_app, NULL);
 }
 
+/* Anbernic + Home (plorpos-rgds.33.2): Primary Screen kept, and the screen
+ * on it drawn again at once - it may be idle, and the move waits on nothing. */
+static void screens_swapped(bool bottom)
+{
+	g_dual_bottom = bottom;
+	db_set_int(db_dev(), "dual_bottom", bottom);
+	ui_redraw_now();
+}
+
 static void details_tick(app *a)
 {
 	static details_info d;
@@ -24584,6 +24593,7 @@ int main(int argc, char *argv[])
 #if defined(PLATFORM_RGDS)
 	g_rgds_app = &a;
 	plat_bottom_on_want(muse_want_hook);
+	plat_on_swap(screens_swapped);
 #endif
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];

@@ -1014,6 +1014,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+#if defined(PLATFORM_RGDS)
+		/* Anbernic + Home swaps the screens (plorpos-rgds.33.2, the tick
+		 * does it): no Menu, no switcher. */
+		if (menu_held && rgds_home_held()) menu_spent = true;
+#endif
 		/* Menu held alone 700 ms: the switcher, and its release is then
 		 * nothing (plorpos-gl5.3). */
 		if (menu_held && !menu_spent && !menu &&

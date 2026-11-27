@@ -253,6 +253,8 @@ static bool cp_pending;        /* a port's, likewise */
 static int cp_tries;
 static int rp_tries;
 
+static void swap_tick(void);
+
 /* The game's window, once sway has mapped it: at a launch it can open on
  * another workspace than 1 while the panels are being rearranged. From the
  * launcher's 10 Hz tick during a game; up to 5 s. */
@@ -262,6 +264,7 @@ void plat_rgds_game_tick(void)
 	char *argv[] = { "swaymsg", c, NULL };
 	pid_t pid = diatom_pid();
 
+	swap_tick();
 	if (!rp_pending || pid <= 0) return;
 	snprintf(c, sizeof c, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
 	if (helper(argv) || ++rp_tries > 50) rp_pending = false;
@@ -287,6 +290,8 @@ void plat_rgds_child_tick(void)
 		"[" CP_AWAY " shell=\"xwayland\"] move container to workspace 1, focus, fullscreen enable; "
 		"[" CP_AWAY " app_id=\"^startRENPY$\"] move container to workspace 1, focus, move position center",
 		NULL };
+
+	swap_tick();
 
 	if (!cp_pending) return;
 	if (cp_tries < 50) cp_tries++;
@@ -806,6 +811,7 @@ static bool home_down;
  * down only with another button (a chord), spent by a volume key, and
  * otherwise a one-poll press on release (anb_pulse: up the next poll). */
 static bool anb_down, anb_sent, anb_spent, anb_pulse;
+static bool swap_req;     /* Anbernic + Home: the screens' swap, at the next poll (rgds.33.2) */
 static bool bright_top;   /* the next brightness press is the top panel's (Anbernic) */
 #endif
 /* The d-pad and the stick each keep their own state, so letting go of one
@@ -1173,7 +1179,13 @@ static void pad_read(in_state *st)
 #ifdef PLATFORM_RGDS
 		if (ev.code == BTN_MODE) {
 			anb_down = down;
-			if (down) { anb_sent = anb_spent = false; continue; }
+			/* With Home held: the swap, and no Menu on the release. */
+			if (down) {
+				anb_sent = false;
+				anb_spent = home_down;
+				if (home_down) swap_req = true;
+				continue;
+			}
 			if (anb_sent) set_btn(st, IN_MENU, false);
 			else if (!anb_spent) { set_btn(st, IN_MENU, true); anb_pulse = true; }
 			anb_sent = false;
@@ -1202,6 +1214,7 @@ static void pad_read(in_state *st)
 		if (ev.type == EV_KEY && ev.code == KEY_F1 && ev.value != 2) {
 			home_down = ev.value == 1;
 			set_btn(st, IN_HOME, home_down);
+			if (home_down && anb_down && !anb_sent) anb_spent = swap_req = true;
 		}
 #endif
 	for (int i = 0; i < 4; i++) {
@@ -1364,9 +1377,55 @@ gesture gesture_read(void)
 }
 #endif
 
+#ifdef PLATFORM_RGDS
+/* Anbernic + Home: the two panels swap roles (plorpos-rgds.33.2) - the
+ * launcher or the game on workspace 1 goes to the other panel, the secondary
+ * to this one, and each takes the other's brightness by role. Not in a DS
+ * game, which has both panels whatever Primary Screen says. */
+static void (*swap_fn)(bool bottom);
+void plat_on_swap(void (*fn)(bool bottom)) { swap_fn = fn; }
+
+static void swap_primary(void)
+{
+	if (rgds_game_top) return;
+	g_prim_bottom = !g_prim_bottom;
+	ws1_place();
+	if (b_shown) bottom_over();
+	else sway_cmd(g_prim_bottom ? "output DSI-2 power off" : "output DSI-1 power off");
+	b_epoch++;
+	primary_mark();
+	if (cur_bright >= 0) apply_brightness(cur_bright);
+	fprintf(stderr, "screens: primary %s\n", g_prim_bottom ? "bottom" : "top");
+	if (swap_fn) swap_fn(g_prim_bottom);
+}
+
+/* In a game the pad is the game's and its events are not read here: both
+ * keys held, asked of the kernel at the game's 10 Hz tick. Once per hold. */
+static bool key_held(int fd, int code)
+{
+	unsigned long k[KEY_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+
+	return fd >= 0 && ioctl(fd, EVIOCGKEY(sizeof k), k) >= 0 &&
+	       (k[code / (8 * sizeof k[0])] >> (code % (8 * sizeof k[0])) & 1);
+}
+
+/* plat_run's Menu watch: Home held makes Anbernic a chord, not Menu. */
+bool rgds_home_held(void) { return key_held(fd_home, KEY_F1); }
+
+static void swap_tick(void)
+{
+	static bool held_was;
+	bool held = key_held(fd_pad, BTN_MODE) && rgds_home_held();
+
+	if (held && !held_was) swap_primary();
+	held_was = held;
+}
+#endif
+
 void plat_input_poll(in_state *st)
 {
 #ifdef PLATFORM_RGDS
+	if (swap_req) { swap_req = false; swap_primary(); }
 	/* A finger on the secondary's resting Muse, from any screen's loop - a
 	 * menu, the in-game menu (plorpos-rgds.18.3.8): Muse opens there now,
 	 * and this poll goes on once it is back. */

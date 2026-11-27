@@ -447,6 +447,10 @@ bool plat_bottom_tap(int *x, int *y);
 /* Primary Screen = Bottom: the launcher and single-screen games on the bottom
  * panel, the secondary on the top (plorpos-rgds.18.1.3). */
 void plat_set_primary_bottom(bool on);
+/* Anbernic + Home swaps the panels' roles (plorpos-rgds.33.2); fn is told the
+ * new Primary Screen, to keep it. */
+void plat_on_swap(void (*fn)(bool bottom));
+bool rgds_home_held(void);
 /* During a game, from its tick: the game's window onto the primary once mapped. */
 void plat_rgds_game_tick(void);
 void plat_rgds_child_tick(void);   /* a port's window onto the primary */
