@@ -9,6 +9,7 @@
 #  - U-Boot env: bootcmd without `sleepms 1000;` (mkfw.py)
 #
 #   mk/flip-fw/build-lean.sh <stock miyoo285_fw.img> <out miyoo285_fw.img> [build id]
+#   mk/flip-fw/package-fast-boot.sh <out miyoo285_fw.img>   the release download
 #
 # Needs unsquashfs, mksquashfs (squashfs-tools), git and python3. U-Boot, kernel
 # and rootfs are not written by the result.
