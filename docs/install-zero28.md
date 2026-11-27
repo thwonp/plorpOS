@@ -87,6 +87,9 @@ On a computer's cable the Zero 28 can switch its USB port to host mode by
 itself, which drops adb. **System Settings > USB Debugging** keeps it a USB
 device for adb from the next boot on. It is off on a fresh card.
 
+Turn it off to use a USB DAC. While it is on, the OTG port stays a device
+and the DAC gets no power and is never seen. Reboot after changing it.
+
 ## Ports
 
 The **Ports** shelf sits just before Muse+. Its first entry is
@@ -115,8 +118,9 @@ What to expect:
 
 ## Limits
 
-- Charging can slow to a trickle after a USB DAC is plugged in or pulled out
-  with a charger connected. Re-plug the charger. The fix is in oakMOSS
+- The plorpOS image has the charging fix. On an older oakMOSS (the zip route),
+  charging can slow to a trickle after a USB DAC is plugged in or pulled out
+  with a charger connected. Re-plug the charger
   ([guide](guide.md#usb-dac)).
 - No Bluetooth: the Zero 28 has no antenna for it.
 - No touch screen and no rumble.
