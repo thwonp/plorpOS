@@ -4271,6 +4271,19 @@ static void muse_queue_tick(void);
 /* Muse open on the secondary beside a game: that game's tick, run from Muse's
  * own loop meanwhile (plorpos-rgds.18.3.5). NULL on the shelf. */
 static void (*g_sec_tick)(void);
+/* The switcher runs there too (plorpos-rgds.33.4): SELECT, which a press on
+ * the primary becomes, closes it rather than opening Muse. */
+static bool g_sw_sec;
+
+static void sec_tick_run(void)
+{
+	if (g_sec_tick) {
+		static unsigned at;
+		unsigned now = SDL_GetTicks();
+
+		if (now - at >= 100) { at = now; g_sec_tick(); }
+	}
+}
 #endif
 
 static void muse_screen_poll(void)
@@ -4279,12 +4292,7 @@ static void muse_screen_poll(void)
 #if defined(PLATFORM_RGDS)
 	/* Beside a game: its duties go on - the game quiet while Muse plays,
 	 * play time, the sound's route - ten times a second, as its loop would. */
-	if (g_sec_tick) {
-		static unsigned at;
-		unsigned now = SDL_GetTicks();
-
-		if (now - at >= 100) { at = now; g_sec_tick(); }
-	}
+	sec_tick_run();
 	/* Under Muse's own screens the secondary shows the queue (.18.3.4). No
 	 * pump: this screen's input poll hands the secondary its fingers by
 	 * window, and a pump here took the primary's too (.18.5). */
@@ -14005,6 +14013,10 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
+#if defined(PLATFORM_RGDS)
+		sec_tick_run();          /* on the secondary beside a game: its duties */
+		if (g_sw_sec && a->in.pressed[IN_SELECT]) { done = -1; continue; }
+#endif
 		{
 			int hint = ui_hit_take();   /* a footer hint tapped: its button */
 			if (hint >= 0) a->in.pressed[hint] = true;
@@ -21788,13 +21800,13 @@ static void launch(app *a)
 #if defined(PLATFORM_RGDS)
 	/* The secondary off before the game starts: a DS game lights the bottom
 	 * panel for its own second screen, and an off sent after that would win.
-	 * Muse stays beside any other game (plorpos-rgds.18.1.4). */
+	 * The secondary stays beside any other game (plorpos-rgds.18.1.4, .33). */
 	{
 		const sysview *v = &a->view[a->sys_cursor];
 		bool ds = v->list.count > 0 &&
 		          is_nds_tag(a->sys.systems[shelf_owner(a, a->sys_cursor, v->cursor)].tag);
 
-		if (!g_dual_muse || ds) plat_bottom_off();
+		if (ds) plat_bottom_off();
 	}
 #endif
 	launch_one(a);
@@ -24311,13 +24323,38 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
  * tick: the game's own, for Muse's loop to run meanwhile. */
 static void muse_on_secondary(app *a, void (*tick)(void));
 
+static void switcher_on_secondary(app *a, void (*tick)(void));
+/* Details drawn again at its next tick: something else had the panel. */
+static bool g_details_stale;
+static void details_redraw(void) { g_details_stale = true; }
+
+/* An edge swipe on the secondary (plorpos-rgds.33.4): down from the top turns
+ * Muse+ on or off there, up from the bottom opens the recent games there.
+ * Returns the swipe, done: +1, -1 or 0. */
+static int sec_edge(app *a, void (*tick)(void))
+{
+	int e = plat_bottom_edge();
+
+	if (e > 0) {
+		g_dual_muse = !g_dual_muse;
+		fprintf(stderr, "secondary: %s\n", g_dual_muse ? "Muse+" : "Details");
+	}
+	if (e < 0 && a) switcher_on_secondary(a, tick);
+	return e;
+}
+
 static void muse_panel_game_tick(void (*tick)(void))
 {
-	if (!g_dual_muse || g_muse_sec) return;   /* Muse runs it */
+	bool fresh;
+
+	if (g_muse_sec) return;   /* Muse runs it */
 	plat_bottom_queue(false);
 	plat_bottom_pump();
+	fresh = sec_edge(g_rgds_app, tick) != 0;
+	plat_bottom_keep(g_dual_muse);
+	if (!g_dual_muse) return;
 	if (plat_bottom_want() && g_rgds_app) { muse_on_secondary(g_rgds_app, tick); return; }
-	muse_panel_tick(false, false, false);
+	muse_panel_tick(fresh, false, false);
 }
 
 /* The queue on the secondary while Muse is open on the primary
@@ -24493,6 +24530,57 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	fprintf(stderr, "muse: back from the secondary\n");
 }
 
+/* The recent games on the secondary, by touch (plorpos-rgds.33.4), as Muse
+ * runs there: the primary's screen or game goes on, a pad press or a touch
+ * on the primary closes it. A pick launches from the shelf; beside a Diatom
+ * game it ends that game (its Auto state written, as Quit) and launch()
+ * starts the pick. Not beside a port: no STOP to send it. */
+static void switcher_on_secondary(app *a, void (*tick)(void))
+{
+	SDL_Renderer *was = a->r, *r;
+	int w, h, ph = shot_phase;
+	sw_pick pk;
+	bool powered, picked;
+
+	if (tick && tick != on_game_tick) return;
+	if (!(r = plat_bottom_begin(&w, &h))) return;
+	muse_textures_forget(a);
+	a->r = r;
+	SDL_RenderSetScale(r, plat_scale(), plat_scale());
+	ui_hit_set(1);
+	g_sw_sec = true;
+	plat_bottom_session(true, tick != NULL);
+	if (tick) { g_sec_tick = tick; shot_phase = 0; plat_input_flush(); }
+	fprintf(stderr, "switcher: on the secondary%s\n", tick ? " beside a game" : "");
+	picked = switcher_run(a, NULL, tick != NULL, &pk, &powered);
+	g_sec_tick = NULL;
+	shot_phase = ph;
+	g_sw_sec = false;
+	ui_hit_set(0);
+	muse_textures_forget(a);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	a->r = was;
+	/* What the secondary showed before, at once. */
+	if (g_dual_muse) muse_panel_tick(true, false, false);
+	else details_redraw();
+	ui_redraw_now();
+	memset(&a->in, 0, sizeof a->in);
+	plat_bottom_session(false, tick != NULL);
+	/* The swipe that closed it is not one to open it again. */
+	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse;
+	if (tick) {
+		const char *tag, *file;
+
+		if (powered || !picked) return;
+		tag  = a->sys.systems[pk.sys].tag;
+		file = a->view[pk.sys].list.items[pk.item].file;
+		if (!strcmp(tag, g_cur_tag) && !strcmp(file, g_cur_file)) return;
+		snprintf(g_switch_tag, sizeof g_switch_tag, "%s", tag);
+		snprintf(g_switch_file, sizeof g_switch_file, "%s", file);
+		plat_resident_line("STOP");
+	} else if (picked) switcher_launch(a, &pk);
+}
+
 /* Any screen's poll, when a finger lands on the secondary's resting Muse
  * (plat_bottom_on_want): the in-game menu, a settings menu (.18.3.8). */
 static void muse_want_hook(void)
@@ -24532,6 +24620,8 @@ static void details_tick(app *a)
 		details_set_face(false, p, FONTS[g_font].scale);
 		init = true;
 	}
+	if (sec_edge(a, NULL) < 0) return;   /* the switcher had the panel, may have launched */
+	if (g_details_stale) { g_details_stale = false; on = false; }
 	if (epoch != plat_bottom_epoch() || !on || was_muse != g_dual_muse || face_seen != g_face_gen) {
 		epoch = plat_bottom_epoch();
 		face_seen = g_face_gen;

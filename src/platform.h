@@ -442,6 +442,9 @@ void plat_child_quiet(bool quiet);
 void plat_bottom_off(void);
 unsigned plat_bottom_epoch(void);
 int  plat_bottom_swipe(void);
+/* An edge swipe on the secondary since the last call (plorpos-rgds.33.4): +1 down
+ * from its top edge (Muse+), -1 up from its bottom edge (recent games), 0 none. */
+int  plat_bottom_edge(void);
 /* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
 bool plat_bottom_tap(int *x, int *y);
 /* Primary Screen = Bottom: the launcher and single-screen games on the bottom

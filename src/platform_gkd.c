@@ -392,6 +392,45 @@ static void bottom_touch(const SDL_Event *e);
 
 void plat_bottom_keep(bool on) { b_keep = on; }
 
+/* Edge swipes on the secondary (plorpos-rgds.33.4), whatever it shows: down
+ * from its top edge is Muse+ on or off, up from its bottom edge the recent
+ * games. A finger landing in either band is the swipe's - not the page's,
+ * nor Muse's - and it fires once it has come far enough in. */
+#define EDGE_BAND_PX GESTURE_BAND_PX   /* as the primary's: the footers' hints stay tappable */
+#define EDGE_IN_PX   60
+static int e_dir;          /* the finger down started in a band: +1 top, -1 bottom */
+static bool e_fired;
+static float e_y0;
+static int b_edge;         /* fired, for plat_bottom_edge */
+
+static bool edge_watch(const SDL_Event *e)
+{
+	float y = e->tfinger.y * bh;
+
+	if (e->type == SDL_FINGERDOWN) {
+		e_dir = y < EDGE_BAND_PX ? 1 : y > bh - EDGE_BAND_PX ? -1 : 0;
+		e_y0 = y;
+		e_fired = false;
+		return e_dir != 0;
+	}
+	if (!e_dir) return false;
+	if (!e_fired && (y - e_y0) * e_dir >= EDGE_IN_PX) {
+		e_fired = true;
+		b_edge = e_dir;
+		if (b_session) b_primary_tap = true;   /* ends Muse or the switcher there */
+	}
+	if (e->type == SDL_FINGERUP) e_dir = 0;
+	return true;
+}
+
+int plat_bottom_edge(void)
+{
+	int d = b_edge;
+
+	b_edge = 0;
+	return d;
+}
+
 /* During a game: only the fingers, for the secondary's buttons - the rest of
  * the queue is the launcher's own, read when it is back. */
 void plat_bottom_pump(void)
@@ -405,6 +444,7 @@ void plat_bottom_pump(void)
 	while ((n = SDL_PeepEvents(e, 8, SDL_GETEVENT, SDL_FINGERDOWN, SDL_FINGERMOTION)) > 0)
 		for (int i = 0; i < n; i++) {
 			if (e[i].tfinger.windowID != SDL_GetWindowID(bwin) || sec_dark()) continue;
+			if (edge_watch(&e[i])) continue;
 			/* Muse rests there: a finger opens it beside the game and
 			 * carries on (plorpos-rgds.18.3.5), as on the shelf. */
 			if (b_keep && !b_session) {
@@ -625,9 +665,9 @@ static bool launcher_place(bool on_screen)
 {
 #ifdef PLATFORM_RGDS
 	if (on_screen) rp_pending = false;
-	/* Muse stays up beside a one-screen game (plorpos-rgds.18.1.4); a DS
-	 * game has both panels. */
-	if (!on_screen) { b_away = true; if (!b_keep || rgds_game_top) plat_bottom_off(); }
+	/* The secondary stays up beside a one-screen game (plorpos-rgds.18.1.4,
+	 * .33: Muse+ or Quick Settings); a DS game has both panels. */
+	if (!on_screen) { b_away = true; if (rgds_game_top) plat_bottom_off(); }
 	else if (b_away) { b_away = false; b_epoch++; }
 #endif
 	char cmd[256];
@@ -1451,6 +1491,7 @@ void plat_input_poll(in_state *st)
 			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
 
 			if (sec && sec_dark()) continue;   /* dark: its touches are nobody's */
+			if (sec && edge_watch(&e)) continue;
 
 			if (b_session) {
 				if (sec) touch_event(&e, bw, bh);
