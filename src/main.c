@@ -13418,6 +13418,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	if (sel == ST_HOLD && (d || key == IN_ACCEPT)) {
 		g_sc_hold = (g_sc_hold + (d ? d : 1) + SC_COUNT) % SC_COUNT;
 		db_set_int(db_dev(), "shortcut.hold", g_sc_hold);
+		plat_menu_hold(g_sc_hold != SC_OFF);      /* the next RUN tells Diatom */
 		shortcut_told();
 		return MENU_STAY;
 	}
@@ -23028,7 +23029,8 @@ static void launch_one(app *a)
 
 					/* A Menu hold or a swipe up follows Menu Hold; the
 					 * swivel's "recents" is always the switcher (bn9.13).
-					 * Off: Diatom paused for it all the same, so back. */
+					 * Off: only a Diatom before hold=off (bn9.21) pauses
+					 * for it, so back. */
 					if (g == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
 						plat_resident_line("RESUME");
 						continue;
@@ -25977,6 +25979,7 @@ int main(int argc, char *argv[])
 		if (g_sc_select < 0 || g_sc_select >= SC_COUNT) g_sc_select = SC_MUSE;
 		g_sc_hold = db_get_int(db_dev(), "shortcut.hold", SC_SWITCHER);
 		if (g_sc_hold < 0 || g_sc_hold >= SC_COUNT) g_sc_hold = SC_SWITCHER;
+		plat_menu_hold(g_sc_hold != SC_OFF);      /* plorpos-bn9.21 */
 		shortcut_told();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);

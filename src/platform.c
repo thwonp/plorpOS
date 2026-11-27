@@ -713,6 +713,11 @@ void menu_filter(in_state *st)
 	}
 }
 
+/* Menu Hold off (plorpos-bn9.21): SETHOTKEYS says hold=off, and no run loop
+ * here pauses a game for a hold. */
+static bool menu_hold_off;
+void plat_menu_hold(bool on) { menu_hold_off = !on; }
+
 static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
@@ -1021,6 +1026,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			menu_spent = true;
 			swipe = GESTURE_SWITCHER;
 		}
+		/* Menu Hold off (plorpos-bn9.21): a hold - or a swipe up - is
+		 * nothing, so the child is not frozen and the menu not set up for
+		 * a screen that would close at once. Its release stays spent. */
+		if (swipe == GESTURE_SWITCHER && menu_hold_off) swipe = GESTURE_NONE;
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
 		if (dark) { menu = false; swipe = GESTURE_NONE; }   /* no menu in the dark */
@@ -1654,8 +1663,8 @@ bool plat_resident_send(const plat_game *g)
 			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
-			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
-			      plat_hotkey_modifier());
+			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", hk ? hk : "",
+			      plat_hotkey_modifier(), menu_hold_off ? "off" : "pause");
 		}
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
@@ -2019,7 +2028,8 @@ void plat_live_keys_set(const char *hk, const char *bm, bool save)
 	snprintf(d_hk, sizeof d_hk, "%s", hk ? hk : "");
 	snprintf(d_bm, sizeof d_bm, "%s", bm ? bm : "");
 	plat_hotkeys_for_diatom(d_hk, wire, sizeof wire);
-	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", wire, plat_hotkey_modifier());
+	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", wire, plat_hotkey_modifier(),
+	      menu_hold_off ? "off" : "pause");
 	d_turbo_send();
 	if (save) plat_game_keys_set(d_tag, d_file, d_hk, d_bm);
 }
@@ -2490,6 +2500,8 @@ static int diatom_wait(void)
 #if defined(PLATFORM_ROTATE)
 			if (g == GESTURE_NONE) g = sw_swipe;
 #endif
+			/* A swipe up with Menu Hold off: nothing (plorpos-bn9.21). */
+			if (g == GESTURE_SWITCHER && menu_hold_off) g = GESTURE_NONE;
 			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
 			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
 				d_gesture_asked = g;

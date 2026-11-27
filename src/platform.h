@@ -645,6 +645,10 @@ int  plat_brightness_get(void);
 void plat_volume_nudge(int delta);
 /* Volume Limiter (plorpos-bn9.9): no nudge up takes the level past `top`. */
 void plat_volume_ceiling(int top);
+/* Menu Hold off (plorpos-bn9.21): a Menu hold in a game is nothing - Diatom
+ * told so with SETHOTKEYS hold=off, and a native port's run loop and the
+ * Rotate's swipe up do not pause the game for it. */
+void plat_menu_hold(bool on);
 void plat_brightness_nudge(int delta);
 void plat_volume_set_pct(int pct);
 void plat_brightness_set(int level);
