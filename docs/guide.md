@@ -290,6 +290,12 @@ come back; sound played before then comes out of the speaker.
 A DAC with no volume control of its own plays at full volume; the device's
 buttons can't turn it down.
 
+**Known issue, Zero 40 and Zero 28: charging can slow to a trickle after a
+DAC.** Plug a DAC in or pull it out while a charger is connected, and the
+battery may stop charging properly - at worst it drains while the charger is
+in. Unplugging and re-plugging the charger should bring it back. The fix is a
+kernel change in oakMOSS, and it arrives with an oakMOSS update.
+
 **On the Brick and Brick Pro, Wi-Fi can cause brief dropouts on a DAC** -
 a few milliseconds of silence, more often the weaker the signal. It is the
 radio itself, not the music player, and nothing in software has cured it.
