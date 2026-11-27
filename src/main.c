@@ -25959,6 +25959,10 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 	gm_ctx *c = &q->gm;
 	int row = c->ids[sel], armed = q->armed;
 
+	/* A finger held 500 ms is a long press: the row, then Y - which nothing
+	 * here has. A slower tap is still a tap (plorpos-rgds.41). */
+	if (key == IN_Y) key = IN_ACCEPT;
+
 	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1;
 	if (key == IN_ACCEPT && (row == GM_RESET || row == GM_QUIT)) {
 		if (armed != row) { q->armed = row; return MENU_STAY; }
