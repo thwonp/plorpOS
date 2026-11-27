@@ -9303,6 +9303,8 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 
 	memset(gi, 0, sizeof *gi);
 	gi->deletable = !is_splore(s, g->file) && !is_portmaster(s, g->file);
+	/* What diatom plays (plorpos-bn9.5): not Ports, not Splore, not PICO-8 on the owner's pico8_64. */
+	gi->overrides = !is_ports(s) && !is_splore(s, g->file) && !(is_pico8(s) && a->view[owner].native);
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -9829,6 +9831,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
+static void turbo_screen(app *a, const char *tag, const char *file);
 static bool gm_confirm(app *a, SDL_Texture *bg, const char *what);
 
 /* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
@@ -9932,6 +9935,173 @@ static void game_rename(app *a, int owner, const game_entry *g, const char *name
 	}
 }
 
+/* Game Overrides (plorpos-bn9.5), from the X menu: this game's own settings,
+ * the rows the in-game menu writes plus Core, Hotkeys and Turbo. Left, right
+ * and A cycle a value through Shelf Default and the real ones; Shelf Default
+ * deletes the game's row. Read when the screen opens and after each change,
+ * not per frame. The owner's shelf throughout, so it works from Favorites. */
+typedef struct {
+	app *a; int owner; const game_entry *g;
+	/* Each value's index into its own list, -1 for Shelf Default. */
+	int core, dmode, fill, shader, pal;
+	bool hotkeys, turbo, pal_shown;
+	go_row ids[GO_ROWS];
+} go_ctx;
+
+static void go_refresh(go_ctx *c)
+{
+	app *a = c->a;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	const game_entry *g = c->g;
+	char key[LIB_PATH + 48], name[CFG_STR], hk[8], bm[8];
+	const char *b = strrchr(g->file, '/');
+	int k = alt_core(s), v, j;
+
+	c->core = -1;
+	engine_game_key(key, sizeof key, s, g->file);
+	if (k >= 0 && db_get_str(db_dev(), key, name, sizeof name, NULL)) {
+		const char *core = shelf_core(a, c->owner, g->file);
+
+		for (j = 0; j < alt_n(k); j++)
+			if (!strcmp(core, alt_core_name(k, j))) c->core = j;
+	}
+	/* A DS's swap is part of its layout: either row makes it the game's. */
+	ovr_key(key, sizeof key, "display", a, c->owner, g);
+	c->dmode = db_has(db_dev(), key) ? game_dmode(a, c->owner, g) : -1;
+	ovr_key(key, sizeof key, "dsswap", a, c->owner, g);
+	if (c->dmode < 0 && is_nds_tag(s->tag) && db_has(db_dev(), key)) c->dmode = game_dmode(a, c->owner, g);
+	ovr_key(key, sizeof key, "dsfill", a, c->owner, g);
+	v = db_get_int(db_dev(), key, -1);
+	c->fill = v >= 0 ? game_fill(a, c->owner, g) : -1;
+	ovr_key(key, sizeof key, "shader", a, c->owner, g);
+	c->shader = db_has(db_dev(), key) ? game_shader(a, c->owner, g) : -1;
+	c->pal = palette_of(a, c->owner, g);
+	c->pal_shown = c->pal >= 0;
+	snprintf(key, sizeof key, "palette.%s.%s", s->tag, b ? b + 1 : g->file);
+	if (!db_has(db_lib(), key)) c->pal = -1;
+	c->hotkeys = plat_game_keys(s->tag, g->file, hk, sizeof hk, bm, sizeof bm);
+	snprintf(key, sizeof key, "turbomap.%s/%s", s->tag, b ? b + 1 : g->file);
+	c->turbo = db_has(db_lib(), key);
+}
+
+static int go_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	go_ctx *c = ctx;
+	app *a = c->a;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	int k = alt_core(s);
+	go_ui u = { 0 };
+
+	(void)max;
+	*heading = c->g->title;
+	u.core_live = k >= 0;
+	u.core = k >= 0 && c->core >= 0 ? alt_core_label(k, c->core) : NULL;
+	u.nds = is_nds_tag(s->tag);
+	u.dmode = c->dmode >= 0 ? DMODES[c->dmode].label : NULL;
+	u.fill_shown = ds_fill_shown(s->tag);
+	u.fill = c->fill >= 0 ? FILL_LABEL[c->fill] : NULL;
+	u.shaders = a->shaders.count > 1;
+	u.shader = c->shader >= 0 ? a->shaders.e[c->shader].name : NULL;
+	u.palette_shown = c->pal_shown;
+	u.palette = c->pal >= 0 ? gbpal_label(c->pal) : NULL;
+	u.hotkeys = c->hotkeys;
+	u.turbo = c->turbo;
+	return go_rows(&u, rows, c->ids);
+}
+
+/* The step from `cur` through -1 (Shelf Default) and opts[0..n-1]. */
+static int go_step(const int *opts, int n, int cur, int d)
+{
+	int i = -1, j;
+
+	for (j = 0; j < n; j++) if (opts[j] == cur) i = j;
+	i = ((i + 1 + d) % (n + 1) + n + 1) % (n + 1) - 1;
+	return i < 0 ? -1 : opts[i];
+}
+
+static menu_result go_key(app *a, void *ctx, in_button key, int sel)
+{
+	go_ctx *c = ctx;
+	const system_cfg *s = &a->sys.systems[c->owner];
+	const game_entry *g = c->g;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	int opts[DMODE_COUNT + GBPAL_COUNT + SL_MAX], n = 0, v, k;
+	char key_[LIB_PATH + 48];
+
+	if (!d || sel < 0 || sel >= GO_ROWS) return MENU_STAY;
+	switch (c->ids[sel]) {
+	case GO_CORE:
+		if ((k = alt_core(s)) < 0) break;
+		for (n = 0; n < alt_n(k); n++) opts[n] = n;
+		v = go_step(opts, n, c->core, d);
+		engine_game_key(key_, sizeof key_, s, g->file);
+		if (v < 0) db_del(db_dev(), key_);
+		else db_set_str(db_dev(), key_, alt_core_name(k, v));
+		break;
+	case GO_DISPLAY: {
+		/* This panel's modes for the system, from a fixed first so the
+		 * order does not move with the shelf's default. */
+		int first = dmode_step(s->tag, is_nds_tag(s->tag) ? DS_RING[0] : 0, 0), m = first;
+
+		do { opts[n++] = m; m = dmode_step(s->tag, m, 1); } while (m != first && n < DMODE_COUNT);
+		v = go_step(opts, n, c->dmode, d);
+		/* A layout chosen here is the whole answer: the swap it was
+		 * kept with goes. */
+		ovr_key(key_, sizeof key_, "dsswap", a, c->owner, g);
+		db_del(db_dev(), key_);
+		if (v >= 0) game_dmode_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "display", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	}
+	case GO_FILL: {
+		int o[3];
+
+		n = ds_fill_opts(o);
+		memcpy(opts, o, sizeof o);
+		v = go_step(opts, n, c->fill, d);
+		if (v >= 0) game_fill_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "dsfill", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	}
+	case GO_SHADER:
+		for (n = 0; n < a->shaders.count && n < SL_MAX; n++) opts[n] = n;
+		v = go_step(opts, n, c->shader, d);
+		if (v >= 0) game_shader_save(a, c->owner, g, v);
+		else { ovr_key(key_, sizeof key_, "shader", a, c->owner, g); db_del(db_dev(), key_); }
+		break;
+	case GO_PALETTE: {
+		const char *b = strrchr(g->file, '/');
+
+		for (n = 0; n < GBPAL_COUNT; n++) opts[n] = n;
+		v = go_step(opts, n, c->pal, d);
+		if (v >= 0) palette_save(s->tag, g, v);
+		else {
+			snprintf(key_, sizeof key_, "palette.%s.%s", s->tag, b ? b + 1 : g->file);
+			db_del(db_lib(), key_);
+		}
+		break;
+	}
+	case GO_HOTKEYS:
+		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME);
+		break;
+	case GO_TURBO:
+		if (key == IN_ACCEPT) turbo_screen(a, s->tag, g->file);
+		break;
+	default:
+		break;
+	}
+	go_refresh(c);
+	return MENU_STAY;
+}
+
+static void game_overrides_screen(app *a, int owner, const game_entry *g, const menu_style *st)
+{
+	go_ctx c = { .a = a, .owner = owner, .g = g };
+
+	go_refresh(&c);
+	menu_run(a, st, go_build, go_key, &c);
+}
+
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
 	info_ctx *c = ctx;
@@ -9973,6 +10143,11 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		/* Closes the screen, as Delete does: the rescan moves the game. */
 		game_rename(a, c->owner, c->g, p);
 		return MENU_DONE;
+	}
+
+	if (!strcmp(rows[sel].label, "Game Overrides")) {
+		game_overrides_screen(a, c->owner, c->g, &c->st);
+		return MENU_STAY;
 	}
 
 	if (!strcmp(rows[sel].label, "Delete Game")) {

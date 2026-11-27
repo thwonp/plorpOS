@@ -995,12 +995,55 @@ static void info_rows(void)
 	ck(got[k - 1] == n - 1, "and is reachable");
 	snprintf(gi.year, sizeof gi.year, "1995");
 	snprintf(gi.genre, sizeof gi.genre, "Platform");
+	gi.overrides = true;
 	n = gi_rows(rows, &gi, true);
 	ck(n == GI_MAX, "every row at once fits GI_MAX");
+	ck(!strcmp(rows[n - 2].label, "Game Overrides") && rows[n - 2].live &&
+	   !strcmp(rows[n - 3].label, "Rename"), "Game Overrides directly under Rename (plorpos-bn9.5)");
 	gi.deletable = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)
 		ck(strcmp(rows[i].label, "Delete Game") != 0, "Splore has no Delete Game");
+	ck(!strcmp(rows[n - 1].label, "Game Overrides") && !strcmp(rows[n - 2].label, "Replace Box Art"),
+	   "no Rename: Game Overrides takes its place");
+	gi.overrides = false;
+	n = gi_rows(rows, &gi, true);
+	for (i = 0; i < n; i++)
+		ck(strcmp(rows[i].label, "Game Overrides") != 0, "not where diatom does not play");
+}
+
+/* Game Overrides (plorpos-bn9.5). */
+static void game_overrides(void)
+{
+	go_ui u;
+	menu_row rows[GO_ROWS];
+	go_row ids[GO_ROWS];
+	int n;
+
+	memset(&u, 0, sizeof u);
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a one-core shelf on a Brick:\n");
+	ck(n == 4 && ids[0] == GO_CORE && ids[1] == GO_DISPLAY && ids[2] == GO_HOTKEYS && ids[3] == GO_TURBO,
+	   "Core, Display Mode, Hotkeys, Turbo Assignments");
+	ck(!rows[0].live && !strcmp(rows[0].value, GO_DEFAULT), "one core: greyed");
+	for (int i = 0; i < n; i++) ck(!strcmp(rows[i].value, GO_DEFAULT), "every row the shelf's default");
+
+	u.core_live = true; u.core = "PokeDaisy"; u.shaders = true; u.shader = "Scanlines";
+	u.palette_shown = true; u.hotkeys = true; u.dmode = "Aspect";
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a Game Boy game with its own:\n");
+	ck(n == 6 && ids[2] == GO_SHADER && ids[3] == GO_HOTKEYS && ids[4] == GO_PALETTE,
+	   "Shader under Display, Palette under Hotkeys");
+	ck(rows[0].live && !strcmp(rows[0].value, "PokeDaisy"), "the game's core");
+	ck(!strcmp(rows[1].value, "Aspect") && !strcmp(rows[3].value, "custom") &&
+	   !strcmp(rows[4].value, GO_DEFAULT), "own values, custom hotkeys, the shelf's palette");
+
+	memset(&u, 0, sizeof u);
+	u.nds = true; u.fill_shown = true; u.fill = "Stretch";
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a DS game:\n");
+	ck(n == 5 && !strcmp(rows[1].label, "Layout") && ids[2] == GO_FILL && !strcmp(rows[2].label, "Display"),
+	   "Layout, then Display");
 }
 
 
@@ -1331,6 +1374,7 @@ int main(void)
 	window_returns();
 	what_scrolls();
 	info_rows();
+	game_overrides();
 	ingame_rows();
 	native_rows();
 	audio_row();
