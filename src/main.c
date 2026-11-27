@@ -119,9 +119,9 @@ typedef struct {
 	 * than fake08. Zero is fake08, so a card nobody has touched - a new
 	 * install included - plays in diatom. */
 	bool native;
-	/* A shelf with a second core (ALT_CORES) runs that one instead. Zero is
-	 * the shelf's own core from systems.cfg. */
-	bool alt;
+	/* A shelf with a second core (ALT_CORES): its default, alt_core_name's
+	 * index (plorpos-bn9.3). Zero is the shelf's own core from systems.cfg. */
+	int alt;
 	/* Index into SORTS. Zero is by name, which is what every shelf was
 	 * before this existed and what an untouched one still is. On Muse's
 	 * shelf an ml_order instead, whose zero is by artist. */
@@ -821,13 +821,6 @@ static void palette_save(const char *tag, const game_entry *g, int i)
 	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy shelf's
- * Default Palette. */
-static bool sm_extra_shown(const char *tag)
-{
-	return ds_fill_shown(tag) || gb_palette_tag(tag);
-}
-
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
  * 0-based as diatom counts them. Sent on RUN so a game resumed from its
  * auto-state finds the disc it was saved on in the drive. -1: not an .m3u,
@@ -946,17 +939,10 @@ static int alt_core(const system_cfg *s)
 	return -1;
 }
 
-/* engine.<TAG>/<file>: a per-game shelf's game turned to the alternative core. No row = the shelf's own core. */
+/* engine.<TAG>/<file>: a game turned to a core of its own. No row = the shelf's default, engine.<TAG> (plorpos-bn9.3). */
 static void engine_game_key(char *out, size_t n, const system_cfg *s, const char *file)
 {
 	snprintf(out, n, "engine.%s/%s", s->tag, file);
-}
-
-/* The game the shelf's cursor is on, or NULL for an empty shelf. */
-static const char *cursor_file(app *a, int sys)
-{
-	const sysview *v = &a->view[sys];
-	return v->list.count ? v->list.items[v->cursor].file : NULL;
 }
 
 /* Whether `name` is one of the comma-separated names in `list` (NULL = none). */
@@ -974,8 +960,9 @@ static bool name_listed(const char *list, const char *name)
 	return false;
 }
 
-/* The core a game launches with: its shelf's own, or the alternative the shelf
- * (or, on a per-game shelf, the game) was turned to. `file` NULL = the shelf's. */
+/* The core a game launches with: the game's own (engine.<TAG>/<file>), else
+ * the shelf's default (engine.<TAG>), else systems.cfg's (plorpos-bn9.3).
+ * `file` NULL = the shelf's default. */
 static const char *shelf_core(app *a, int sys, const char *file)
 {
 	const system_cfg *s = &a->sys.systems[sys];
@@ -1001,22 +988,23 @@ static const char *shelf_core(app *a, int sys, const char *file)
 	}
 #endif
 	if (k < 0) return s->core;
-	if (ALT_CORES[k].per_game) {
+	if (file) {
 		char key[LIB_PATH + 32], name[CFG_STR];
 
-		if (!file) return s->core;
 		engine_game_key(key, sizeof key, s, file);
-		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) return s->core;
-		if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
-		if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
-		return s->core;
+		if (db_get_str(db_dev(), key, name, sizeof name, NULL)) {
+			if (!strcmp(name, ALT_CORES[k].alt) || name_listed(ALT_CORES[k].legacy, name)) return ALT_CORES[k].alt;
+			if (ALT_CORES[k].alt2 && !strcmp(name, ALT_CORES[k].alt2)) return ALT_CORES[k].alt2;
+			if (!strcmp(name, s->core)) return s->core;   /* the shelf's own, chosen over its default */
+		}
 	}
-	return a->view[sys].alt ? ALT_CORES[k].alt : s->core;
+	return alt_core_name(k, a->view[sys].alt);
 }
 
-/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the core of a shelf
- * with two. No row means the default (fake08, the shelf's own core): only a
- * shelf someone has turned has one. */
+/* engine.<TAG>, beside display.<TAG>: PICO-8's engine, or the default core
+ * of a shelf with more (plorpos-bn9.3). No row means the default (fake08, the
+ * shelf's own core): only a shelf someone has turned has one. Exact core names
+ * only: a legacy name is a game's, never a shelf's. */
 static void engine_load(app *a)
 {
 	char key[CFG_STR + 16], name[CFG_STR];
@@ -1024,11 +1012,14 @@ static void engine_load(app *a)
 
 	for (i = 0; i < a->sys.count; i++) {
 		k = alt_core(&a->sys.systems[i]);
-		if (!is_pico8(&a->sys.systems[i]) && (k < 0 || ALT_CORES[k].per_game)) continue;
+		if (!is_pico8(&a->sys.systems[i]) && k < 0) continue;
 		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
-		if (k >= 0) a->view[i].alt = !strcmp(name, ALT_CORES[k].alt);
-		else a->view[i].native = !strcmp(name, "native");
+		if (k >= 0) {
+			a->view[i].alt = 0;
+			for (int j = 1; j < alt_n(k); j++)
+				if (!strcmp(name, alt_core_name(k, j))) a->view[i].alt = j;
+		} else a->view[i].native = !strcmp(name, "native");
 	}
 }
 
@@ -1042,45 +1033,17 @@ static void engine_save(app *a, int sys)
 	                                 : a->view[sys].native ? "native" : "fake08");
 }
 
-/* Which of a per-game shelf's cores (alt_core_name's j) the game under the cursor plays on. */
-static int engine_game_index(app *a, int sys)
-{
-	const char *core = shelf_core(a, sys, cursor_file(a, sys));
-	int k = alt_core(&a->sys.systems[sys]), j;
-
-	for (j = 1; j < alt_n(k); j++)
-		if (!strcmp(core, alt_core_name(k, j))) return j;
-	return 0;
-}
-
-/* Step the game under the shelf's cursor through a per-game shelf's cores, saved at once. The shelf's own core
- * is no row at all, so a game left on it follows the shelf's default when that changes. */
-static void engine_game_step(app *a, int sys, int d)
-{
-	const system_cfg *s = &a->sys.systems[sys];
-	const char *file = cursor_file(a, sys);
-	char key[LIB_PATH + 32];
-	int k = alt_core(s), j;
-
-	if (k < 0 || !file) return;
-	j = ((engine_game_index(a, sys) + d) % alt_n(k) + alt_n(k)) % alt_n(k);
-	engine_game_key(key, sizeof key, s, file);
-	if (j) db_set_str(db_dev(), key, alt_core_name(k, j));
-	else db_del(db_dev(), key);
-}
-
 #define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
 
-/* The Core row's value: PICO-8's engine, the core of a shelf with two, or
- * NULL for a shelf whose row only reports. */
+/* The Core row's value: PICO-8's engine, the default core of a shelf with
+ * more, or NULL for a shelf whose row only reports. */
 static const char *engine_label(app *a, int sys)
 {
 	const system_cfg *s = &a->sys.systems[sys];
 	int k = alt_core(s);
 
 	if (is_pico8(s)) return ENGINE_LABEL(a->view[sys].native);
-	if (k >= 0 && ALT_CORES[k].per_game) return alt_core_label(k, engine_game_index(a, sys));
-	if (k >= 0) return a->view[sys].alt ? ALT_CORES[k].alt_label : ALT_CORES[k].label;
+	if (k >= 0) return alt_core_label(k, a->view[sys].alt);
 	return NULL;
 }
 
@@ -7800,6 +7763,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
 		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
 		u.overrides  = !is_ports(sc);
+		u.core_game  = alt_core(sc) >= 0;
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
@@ -8012,32 +7976,75 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 	return pick_panel_ex(a, heading, msg, opts, n, "Cancel");
 }
 
-/* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
- * wrote (display/shader/dsfill/dsswap.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
- * themselves stay. Asked first, No selected. */
-static void display_overrides_reset(app *a, int sys)
-{
-	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap" };
-	static const char *const YES[] = { "Yes" };
-	const char *tag = a->sys.systems[sys].tag;
-	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
-	char key[CFG_STR + 16];
+/* Every per-game override, by Reset Overrides' kind (plorpos-bn9.3; Display was
+ * Reset Display Overrides, plorpos-36e): the key prefixes before "<TAG><sep>",
+ * and which database holds them. */
+static const struct { const char *kind[3]; char sep; bool lib; } OVR_KINDS[SR_ROWS] = {
+	[SR_CORE]    = { { "engine" }, '/', false },
+	[SR_DISPLAY] = { { "display", "dsfill", "dsswap" }, '.', false },
+	[SR_SHADER]  = { { "shader" }, '.', false },
+	[SR_HOTKEYS] = { { "ghotkey", "gbtnmap" }, '/', true },
+	[SR_PALETTE] = { { "palette" }, '.', true },
+	[SR_TURBO]   = { { "turbomap" }, '/', true },
+};
 
-	if (pick_panel_ex(a, "Reset Display Overrides",
-	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nand Shader preferences"
-	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nand Shader preferences"
-	                  : "Are you sure? This will reset\nper-game Display Mode and\nShader preferences",
-	                  YES, 1, "No") != 0)
-		return;
-	for (size_t k = 0; k < sizeof KINDS / sizeof *KINDS; k++) {
-		snprintf(key, sizeof key, "%s.%s.", KINDS[k], tag);
-		db_del_prefix(db_dev(), key);
+/* The file names a kind's rows are for, collected by db_each_prefix. */
+typedef struct { size_t skip; char (*names)[LIB_PATH]; int n, cap; } ovr_names;
+
+static bool ovr_name_row(const char *key, const char *value, void *ctx)
+{
+	ovr_names *c = ctx;
+	const char *f = key + c->skip, *b = strrchr(f, '/');
+
+	(void)value;
+	if (c->n == c->cap) {
+		void *p = realloc(c->names, (size_t)(c->cap ? c->cap * 2 : 64) * sizeof *c->names);
+
+		if (!p) return false;
+		c->names = p;
+		c->cap = c->cap ? c->cap * 2 : 64;
 	}
-	if (pal) {
-		snprintf(key, sizeof key, "palette.%s.", tag);
-		db_del_prefix(db_lib(), key);
+	snprintf(c->names[c->n++], sizeof *c->names, "%s", b ? b + 1 : f);
+	return true;
+}
+
+/* How many games on shelf `sys` have a `kind` override. Asked only when Reset
+ * Overrides opens or clears one, never on a scroll: a scan of the rows, then
+ * the shelf's games against them. A row left by a game no longer on the card
+ * is not counted (it is still cleared). */
+static int ovr_count(app *a, int sys, sr_row kind)
+{
+	const sysview *v = &a->view[sys];
+	ovr_names c = { 0 };
+	char pre[CFG_STR + 16];
+	int i, j, n = 0;
+
+	for (i = 0; i < 3 && OVR_KINDS[kind].kind[i]; i++) {
+		snprintf(pre, sizeof pre, "%s.%s%c", OVR_KINDS[kind].kind[i], a->sys.systems[sys].tag,
+		         OVR_KINDS[kind].sep);
+		c.skip = strlen(pre);
+		db_each_prefix(OVR_KINDS[kind].lib ? db_lib() : db_dev(), pre, ovr_name_row, &c);
 	}
-	fprintf(stderr, "display overrides: %s reset\n", tag);
+	for (i = 0; c.n && i < v->list.count; i++) {
+		const char *f = v->list.items[i].file, *b = strrchr(f, '/');
+
+		for (j = 0; j < c.n; j++)
+			if (!strcmp(c.names[j], b ? b + 1 : f)) { n++; break; }
+	}
+	free(c.names);
+	return n;
+}
+
+static void ovr_clear(app *a, int sys, sr_row kind)
+{
+	char pre[CFG_STR + 16];
+
+	for (int i = 0; i < 3 && OVR_KINDS[kind].kind[i]; i++) {
+		snprintf(pre, sizeof pre, "%s.%s%c", OVR_KINDS[kind].kind[i], a->sys.systems[sys].tag,
+		         OVR_KINDS[kind].sep);
+		db_del_prefix(OVR_KINDS[kind].lib ? db_lib() : db_dev(), pre);
+	}
+	fprintf(stderr, "overrides: %s %s reset\n", a->sys.systems[sys].tag, OVR_KINDS[kind].kind[0]);
 }
 
 static bool confirm_panel(app *a, const char *heading, const char *msg,
@@ -9813,7 +9820,12 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
+/* Whose hotkeys the Hotkeys screen edits (plorpos-bn9.3, .4): the shelf's
+ * defaults (from <Shelf> Defaults, over the shelf), one game's own (from its
+ * Game Overrides), or the running game's (in-game: sent at once, and kept as
+ * the game's own only under Save Per-Game Overrides). */
+enum { HK_SHELF, HK_GAME, HK_LIVE };
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
@@ -10789,39 +10801,36 @@ static int menu_shelf_width(app *a)
 				if (mw > w) w = mw;
 			}
 		}
-		for (k = 0; !own && k < DMODE_COUNT; k++) {
-			int mw;
-			rows[SM_DISPLAY].value = DMODES[k].label;
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
-		/* And every shader name, as the in-game menu measures them. */
-		for (k = 0; !own && k < a->shaders.count; k++) {
-			int mw;
-			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
-			int mw;
-			rows[SM_FILL].value = gbpal_label(k);
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
-			int mw;
-			rows[SM_CORE].value = ENGINE_LABEL(k);
-			mw = menu_measure(rows, n, heading);
-			if (mw > w) w = mw;
-		}
-		if (!own && alt_core(&a->sys.systems[i]) >= 0) {
-			int c = alt_core(&a->sys.systems[i]), mw;
+		/* And <Shelf> Defaults, a level down since plorpos-bn9.3, with
+		 * every value its rows can cycle to. */
+		if (!own) {
+			char ss[WIFI_SSID_MAX];
+			sys_ui u;
+			sd_row ids[SD_ROWS];
+			menu_row d[SD_ROWS];
+			const char *dh;
+			int dn, j, mw, c = alt_core(&a->sys.systems[i]);
 
-			for (k = 0; k < alt_n(c); k++) {
-				rows[SM_CORE].value = alt_core_label(c, k);
-				mw = menu_measure(rows, n, heading);
-				if (mw > w) w = mw;
+			menu_ui(a, SCREEN_GAMES, i, &u, ss, sizeof ss);
+			dn = sys_menu_defaults_build(&u, d, ids, &bufs, &dh);
+			mw = menu_measure(d, dn, dh);
+			if (mw > w) w = mw;
+			for (j = 0; j < dn; j++) {
+				int m = ids[j] == SD_DISPLAY ? DMODE_COUNT : ids[j] == SD_SHADER ? a->shaders.count
+				      : ids[j] == SD_PALETTE ? GBPAL_COUNT : ids[j] == SD_FILL ? 3
+				      : ids[j] == SD_CORE ? (c >= 0 ? alt_n(c) : is_pico8(&a->sys.systems[i]) ? 2 : 0) : 0;
+				const char *keep = d[j].value;
+
+				for (k = 0; d[j].live && k < m; k++) {
+					d[j].value = ids[j] == SD_DISPLAY ? DMODES[k].label
+					           : ids[j] == SD_SHADER ? a->shaders.e[k].name
+					           : ids[j] == SD_PALETTE ? gbpal_label(k)
+					           : ids[j] == SD_FILL ? FILL_LABEL[k]
+					           : c >= 0 ? alt_core_label(c, k) : ENGINE_LABEL(k);
+					mw = menu_measure(d, dn, dh);
+					if (mw > w) w = mw;
+				}
+				d[j].value = keep;
 			}
 		}
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
@@ -13233,6 +13242,152 @@ static void shelf_resort(app *a, int sys)
 	cf_reset(&v->cf, v->cursor);
 }
 
+/* <Shelf> Defaults (plorpos-bn9.3): the rows the shelf menu carried until
+ * then - Core, Display Mode, Shader, Palette - plus the shelf's Hotkeys and
+ * Turbo Assignments. A game with its own keeps it; Reset Overrides takes
+ * that away. */
+typedef struct { app *a; int sys; menu_bufs bufs; sd_row ids[SD_ROWS]; } sd_ctx;
+
+static int sd_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	sd_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+	int n;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_GAMES, c->sys, &u, ss, sizeof ss);
+	n = sys_menu_defaults_build(&u, rows, c->ids, &c->bufs, heading);
+	return n;
+}
+
+/* Left and right step a row's value and A steps it forward, saved at once:
+ * there is no confirm to hang the write off. A opens a list where the row has
+ * one (Shader, Palette) and the Hotkeys screen. */
+static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
+{
+	sd_ctx *c = ctx;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0, sys = c->sys;
+	const system_cfg *sc = &a->sys.systems[sys];
+	sysview *v = &a->view[sys];
+
+	if (sel < 0 || sel >= SD_ROWS || (!d && key != IN_ACCEPT)) return MENU_STAY;
+	switch (c->ids[sel]) {
+	case SD_CORE: {
+		/* PICO-8's engine, fake08 or the owner's pico8_64, or the default
+		 * core of a shelf with more (ALT_CORES). No check for the binary
+		 * here: a missing one says so at launch, the same as Splore. */
+		int k = alt_core(sc);
+
+		if (is_pico8(sc)) v->native = !v->native;
+		else if (k >= 0) v->alt = ((v->alt + (d ? d : 1)) % alt_n(k) + alt_n(k)) % alt_n(k);
+		else return MENU_STAY;
+		engine_save(a, sys);
+		/* Each core keeps its own states, and a card with no art shows
+		 * its game's Auto preview: the other core's, until the cards are
+		 * read again (seq 139). */
+		free_view_textures(v);
+		break;
+	}
+	case SD_DISPLAY:
+		v->dmode = dmode_step(sc->tag, v->dmode, d ? d : 1);
+		display_save(a);
+		break;
+	case SD_FILL:
+		ds_fill_step(d ? d : 1);
+		break;
+	case SD_SHADER:
+		/* Shader (plorpos-8xu): left and right step through the list; A
+		 * opens it, as the in-game row does. */
+		if (a->shaders.count <= 1) break;
+		if (d) {
+			v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
+			shader_save(a, sys);
+		} else {
+#if defined(PLATFORM_MIYOO)
+			v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
+			shader_save(a, sys);
+#else
+			shelf_shader_screen(a, sys);
+#endif
+		}
+		break;
+	case SD_PALETTE:
+		/* Left and right step the list, A opens it. */
+		if (d) palette_default_save(sc->tag, (palette_default_of(sc->tag) + d + GBPAL_COUNT) % GBPAL_COUNT);
+		else default_palette_screen(a, sys);
+		break;
+	case SD_HOTKEYS:
+		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF);
+		break;
+	default:
+		break;
+	}
+	return MENU_STAY;
+}
+
+static void shelf_defaults_screen(app *a, int sys)
+{
+	sd_ctx c = { .a = a, .sys = sys };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         sd_build, sd_key, &c);
+}
+
+/* Reset Overrides (plorpos-bn9.3): each kind of per-game setting with how
+ * many of this shelf's games have one, counted when the screen opens and after
+ * each reset - never per frame. A clears that kind for every game here, asked
+ * first with No selected; the shelf's defaults stay. */
+typedef struct { app *a; int sys; int count[SR_ROWS]; menu_bufs bufs; sr_row ids[SR_ROWS]; } sr_ctx;
+
+static void sr_recount(sr_ctx *c)
+{
+	for (int k = 0; k < SR_ROWS; k++) c->count[k] = ovr_count(c->a, c->sys, (sr_row)k);
+}
+
+static int sr_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	sr_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_GAMES, c->sys, &u, ss, sizeof ss);
+	return sys_menu_reset_build(&u, c->count, rows, c->ids, &c->bufs, heading);
+}
+
+static menu_result sr_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const char *const YES[] = { "Yes" };
+	sr_ctx *c = ctx;
+	menu_row rows[SR_ROWS];
+	const char *heading;
+	char msg[160];
+	int n = sr_build(c, rows, SR_ROWS, &heading);
+	sr_row k;
+
+	if (key != IN_ACCEPT || sel < 0 || sel >= n || !rows[sel].live) return MENU_STAY;
+	k = c->ids[sel];
+	snprintf(msg, sizeof msg, "Are you sure? This resets\n%s for %d game%s\nto the shelf default.",
+	         rows[sel].label, c->count[k], c->count[k] == 1 ? "" : "s");
+	if (pick_panel_ex(a, "Reset Overrides", msg, YES, 1, "No") != 0) return MENU_STAY;
+	ovr_clear(a, c->sys, k);
+	if (k == SR_CORE) free_view_textures(&a->view[c->sys]);   /* previews are the core's */
+	sr_recount(c);
+	return MENU_STAY;
+}
+
+static void reset_overrides_screen(app *a, int sys)
+{
+	sr_ctx c = { .a = a, .sys = sys };
+
+	sr_recount(&c);
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         sr_build, sr_key, &c);
+}
+
 /* Left and right cycle the value on a row that has one; A opens whatever the
  * row leads to. Everything else the runner has already dealt with. */
 static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
@@ -13273,70 +13428,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * SM_FAV_ROWS - so its Sort By is row 0 and not SM_SORT. */
 		if (a->view[a->sys_cursor].owner) sel = SM_SORT;
 		else if (!is_muse(&a->sys.systems[a->sys_cursor]))
-			sel = sm_row_at(sm_extra_shown(a->sys.systems[a->sys_cursor].tag), sel);
-		/* The DS's Display: left and right step it, A steps forward, saved
-		 * at once. */
-		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
-			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
-				const char *tg = a->sys.systems[a->sys_cursor].tag;
-
-				if (d) palette_default_save(tg, (palette_default_of(tg) + d + GBPAL_COUNT) % GBPAL_COUNT);
-				else default_palette_screen(a, a->sys_cursor);
-				return MENU_STAY;
-			}
-			ds_fill_step(d ? d : 1);
-			return MENU_STAY;
-		}
-		/* PICO-8's engine, fake08 or the owner's pico8_64, or the core of a
-		 * shelf with more (ALT_CORES). Left and right step it, A steps
-		 * forward, saved at once like Display Mode. No check for the
-		 * binary here: a missing one says so at launch, the same as Splore. */
-		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
-		    (is_pico8(&a->sys.systems[a->sys_cursor]) ||
-		     alt_core(&a->sys.systems[a->sys_cursor]) >= 0)) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			int k = alt_core(&a->sys.systems[a->sys_cursor]);
-
-			if (is_pico8(&a->sys.systems[a->sys_cursor])) v->native = !v->native;
-			else if (ALT_CORES[k].per_game) engine_game_step(a, a->sys_cursor, d ? d : 1);
-			else v->alt = !v->alt;
-			if (k < 0 || !ALT_CORES[k].per_game) engine_save(a, a->sys_cursor);
-			/* Each core keeps its own states, and a card with no art shows
-			 * its game's Auto preview: the other core's, until the cards are
-			 * read again (seq 139). */
-			free_view_textures(v);
-			return MENU_STAY;
-		}
-		/* Display mode, saved the moment it changes because there is no
-		 * confirm step to hang the write off. */
-		if (d && sel == SM_DISPLAY) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			v->dmode = dmode_step(a->sys.systems[a->sys_cursor].tag, v->dmode, d);
-			display_save(a);
-			return MENU_STAY;
-		}
-		/* Shader (plorpos-8xu): left and right step through the list, as
-		 * Display Mode does; A opens it, as the in-game row does. Saved for
-		 * the system, which is what a launch and the in-game row both read. */
-		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
-			sysview *v = &a->view[a->sys_cursor];
-
-			if (d) {
-				v->shader = (v->shader + d + a->shaders.count) % a->shaders.count;
-				shader_save(a, a->sys_cursor);
-			} else {
-#if defined(PLATFORM_MIYOO)
-				v->shader = (v->shader + 1) % a->shaders.count;   /* On / Off: A toggles, no list */
-				shader_save(a, a->sys_cursor);
-#else
-				shelf_shader_screen(a, a->sys_cursor);
-#endif
-			}
-			return MENU_STAY;
-		}
+			sel = sm_row_at(!is_ports(&a->sys.systems[a->sys_cursor]), sel);
 		/* Sort order, on the same left/right idiom.
 		 *
 		 * The cursor follows the GAME, not its index. Re-sorting under a
@@ -13374,10 +13466,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			 * also what pressing it means. */
 			return MENU_DONE;
 		}
-		if (sel == SM_RESET) {
-			display_overrides_reset(a, a->sys_cursor);
-			return MENU_STAY;
-		}
+		if (sel == SM_DEFAULTS) shelf_defaults_screen(a, a->sys_cursor);
+		if (sel == SM_RESET) reset_overrides_screen(a, a->sys_cursor);
 		return MENU_STAY;
 	}
 
@@ -19394,7 +19484,7 @@ static const struct { in_button b; const char *src; } BM_CAPTURE[] = {
 	{ IN_L1, "l1" }, { IN_R1, "r1" }, { IN_L2, "l2" }, { IN_R2, "r2" },
 };
 
-static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
+static void button_map_screen(app *a, SDL_Texture *bg, const char *tag, int mode)
 {
 	const bm_row *bm;
 	const int nr = bm_rows(tag, &bm), R_RESET = nr, NROWS = nr + 1;
@@ -19457,7 +19547,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		{
 			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) {
+			if (pa == PWR_POWEROFF && mode != HK_LIVE) { power_off(a); done = 1; }
+			else if (pa == PWR_POWEROFF) {
 				plat_note_power_pressed();
 				plat_resident_line("STOP");
 				done = 1;
@@ -19477,7 +19568,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		chv_backdrop(a, bg, false);
+		chv_backdrop(a, bg, mode != HK_LIVE);
 		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
@@ -19489,7 +19580,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag)
 
 static int gs_rewind(void);
 
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -19600,7 +19691,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_DOWN)) sel = menu_step_sel(rows, NROWS, sel, +1);
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
-				button_map_screen(a, bg, tag);
+				button_map_screen(a, bg, tag, mode);
 				pace = (ui_pace){0};
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
@@ -19617,11 +19708,9 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		if (changed) {
 			hk_serialize(trig_for_row, mod_for_row, spec, sizeof spec);
 			plat_hotkey_set(tag, spec);
-			/* Live, not only persisted: this screen is only ever open
-			 * mid-session (reached from the in-game menu), so the change
-			 * should take hold without the player having to quit and
-			 * relaunch to see it. */
-			{
+			/* Live, not only persisted, in-game: the change takes hold
+			 * without the player having to quit and relaunch to see it. */
+			if (mode == HK_LIVE) {
 				char wire[256];
 
 				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
@@ -19633,7 +19722,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		{
 			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) {
+			if (pa == PWR_POWEROFF && mode != HK_LIVE) { power_off(a); done = 1; }
+			else if (pa == PWR_POWEROFF) {
 				plat_note_power_pressed();
 				plat_resident_line("STOP");
 				done = 1;
@@ -19667,7 +19757,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			SDL_Delay(IDLE_POLL_MS);
 			continue;
 		}
-		chv_backdrop(a, bg, false);
+		chv_backdrop(a, bg, mode != HK_LIVE);
 		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
@@ -20628,7 +20718,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, sv->list.items[sv->cursor].file, HK_LIVE);
 		break;
 	}
 	case GM_RESET:

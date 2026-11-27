@@ -108,24 +108,36 @@ typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT,
  * with, and importing gamelist.xml metadata already on the card. */
 typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
 
-/* The system menu. Games and Core carry real values rather than invented ones,
- * because a placeholder that lies about the machine it is describing is worse
- * than no row. The rest name capabilities that already exist on the emulator
- * side - Diatom has per-system display modes and core-supplied button labels -
- * so these are hooks waiting to be wired, not wishes. */
+/* The system menu (plorpos-bn9.3): what this shelf is and does. Everything
+ * about how its games play moved a level down - the shelf's defaults under
+ * "<Shelf> Defaults", every game's own under Reset Overrides - so the MENU
+ * button on a shelf is system options only and a game's own settings live in
+ * its X menu (Game Overrides). Scrape Shelf was Box Art. */
 typedef enum {
-	SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
-	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */
+	SM_SORT, SM_DEFAULTS,
+	SM_RESET, /* Reset Overrides: only on a shelf diatom plays */
+	SM_BOXART, SM_RESCAN,
 	SM_ROWS
 } sm_row;
 
-/* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
- * where it means something - see sys_ui.fill - so on every other shelf the
- * rows below it sit one higher. The build and the key handler both go through
- * these two, so they cannot disagree about which row is where. */
-static inline int sm_index(bool fill, sm_row r) { return !fill && r > SM_FILL ? (int)r - 1 : (int)r; }
-static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >= SM_FILL ? i + 1 : i); }
+/* SM_RESET is drawn only on a shelf diatom plays - see sys_ui.overrides - so
+ * on Ports the rows below it sit one higher. The build and the key handler
+ * both go through these two, so they cannot disagree about which row is where. */
+static inline int sm_index(bool reset, sm_row r) { return !reset && r > SM_RESET ? (int)r - 1 : (int)r; }
+static inline sm_row sm_row_at(bool reset, int i) { return (sm_row)(!reset && i >= SM_RESET ? i + 1 : i); }
+
+/* <Shelf> Defaults (plorpos-bn9.3): what a game on this shelf plays with until
+ * it has its own. Fill is the DS's Display, shown where the panel has more
+ * than one; Palette a Game Boy shelf's; Hotkeys and Turbo Assignments only
+ * where diatom plays. sys_menu_defaults_build says which rows are there. */
+typedef enum { SD_CORE, SD_DISPLAY, SD_FILL, SD_SHADER, SD_HOTKEYS, SD_PALETTE, SD_TURBO,
+               SD_ROWS } sd_row;
+
+/* Reset Overrides (plorpos-bn9.3): one row per kind of per-game setting,
+ * each with how many games on the shelf have one. Display covers the DS's
+ * fill and swap too, Hotkeys the Button Mapping. */
+typedef enum { SR_CORE, SR_DISPLAY, SR_SHADER, SR_HOTKEYS, SR_PALETTE, SR_TURBO,
+               SR_ROWS } sr_row;
 
 /* What the Favorites shelf's menu is, which is two of those rows.
  *
@@ -203,7 +215,10 @@ _Static_assert(MENU_MAX_ROWS >= ST_ROWS, "MENU_MAX_ROWS < ST_ROWS");
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
  * keeps it alive as long as it keeps the rows. */
-typedef struct { char a[24], b[CFG_STR], c[16], d[40]; } menu_bufs;
+typedef struct { char a[24], b[CFG_STR], c[16], d[40];
+                 char h[CFG_STR + 16];   /* "<Shelf> Defaults" (plorpos-bn9.3) */
+                 char n[SR_ROWS][12];    /* Reset Overrides' counts */
+} menu_bufs;
 
 /* Everything either menu needs to know about the device, gathered by the
  * caller. A struct rather than a dozen arguments so that adding a fact to a
@@ -270,7 +285,7 @@ typedef struct {
 	const char *sys_name;
 	const char *sys_core;
 	/* PICO-8's shelf: the engine's label; a shelf with two cores (main.c
-	 * ALT_CORES): the core's. Shown in Core's place and turned over there.
+	 * ALT_CORES): the shelf's default core. Shown in Core's place and turned over there.
 	 * NULL on every other shelf, whose Core is a fact. */
 	const char *engine;
 	int         game_count;
@@ -279,8 +294,9 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
-	const char *palette;     /* a Game Boy shelf's Default Palette, in SM_FILL's place; NULL elsewhere */
-	bool        overrides;   /* games here keep their own display settings: Reset Display Overrides is listed */
+	const char *palette;     /* a Game Boy shelf's Default Palette; NULL elsewhere */
+	bool        overrides;   /* diatom plays this shelf: Reset Overrides, Hotkeys and Turbo are listed */
+	bool        core_game;   /* a game here can pick its own core (main.c ALT_CORES; not PICO-8) */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not
@@ -303,6 +319,16 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n);
  * loop never needs to know which of the two it is driving. */
 int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                    const char **heading);
+
+/* <Shelf> Defaults' rows; ids[i] is the sd_row that row i shows. Returns how many. */
+int sys_menu_defaults_build(const sys_ui *u, menu_row *out, sd_row *ids, menu_bufs *b,
+                            const char **heading);
+
+/* Reset Overrides' rows, `count` games per kind (indexed by sr_row). A kind
+ * that cannot apply here and has nothing to clear is not listed; one at 0 is
+ * greyed. ids[i] is the sr_row that row i shows. Returns how many. */
+int sys_menu_reset_build(const sys_ui *u, const int *count, menu_row *out, sr_row *ids,
+                         menu_bufs *b, const char **heading);
 
 /* Settings > Scraping's rows, from the same sys_ui. Returns SC_ROWS. */
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading);
