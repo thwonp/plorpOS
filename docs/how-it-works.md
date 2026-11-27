@@ -1,112 +1,86 @@
 # How plorpOS works
 
-This covers the ports that run the launcher and diatom: Brick, GKD, H700,
-Rotate and Mini Flip. The RG Nano runs nanoshelf and PicoArch instead
+Developer notes for plorpOS 2.0. The launcher (`tortos.elf`) and diatom run on
+the Brick, H700 handhelds, Rotate, Mini Flip, RG DS, GKD (BasedOS), Zero 28
+and Zero 40. The RG Nano runs nanoshelf and PicoArch instead
 ([install-nano.md](install-nano.md)).
 
-The design metric is **speed**, and one decision carries most of it: **plorpOS
-never starts a process to run a game.**
+Numbers are measured on a TrimUI Brick unless a device is named. Each has its
+date: older ones show the shape, not today's reading.
 
-A cold start costs about 1100 ms on the TrimUI Brick and almost none of it is the
-game - it is SDL, an EGL context, audio and settings. So the emulator comes up
-once at boot and stays up for the whole session, and a game
-arrives as a single line on a socket.
+# Resident emulator
 
-Every number in this file was measured on the TrimUI Brick rather than estimated,
-but they were not all measured on the same day. The boot profile below was
-re-taken 2026-09-13, and the 975 MB on 2026-09-07. The launch timings and the
-core footprint date from when the resident emulator landed and have not been
-re-checked since, so read them as the shape of the thing rather than today's
-reading - and the method matters as much as the figure, which is why the boot
-profile now says cold or warm, on which card, with how many games.
+**plorpOS never starts a process to run a game.** A cold start on the Brick
+costs ~1100 ms, and almost none of it is the game:
 
-## Where the time goes
-
-Starting a game on the Brick costs about **1100 ms**, and almost none of it
-is the game:
-
-| | |
+| step | cost |
 |---|---|
-| `GFX_init` - SDL video plus the EGL/GL context | ~620 ms |
-| `dlopen` of the libretro core | ~170 ms |
+| `GFX_init` (SDL video + EGL/GL context) | ~620 ms |
+| `dlopen` of the core | ~170 ms (179 ms `genesis_plus_gx`, cold) |
 | audio and settings | ~140 ms |
-| **actually opening the ROM** | **~36 ms** |
+| **opening the ROM** | **~36 ms** |
 
-Everything except the last line is the cost of *starting a process*. So plorpOS
-does not start one.
+### The socket
 
-### The resident emulator
+[Diatom](https://github.com/thwonp/diatom) (MIT libretro frontend, originally
+by Eric Reinsmidt) starts at boot on a Unix socket and stays up all session.
 
-[Diatom](https://github.com/thwonp/diatom) - an MIT libretro frontend
-originally written by Eric Reinsmidt for the Brick - comes up on a Unix socket at boot
-and stays up for the life of the session. The launcher hands it a game as a
-`RUN` line carrying the core, the ROM, and the paths where the resume state
-and the card preview live, and reads back what actually happened: `RUNNING`,
-`EXIT reason=`, or an `ERROR code=` it can show.
+- The launcher sends `RUN` with the core, the ROM, and the paths for the
+  resume state and card preview.
+- Diatom answers `RUNNING`, `EXIT reason=` or `ERROR code=`.
+- Warm launch: 26-44 ms `RUN` to `RUNNING`, ~70 ms from pressing A (Contra).
+- No socket (first second after boot, or diatom died): the launcher runs the
+  same `diatom` binary standalone for that game, then starts a fresh resident
+  once the display is back.
 
-A warm launch - the process up, the core already mapped - is **26 to 44 ms**
-from `RUN` to `RUNNING`, and about 70 ms from pressing A, measured on Contra
-on the Brick. Every core is mapped at startup and
-never unloaded, so no launch pays for opening one (not on the Mini Flip: with
-101 MB it maps a core on first use). Six mapped plus one running measured
-**15.0 MB** against the Brick's 975 MB, which is what makes holding all of them
-affordable rather than reckless. The nine cores the Brick shipped then - FBNeo,
-PCSX ReARMed and fake-08 included - cost 31 MB of free memory at boot, and the
-least free in any game measured was 604 MB; the DS, Gambatte, armGBA and
-PokeDaisy cores came later and are not in those figures. They are opened `RTLD_LOCAL`, so
-libraries exporting the same twenty `retro_*` symbols cannot see each other.
+### Cores
 
-Mapping them replaced reading them. The boot script used to pull the cores into
-the page cache with `cat`, which cost 480 ms cold and bought only the I/O;
-`dlopen` costs 382 ms, because it takes what it needs rather than every byte,
-and it pays the dynamic linker as well. That is what a first launch used to pay
-- and the `~170 ms` above is real, measured 179 ms for `genesis_plus_gx` cold,
-the largest core. It is now paid once, in idle seconds, instead of by whoever
-starts a Genesis game first. Measured 2026-09-08.
+- Every core is `dlopen`ed at startup and never unloaded, `RTLD_LOCAL` so the
+  shared `retro_*` symbols don't collide. Exception: the Mini Flip (101 MB)
+  maps a core on first use.
+- Six mapped + one running: 15.0 MB of the Brick's 975 MB. The nine cores of
+  the time cost 31 MB free at boot; least free in any game was 604 MB. The DS,
+  Gambatte, armGBA and PokeDaisy cores came later and are not in these figures.
+- Mapping replaced `cat` into the page cache (480 ms cold, I/O only);
+  `dlopen` is 382 ms and is paid in idle seconds at boot (2026-09-08).
 
-The in-game menu is the launcher's own: MENU makes diatom hand the display
-over with a preview of the paused frame, and Continue, Save, Load, Reset and
-Save and Quit act through one protocol line each. **Display** cycles the running game's
-mode as you press it, which is the one to use when you want to see the
-difference rather than guess at it, and **Achievements** shows how much of this
-game's set you have earned, or reads `none` and stays unselectable when there
-is no set. Volume and brightness set in a game
-come back to the launcher's settings when the game ends, because the two
-sides share one levels channel instead of overwriting each other.
+### In-game menu
 
-Nothing depends on the resident emulator. If the socket is not there - in the
-first second after boot, or if it has died - the launcher runs the same
-`diatom` binary standalone, one process for that game, and starts a fresh
-resident once the display is back.
+- The launcher's own. MENU makes diatom hand over the display with a preview
+  of the paused frame; Continue, Save, Load, Reset and Save and Quit are one
+  protocol line each.
+- **Display** cycles the running game's mode live. **Achievements** shows
+  progress, or `none` (unselectable) with no set.
+- Volume and brightness share one levels channel, so changes in a game come
+  back to the launcher.
 
-### Boot: one still picture, then the shelf (Brick)
+### The launcher stays up
 
-The Brick shows the plorpOS wordmark from power-on until the shelf: u-boot draws
-it from `bootlogo.bmp`, and `pic2fb` redraws the same picture from `splash.png`
-once Linux is up. There is no boot animation. It used to play for 2.4 s while
-the launcher started, and once startup got faster than that, it was the thing
-holding the shelf back.
+The launcher keeps its GL context through the game (Mini Flip: its software
+renderer). Returning from a game is one frame, not a re-init.
 
-What was cut, measured on a Brick and a Brick Pro (2026-11-27, plorpos-act):
+# Boot
 
-- **Kernel messages:** printing at `loglevel=8` to the 115200-baud serial port
-  cost 2.2 s. plorpOS sets the boot setting to 4.
-- **Card mount:** the boot hook mounts the card itself, about 1.4 s before
-  stock gets to it.
-- **Library scan:** each system's scan is cached while its folder is
-  unchanged. On a big card this took the cold scan from 4.3 s to 0.5 s.
-- **Brick Pro Bluetooth check:** one `grep` of its 8 MB `bluetoothd` instead
-  of two. That saved 3.4 s.
+### Brick: one still picture
 
-From a reset to the kernel still takes about 7 s, all inside the stock
-bootloader.
+- u-boot draws the wordmark from `bootlogo.bmp`; `pic2fb` redraws it from
+  `splash.png` once Linux is up. No boot animation (it held the shelf back).
+- Cuts (Brick and Brick Pro, 2026-11-27, plorpos-act):
 
-Startup phases are logged rather than guessed at. Both columns below are from
-one Brick boot on the main card - 1708 games across eleven systems - measured
-2026-09-13. Cold is the first launcher of that boot; warm is the same launcher
-restarted with the page cache already hot. A second boot reproduced all eight
-figures within 5%. The figures are cumulative from process start, not per
-phase:
+| cut | saved |
+|---|---|
+| `loglevel=8` -> 4 (kernel printing to 115200-baud serial) | 2.2 s |
+| boot hook mounts the card itself | ~1.4 s |
+| scan cached per system while its folder is unchanged | cold scan 4.3 s -> 0.5 s (big card) |
+| Brick Pro: one `grep` of 8 MB `bluetoothd`, not two | 3.4 s |
+
+Reset to kernel is still ~7 s, all in the stock bootloader.
+
+### Startup phases
+
+Logged, cumulative from process start. One Brick boot, 1708 games in eleven
+systems, 2026-09-13; a second boot matched within 5%. Cold = first launcher of
+the boot; warm = restarted with a hot page cache.
 
 ```
                         cold      warm
@@ -116,146 +90,369 @@ boot: font+settings    1040 ms    529 ms
 boot: card assets      1181 ms    641 ms
 ```
 
-**`card assets` is the phase that moved.** As a cost of its own it is 141 ms
-cold, against 480 ms when this file last recorded it: the launcher no longer
-decodes the opening shelf's covers before drawing, it queues them and a worker
-picks them up while the shelf is already on screen. See below.
+- `card assets` alone is 141 ms cold (was 480 ms): opening covers are queued
+  for the workers instead of decoded before the first frame.
+- `scan` grows with the library (64 ms when first recorded); the rest is fixed
+  cost.
+- Every phase but `card assets` is slower than the 2026-09-07 figures on the
+  same library. Unexplained; recorded, not rounded away.
 
-`scan` is the one that will keep moving: it was 64 ms when this file first
-recorded it and the shelf has grown a long way since. The rest is fixed cost,
-which is why warm is roughly half of cold across the board and none of it is
-the library.
+### Card art off the render thread
 
-Being straight about the rest of the table: every phase except `card assets`
-is slower than the 2026-09-07 figures it replaces, on the same 1708 games, and
-nothing in this file explains why. The launcher has gained a good deal of code
-since, which is the obvious suspect and is not the same as a measurement. It
-is recorded here rather than quietly rounded away.
+- Decoding a card is 14-60 ms against a 16.7 ms frame; inline, a scroll into
+  uncached art cost 100-400 ms frames.
+- Two worker threads decode (one still dropped cards on the largest covers);
+  they sleep when idle. Only the GPU upload (1-2 ms) stays on the main thread.
+- A card not yet decoded is not drawn: an empty slot, never a frozen shelf.
+- A system's cards start decoding when the systems row lands on it, not when
+  it opens (2026-09-14).
 
-### Card art is decoded off the render thread
+# Saves
 
-The shelf asks for every visible card every frame, and a card that is not
-decoded yet used to be decoded right there, inside the frame. On the Brick
-that is 14-60 ms against a 16.7 ms budget, so arriving somewhere the cache did
-not reach meant one frame doing seven decodes and taking 100-400 ms. It did
-not read as slowness, it read as the shelf stopping.
-
-Decoding now happens on two worker threads. Only the last step, handing the
-finished image to the GPU, needs the renderer and stays on the main thread at
-1-2 ms. A card whose art has not arrived is simply not drawn, so a slot is
-briefly empty instead of the shelf freezing - the art appears at the same
-moment either way, and what changes is whether everything else kept moving
-while it came.
-
-A system's cards start decoding when the systems row lands on it, not when you
-open it, so opening one shows them at once - measured 2026-09-14 on four
-systems opened straight after a reboot.
-
-Two workers rather than one, and that was measured rather than assumed: one
-still drops the occasional card on the shelves with the largest covers, even
-after those covers were resized. They sleep when there is nothing to decode.
-
-### The launcher never goes away
-
-With a resident emulator there is nothing to tear down, so the launcher keeps
-its own GL context through the whole game (on the Mini Flip, which has no GPU,
-its software renderer). Coming back from a game is a frame,
-not a second and a half of re-initializing a display.
-
-## Saves
-
-- **Autosave.** Every way out of a game - the Quit row, the power button, a
-  stop from the launcher - writes the state and the preview at the paths the
-  launch handed over. One funnel, so no exit can forget and none can save
+- **Autosave:** every exit (Quit, power button, launcher stop) writes the state
+  and preview at the paths from `RUN`. One funnel: no exit forgets, none saves
   twice.
-- **Auto-resume.** Every launch hands over the game's autosave,
-  `<ROM file>.auto.state`. If one is there the game comes up exactly where it
-  was left; if not it starts fresh. Games Auto-Resume off (Game Settings)
-  hands none over, and the autosave is still written on the way out.
-- **Manual save and load**, six slots, from the in-game menu (`MENU`).
-  No pop-up confirms it.
+- **Auto-resume:** every launch hands over `<ROM file>.auto.state`; present =
+  resume, absent = fresh start. Games Auto-Resume off hands none over; the
+  autosave is still written.
+- **Manual:** six slots in the in-game menu, no confirm pop-up.
+- States are keyed on the system's `Roms/` folder; battery `.srm` files are
+  named after the ROM, in `Saves/<Roms folder>/`, beside the core's own files
+  (memory cards, `fbneo/`). Same title on two shelves = two saves. The
+  `systems.cfg` tag does not key saves (checked 2026-09-01).
+- **Neo Geo Pocket Color** reports zero bytes of save memory, so there is no
+  `.srm`; progress lives only in the autosave state. Loading an older slot
+  rewinds the cartridge save too.
 
-States are keyed on the system's **`Roms/` folder**, and battery `.srm` files
-are named after the ROM, in `Saves/<Roms folder>/` on every port, beside whatever the core keeps there itself (memory
-cards, `fbneo/`), so the same title on two shelves has two saves. The **tag** in `systems.cfg` keys
-something else: the per-system display mode, the sort order, and the favorites
-list. This
-paragraph claimed for a while that saves and states hung off the tag; they do
-not, checked in the code on 2026-09-01.
+# Achievements
 
-Cartridge battery saves are separate from all of that: a game with a battery
-gets a `.srm` beside the state. **Neo Geo Pocket Color is the exception** - its
-core reports no save memory at all, measured as zero bytes on two carts that do
-save, so nothing writes a `.srm` and no battery file exists to copy off the card.
-Progress there lives entirely in the autosave state, which is written on every
-exit like every other system, so in normal play nothing is lost. It only matters
-if you load an older slot, which rewinds the cartridge's own save with it.
+### Diatom evaluates
 
-## Achievements
+Conditions compare against the previous frame (`0xH06f0<d0xH06f0`). The
+launcher polls the socket every 100 ms (six frames at 60 Hz) and would miss
+unlocks, so it declares the console and hands over the set, and diatom checks
+every frame (diatom
+[ADR-0025](https://github.com/thwonp/diatom/blob/main/docs/decisions/0025-achievements-belong-to-the-frontend.md),
+[ADR-0026](https://github.com/thwonp/diatom/blob/main/docs/decisions/0026-achievements-on-the-launcher-protocol.md)).
 
-RetroAchievements, listed in the in-game menu, with what you have earned kept
-across games and cards.
+### Sets
 
-**The evaluation is diatom's, and that is not a delegation of convenience.**
-Conditions compare against the *previous frame* - `0xH06f0<d0xH06f0` is "this
-byte is lower than it was last frame" - and the launcher only sees the socket
-every 100 ms against a core running at 60 Hz. That is six frames per poll, so
-five of every six are invisible to it and unlocks would be missed silently.
-The launcher declares which console the game is and hands over the set, and
-diatom watches every frame
-(its [ADR-0025](https://github.com/thwonp/diatom/blob/main/docs/decisions/0025-achievements-belong-to-the-frontend.md)
-and [ADR-0026](https://github.com/thwonp/diatom/blob/main/docs/decisions/0026-achievements-on-the-launcher-protocol.md)).
+- Sign in under MENU > Game Settings > RetroAchievements > RetroAchievements
+  Sign-In. Only the password is typed; the returned token is stored.
+- First launch online: hash the ROM, ask RA for the game, cache the set at
+  `Roms/<System>/.cheevos/<name>.set`. After that: instant, works offline.
+- **Download Achievement Sets** (plorpos-3yv.107.3) does this for the whole
+  library: one game at a time, one request started or polled per frame, hashing
+  on a thread (a GBA cart is 32 MB). A cached set costs one `access()`.
+  - "No achievements": no game (hacks, translations), RA's "Unsupported Game
+    Version", or a set with nothing to earn (many arcade).
+  - Five real failures in a row stop the run as offline.
+- DS games hash like RA does (header, ARM9, ARM7, icon) via rcheevos'
+  `hash_rom.c`, not the whole 128 MB cart.
+- HTTPS: the Brick's `curl 7.54.1`/`OpenSSL 1.1.0i` has no trust store, the
+  Mini Flip and GKD ship their own curl; `res/ssl/cacert.pem` ships on every
+  card ([README](../res/ssl/README.md)).
 
-**The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> RetroAchievements -> RetroAchievements Sign-In,
-and the first time you launch a game plorpOS hashes the ROM, asks
-RetroAchievements which game it is, fetches the set and caches it at
-`Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
-that the launch is instant and works with Wi-Fi off.
+### Host tool and agreement checks
 
-**Game Settings -> RetroAchievements -> Download Achievement Sets** does that first-play fetch for
-the whole library at once (plorpos-3yv.107.3), so a game never started online
-still has its set offline. One game at a time, one request started or polled
-per frame; the ROM is hashed on a thread, since a whole GBA cartridge is 32 MB
-and would otherwise hold the frame. A cached set costs one `access()`, so a
-second run only asks about what is missing. Hacks and translations come back
-as no game, or as RetroAchievements' "Unsupported Game Version" placeholder,
-and many arcade sets as a game with nothing to earn; all three are counted as
-"No achievements", apart from real failures; five failures in a row stop the run
-as offline. Unlocks earned offline are kept on the card and sent the next time
-a game ends with the device online.
+- `tools/ra-sets.py` fetches the same set files from a host (seeding,
+  offline). Over the 180-ROM test library: 166 games with sets, 8,297
+  achievements, every condition parses.
+- Hash rules, JSON-to-set conversion and the set format exist twice (device and
+  host). `make check-rahash` and `make check-raset` require both to agree: a
+  wrong hash fails silently, as an unknown game.
 
-A DS game is hashed the way RetroAchievements does it - header, ARM9, ARM7 and
-icon, read where the header points - through rcheevos' own `hash_rom.c`, not
-as the whole 128 MB cartridge.
+### Unlocks
 
-That needs HTTPS. The Brick has `curl 7.54.1` against `OpenSSL/1.1.0i` but
-nothing to trust, and the Mini Flip has no curl (it ships its own), so
-`res/ssl/cacert.pem` ships on every card - see
-[its README](../res/ssl/README.md) for the measurement. Only the password is
-typed; RetroAchievements answers with a token, and that is what is stored.
+- Sent after the game ends, never from the frame loop. Unsent ones stay queued
+  on the card and retry next time online.
+- At game start the account's record is merged in: the account wins on what
+  exists, the local store on what is still owed.
+- RA's `Warning: Unknown Emulator` entry (unregistered client) is dropped, never
+  stored.
 
-`tools/ra-sets.py` does the same fetch from a host, for seeding a whole library
-at once or working offline. It writes the identical file, and is a convenience
-rather than the mechanism. Measured over the 180-ROM test library: **166 games
-have a set, 8,297 achievements, and every condition in all of them parses.**
+# Settings
 
-Three things exist twice, once for the device and once for the host tool: the
-per-console hash rules, the JSON to set-file conversion, and the set format
-itself. `make check-rahash` and `make check-raset` run both implementations
-over the same real data and require them to agree, because the failure they
-guard against is silent - a wrong hash looks exactly like a game
-RetroAchievements does not know.
+### Two databases
 
-**Unlocks go back to your account.** They are sent once the game is over and
-the launcher has the screen back, never from inside the frame loop, and what
-will not send stays queued and is tried again next time - an achievement
-earned on a plane is still earned. When a game starts, the account's record of
-it is read back and merged as soon as it answers, so anything already held is
-not offered again: the account wins on what exists, the local store wins on
-what is still owed, and neither is thrown away.
+Settings are database rows, not files. Defaults are compiled into the launcher
+and seed a missing database, so a deleted one comes back working.
 
-RA still serves a `Warning: Unknown Emulator` entry with every set, because
-this client is not registered with them. It is dropped rather than shown - it
-is not an achievement, and recording it would put a row in the store that can
-never be displayed and might later be submitted as a duplicate of something
-that was never real.
+| file | scope | holds |
+|---|---|---|
+| `.userdata/<platform>/tortos.db` | per device | volume, brightness, Auto Sleep/Off, audio output, radios, UI and Muse+ prefs, display mode / shader / core per shelf and game, RA and ScreenScraper accounts (`ra.user`, `ra.token`) |
+| `.userdata/shared/.tortos/library.db` | per card | timezone, startup system, core options, hotkeys, button maps, favorites (`fav.<tag>\t<file>`), recents, play time, achievements (`chv.<game>.<id>`), palettes, discs, turbo maps |
+
+- No `sqlite3` on the device: `tortos.elf --dump` prints both, read-only. Every
+  setting is reachable from a menu.
+- `.userdata/<platform>/boot.env` is what `launch.sh` sources before the
+  launcher exists: `BRIGHTNESS`, `TIMEZONE`/`TZRULE`, `WIFI`, `BLUETOOTH`,
+  `SSH` (Flip). Derived, never authoritative: rewritten when one changes;
+  deleted = one boot at defaults (`src/db.h`).
+
+### systems.cfg
+
+`plorpOS/systems.cfg` (source `config/systems.cfg`) stays a file because it is
+build input: `mk/plorpos-files.sh` refuses a card whose cores `vendor/` lacks
+and creates the ROM folders.
+
+```
+sys | display name | Roms/ folder | core | tag | card art | accent | extensions | disc bios | maker
+makers|Arcade|Nintendo|Sega|...
+```
+
+- `maker` and the one `makers|` line drive System Order's Maker grouping.
+- `tag` (`char tag[8]`, max seven chars) keys display mode, sort order,
+  favorites and per-game settings. Changing it orphans them.
+
+### Core options
+
+- `coreopt.<tag>.<option>` in the library db; empty tag = global
+  (`coreopt..mgba_sgb_borders`). Tagged beats global. A core ignores keys it
+  doesn't declare.
+- Sent **before** the game loads: `(Restart)` options are read during load.
+- **A resume state beats hardware options:** it carries the machine it was made
+  on. Test on a never-launched game, or delete its `.auto.state`.
+
+### Shelf defaults and per-game overrides
+
+| setting | shelf default | game's own | db |
+|---|---|---|---|
+| Display Mode | `display.<TAG>` | `display.<TAG>.<rom>` | device |
+| DS Layout / Display | `display.<TAG>` / `dsfill` | `dsfill.<TAG>.<rom>`, `dsswap.<TAG>.<rom>` | device |
+| Shader | `shader.<TAG>` | `shader.<TAG>.<rom>` | device |
+| Core | `engine.<TAG>` | `engine.<TAG>/<rom>` | device |
+| Hotkeys + Button Mapping | `hotkey.<TAG>`, `btnmap.<TAG>` | `ghotkey.<TAG>/<rom>` + `gbtnmap.<TAG>/<rom>` (written together) | library |
+| Palette | `palettedef.<TAG>` (Auto) | `palette.<TAG>.<rom>` | library |
+| Turbo | `turbomap.<TAG>` | `turbomap.<TAG>/<rom>` | library |
+| Disc | - | `disc.<TAG>.<m3u>` (0-based) | library |
+
+- No own row = shelf default. The own row is a full copy taken on first change;
+  later default changes don't reach it.
+- In a game, changes are written only while **Save Per-Game Overrides**
+  (`saveoverrides`, default on) is on. Saved rows always apply.
+- Reset Overrides deletes one kind of per-game row for a whole shelf.
+
+### Palettes, cores, discs
+
+- **Palette** (GB, and original-GB games on the Color shelf): labels are one
+  list for every core; each launch sends Gambatte's
+  `gambatte_gb_colorization`/`gambatte_gb_internal_palette` or mGBA's
+  `mgba_gb_colors_preset`/`mgba_gb_colors` after the core options. Auto = what
+  a GBC does: boot-ROM colours, else Dark Green. Save states don't carry it.
+- **Core per game:** GB, GBC, GBA and DS shelves (and the Flip's SNES and Neo
+  Geo Pocket) have several: Gambatte (GB/GBC) or armGBA (GBA) by default,
+  PokeDaisy, mGBA. `.srm` is shared by every core; states are per core (load
+  on the old core, save in-game, switch back).
+- **Multi-disc:** a folder with the discs and an `.m3u` (one name per line)
+  shows as one game. A **Disc** row appears under Palette when the core reports
+  more than one disc: open tray, swap, close after a second of play. The
+  choice is sent at the next launch so an auto-resume finds its disc. One
+  memory card per game, named after the `.m3u`.
+
+### Nintendo DS options
+
+DSperate (dsperate-lr v3.3.0-lr.1,
+[README](https://github.com/thwonp/dsperate-lr#core-options)). No menu yet
+(plorpos-l07.6): set `coreopt.NDS.<option>` rows, which apply to every DS game.
+Default first.
+
+| option | values | notes |
+|---|---|---|
+| `dsperate_frameskip` | **auto**, slotplus, disabled | skips 3D only when a frame will be late; never audio. Brick and H700 only |
+| `dsperate_slot2` | **empty**, rumble pak | rumble costs CPU in slot-polling games (Golden Sun: Dark Dawn, Brick: 0 vs 456 skips). Needs a motor |
+| `dsperate_gba_game` | **none**, GBA name (no `.gba`) | dual-slot games, from `Roms/Game Boy Advance`; refused names stay `none`. Save `<name>.sav` |
+| `dsperate_guitar_grip` | **auto**, off | Guitar Hero frets on L, L2, R2, R |
+| `dsperate_analog` | **off**, CPAD patch name | sticks + ZL/ZR to a built-in patch (names in the log). On the GKD the stick also moves the pen |
+
+Slot 2 is set before the first frame (fresh launch). A resume state with a
+different slot 2 loads with slot 2 reset (logged).
+
+### Files the launcher still writes
+
+- `.userdata/<platform>/cheevos-active.set`: diatom reads it by path from `RUN`
+  (ADR-0026); a db would mean diatom linking sqlite.
+- `systems.cfg`: build input, above.
+
+# Turbo
+
+### How it runs
+
+- The map is per game (`turbomap.<TAG>/<rom>`, format `x:a,a:a` =
+  button:turbo), with a shelf default; see the table above. Older
+  `turbo.<TAG>/<rom>` rows are converted once; `persistturbo` is no longer read.
+- Diatom, not the core, pulses, so it is the same on every system, and keeps
+  no state. The Turbo Assign hotkey and its `TURBO` reports are retired
+  (plorpos-5tm.26; diatom ADR-0045): turbo is set only on the Turbo
+  Assignments screen under Hotkeys, live in a game through
+  `plat_live_turbo`/`plat_live_turbo_set`.
+- The launcher holds the map and sends the whole map on each change:
+  `b:b~3` per turbo button, plus `l2:none,r2:none` on GBA. It also sends it
+  just after `RUN`, which resets the map to identity.
+- `turbo_period` is half a cycle in frames (3 = ~10 Hz at 60 Hz); see diatom
+  `src/env.c`, ADR-0028.
+
+### Why X and Y are not turbo any more
+
+Before plorpos-tkh, X/Y were a fixed turbo A/B on two-button systems
+(`turbo.<tag>` = `x:a~3,y:b~3`), and mGBA's Turbo L/R sat on GBA's L2/R2. Both
+took buttons players want for hotkeys. The launcher now drops `turbo.<tag>`
+rows, and GBA's L2/R2 map to nothing.
+
+# Menus
+
+Every list screen is drawn by `menu_draw` (`src/main.c`). It abstracts
+*drawing* a menu, not *being* one; the rules below came from five copies of the
+same defect (2026-09-04).
+
+### Row kinds
+
+A `menu_row` is `{ label, value, live }`. Don't add a kind without changing
+`menu_draw` and `menu_measure`.
+
+| kind | built as | meaning |
+|---|---|---|
+| Item | `{ "Wi-Fi", "on", true }` | does something |
+| Placeholder | `{ "No networks found", NULL, false }` | a real row that does nothing yet; highlights one step quieter |
+| Rule | `MENU_RULE` | divider, same bar as under the heading; the list ends here |
+| Note | `MENU_NOTE("Y: rescan")` | centred text about the list, not in it |
+
+Text that is not a would-be item is a note, not a placeholder.
+
+### Rules a screen must follow
+
+- **Use `menu_run`.** It steps over dead rows with `menu_step_sel`, a bounded
+  walk: a list can have no live rows at all. Never write `(sel + 1) % n`.
+- **Note any key other than A/B** (Y rescanned Wi-Fi for months, unlabelled).
+- **Confirm destructive actions with `confirm_panel`**, which starts on Cancel
+  and handles power and idle itself.
+- **Name the consequence, don't refuse:** forgetting the connected Wi-Fi is
+  allowed, with a warning.
+- **Never paint menu chrome** (panels, rules, plates, text fitting) in a screen;
+  that is `menu_draw`'s.
+- **`menu_measure` must agree with `menu_draw`.** It is a separate copy of the
+  width pass for sizing a panel without drawing it.
+
+### The runner
+
+- `menu_run` owns polling, quit, power, idle, back, the cursor and the frame. A
+  screen supplies `build` and `on_key` ([ADR-0001](decisions/0001-screens-declare-menus.md)).
+- `build` must run with no renderer and no device, so `make check` can ask what
+  a menu contains (`src/wifi_menu.c` + `tools/menu-check.c`, `src/sys_menu.c`).
+- `menu_style` is the renderer half: fixed width, accent, `follow_tint`,
+  `backdrop` (NULL = dimmed shelf) and `on_power` (NULL = power off). The
+  in-game menu overrides both.
+- `menu_run` returns how it ended. The in-game menu needs it: B and MENU mean
+  Continue (send `RESUME`), and the runner flushes input on exit.
+- **MENU closes the whole menu; B goes back one screen.** MENU raises
+  `g_menu_closing` and every screen under it leaves. Own-loop screens call
+  `menu_leaving(a)`. The flag is lowered only outside menus (shelf loop,
+  `game_menu`, Muse+), never when a menu opens.
+- Not on the runner: `cheevos_screen`, and the Muse pickers
+  `muse_long_pick`, `muse_tset_run`, `muse_tabs_screen`.
+
+### Where a setting lives
+
+| menu | changes | build |
+|---|---|---|
+| Shelf MENU | Sort By, `<Shelf> Defaults`, Reset Overrides, Scrape Shelf, Rescan Folder | `sys_menu_build`, `sys_menu_defaults_build`, `sys_menu_reset_build` |
+| X menu > Game Overrides | one game's own rows; Shelf Default deletes the row | `go_rows` |
+| In-game menu | the running game; writes its own row only under `plat_save_overrides()`; never a shelf default | `game_menu` |
+
+Reset Overrides counts per kind when it opens and after each reset, not per
+frame.
+
+### Cheevos is not a menu
+
+`cheevos_screen` borrows `menu_draw` but not the runner, on purpose:
+
+- `live` means earned there; the runner would skip every unearned one.
+- `CHV_MAX` is 256 (largest set 203); the runner holds `MENU_RUN_ROWS` (32).
+- A closes it; L1/R1 page by eight.
+
+A second screen wanting emphasis without action gets a `dim` flag on
+`menu_row`, not a runner switch.
+
+# Ports
+
+PortMaster is unofficial on every port that has it (not the Mini Flip, not the
+Nano).
+
+### Where things live
+
+| | path |
+|---|---|
+| PortMaster and its runtimes | `.userdata/shared/portmaster/` (`XDG_DATA_HOME`) |
+| ports | `Roms/Ports/` |
+| runner | `plorpOS/<device>/portmaster/pm-run.sh` (RG DS: the old ROCKNIX GKD runner) |
+| tools PortMaster needs (python, bash) | `pmtools.squashfs` beside the runner, read-only, loop-mounted only while a port runs (Brick, H700, GKD, Zero 28/40) |
+| 32-bit userland | H700: SDL2 in `plorpOS/lib32/`; Zero 28/40: `lib32.squashfs` (armhf + software GL), mounted per run |
+
+Every port goes through `pm-run.sh SCRIPT [ARGS]`; Delete Game is
+`pm-run.sh --uninstall ZIP` (PortMaster's own uninstall, per `port.json`).
+
+### Running a port
+
+- The port is a process group of its own: frozen, thawed and killed as one
+  (its game is the script's grandchild). Ending it TERMs the group but the
+  script, so the script runs its own cleanup.
+- **MENU over a port** opens Continue / Reset / Quit over the frozen game;
+  Quit ends the port and returns to the shelf.
+- Fullscreen at the panel's size; sound through the speaker or Bluetooth.
+- Some ports need the game's own files (Downwell, To the Moon, Stardew Valley)
+  where the port's page says. A first run may download a runtime (Java for
+  Mindustry, ~47 MB); LOVE ships with PortMaster.
+- A killed port leaves runtime mounts; the next run unmounts only plorpOS's
+  and PortMaster's, never the firmware's.
+
+### Per device
+
+| device | notes |
+|---|---|
+| Brick | firmware SDL; `/ports` alias on tmpfs (stock FAT rejects the lowercase path) |
+| H700 (BaseOS) | no bash/python3: pmtools; 32-bit via box86 + `plorpOS/lib32/` SDL2 |
+| GKD (BasedOS) | has bash and SDL2, no python3; read-only root. Each run in its own mount namespace (diatom's `retroarch` stand-in over `/usr/bin`; mounts vanish with the last process). `portscale.so` scales small fixed-size SDL games |
+| RG DS (ROCKNIX) | sway: windows moved to the main screen fullscreen; Ren'Py keeps its shape (bars). Tested: native 64/32-bit, LOVE, Mono, .NET, GameMaker (GMLoader 64/32), Java, Godot 3/4, Westonpack (Wayland, X11), box86, Python, Pyxel, Ren'Py, Qt6. Braid needs Panfrost (RG DS is Mali); Dust Racing 2D wants a Qt6 runtime name PortMaster doesn't install |
+| Rotate | sway + Xwayland on the first X11 port; plorpOS's own Mesa (no LLVM, GLES 1) |
+| Zero 28 / 40 (oakMOSS) | the Brick's runner on oakMOSS SDL. First port adds a pad udev rule, `/run` (-> `/tmp/run`) and 32-bit lib links (`/usr/lib32` and neighbours). 32-bit = software GL (no 32-bit GPU driver); GameMaker slow (MEGA MAN Sunrise ~13 fps) |
+
+# Device notes
+
+### GKD (BasedOS)
+
+- BasedOS = the fork's userland on the GKD's own kernel, drivers and firmware;
+  no compositor, starts faster than ROCKNIX did.
+- The zip is the card root: `System/launch_frontend.sh`, `plorpOS/`, empty
+  folders, `INSTALL.md`.
+- No system curl: `plorpOS/curl` (Zero 40's static build) does all HTTP.
+  Tailscale runs userspace; plorpOS HTTP goes via tailscaled's proxy
+  `127.0.0.1:1055` (`src/tailscale.h`).
+- Launcher gives up after 5 starts that exit in under 5 s; the first runs OTA
+  rollback if an update was just installed; then BasedOS's own screen.
+- Boot logos: U-Boot's replaced by `plorpOS/gkdb/bootlogo.bmp.gz` (stock kept
+  as `.stock`); BasedOS's keys logo is `bootlogo-keys.bmp.gz`.
+
+### RG DS
+
+- Image: trimmed ROCKNIX (emulators and ES removed). First boot (fs-resize)
+  makes exFAT `PLORPOS` partition p3 from free space, copies
+  `plorpos-payload.tar`, restarts. Mounted at `/storage/games-external`.
+- adb: Debian adbd + `adbroot.so` on a FunctionFS gadget, replacing ROCKNIX's
+  USB network/MTP gadgets; no authorisation.
+- Main screen is DSI-2 (top) by default.
+- Lid: hall sensor taken from logind, read as a level every 100 ms; closed for
+  1 s or more = POWER tap. A unit started shut doesn't sleep.
+
+### Rotate
+
+- Data partition p4, exFAT `PLORPOS`, made by `plorpos-firstboot.sh` whenever
+  it has no plorpOS (also after a wipe).
+- `sd/rotate/session.sh` replaces only the exact old dtb (md5 `f71e3340...`),
+  keeps `.bak-f71e3340`, restarts once via system-updated.
+
+### Mini Flip
+
+- Stock `/customer/main` runs `/mnt/SDCARD/.tmp_update/updater` instead of
+  MainUI.
+- Gambatte replaced mGBA for GB/GBC in v1.9: about half the cost per frame.
+- Scanline Filter is drawn by the Flip's 2D engine.

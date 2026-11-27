@@ -180,7 +180,7 @@ static void rows_fit(void)
 				ck((int)strlen(rows[i].value) <= VALUE_MAX, msg);
 				/* Nothing here is selectable: it is a page to read, and a
 				 * highlight on a row that does nothing when pressed is the
-				 * thing docs/menus.md forbids. */
+				 * thing docs/how-it-works.md#rules-a-screen-must-follow forbids. */
 				snprintf(msg, sizeof msg, "%s: \"%s\" is live",
 				         ctl_page_name((ctl_page)p), rows[i].label);
 				ck(!rows[i].live, msg);

@@ -6,11 +6,11 @@
 # boot installs the runtrimui.sh hook and every boot after that comes straight
 # up in TortOS.
 #
-# GKD (PLATFORM=gkd): out/gkd/, the two folders docs/install-gkd.md installs -
-# copy_to_sd/ (plorpOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
-# Saves/) for the card and system.d/ for the GKD's storage - and that guide as
-# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot. Development only
-# since 2.0 (plorpos-qylg): the GKD ships as gkdb, so this writes no zip and
+# GKD on ROCKNIX (PLATFORM=gkd): out/gkd/, two folders - copy_to_sd/ (plorpOS/
+# and the card's empty Roms/, Music/, Audiobooks/, Bios/, Saves/) for the card
+# and system.d/ for the GKD's storage. No boot hook: ROCKNIX owns the GKD's
+# boot. Development only since 2.0 (plorpos-qylg): the GKD ships as
+# gkd350based (PLATFORM=gkdb), so this writes no zip and
 # deletes any old plorpOS-v<ver>-gkd.zip from out/, where a release's
 # `sha256sum plorpOS-v<VER>-*.zip` would pick it up.
 #
@@ -122,7 +122,6 @@ if [ "$PLATFORM" = gkd ]; then
 	mkdir -p "$P/gkd/portmaster"
 	cp "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$P/gkd/portmaster/"
 	cp "$B/portfullscreen.so" "$P/gkd/portmaster/"
-	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = rgds ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/rgds/launch.sh" "$P/"

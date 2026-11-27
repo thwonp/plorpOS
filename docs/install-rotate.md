@@ -1,17 +1,19 @@
-# Installing on an Anbernic RG Rotate
+# Installing plorpOS on the RG Rotate
 
-plorpOS on the RG Rotate runs on [base618](https://github.com/thwonp/base618) (Armbian, Debian trixie,
-with base618's boot chain and kernel) from a microSD card. The Rotate's own Android (stock or GammaOS)
-stays on its storage: with the card out, it starts Android as before.
+You need the Rotate, a microSD card (8 GB or more) and a computer. plorpOS runs
+from the card on [base618](https://github.com/thwonp/base618) (Armbian, Debian
+trixie). Android (stock or GammaOS) stays on the device: with the card out, it
+starts Android as before.
 
-## 0. Flash SPL to the unit once
+### 1. Flash the SPL (once per unit)
 
-The Rotate only starts a card with base618's SPL in its boot loader slot. plorpOS uses the same one,
-from `base618-v0.2-spl.zip` in [base618's v0.2 release](https://github.com/thwonp/base618/releases/tag/v0.2).
-Only `splloader` (boot0) is written; `splloader_bak` keeps the unit's own SPL, and without a plorpOS or
-base618 card the unit boots its Android as before. Pick one way:
+The Rotate only starts a card with base618's SPL in its boot loader slot. Get
+`base618-v0.2-spl.zip` from
+[base618's v0.2 release](https://github.com/thwonp/base618/releases/tag/v0.2).
+Only `splloader` (boot0) is written; `splloader_bak` keeps the unit's own SPL.
+Skip this step if the unit already runs base618. Pick one way:
 
-- **From GammaOS**, any PC with adb (Windows, macOS, Linux), USB debugging on:
+- **From GammaOS** (adb on any PC, USB debugging on):
   ```sh
   adb root
   adb push spl-cm4.img flash-spl-android.sh /data/local/tmp/
@@ -19,144 +21,185 @@ base618 card the unit boots its Android as before. Pick one way:
   adb pull /sdcard/base618-spl-backup
   ```
   Keep the pulled backup.
-- **From Stock/GammaOS, using Linux over USB**, whatever the unit runs: get `spl-flasher.zip` from
-  [beebono's ROCKNIX-T618 release](https://github.com/beebono/distribution/releases/tag/beta-20260818) and
-  unzip it next to the `base618-v0.2-spl` folder, then:
+- **From stock or GammaOS, Linux over USB:** get `spl-flasher.zip` from
+  [beebono's ROCKNIX-T618 release](https://github.com/beebono/distribution/releases/tag/beta-20260818)
+  and unzip it next to the `base618-v0.2-spl` folder, then:
   ```sh
   SPD_DUMP=$PWD/spl-flasher/spd_dump-linux ./base618-v0.2-spl/flash-spl.sh spl-flasher
   ```
-  Then unplug the unit, power it off, slide the screen open, hold Home/Back (front, between the sticks)
-  and plug it in. The screen stays dark the whole time: keep it plugged in for about a minute. USB access
-  needs `sudo` in front of the command, or a udev rule - see base618's
-  [install.md](https://github.com/thwonp/base618/blob/main/docs/install.md#1-the-spl-once-per-unit).
-- **From Stock/GammaOS, using Windows** (not yet tested): with beebono's `spl-flasher.zip` (above), copy
-  `spl-cm4.img` into its `spl-flasher` folder and run, in a command prompt there:
+  Enter download mode: unplug the unit, power it off, slide the screen open,
+  hold Home/Back (front, between the sticks) and plug it in. The screen stays
+  dark; keep it plugged in for about a minute. USB access needs `sudo` or a udev
+  rule (base618's
+  [install.md](https://github.com/thwonp/base618/blob/main/docs/install.md#1-the-spl-once-per-unit)).
+- **From stock or GammaOS, Windows (untested):** copy `spl-cm4.img` into
+  beebono's `spl-flasher` folder and run there:
   ```bat
   spd_dump.exe --wait 300 keep_charge 1 fdl fdl1-dl.bin 0x5500 fdl fdl2-dl.bin 0x9EFFFE00 exec write_part splloader spl-cm4.img poweroff
   ```
-  Then enter download mode as above. Not the zip's own `flash-spl.bat`, which writes both slots.
+  Then enter download mode as above. Don't use the zip's `flash-spl.bat`: it
+  writes both slots.
 
-A unit that already runs base618 has it: skip this step.
+### 2. Extract the image
 
-## 1. Flash the card
+Download `plorpOS-v<version>-rotate.img.xz` from
+[Releases](https://github.com/thwonp/plorpOS/releases) and check it against
+`SHA256SUMS`. Unpack it to `plorpOS-v<version>-rotate.img` first, with
+[7-Zip](https://www.7-zip.org/) for example. Some imagers fail on `.xz` files.
 
-- Download the Rotate card image (`.img.xz`) from
-  [Releases](https://github.com/thwonp/plorpOS/releases) and check it against `SHA256SUMS`.
-- **Extract it** (7-Zip on Windows, `xz -d` on Linux/macOS) - some flashing tools choke on the compressed file.
-- Write the extracted `.img` to a microSD card of 8 GB or more, with balenaEtcher /
-Rufus / Raspberry Pi Imager / etc., or `sudo dd if=<image>.img of=/dev/sdX bs=4M conv=fsync`.
+### 3. Flash the image
 
-## 2. First boot
+Write `plorpOS-v<version>-rotate.img` to the card with your imager of choice
+([Etcher](https://etcher.balena.io/), [Rufus](https://rufus.ie/), `dd`, etc).
 
-Put the card in and turn the Rotate on. **With a USB cable plugged in it stops at the charging screen:
-hold Power** to go on. Unplugged, it starts on its own.
+### 4. Boot
 
-The first start copies the unit's own firmware off its storage (nothing there is written), makes the data
-partition - an exFAT partition named **PLORPOS** across the rest of the card, with `plorpOS/` (plorpOS
-itself) and `Roms/ Bios/ Saves/ Music/` (a folder per console in `Roms/` and `Saves/`) - shows
-"plorpOS: setup complete" and **powers off (once)**. Turn it on again: the shelf comes up.
+Put the card in and turn the Rotate on. With a USB cable plugged in it stops at
+the charging screen: hold Power to go on.
 
-Wi-Fi is set up from MENU > Wi-Fi. ssh is off until you turn it on in MENU > Network Services; the login is
-**root / plorpos**.
+The first boot can take a minute. It copies the unit's own audio and sleep
+firmware off its storage (nothing there is written), makes an exFAT partition,
+`PLORPOS`, across the rest of the card and puts plorpOS on it. It shows
+"plorpOS: setup complete" and powers off, once. Turn it on again.
 
-## 3. Your games and files
+# Device specific notes for the RG Rotate
 
-Turn the Rotate off, put the card in a computer, and copy your files onto the
-**PLORPOS** partition, laid out as on the other plorpOS devices:
+### Swivel
 
-```
-Roms/<system>/   games, one folder per system (see plorpOS/systems.cfg)
-Bios/            BIOS files, and pico8_64 + pico8.dat for native PICO-8
-Music/           Muse+'s music
-Saves/           saves, per console
-```
+Closed (screen over the buttons), the picture turns with it. System Settings:
 
-## Updating from an earlier version
+- **Rotate (Closed)**: `nothing`, `sleep` or `open Muse+`, in a game too.
+- **Rotate (Open)**: `wake only`, `main shelf`, `recents` or `resume last game`.
+  Opening always wakes a sleeping Rotate.
+- **Rotate Open Always Resumes Game** (on to start): with a game running,
+  opening goes back to the game; only `recents` acts (the game switcher). Off,
+  Rotate (Open) applies as set: `main shelf` ends the game (saved as Quit saves
+  it).
 
-From v1.10, **MENU > Network Services > Check for update** does this over
-Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+No **Auto Off** row on the Rotate.
 
-Download the Rotate update zip from
-[Releases](https://github.com/thwonp/plorpOS/releases) and copy its `plorpOS/` folder over the
-one on the PLORPOS partition. Your settings and saves stay. A release that changes the system
-underneath (the kernel, for one) comes only as a new card image.
+### Touch
 
-v1.10 also updates the Rotate's device tree, so opening the swivel wakes it from sleep. The first
-start after copying the folder shows "System updated", then restarts once by itself.
-
-## Adding games over Wi-Fi
-
-1. In **Menu > Wi-Fi**, turn Wi-Fi on and pick your network.
-2. Open **Over The Hare**. It shows an address and a PIN.
-3. Open that address in a browser on your phone or computer and type the PIN.
-4. Drag games into their console's folder or albums into `Music`. They're on the shelf when you leave
-   the screen.
-
-The PIN is new every time you open Over The Hare.
-
-## Controls
-
-Open: the buttons as on the other devices. Menu held with Vol+/Vol- sets the
-brightness.
-
-Closed (the screen swivelled over the buttons), the picture turns with it.
-Open or closed, the screen's touch does what the buttons do:
+Open or closed, touch does what the buttons do. **MENU > Controls** has a Touch
+page.
 
 | Touch | Does |
 |---|---|
 | tap | selects what is under it; A on the selected item |
-| swipe | the d-pad (a longer swipe moves further, a flick coasts) |
-| swipe in from the left or right edge | B (back) |
-| swipe down from the top edge | Muse+ (or what Select Shortcut says), also in a game |
-| swipe up from the bottom edge | Recent games (or what Menu Hold says), also in a game |
+| swipe | d-pad (longer moves further, a flick coasts) |
+| swipe in from the left or right edge | B |
+| swipe down from the top edge | Muse+ (or what **Select Shortcut (Top Swipe)** says), in a game too |
+| swipe up from the bottom edge | game switcher (or what **Menu Hold (Bottom Swipe)** says), in a game too |
 | long press | Y on what is under it (favorite a game) |
-| two-finger tap | X on what is under it (a game's info) |
+| two-finger tap | X on what is under it (game info) |
 | three-finger tap | Menu |
 | long press in a game | the in-game menu |
 
-The **side key** is Muse+'s: tap to play or pause, hold for the previous track,
-double tap for the next - on the shelf and in a game.
+### Buttons
 
-**Bluetooth headsets**: Menu > Bluetooth, Y to search, A to pair. Sound moves
-to the headset while it is connected and back to the speaker after; Muse+
-pauses when the headset goes. Its own buttons play/pause and skip in Muse+.
+- Menu held + Vol+/Vol- = brightness.
+- The **side key** controls Muse+, on the shelf and in a game: tap = play/pause,
+  hold = previous track, double tap = next.
+- **Sleep Button Lock** also ignores the touch panel. The side key stays live.
 
-## Nintendo DS
+### Display
 
-Put `.nds` files in `Roms/Nintendo DS/`. **Nintendo DS Defaults > Core** picks DSperate-lr (the default) or
-PokeDaisy DS for the shelf, and a game's X menu > **Game Overrides > Core** for that game (the Pokemon games' companion: Party, Dex, Map, Bag and
-Guide from the game). The layouts are **Overlay**, **Offset** (one screen big, the other small),
-**Even Split** and **Single Screen**: the shelf menu's **Nintendo DS Defaults > Layout** sets the shelf's, the in-game
-**Layout** row the game's own. The **Screen Layout** hotkey (MENU + X by default) steps through them;
-the **Swap Screens** hotkey puts the other screen in the big place (nothing to swap on Even Split) and
-is remembered for each game. The Display row sets Single Screen and the Overlay's big screen to
-**Aspect**, **Stretch** or **Integer**, centered.
+- **Integer Overscale** (next whole size, edges cropped) is offered on top of
+  Stretch, Aspect and Integer.
+- DS layouts: **Overlay**, **Offset** (one screen big, one small), **Even
+  Split**, **Single Screen**. **Screen Layout** hotkey: MENU + X by default.
+- DS stylus: touch the bottom screen, or the d-pad (Stylus Mode). The cursor
+  hides after 2 s still.
+- Shared DS controls: [guide](guide.md#nintendo-ds).
 
-Touch the bottom screen to use the stylus. Or, in Hotkeys, bind **Stylus Mode** (the D-pad moves a
-cursor over the bottom screen) and **Stylus Tap** (hold to touch where the cursor is). The cursor
-hides after 2 s still.
+### SSH
 
-## Ports
+**Network Services > SSH** starts it (off on a fresh card). Log in as `root`,
+password `plorpos`.
 
-PortMaster is the first entry on the Ports shelf. Open it on Wi-Fi to install ports; they land in
-`Roms/Ports/` and on the shelf. This is unofficial support: report problems to plorpOS, not the
-PortMaster team.
+### Audio
 
-## Native PICO-8
+- No 3.5mm jack, so Volume Limiter has no 3.5mm row.
+- Bluetooth headsets: see the [guide](guide.md#bluetooth).
 
-plorpOS can run PICO-8 itself, with Splore, instead of the fake-08 core.
-PICO-8 is sold by Lexaloffle and is not included.
+### Ports
 
-1. From your PICO-8 download for **Raspberry Pi**, copy `pico8_64` and
-   `pico8.dat` into `Bios/`.
-2. On the PICO-8 shelf, open the shelf menu and set **Core** to **Pico-8
-   Native**. fake-08 stays the default; the same row switches back.
-3. **Splore** is the first entry on the PICO-8 shelf whenever `Bios/pico8_64`
-   is there. It needs Wi-Fi.
+The **Ports** shelf opens with **PortMaster**. Run it on Wi-Fi; ports install
+to `Roms/Ports/`. Support is unofficial: report problems to plorpOS, not the
+PortMaster team. How ports run: [how-it-works](how-it-works.md#ports).
 
-Native PICO-8 has no save states or rewind.
+### Limitations
 
-## Removing plorpOS
+- Native PICO-8 needs your own `pico8_64` and `pico8.dat` (Raspberry Pi build)
+  in `Bios/`; then set the PICO-8 shelf menu's **Core** to **Pico-8 Native**.
+  **Splore** (first entry on the shelf) needs Wi-Fi. No save states or rewind.
+  Without the files, PICO-8 carts play on fake-08.
 
-Take the card out: the Rotate starts its Android. The SPL from step 0 stays in `splloader`; without a
-plorpOS or base618 card the unit boots Android as before.
+# Adding Content
+
+| Folder | What |
+|---|---|
+| `Roms/<System>/` | games, one folder per system (see `plorpOS/systems.cfg`) |
+| `Bios/` | BIOS files, loose |
+| `Saves/` | saves, one folder per system |
+| `Music/` | albums, one folder each |
+| `Audiobooks/` | books |
+
+### Copy them to the card
+
+Turn the Rotate off, put the card in a computer and copy onto the `PLORPOS`
+partition.
+
+### Over Wi-Fi
+
+Join a network under **MENU > Wi-Fi**. Then **MENU > Network Services > Over
+The Hare** shows an address and a PIN. Open the address in a browser, enter the
+PIN and drag files into their folders. See the [guide](guide.md).
+
+# Updating plorpOS
+
+Settings and saves are kept either way.
+
+### Over Wi-Fi
+
+1. **MENU > Network Services > Check for update.**
+2. Confirm the download, then the restart. The update installs during the
+   restart. If the new version won't start, the old one comes back.
+
+Details: [guide](guide.md#check-for-update).
+
+### By hand
+
+1. Unzip `plorpOS-v<version>-rotate-update.zip`.
+2. Copy its `plorpOS/` folder over the one on `PLORPOS`.
+
+### Base system
+
+A release that changes the system underneath (the kernel, say) comes only as a
+new card image: flash it (steps 2-4).
+
+2.0 also updates the device tree so opening the swivel wakes the Rotate from
+sleep. The first start after updating a 1.9.x card shows "System updated" and
+restarts once by itself.
+
+# Removing plorpOS
+
+### Steps
+
+1. Take the card out. The Rotate starts Android.
+
+The SPL from step 1 stays in `splloader`; without a plorpOS or base618 card the
+unit boots Android as before.
+
+# FAQ
+
+### What does the image put on the card?
+
+The base618 system, then at first boot the `PLORPOS` partition:
+
+```
+plorpOS/                      the launcher, its cores and settings
+Roms/  Saves/  Bios/  Music/  a folder per system in Roms/ and Saves/
+```
+
+A wiped `PLORPOS` partition is set up again at the next boot.

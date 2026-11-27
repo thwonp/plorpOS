@@ -7016,7 +7016,7 @@ static void power_off(app *a)
  * cannot drift apart. The slab is sized to its own widest row with the same
  * padding on every side, rather than to a number picked once and left behind
  * by the next label someone adds. */
-/* menu_row and the row kinds: src/menu.h; the rules: docs/menus.md. */
+/* menu_row and the row kinds: src/menu.h; the rules: docs/how-it-works.md#row-kinds. */
 
 #define MENU_RADIUS 20
 /* The system's one accent: this menu, the volume OSD, and the mark's center
@@ -8742,7 +8742,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 /* One screen, one loop. Owns polling, power, idle, quit, back, volume,
  * brightness, the cursor and the whole frame, so that no screen can forget any
  * of them - which every menu defect this project has had came down to. See
- * docs/menus.md and ADR-0001.
+ * docs/how-it-works.md#the-runner and ADR-0001.
  *
  * The flush is here rather than in the body: the press that opens a screen must
  * not also close it, and the press that closes one must not arrive again at

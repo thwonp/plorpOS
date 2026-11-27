@@ -1,166 +1,197 @@
-# Installing on the MagicX Zero 40
+# Installing plorpOS on the MagicX Zero 40
 
-*There is no Zero 40 release yet. This guide is for the next release.*
+You need the Zero 40, a microSD card and a computer.
 
-On the Zero 40, plorpOS is the launcher on top of
-[oakMOSS](https://github.com/spruceUI/oakMOSS), the small base system that
-spruceOS uses on this handheld. oakMOSS starts the board and hands off to
-plorpOS on the card.
+### 1. Back up the stock card
 
-The Zero 40's screen is tall (480x800), so plorpOS stands on end: the shelves
-scroll up and down, the list layouts put the art above the list, and Now
-Playing puts the cover above the track. Landscape games sit in the middle of
-the screen at their own shape. DS games show both screens stacked, the full
-width of the panel.
+It is the only way back to stock.
 
-You need the Zero 40, a microSD card for oakMOSS (and optionally a second one
-for your games) and a computer.
+### 2. Reformat the card
 
-## 1. Flash the image
+Leftover partitions can break the flash. Start from a freshly formatted card.
 
-The release has one image for the Zero 40: oakMOSS (Shaun Inman's boot chain with our system) with plorpOS
-already in it. Back up the Zero 40's stock card first: it is the only way back.
+### 3. Extract the image
 
-It is highly recommended to reformat your card fresh before flashing. Existing
-partitions on the card may interfere with the oakMOSS / plorpOS flash.
+Unpack `plorpOS-v<version>-zero40.img.xz` to `plorpOS-v<version>-zero40.img`
+first, with [7-Zip](https://www.7-zip.org/) for example. Some imagers fail on
+`.xz` files.
 
-- **New card:** write `plorpOS-v<version>-zero40.img.xz` to a microSD card with
-  [Etcher](https://etcher.balena.io/) or `dd`. It replaces the system on the
-  card.
+### 4. Flash the image
 
-The first boot adds a FAT32 partition called `SPRUCEOS` to the free space on
-the card and puts plorpOS on it. That is the partition a computer sees as an
-ordinary drive.
+Write `plorpOS-v<version>-zero40.img` to the card with your imager of choice
+([Etcher](https://etcher.balena.io/), [Rufus](https://rufus.ie/), `dd`, etc).
 
-## 2. What is on the card
+### 5. Boot
 
-```
-.tmp_update/updater   oakMOSS starts plorpOS through this
-plorpOS/              the launcher, its cores and settings
-Roms/                 one folder per system
-Saves/  Bios/  Music/  Audiobooks/
-```
+The first boot can take a minute. It adds a FAT32 partition, `SPRUCEOS`, in the
+card's free space and puts plorpOS on it. That is the drive a computer sees.
 
-The image puts these on the card only when the card has no launcher yet. A
-card that already has plorpOS, spruceOS or anything else is left alone, and
-plorpOS updates itself from then on (see Updating).
+# Device specific notes for the Zero 40
 
-**Already running oakMOSS and want to keep it?** Unzip
-`plorpOS-v<version>-zero40.zip` onto the first card's `SPRUCEOS` partition
-instead, or onto a second card (SD2) formatted FAT32; oakMOSS cannot read
-exFAT. If the second card has a launcher on it (spruceOS, say), it wins and
-plorpOS on the first card does not start.
+### Base system
 
-The zip is for the Zero 40 only.
+The image is a hybrid: Shaun Inman's `main-zero40` boot chain with the
+[oakMOSS](https://github.com/spruceUI/oakMOSS) rootfs (spruceOS's base system
+for this handheld), plorpOS on top.
 
-## 3. Add games
+### Screen
 
-Games go in `Roms/<System>/`, in the folder named for their system. BIOS files
-go loose in `Bios/`. Music goes in `Music/`, one folder per album.
+The 480x800 screen is portrait, and so is plorpOS:
 
-## Controls
+- Shelves scroll up and down.
+- List layouts put the art above the list; Now Playing puts the cover above the
+  track.
+- Landscape games sit in the middle at their own shape, black above and below.
 
-| Button | Does |
-|---|---|
-| Up / Down | Move along the shelf |
-| Left / Right | Jump by letter |
-| L1 / R1 | A screenful |
-| A | Open or play |
-| B | Back |
-| X | Game details |
-| Y | Favorite |
-| Select | Muse+ |
-| Menu | The plorpOS menu; in a game, the game menu |
-| Menu + Volume | Brightness |
+### Controls
 
-Touch works on the shelves and in the menus:
+- The stick = d-pad.
+- Touch works on the shelves and in the menus:
 
 | Touch | Does |
 |---|---|
 | tap | selects what is under it; tap again for A |
-| swipe | moves along the shelf or the list |
-| swipe in from the left or right edge | Back |
-| swipe down from the top edge | Muse+ (or what Select Shortcut says), also in a game |
-| swipe up from the bottom edge | Recent games (or what Menu Hold says), also in a game |
-| hold | Favorite (Y) |
-| two-finger tap | Game details (X) |
+| swipe | moves along the shelf or list |
+| swipe in from the left or right edge | B |
+| swipe down from the top edge | Muse+ (or what **Select Shortcut (Top Swipe)** says), in a game too |
+| swipe up from the bottom edge | game switcher (or what **Menu Hold (Bottom Swipe)** says), in a game too |
+| hold | Y (favorite) |
+| two-finger tap | X (game details) |
 | three-finger tap | Menu |
 
-In a DS game the touches go to the lower screen.
+In a DS game, touches go to the lower screen.
 
-## Display
+### Display
 
-Games start in **Aspect**: their own shape, as wide as the screen. A system's
-menu > **Defaults** sets its Display Mode, and the game menu's Display Mode changes it for
-one game. DS games start in **Even Split**, both screens stacked; the game
-menu's Layout row has the others.
+- Games start in **Aspect**: their own shape, as wide as the screen. Change it
+  per system (system menu > Defaults) or per game (game menu > Display Mode).
+- DS games start in **Even Split**, both screens stacked at full width. Layout
+  also has Overlay, Single Screen and Hybrid.
 
-## Wi-Fi and ssh
+### SSH
 
-Switch Wi-Fi on in the plorpOS menu, under Wi-Fi. The **SSH** row in Network Services starts
-an ssh server on port 22. It is off on a fresh card. Log in as `root` with a
-key: put your public key (the contents of `~/.ssh/id_ed25519.pub`, for
-example) in `plorpOS/ssh/authorized_keys` on the card, one key per line.
-There is no password login. The server makes its own host key the first time
-it starts and keeps it in `plorpOS/ssh/`. There is no sftp, so `scp` fails;
-copy with `ssh root@<zero40> 'cat > /path' < file`.
+**Network Services > SSH** starts a server on port 22 (off on a fresh card).
 
-## Ports
+- Log in as `root` with a key: add your public key to
+  `plorpOS/ssh/authorized_keys`, one per line. No password login.
+- The host key is made on first start and kept in `plorpOS/ssh/`.
+- No sftp, so `scp` fails. Use `ssh root@<zero40> 'cat > /path' < file`.
 
-The **Ports** shelf sits above Muse+. Its first entry is **PortMaster**; open
-it with the device on Wi-Fi to install ports, which land in `Roms/Ports/` and
-appear on the shelf. A port is a script (`Name.sh`) beside a folder of the
-same name, so ports can also be copied onto the card. PortMaster itself lives
-in `.userdata/shared/portmaster/`. This is unofficial support: report problems
-to plorpOS, not the PortMaster team.
+### USB and DACs
 
-What to expect:
+- **System Settings > USB Debugging** keeps the USB port in device mode for adb
+  (from the next boot). Off on a fresh card. Without it, a computer's cable can
+  flip the port to host mode and drop adb.
+- A USB DAC goes in the OTG port (the adb one; the other port keeps charging).
+  It needs USB Debugging **off**. Reboot after changing it. With a DAC in, adb
+  is gone.
+- After sleep the DAC takes about 5 s to come back; sound before then plays on
+  the speaker.
+- **Known issue:** plugging a DAC in or out with a charger connected can slow
+  charging to a trickle, or drain the battery on the charger. Re-plug the
+  charger ([guide](guide.md#usb-dac)).
 
-- **Menu** opens the plorpOS menu over a port (Continue, Reset, Quit); Quit
-  ends the port and returns to the shelf.
-- The screen is portrait, so most ports fit its width with black above and
-  below. A few stretch to fill it (6 Feet Under, Ren'Py games) or draw past
-  its edge (Cave Story).
-- Ports that need a game's own files (Downwell, To the Moon, Stardew Valley)
-  have to be given them: put them where the port's page says. A port may
-  download a runtime the first time, so do that on Wi-Fi.
-- 32-bit ports run on software graphics: the Zero 40's GPU has no 32-bit
-  driver. GameMaker ones play slowly (MEGA MAN Sunrise about 15 fps). Ports
-  that run through box86 (Braid, Shovel Knight) do not work.
-- Dust Racing 2D does not start until PortMaster fixes the runtime name its
-  script asks for.
-- PortMaster's tools ship as read-only images in `plorpOS/zero40/portmaster/`,
-  mounted only while a port runs. The first port adds three things to
-  oakMOSS: a udev rule for the pad, `/run`, and the links a 32-bit port needs
-  (`/usr/lib32` and its neighbours).
+### Ports
 
-## Limits
+The **Ports** shelf (just before Muse+) opens with **PortMaster**. Run it on
+Wi-Fi; ports install to `Roms/Ports/`. A port is `Name.sh` plus a `Name/`
+folder, so you can also copy them on. Support is unofficial: report problems to
+plorpOS, not the PortMaster team. How ports run:
+[how-it-works](how-it-works.md#ports).
 
-- Charging can slow to a trickle after a USB DAC is plugged in or pulled out
-  with a charger connected. Re-plug the charger. The fix is in oakMOSS
-  ([guide](guide.md#usb-dac)).
-- No Bluetooth yet.
-- Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`;
-  without them the PICO-8 shelf plays carts on the fake08 core.
-- Plex downloads each track before playing it, as on the H700 devices.
-- Below and above a landscape game the screen is black.
+- Most ports fit the width, black above and below. A few stretch (6 Feet Under,
+  Ren'Py games) or draw past the edge (Cave Story).
+- Ports that need a game's own files (Downwell, To the Moon, Stardew Valley):
+  put them where the port's page says. A port may download a runtime on first
+  run, so start it on Wi-Fi.
+- 32-bit ports are slow (software graphics; GameMaker ones like MEGA MAN Sunrise
+  run about 15 fps). box86 ports (Braid, Shovel Knight) don't work.
+- Dust Racing 2D won't start until PortMaster fixes its runtime name.
 
-## Updating
+### Bluetooth
 
-Two things update separately. The base system (oakMOSS, the kernel, the DAC
-drivers) comes from a new `.omupd` file, copied to the card as in step 1. plorpOS
-itself updates from the menu, below. An image update never replaces the
-plorpOS on a card that already has it.
+- Headphones and speakers only: Bluetooth controllers and keyboards don't work
+  (the kernel lacks support).
+- Switching Bluetooth on takes effect at the next boot.
+- Re-flashing the card forgets paired devices: pair them again.
 
-From v1.10, **MENU > Network Services > Check for update** does this over
-Wi-Fi ([guide](guide.md#check-for-update)). By hand:
+Pairing and use: [guide](guide.md#bluetooth).
 
-Copy everything in the new zip onto the card, replacing what is there. Your
-settings, saves, play time and achievements are in `.userdata/` and `Saves/`
-and stay as they are.
+### Limitations
 
-## Removing plorpOS
+- Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`. Without
+  them, PICO-8 carts play on fake08.
+- Plex downloads each track before playing it.
 
-Delete `plorpOS/` and `.tmp_update/` from the card. oakMOSS then starts
-spruceOS from the other card if it has it, or shows its "No frontend" screen.
-Your `Roms/`, `Saves/` and `Bios/` stay.
+# Adding Content
+
+| Folder | What |
+|---|---|
+| `Roms/<System>/` | games, one folder per system |
+| `Bios/` | BIOS files, loose |
+| `Music/` | albums, one folder each |
+| `Audiobooks/` | books |
+
+### Copy them to the card
+
+Put the card in a computer and copy into the folders above.
+
+### Over Wi-Fi
+
+Join a network under **MENU > Wi-Fi**. Then **MENU > Network Services > Over
+The Hare** shows an address and a PIN. Open the address in a browser, enter the
+PIN and drag files into their folders. See the [guide](guide.md).
+
+# Updating plorpOS
+
+Settings, saves, play time and achievements (`.userdata/`, `Saves/`) are kept
+either way.
+
+### Over Wi-Fi
+
+1. **MENU > Network Services > Check for update.**
+2. Confirm the download, then the restart. The update installs during the
+   restart. If the new version won't start, the old one comes back.
+
+Details: [guide](guide.md#check-for-update).
+
+### By hand
+
+1. Unzip `plorpOS-v<version>-zero40.zip`.
+2. Copy its contents onto the card, replacing what is there.
+
+### Base system
+
+There is no `.omupd` for the Zero 40. The base system (boot chain, kernel, DAC
+drivers) updates only by flashing a new image (steps 2-5). Back up the card
+first.
+
+# Removing plorpOS
+
+### Steps
+
+1. Delete `plorpOS/` and `.tmp_update/` from the card.
+2. Reboot. oakMOSS starts spruceOS from a second card if there is one, or shows
+   "No frontend".
+
+`Roms/`, `Saves/` and `Bios/` stay.
+
+# FAQ
+
+### I already run oakMOSS. Can I keep it?
+
+Yes. Unzip `plorpOS-v<version>-zero40.zip` onto the first card's `SPRUCEOS`
+partition or onto a second card (SD2, FAT32; oakMOSS can't read exFAT). If SD2
+has a launcher (spruceOS, say), it wins and plorpOS on the first card won't
+start. The zip is for the Zero 40 only.
+
+### What does the image put on the card?
+
+```
+.tmp_update/updater   oakMOSS starts plorpOS through this
+plorpOS/              the launcher, its cores and settings
+Roms/  Saves/  Bios/  Music/  Audiobooks/
+```
+
+Only on a card with no launcher yet. A card with plorpOS, spruceOS or anything
+else is left alone.

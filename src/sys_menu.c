@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* What the two MENU-button menus contain. See src/sys_menu.h for why this is
- * a file of its own, and docs/menus.md for the rules the rows follow.
+ * a file of its own, and docs/how-it-works.md#where-a-setting-lives for the rules the rows follow.
  *
  * No SDL, no device reads, no forks. Everything this needs arrives in sys_ui. */
 #include <stdio.h>
