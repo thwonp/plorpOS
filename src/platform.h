@@ -251,6 +251,9 @@ bool plat_resident_running(void);
 bool plat_resident_ending(void);
 /* Diatom's LEVEL lines that have arrived, applied; the rest left unread. */
 void plat_resident_levels(void);
+/* Diatom's last DISC answer, read by whichever loop saw it; returns how many
+ * have come (0 none), so a caller can tell a new one. */
+unsigned plat_resident_disc_seen(int *index, int *count);
 void plat_resident_flush(unsigned timeout_ms);
 void plat_screen_off(void);
 

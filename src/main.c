@@ -24352,6 +24352,7 @@ static void muse_on_secondary(app *a, void (*tick)(void));
 static void switcher_on_secondary(app *a, void (*tick)(void));
 static void qs_on_secondary(app *a, void (*tick)(void));
 static void qs_rest_draw(app *a);
+static void qs_disc_take(void);
 /* Quick Settings drawn again at the game's next tick (plorpos-rgds.33.3). */
 static bool g_qs_dirty = true;
 /* Details drawn again at its next tick: something else had the panel. */
@@ -24386,6 +24387,7 @@ static void muse_panel_game_tick(void (*tick)(void))
 	if (epoch != plat_bottom_epoch()) { epoch = plat_bottom_epoch(); fresh = true; }
 	/* Beside a port: its Details stay; Quick Settings are a Diatom game's. */
 	if (!g_dual_muse && tick != on_game_tick) { plat_bottom_keep(false); return; }
+	qs_disc_take();
 	plat_bottom_keep(true);           /* a finger on it opens it there */
 	if (plat_bottom_want() && g_rgds_app) {
 		if (g_dual_muse) muse_on_secondary(g_rgds_app, tick);
@@ -24584,6 +24586,7 @@ static void sec_session_poll(void)
 	sec_tick_run();
 	if (g_sec_tick != on_game_tick) return;
 	plat_resident_levels();            /* a level set in the game: its bar here (rgds.28) */
+	qs_disc_take();                    /* and a disc answer (rgds.33.5) */
 	if (plat_resident_ending()) plat_bottom_end_session();
 }
 
@@ -24742,18 +24745,39 @@ static void qs_style(app *a, qs_ctx *q)
 
 /* The Disc row is the in-game menu's g_disc, which only that menu asked
  * Diatom for - stale from an earlier game, or missing (plorpos-rgds.33.5).
- * Asked once a run here: Diatom answers DISC while running (its state plane),
- * and a game that is no .m3u is answered at once without asking. */
+ * Asked once a run here, without waiting: a game's first frames are when
+ * Diatom is slowest to answer (a 150 ms wait at the first draw ran out), and
+ * this is the game's tick. The answer is taken when it comes (qs_disc_take).
+ * A game that is no .m3u has no row and is not asked. */
 static char g_qs_disc_for[LIB_PATH + 16];
+static unsigned g_qs_disc_gen;
 
 static void qs_disc_once(app *a)
 {
+	sysview *sv = &a->view[a->sys_cursor];
 	char key[LIB_PATH + 16];
+	int i, n;
 
 	snprintf(key, sizeof key, "%s/%s", g_cur_tag, g_cur_file);
 	if (!strcmp(key, g_qs_disc_for)) return;
 	snprintf(g_qs_disc_for, sizeof g_qs_disc_for, "%s", key);
-	disc_query(a);
+	g_disc.count = 0;
+	g_qs_disc_gen = plat_resident_disc_seen(&i, &n);   /* an older answer is not this game's */
+	if (sv->list.count > 0 && is_m3u(sv->list.items[sv->cursor].file)) plat_resident_line("DISC");
+}
+
+/* Diatom's answer, once it has come: the row drawn again with it. */
+static void qs_disc_take(void)
+{
+	int i, n;
+	unsigned g = plat_resident_disc_seen(&i, &n);
+
+	if (g == g_qs_disc_gen || !g_qs_disc_for[0]) return;
+	g_qs_disc_gen = g;
+	disc_note(i, n);
+	g_qs_dirty = true;
+	ui_redraw_now();
+	fprintf(stderr, "disc: %d of %d (Quick Settings)\n", i + 1, n);
 }
 
 static void qs_on_secondary(app *a, void (*tick)(void))

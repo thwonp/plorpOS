@@ -1286,6 +1286,29 @@ bool plat_resident_ending(void)
  * same screens as plat_resident_ending: a level set in the game shows its bar
  * on the RG DS's secondary while something runs there (plorpos-rgds.28). */
 static void d_note_level(const char *l);
+
+/* Diatom's last DISC answer, whoever read it: the RG DS's Quick Settings asks
+ * without waiting (plorpos-rgds.33.5) and takes it from here. gen counts the
+ * answers, 0 none yet. */
+static int d_disc_i, d_disc_n;
+static unsigned d_disc_gen;
+
+static void d_note_disc(const char *l)
+{
+	const char *i = strstr(l, "\tindex="), *n = strstr(l, "\tcount=");
+
+	d_disc_i = i ? atoi(i + 7) : 0;
+	d_disc_n = n ? atoi(n + 7) : 0;
+	d_disc_gen++;
+}
+
+unsigned plat_resident_disc_seen(int *index, int *count)
+{
+	*index = d_disc_i;
+	*count = d_disc_n;
+	return d_disc_gen;
+}
+
 void plat_resident_levels(void)
 {
 	struct pollfd p = { dsock, POLLIN, 0 };
@@ -1304,13 +1327,14 @@ void plat_resident_levels(void)
 
 		if (!nl) break;            /* a partial line: kept */
 		len = (size_t)(nl - (dbuf + i)) + 1;
-		if (len > 6 && !memcmp(dbuf + i, "LEVEL\t", 6)) {
+		if ((len > 6 && !memcmp(dbuf + i, "LEVEL\t", 6)) || (len > 5 && !memcmp(dbuf + i, "DISC\t", 5))) {
 			char l[256];
 			size_t k = len - 1 < sizeof l - 1 ? len - 1 : sizeof l - 1;
 
 			memcpy(l, dbuf + i, k);
 			l[k] = '\0';
-			d_note_level(l);
+			if (l[0] == 'L') d_note_level(l);
+			else d_note_disc(l);   /* plorpos-rgds.33.5 */
 		} else {
 			memmove(dbuf + o, dbuf + i, len);
 			o += len;
@@ -2403,6 +2427,7 @@ static int diatom_wait(void)
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+			else if (strncmp(l, "DISC\t", 5) == 0) d_note_disc(l);   /* an unwaited answer */
 			else if (strncmp(l, "SKIP\t", 5) == 0)
 				g_musickey = strstr(l, "dir=toggle") ? MUSICKEY_TOGGLE :
 				             strstr(l, "dir=prev") ? MUSICKEY_PREV : MUSICKEY_NEXT;
