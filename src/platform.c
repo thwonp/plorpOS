@@ -757,7 +757,7 @@ static gesture swivel_in_game(bool *tap)
 		else if (sw_closed_act == SWC_MUSE) return GESTURE_MUSE;
 		break;
 	case SWIVEL_OPENED:
-		if (sw_open_act == SWO_RECENTS) return GESTURE_SWITCHER;
+		if (sw_open_act == SWO_RECENTS) return GESTURE_RECENTS;
 		if (sw_open_act == SWO_SHELF && !sw_keep_game) return GESTURE_SHELF;
 		break;
 	default:

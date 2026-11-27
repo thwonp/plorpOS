@@ -234,6 +234,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* plorpos-bn9.12: SELECT where it opened Muse+ - Muse+, the game switcher,
 	 * or nothing. */
 	out[ST_SELECT]   = (menu_row){ "Select Shortcut", sys_menu_sc_label(u->sc_select), true };
+	/* plorpos-bn9.13: MENU held (a swipe up on the Rotate) - the switcher,
+	 * Muse+ from anywhere, a game included, or nothing. */
+	out[ST_HOLD]     = (menu_row){ "Menu Hold", sys_menu_sc_label(u->sc_hold), true };
 #if defined(PLATFORM_ROTATE)
 	{
 		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping

@@ -64,5 +64,8 @@ extern const char *ctl_bright_keys;
  * the Anywhere page, and as the game page says it: "Muse+, in that menu".
  * NULL for nothing: the row is left out. Set by main. */
 extern const char *ctl_select_does, *ctl_select_game;
+/* What a Menu hold does (Menu Hold, plorpos-bn9.13): "Recent", "Muse+" or
+ * NULL, on the shelf and game pages. Set by main. */
+extern const char *ctl_hold_does;
 
 #endif

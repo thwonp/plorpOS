@@ -59,6 +59,8 @@ static int shelf(menu_row *out)
 	out[n++] = (menu_row){ "B", "Back",         false };
 	out[n++] = (menu_row){ "X", "Game details", false };
 	out[n++] = (menu_row){ "Y", "Favorite",     false };
+	if (ctl_hold_does)
+		out[n++] = (menu_row){ "MENU (held)", ctl_hold_does, false };
 	return n;
 }
 
@@ -66,12 +68,16 @@ static int shelf(menu_row *out)
  * NULL when nothing, and its row goes. main sets them. */
 const char *ctl_select_does = "Muse+";
 const char *ctl_select_game = "Muse+, in that menu";
+/* And a Menu hold, from Menu Hold (plorpos-bn9.13). */
+const char *ctl_hold_does = "Recent";
 
 static int game(menu_row *out)
 {
 	int n = 0;
 
 	out[n++] = (menu_row){ "MENU",   "Pause and menu",     false };
+	if (ctl_hold_does)
+		out[n++] = (menu_row){ "MENU (held)", ctl_hold_does, false };
 	if (ctl_select_game)
 		out[n++] = (menu_row){ "SELECT", ctl_select_game, false };
 	out[n++] = (menu_row){ "POWER",  "Tap sleep, hold off", false };
@@ -139,7 +145,9 @@ static int touch(menu_row *out)
 	 * setting there (plorpos-bn9.12). */
 	if (ctl_select_does)
 		out[n++] = (menu_row){ "Top edge down",  ctl_select_does, false };
-	out[n++] = (menu_row){ "Bottom edge up", "Recent",         false };
+	/* A swipe up counts as a Menu hold (plorpos-bn9.13). */
+	if (ctl_hold_does)
+		out[n++] = (menu_row){ "Bottom edge up", ctl_hold_does, false };
 	return n;
 }
 #endif

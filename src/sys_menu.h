@@ -121,6 +121,7 @@ typedef enum {
 	ST_SLEEP, ST_BATTPCT,
 #endif
 	ST_SELECT,                  /* Select Shortcut (plorpos-bn9.12) */
+	ST_HOLD,                    /* Menu Hold (plorpos-bn9.13) */
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
 	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
@@ -317,6 +318,7 @@ typedef struct {
 	aout_dest   audio_dest;
 	int         vlim[AOUT_USB + 1]; /* Volume Limiter, percent, by aout_dest (bn9.9) */
 	int         sc_select;   /* Select Shortcut, an sc_action (bn9.12) */
+	int         sc_hold;     /* Menu Hold, an sc_action (bn9.13) */
 
 	/* Bluetooth: the name of the connected headset, or NULL. The row used to
 	 * read "not yet" and be dead, which was true of the pairing screen and

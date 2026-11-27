@@ -306,6 +306,11 @@ static void tortos_menu_offline(void)
 	   && !strcmp(val(&rows[ST_SELECT]), "Muse+"), "Select Shortcut reads Muse+, under the sleep rows");
 	ck(!strcmp(sys_menu_sc_label(SC_SWITCHER), "Switcher") && !strcmp(sys_menu_sc_label(SC_OFF), "off"),
 	   "and Switcher, off");
+	/* Menu Hold (plorpos-bn9.13) right under it. */
+	ck(ST_HOLD == ST_SELECT + 1 && !strcmp(rows[ST_HOLD].label, "Menu Hold"), "Menu Hold follows it");
+	u.sc_hold = SC_SWITCHER;
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_HOLD]), "Switcher"), "Menu Hold reads Switcher");
 	u.vlim[AOUT_BT] = 100; u.vlim[AOUT_USB] = 40; u.vlim[AOUT_WIRED] = 10;
 	n = sys_menu_vollimit_build(&u, rows, &b, &heading);
 	ck(n == 3 && !strcmp(heading, "Volume Limiter"), "Volume Limiter: three outputs on the Brick");

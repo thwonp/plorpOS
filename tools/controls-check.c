@@ -259,6 +259,20 @@ static void select_follows_the_setting(void)
 	ctl_select_game = "Muse+, in that menu";
 }
 
+/* Menu Hold (plorpos-bn9.13): the shelf and game pages say what a hold
+ * opens, and say nothing of it when it is off. */
+static void hold_follows_the_setting(void)
+{
+	printf("MENU (held) follows Menu Hold\n");
+	ck(pages_naming("MENU (held)") == 2, "the shelf and game pages name the hold");
+	ctl_hold_does = "Muse+";
+	rows_fit();
+	ctl_hold_does = NULL;
+	ck(pages_naming("MENU (held)") == 0, "off: no page names it");
+	rows_fit();
+	ctl_hold_does = "Recent";
+}
+
 int main(void)
 {
 	printf("controls: what MENU > Controls says\n");
@@ -268,6 +282,7 @@ int main(void)
 	rows_fit();
 	direction_changes_the_shelf();
 	select_follows_the_setting();
+	hold_follows_the_setting();
 
 	if (fails) {
 		printf("\n%d failure%s\n", fails, fails == 1 ? "" : "s");
