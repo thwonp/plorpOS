@@ -277,7 +277,7 @@ Under **MENU > System Settings**:
 <details>
 <summary><b>Can I use Bluetooth headphones?</b></summary>
 
-Yes, except on the Mini Flip, Zero 28 and Zero 40. Pairing mode on the
+Yes, except on the Mini Flip and Zero 28 (on the Zero 40, headphones and speakers only). Pairing mode on the
 headphones, then **MENU > Bluetooth**, **Y** to search, **A** to pair. They
 reconnect by themselves. Wired headphones win when plugged in. More:
 [Bluetooth](docs/guide.md#bluetooth).

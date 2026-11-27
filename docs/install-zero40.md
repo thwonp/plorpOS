@@ -108,9 +108,17 @@ plorpOS, not the PortMaster team. How ports run:
   run about 15 fps). box86 ports (Braid, Shovel Knight) don't work.
 - Dust Racing 2D won't start until PortMaster fixes its runtime name.
 
+### Bluetooth
+
+- Headphones and speakers only: Bluetooth controllers and keyboards don't work
+  (the kernel lacks support).
+- Switching Bluetooth on takes effect at the next boot.
+- Re-flashing the card forgets paired devices: pair them again.
+
+Pairing and use: [guide](guide.md#bluetooth).
+
 ### Limitations
 
-- No Bluetooth.
 - Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`. Without
   them, PICO-8 carts play on fake08.
 - Plex downloads each track before playing it.
