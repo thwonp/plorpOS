@@ -43,30 +43,21 @@ the Brick starts stock as before.
 
 ### Nintendo DS
 
-- Put `.nds` files in `Roms/Nintendo DS/`.
-- **Core:** DSperate-lr (default) or PokeDaisy DS, per shelf (shelf menu >
-  **Nintendo DS Defaults > Core**) or per game (X menu > **Game Overrides >
-  Core**). PokeDaisy DS adds the Pokemon companion: Party, Dex, Map, Bag, Guide.
+Shared DS controls: [guide](guide.md#nintendo-ds).
+
 - **Layouts:** **Overlay** (one screen fills the display, the other 80% opaque
   over its bottom-right corner), **Single Screen**, **Hybrid** (one screen 3x
-  the other, which sits against its right edge). Set per shelf (**Nintendo DS
-  Defaults > Layout**) or per game (in-game **Layout** row). **Reset Overrides
-  > Display Mode** puts every game back on the shelf's.
-- **Swap Screens** hotkey puts the other screen in the big place, remembered
-  per game. **Screen Layout** steps through the layouts and keeps the swap.
+  the other, which sits against its right edge).
 - No **Display** row: 4x already fills the 1024x768 panel.
 - **Stylus, Brick:** no touch screen, so the d-pad can be the stylus. Bind
   **Stylus Mode** (d-pad becomes a cursor over the bottom screen; off at the
   start of every game) and **Stylus Tap** (hold to touch) in Hotkeys. Nothing
   is bound for you. The cursor speeds up while the d-pad is held.
-- **Stylus, Brick Pro:** a stick is the stylus and the d-pad stays the game's.
-  Right stick by default; the in-game **Stylus Stick** row picks the left. The
-  cursor is always on and hides after 2 s still. **R Stick Click** is Stylus
-  Tap until you bind another.
+- **Stylus, Brick Pro:** the right stick (see guide).
 - The heaviest 3D scenes skip drawing a frame (never two in a row) instead of
   slowing down.
-- No rewind (each state is 6 MB and takes about 20 ms). Save states work. The
-  microphone is not verified.
+- No rewind (each state is 6 MB and takes about 20 ms). The microphone is not
+  verified.
 
 ### Audio
 

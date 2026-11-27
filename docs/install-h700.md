@@ -71,31 +71,22 @@ driver, so plorpOS loads its own at start.
 
 ### Nintendo DS
 
-- Put `.nds` files in `Roms/Nintendo DS/`. Most games need no BIOS.
-- **Core:** DSperate-lr (default) or PokeDaisy DS, per shelf (shelf menu >
-  **Nintendo DS Defaults > Core**) or per game (X menu > **Game Overrides >
-  Core**). PokeDaisy DS adds the Pokemon companion: Party, Dex, Map, Bag, Guide.
+Shared DS controls: [guide](guide.md#nintendo-ds).
+
+- Most games need no BIOS.
 - **Layouts:** **Overlay** (one screen fills the display at 4:3, the other 80%
   opaque over its bottom-right corner), **Single Screen** (full height),
-  **Hybrid** (one screen at 2x, the other in the width left at its right). Set
-  per shelf (**Nintendo DS Defaults > Layout**) or per game (in-game **Layout**
-  row).
-- **Swap Screens** hotkey puts the other screen in the big place, remembered
-  per game. **Screen Layout** steps through the layouts and keeps the swap.
-- **Display** (under Layout) sets how Single Screen and Overlay's big screen
-  fill the panel: **Aspect** (4:3, default), **Stretch** (RG SP and RG34xxSP
+  **Hybrid** (one screen at 2x, the other in the width left at its right).
+- **Display**: **Aspect** (4:3, default), **Stretch** (RG SP and RG34xxSP
   only) or **Integer** (2x, 512x384).
 - **Stylus, no-stick models:** bind **Stylus Mode** (d-pad moves a cursor,
   shown while the bottom screen is up) and **Stylus Tap** (hold to touch) in
   Hotkeys.
-- **Stylus, two-stick models:** a stick is the stylus and the d-pad stays the
-  game's. Right stick by default; the in-game **Stylus Stick** row picks the
-  left. The cursor is always on and hides after 2 s still. **R Stick Click**
-  touches until you bind another Stylus Tap.
+- **Stylus, two-stick models:** the right stick (see guide).
 - The heaviest 3D scenes skip drawing a frame instead of slowing down (from
   [slotPlus](https://github.com/nelynes/slotPlus)). Golden Sun: Dark Dawn still
   runs a few percent slow in its busiest stretches.
-- No rewind (each state is about 6 MB). Save states work.
+- No rewind (each state is about 6 MB).
 
 ### Ports
 

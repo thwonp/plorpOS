@@ -101,16 +101,10 @@ Only plorpOS's own traffic uses the tailnet (the kernel has no tunnel driver).
 
 ### Nintendo DS
 
-- **Nintendo DS Defaults > Core** (shelf menu): DSperate-lr (default) or
-  PokeDaisy DS. **Game Overrides > Core** (a game's X menu) sets one game's.
-  PokeDaisy DS adds the Pokemon companion: Party, Dex, Map, Bag and Guide.
+Shared DS controls: [guide](guide.md#nintendo-ds).
+
 - Layouts: **Overlay**, **Offset** (one screen big, one small), **Even Split**,
-  **Single Screen**. **Nintendo DS Defaults > Layout** sets the shelf's; the
-  in-game **Layout** row sets the game's.
-- **Screen Layout** hotkey (MENU + X by default) steps through them. **Swap
-  Screens** hotkey puts the other screen in the big place, remembered per game.
-- **Display** (Aspect, Stretch, Integer) sizes Single Screen and Overlay's big
-  screen.
+  **Single Screen**. **Screen Layout** hotkey: MENU + X by default.
 - The stick moves a stylus cursor over the bottom screen; R2 touches. The
   cursor hides after 2 s still.
 

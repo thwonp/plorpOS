@@ -107,16 +107,10 @@ page.
 - **Integer Overscale** (next whole size, edges cropped) is offered on top of
   Stretch, Aspect and Integer.
 - DS layouts: **Overlay**, **Offset** (one screen big, one small), **Even
-  Split**, **Single Screen**. Set them per system (Nintendo DS Defaults >
-  Layout) or per game (in-game Layout row). The **Screen Layout** hotkey
-  (MENU + X by default) steps through them. **Swap Screens** (remembered per game) puts the
-  other screen in the big place. Display sets Single Screen and Overlay's big
-  screen to Aspect, Stretch or Integer.
-- DS stylus: touch the bottom screen. Or bind **Stylus Mode** (d-pad moves a
-  cursor) and **Stylus Tap** (hold to touch) in Hotkeys. The cursor hides after
-  2 s still.
-- DS core: **Nintendo DS Defaults > Core** picks DSperate-lr (default) or
-  PokeDaisy DS; a game's X menu > **Game Overrides > Core** sets it per game.
+  Split**, **Single Screen**. **Screen Layout** hotkey: MENU + X by default.
+- DS stylus: touch the bottom screen, or the d-pad (Stylus Mode). The cursor
+  hides after 2 s still.
+- Shared DS controls: [guide](guide.md#nintendo-ds).
 
 ### SSH
 

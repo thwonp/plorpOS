@@ -1,28 +1,23 @@
 # Installing plorpOS on the RG Nano
 
-plorpOS nano is a pared-down, music-first plorpOS for the Anbernic RG Nano:
-consoles, their games, Recently Played, Favorites and Muse, with music that
-keeps playing over a game.
+plorpOS nano is a pared-down, music-first plorpOS: consoles, games, Recently
+Played, Favorites and Muse, with music playing over a game.
 
 You need the Nano, a microSD card and a computer.
 
-### 1. Download
+### 1. Download and extract
 
 Get `plorpOS-nano-v<version>-sdcard.zip` from
-[plorpos-v1.5.5](https://github.com/thwonp/plorpOS/releases/tag/plorpos-v1.5.5),
-the Nano's latest release.
+[plorpos-v1.5.5](https://github.com/thwonp/plorpOS/releases/tag/plorpos-v1.5.5)
+(the Nano's latest release) and unzip it.
 
-### 2. Extract the image
-
-Unzip it to get `plorpOS-nano-v<version>.img`.
-
-### 3. Flash the image
+### 2. Flash the image
 
 Write `plorpOS-nano-v<version>.img` to the card with your imager of choice
 ([Etcher](https://etcher.balena.io/), [Rufus](https://rufus.ie/), `dd`, etc).
 Flashing **wipes the card**.
 
-### 4. Boot
+### 3. Boot
 
 The first start sets the card up (FunKey's six steps on screen, under a
 minute), then the shelf comes up.
@@ -31,8 +26,8 @@ minute), then the shelf comes up.
 
 ### Base system
 
-The Nano doesn't run the full plorpOS launcher. It runs **nanoshelf** (the
-shelf) and **PicoArch** (the games) on
+Not the full plorpOS launcher: **nanoshelf** (the shelf) and **PicoArch** (the
+games) on
 [DrUm78's FunKey-OS build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics),
 with FunKey's menus replaced and its extra games and themes removed.
 
@@ -55,46 +50,36 @@ with FunKey's menus replaced and its extra games and themes removed.
 | START | pause / play, anywhere | pause / play |
 | Power (tap) | dim to Now Playing | brightness back |
 
-- **FN is SELECT.** Volume: **SELECT + A / Y**. Brightness: **SELECT + X / B**.
-  Screenshot to `Screenshots/`: **SELECT + Up**. These work everywhere.
-- **Settings > Controls** shows the same, a page per place (Left/Right).
+- **FN is SELECT.** Everywhere: volume **SELECT + A / Y**, brightness
+  **SELECT + X / B**, screenshot to `Screenshots/` **SELECT + Up**.
+- **Settings > Controls** shows this, a page per place.
 
 ### In a game
 
-Tap **power**: that is the Nano's MENU.
+Tap **power** for the menu.
 
-- First page, **MUSIC**: the track playing; A pauses/plays, left/right for
-  previous/next track. Up/Down change pages, B closes.
-- The rest is FunKey's: volume, brightness, save, load, aspect ratio, exit.
-- While music plays the game is silent. Pause the music and the game's sound
-  comes back.
-- Full speed with music playing was measured for Game Boy, Game Boy Advance and
-  Genesis. Heavier systems may slow down.
+- First page, **MUSIC**: A pauses/plays, left/right previous/next track. Up/Down
+  change pages, B closes. The rest is FunKey's: volume, brightness, save, load,
+  aspect ratio, exit.
+- While music plays the game is silent; pause the music to hear it.
+- Measured full speed with music: Game Boy, Game Boy Advance, Genesis. Heavier
+  systems may slow down.
 
 ### Resume and power
 
-- When a game exits, FunKey saves its place. The next start of that game asks
-  **RESUME GAME** (A, at once) or **NEW GAME** (asks to be sure); B goes back
-  to the shelf, place kept.
-- Holding power in a game saves and turns off. The next start goes straight
-  back into that game (through plorpOS, so the MUSIC page works); the shelf
-  comes up when you leave it.
-- Holding power on the shelf turns off. **Settings > Power off** does the same,
-  cleanly.
+- A game's place is saved on exit. Its next start asks **RESUME GAME** (A) or
+  **NEW GAME** (asks to be sure); B goes back to the shelf, place kept.
+- Power held in a game: saves and turns off. The next start goes straight back
+  into it (MUSIC page works); leaving it shows the shelf.
+- Power held on the shelf: turns off. **Settings > Power off** does it cleanly.
 
-### Favorites
+### Favorites and Dimmed Music Mode
 
-Y on a game adds or removes it. Favorites shows on the shelf, A-Z, under
-Recently Played, once it has a game.
-
-### Dimmed Music Mode
-
-A power tap outside a game dims the screen to Now Playing (lowest backlight;
-the screen can't go fully dark) and the music goes on. Tap again for your
-brightness.
-
-- While dimmed, B and X do nothing.
-- With **Dimmed button lock** on, only the power tap does anything.
+- Y on a game adds or removes it. Favorites shows A-Z under Recently Played
+  once it has a game.
+- A power tap outside a game dims to Now Playing (lowest backlight, not fully
+  dark); music goes on. Tap again for your brightness. While dimmed B and X do
+  nothing; with **Dimmed button lock** on, only the power tap works.
 
 ### Settings
 
@@ -102,14 +87,12 @@ Last on the shelf; the title shows the version. Left/Right change a choice; A
 steps to the next.
 
 - **Output**, **Library**: where music plays, how many tracks it found.
-- **Mount card on computer**: the card appears on the computer as a USB drive;
-  music stops. Eject on the computer, then press B. Shown only when the Nano
-  started as a USB drive.
-- **USB at start**: USB drive, Network (ssh) or adb, after a restart (see
-  [Connecting](#connecting)).
-- **Inactive shutdown**: 1, 2, 5, 10 or 30 minutes, or Never (default 5). Turns
-  off after that long with no button pressed and no music playing, outside a
-  game. Time in a game doesn't count.
+- **Mount card on computer**: the card becomes a USB drive; music stops. Eject
+  on the computer, then press B. Only when the Nano started as a USB drive.
+- **USB at start**: USB drive, Network (ssh) or adb, after a restart
+  ([Connecting](#connecting)).
+- **Inactive shutdown**: 1, 2, 5, 10, 30 minutes or Never (default 5): off
+  after that long with no button and no music, outside a game.
 - **Dimmed button lock**: On (default).
 - **Restart**, **Power off**: press A twice.
 - **Controls**: the button guide.
@@ -122,30 +105,28 @@ playing.
 With `pico8_dyn` and `pico8.dat` in `Bios/` (from your PICO-8 Raspberry Pi
 download):
 
-- The PICO-8 list's footer shows **R fake08** or **R pico8**. R switches the
-  engine; the footer shows the one in use.
+- R in the PICO-8 list switches engine; the footer shows **R fake08** or
+  **R pico8**.
 - No save states. Cart data is in `Saves/Pico-8/native/`.
 - A power tap opens the Nano's menu (music, volume, brightness, exit).
 
 ### Arcade
 
-- Sets keep their names (`mslug.zip`); the lists show titles (Metal Slug:
-  Super Vehicle-001), from each core's romset list.
+- Sets keep their names (`mslug.zip`); lists show titles from each core's
+  romset list.
 - Vertical games come up upright. PicoArch's **Screen rotation** (game menu
-  settings) turns the picture further if you hold the Nano sideways.
+  settings) turns them for holding the Nano sideways.
 
 ### USB DAC
 
-Plug it into the USB-C port. Music moves to it within 2 seconds; a game started
-while it is plugged in plays through it too. Unplug it and the music pauses, on
-the speaker.
-
-One USB port: a DAC and a computer can't be connected at the same time.
+- USB-C port. Music moves to it within 2 s; a game started while it is in plays
+  through it too. Unplugged, music pauses, on the speaker.
+- One USB port: no DAC and computer at the same time.
 
 ### Connecting
 
-A shell is only for poking around. Choose the USB mode in **Settings > USB at
-start** (after a restart), or with a file at the root of the card:
+A shell is only for poking around. Set the USB mode in **Settings > USB at
+start** (after a restart) or with a file at the card root:
 
 | File at the root of the drive | The Nano is |
 |---|---|
@@ -164,8 +145,7 @@ start** (after a restart), or with a file at the root of the card:
 | PicoArch settings | `/mnt/FunKey/.picoarch/` (keep it) |
 | Log | `/tmp/nanoshelf.log` (gone at restart) |
 
-`queue.txt` keeps the queue and place over a restart, stopped until you press
-play.
+`queue.txt` keeps the queue and place over a restart (stopped until play).
 
 ### Known issues
 
@@ -223,8 +203,8 @@ above. **Don't format the other partitions if Windows asks.**
 
 ### Over USB
 
-Leave the card in and connect the Nano by USB: it starts as a USB drive
-(**Settings > Mount card on computer**).
+Connect the Nano by USB: it starts as a USB drive (**Settings > Mount card on
+computer**).
 
 # Updating plorpOS
 
@@ -237,10 +217,10 @@ Settings, saves and lists are kept.
    and unzip it.
 2. Copy the `plorpOS` folder inside over the one on the card (USB drive, or the
    card in a computer).
-3. Start the Nano. It shows **INSTALLING PLORPOS** and restarts once by itself.
+3. Start the Nano. It shows **INSTALLING PLORPOS** and restarts once.
 
-If the install fails, the Nano starts the version it had and leaves
-`plorpOS/update-failed.log` on the card.
+If the install fails, the old version starts and `plorpOS/update-failed.log` is
+left on the card.
 
 # Removing plorpOS
 
@@ -273,7 +253,7 @@ BIOS files and `FunKey/.picoarch/` (saves are in its `data/` folders).
 Afterwards put BIOS files in `Bios/` and copy each game's `.srm` / `.sav` /
 `.st*` files into `Saves/<console folder>/`; the names already match.
 
-### Where is the source?
+### Sources and licences
 
 - The card image is DrUm78's FunKey-OS `fps-classics` image for the RG Nano
   (FunKey-OS 2.3.0; GPL and other licences;
