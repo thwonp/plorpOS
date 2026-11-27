@@ -1490,7 +1490,7 @@ gesture gesture_read(void)
 			        : gs.ry < band ? 1 : gs.ry > my - band ? -1 : 0;
 		} else if (gs.on && gs.edge && !gs.fired && (gs.ry - gs.y0) * gs.edge >= GESTURE_IN_PX) {
 			gs.fired = true;
-			out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
+			out = gs.edge > 0 ? GESTURE_TOP : GESTURE_SWITCHER;
 		}
 		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
 	}

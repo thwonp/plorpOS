@@ -448,6 +448,7 @@ static unsigned ts_tried;
 static int ts_max_x = 480, ts_max_y = 800;
 static int ts_slot;
 static struct { int id, x, y; bool down, was, moved; } ts[TS_SLOTS];
+static bool ts_lift_wait;          /* a finger from before a flush: ignored until it lifts */
 
 static void touch_open(void)
 {
@@ -481,6 +482,13 @@ static void touch_read(void)
 
 	touch_open();
 	while (fd_touch >= 0 && read(fd_touch, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ts_lift_wait) {
+			if (ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0) {
+				ts_lift_wait = false;
+				memset(ts, 0, sizeof ts);
+			}
+			continue;
+		}
 		if (ev.type == EV_ABS) {
 			if (ev.code == ABS_MT_SLOT) ts_slot = ev.value >= 0 && ev.value < TS_SLOTS ? ev.value : 0;
 			else if (ev.code == ABS_MT_TRACKING_ID) ts[ts_slot].down = ev.value >= 0;
@@ -509,6 +517,94 @@ static void touch_read(void)
 			}
 		}
 	}
+}
+
+/* Touches made while a game had the screen: thrown away with the rest of its
+ * input, or the shelf or the in-game menu read a swipe from mid-game as its
+ * own - a swipe down there opened Muse at the next Menu (plorpos-d98.21). */
+static void touch_drop(void)
+{
+	struct input_event ev;
+	unsigned char keys[KEY_MAX / 8 + 1] = { 0 };
+
+	while (fd_touch >= 0 && read(fd_touch, &ev, sizeof ev) == (ssize_t)sizeof ev) { }
+	memset(ts, 0, sizeof ts);
+	/* The swipe that opened this screen is often still on the glass: the
+	 * rest of it would land as a new touch mid-screen - on the switcher a
+	 * swipe up that removed the first card. It is nobody's until it lifts. */
+	ts_lift_wait = fd_touch >= 0 && ioctl(fd_touch, EVIOCGKEY(sizeof keys), keys) >= 0 &&
+	               (keys[BTN_TOUCH / 8] >> (BTN_TOUCH % 8) & 1);
+}
+
+/* ---- edge swipes over a game (plorpos-d98.21), as the Rotate's ----------
+ *
+ * The launcher's own reader above only runs while it has the screen. During
+ * a game the panel is read here, on a descriptor of its own (evdev readers
+ * each get every event, and Diatom reads it too for the pointer); only the
+ * first finger (slot 0) is followed: an edge swipe is one finger. The panel's
+ * pixels are the screen's. */
+static int fd_ges = -2;            /* -2: not looked for yet */
+static bool g_tight;
+static struct {
+	int slot, x, y, id;            /* id: slot 0's tracking id, -1 none */
+	bool down_pending, up_pending, on, fired;
+	int edge;                      /* +1 top, -1 bottom, 0 none */
+	int y0;
+	unsigned t0;
+} gs;
+
+int gesture_fd(void)
+{
+	if (fd_ges == -2) { fd_ges = input_open_named("axs_ts"); gs.id = -1; }
+	return fd_ges;
+}
+
+void gesture_tight(bool on) { g_tight = on; }
+
+gesture gesture_read(void)
+{
+	struct input_event ev;
+	gesture out = GESTURE_NONE;
+
+	if (gesture_fd() < 0) return GESTURE_NONE;
+	while (read(fd_ges, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type == EV_ABS) {
+			if (ev.code == ABS_MT_SLOT) gs.slot = ev.value;
+			else if (gs.slot != 0) continue;
+			else if (ev.code == ABS_MT_TRACKING_ID) {
+				/* axs_ts repeats the id in every report while the finger
+				 * stays down: only none -> some is a landing. */
+				if (ev.value < 0) gs.up_pending = true;
+				else if (gs.id < 0) gs.down_pending = true;
+				gs.id = ev.value;
+			} else if (ev.code == ABS_MT_POSITION_X) gs.x = ev.value;
+			else if (ev.code == ABS_MT_POSITION_Y) gs.y = ev.value;
+			continue;
+		}
+		if (ev.type != EV_SYN || ev.code != SYN_REPORT) continue;
+		if (gs.down_pending) {
+			int band = g_tight ? GESTURE_TIGHT_PX : GESTURE_BAND_PX;
+
+			gs.down_pending = false;
+			gs.on = true;
+			gs.fired = false;
+			gs.y0 = gs.y;
+			gs.t0 = plat_now_ms();
+			/* The sides win the corners, as on the shelf. */
+			gs.edge = gs.x < band || gs.x > ts_max_x - band ? 0
+			        : gs.y < band ? 1 : gs.y > ts_max_y - band ? -1 : 0;
+		} else if (gs.on && gs.edge && !gs.fired) {
+			int in = (gs.y - gs.y0) * gs.edge;
+
+			if (g_tight && plat_now_ms() - gs.t0 > GESTURE_TIGHT_MS) gs.edge = 0;
+			else if (in >= GESTURE_IN_PX) {
+				gs.fired = true;
+				out = gs.edge > 0 ? GESTURE_TOP : GESTURE_SWITCHER;
+			}
+		}
+		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }
+	}
+	return out;
 }
 #endif
 
@@ -562,6 +658,9 @@ void plat_input_flush(void)
 	menu_filter_reset(joy && SDL_JoystickGetButton(joy, joy_sdl(JOY_MENU)));
 #ifdef PLATFORM_ZERO40
 	touch_reset();
+#ifdef __linux__
+	touch_drop();
+#endif
 #endif
 #ifdef __linux__
 	{

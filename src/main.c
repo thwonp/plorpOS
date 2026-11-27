@@ -22153,14 +22153,23 @@ static run_choice native_menu(void *ctx)
 	 * held is the switcher: another game ends this one, and launch() starts
 	 * it (plorpos-gl5.3). */
 	g_game_under = true;      /* plorpos-bn9.22 */
-	if (plat_run_menu_why() == GESTURE_SHELF) {
+	/* A swipe from the top is what Select Shortcut says, as SELECT on the
+	 * shelf: Muse+, the switcher (Menu Hold or not), or straight back
+	 * (plorpos-d98.21). */
+	gesture why = plat_run_menu_why();
+	bool top_off = why == GESTURE_TOP && g_sc_select == SC_OFF;
+
+	if (why == GESTURE_TOP) why = g_sc_select == SC_SWITCHER ? GESTURE_RECENTS : GESTURE_MUSE;
+	if (top_off) {
+		/* Select Shortcut off: straight back to the game. */
+	} else if (why == GESTURE_SHELF) {
 #if defined(PLATFORM_ROTATE)
 		g_sw_shelf = true;        /* the swivel: the game ends for the shelf */
 #endif
 		c.choice = RUN_QUIT;
-	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
+	} else if (why == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
 		/* Menu Hold off (plorpos-bn9.13): straight back to the game. */
-	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
+	} else if (why == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
 		/* Muse+ over the game; only a hold goes back to it, as in game_menu. */
 		if (muse_open(a, &st, &c)) {
 			if (want_quit || !a->running) c.choice = RUN_QUIT;
@@ -22168,13 +22177,13 @@ static run_choice native_menu(void *ctx)
 			g_sw_shelf = true;
 			c.choice = RUN_QUIT;
 		}
-	} else if (plat_run_menu_why() == GESTURE_SWITCHER ||
-	           plat_run_menu_why() == GESTURE_RECENTS) {
+	} else if (why == GESTURE_SWITCHER ||
+	           why == GESTURE_RECENTS) {
 		bool powered;
 
 		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
 			c.choice = RUN_QUIT;
-	} else if (plat_run_menu_why() == GESTURE_MUSE) {
+	} else if (why == GESTURE_MUSE) {
 		if (muse_open(a, &st, &c) && (want_quit || !a->running))
 			c.choice = RUN_QUIT;
 	} else if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
@@ -23314,6 +23323,15 @@ static void launch_one(app *a)
 				}
 				if (r == RES_PAUSED) {
 					gesture g = plat_resident_gesture_asked();
+
+					/* A swipe from the top follows Select Shortcut, as in
+					 * native_menu (plorpos-d98.21). */
+					if (g == GESTURE_TOP && g_sc_select == SC_OFF) {
+						plat_resident_line("RESUME");
+						continue;
+					}
+					if (g == GESTURE_TOP)
+						g = g_sc_select == SC_SWITCHER ? GESTURE_RECENTS : GESTURE_MUSE;
 
 					/* A Menu hold or a swipe up follows Menu Hold; the
 					 * swivel's "recents" is always the switcher (bn9.13).

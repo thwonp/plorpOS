@@ -608,8 +608,11 @@ bool plat_resident_sleep_asked(void);
 /* GESTURE_RECENTS: the swivel opened with "recents" - the switcher whatever
  * Menu Hold says, which GESTURE_SWITCHER (a Menu hold, a swipe up) follows
  * (plorpos-bn9.13). */
+/* GESTURE_TOP: a swipe down from the top edge over a game - what Select
+ * Shortcut says, as SELECT on the shelf (plorpos-d98.21); GESTURE_MUSE is
+ * Muse+ whatever it says (the Rotate's swivel). */
 typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU,
-               GESTURE_SHELF, GESTURE_RECENTS } gesture;
+               GESTURE_SHELF, GESTURE_RECENTS, GESTURE_TOP } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30

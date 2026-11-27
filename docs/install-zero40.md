@@ -81,6 +81,8 @@ Touch works on the shelves and in the menus:
 | tap | selects what is under it; tap again for A |
 | swipe | moves along the shelf or the list |
 | swipe in from the left or right edge | Back |
+| swipe down from the top edge | Muse+ (or what Select Shortcut says), also in a game |
+| swipe up from the bottom edge | Recent games (or what Menu Hold says), also in a game |
 | hold | Favorite (Y) |
 | two-finger tap | Game details (X) |
 | three-finger tap | Menu |

@@ -111,8 +111,8 @@ Both screens are touchscreens. The one plorpOS is on does what the buttons do:
 | tap | selects what is under it; A on the selected item |
 | swipe | the d-pad (a longer swipe moves further, a flick coasts) |
 | swipe in from the left or right edge | B (back) |
-| swipe down from the top edge | Muse+ |
-| swipe up from the bottom edge | Recent games |
+| swipe down from the top edge | Muse+ (or what Select Shortcut says) |
+| swipe up from the bottom edge | Recent games (or what Menu Hold says) |
 | long press | Y on what is under it (favorite a game) |
 | two-finger tap | X on what is under it (a game's info) |
 | three-finger tap | Menu |

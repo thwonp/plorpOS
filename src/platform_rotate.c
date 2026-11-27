@@ -718,7 +718,7 @@ gesture gesture_read(void)
 			if (g_tight && plat_now_ms() - gs.t0 > GESTURE_TIGHT_MS) gs.edge = 0;
 			else if (in >= GESTURE_IN_PX) {
 				gs.fired = true;
-				out = gs.edge > 0 ? GESTURE_MUSE : GESTURE_SWITCHER;
+				out = gs.edge > 0 ? GESTURE_TOP : GESTURE_SWITCHER;
 			}
 		}
 		if (gs.up_pending) { gs.up_pending = false; gs.on = false; }

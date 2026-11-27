@@ -233,10 +233,16 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
 	/* plorpos-bn9.12: SELECT where it opened Muse+ - Muse+, the game switcher,
 	 * or nothing. */
+	/* plorpos-bn9.13: MENU held - the switcher, Muse+ from anywhere, a game
+	 * included, or nothing. On a touch panel the edge swipes follow the two:
+	 * from the top as SELECT, from the bottom as the hold (plorpos-d98.21). */
+#if defined(PLATFORM_ROTATE) || defined(PLATFORM_RGDS) || defined(PLATFORM_ZERO40)   /* UI_TOUCH */
+	out[ST_SELECT]   = (menu_row){ "Select Shortcut (Top Swipe)", sys_menu_sc_label(u->sc_select), true };
+	out[ST_HOLD]     = (menu_row){ "Menu Hold (Bottom Swipe)", sys_menu_sc_label(u->sc_hold), true };
+#else
 	out[ST_SELECT]   = (menu_row){ "Select Shortcut", sys_menu_sc_label(u->sc_select), true };
-	/* plorpos-bn9.13: MENU held (a swipe up on the Rotate) - the switcher,
-	 * Muse+ from anywhere, a game included, or nothing. */
 	out[ST_HOLD]     = (menu_row){ "Menu Hold", sys_menu_sc_label(u->sc_hold), true };
+#endif
 #if defined(PLATFORM_ROTATE)
 	{
 		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping
