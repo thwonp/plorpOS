@@ -80,6 +80,7 @@
 #include <signal.h>
 #include <spawn.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24729,11 +24730,37 @@ static void build_muse_shelf(app *a, bool bg)
 }
 
 /* `bg`: Muse's library may still be being read on return - see muse_walk. */
+/* The scan's per-system log lines, gathered and written once: stderr is the
+ * log on the card, and on the Brick's sync-mounted FAT32 card each of ~40
+ * unbuffered lines was its own synchronous write - 0.8 s of the boot scan
+ * against nothing on exFAT (plorpos-act.7). Same lines, one write. */
+typedef struct { char buf[16384]; size_t len; } scanlog;
+
+static void scanlog_flush(scanlog *l)
+{
+	if (l->len) fwrite(l->buf, 1, l->len, stderr);
+	l->len = 0;
+}
+
+static void scanlog_add(scanlog *l, const char *fmt, ...)
+{
+	va_list ap;
+	int n;
+
+	if (sizeof l->buf - l->len < 1024) scanlog_flush(l);
+	va_start(ap, fmt);
+	n = vsnprintf(l->buf + l->len, sizeof l->buf - l->len, fmt, ap);
+	va_end(ap);
+	if (n > 0) l->len += (size_t)n < sizeof l->buf - l->len ? (size_t)n : sizeof l->buf - l->len - 1;
+}
+
 static void scan_all(app *a, bool bg)
 {
+	scanlog sl = { .len = 0 };
+
 	/* Where the scan's time goes, one line at the end: lib_scan (directory
 	 * reads), titles_apply (names, art lookups), the rest. */
-	Uint32 t_lib = 0, t_titles = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
+	Uint32 t_lib = 0, t_titles = 0, t_adds = 0, t_rest = 0, t0 = SDL_GetTicks(), t1;
 
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
@@ -24754,8 +24781,10 @@ static void scan_all(app *a, bool bg)
 			             strcmp(core, "fbneo") && strncmp(core, "fbalpha2012", 11) && strcmp(core, "mame2000") ? NULL : fbneo_dat(), map);
 		}
 		t_titles += SDL_GetTicks() - t1;
+		t1 = SDL_GetTicks();
 		splore_add(&a->sys.systems[i], &v->list);
 		portmaster_add(&a->sys.systems[i], &v->list);
+		t_adds += SDL_GetTicks() - t1;
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
@@ -24769,7 +24798,7 @@ static void scan_all(app *a, bool bg)
 				lib_free(&v->list);
 			}
 		}
-		fprintf(stderr, "scan: %-16s %d game%s\n", a->sys.systems[i].folder,
+		scanlog_add(&sl, "scan: %-16s %d game%s\n", a->sys.systems[i].folder,
 		        v->list.count, v->list.count == 1 ? "" : "s");
 		/* What was left out, and what the folder takes, so a game that is
 		 * on the card and not on the shelf has its reason in the log. */
@@ -24784,18 +24813,19 @@ static void scan_all(app *a, bool bg)
 				snprintf(names + at, sizeof names - at, "%s\"%s\"", k ? ", " : "",
 				         v->list.skipped_eg[k]);
 			}
-			fprintf(stderr, "scan: %-16s left out %d (it takes %s): %s%s\n",
+			scanlog_add(&sl, "scan: %-16s left out %d (it takes %s): %s%s\n",
 			        a->sys.systems[i].folder, v->list.skipped,
 			        a->sys.systems[i].exts[0] ? a->sys.systems[i].exts : "anything",
 			        names, v->list.skipped > shown ? ", and more" : "");
 		}
 	}
+	scanlog_flush(&sl);
 	t_rest = SDL_GetTicks();
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
 	build_muse_shelf(a, bg);
-	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, shelves %u ms, total %u ms\n",
-	        t_lib, t_titles, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
+	fprintf(stderr, "scan: time: lib_scan %u ms, titles %u ms, splore+ports %u ms, shelves %u ms, total %u ms\n",
+	        t_lib, t_titles, t_adds, (unsigned)(SDL_GetTicks() - t_rest), (unsigned)(SDL_GetTicks() - t0));
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the

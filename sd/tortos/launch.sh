@@ -77,8 +77,12 @@ leds_off() {
 	echo 0 > /sys/class/led_anim/max_scale_f1f2 2> /dev/null
 	# Only lit channels: a burst of raw writes overflows the LED controller, and
 	# on the Brick Pro that starves the stick chip's i2c bus until the kernel
-	# panics (TortOS-pky.9).
-	for f in /sys/class/leds/sunxi_led*/brightness; do [ "$(cat "$f" 2> /dev/null)" = 0 ] || echo 0 > "$f" 2> /dev/null; done
+	# panics (TortOS-pky.9). `read`, not $(cat): a fork per LED was 0.6 s of
+	# every boot across the 69 channels (plorpos-act.7).
+	for f in /sys/class/leds/sunxi_led*/brightness; do
+		v=; read v < "$f" 2> /dev/null
+		[ "$v" = 0 ] || echo 0 > "$f" 2> /dev/null
+	done
 }
 
 # Apply the configured brightness now, so the boot picture is not dimmer than
