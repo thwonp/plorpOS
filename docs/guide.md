@@ -386,7 +386,7 @@ the shelf opens Muse+ on its tabs (below), on the album that is playing if one
 is. SELECT opens it too: Now Playing when something is playing or paused, and
 otherwise the tabs. A on an album opens its tracks. MENU, anywhere in
 Muse+, has the album count, Source, Sort By, Playback Settings (not on the
-Miyoo Mini Flip), UI Settings and the Source's own settings. **UI Settings**
+Miyoo Mini Flip), UI Settings, the Source's own settings and Hotkeys. **UI Settings**
 holds Tab Settings, Now-Playing Layout and Visible Sources. **Local Music
 Settings** holds Album Art (below) and Rescan Folder, for music copied on
 while the device was running; **Local Books Settings** holds Rescan Folder.
@@ -508,7 +508,7 @@ Audiobookshelf).
 the title on up to two lines, with the cover and the progress bar under them.
 `Original` keeps the words beside the cover, sliding when they are too long.
 
-**Hotkeys** in Playback Settings lists Play/Pause, Skip Forward, Skip
+**Hotkeys** in Muse+'s menu lists Play/Pause, Skip Forward, Skip
 Backward, Next Track and Previous Track, each with its buttons. Press **A**
 on one, then L1, R1, L2, R2, a D-pad direction or a stick direction to add
 it (B cancels); a button belongs to one action at a time, so it moves from
@@ -530,7 +530,7 @@ A headset's own buttons are not changed by any of this.
   and the device sleeps, even mid-book. Now Playing shows the minutes left
   ("Sleep 23m"). A game stops the countdown, and it starts over at its full
   length when the game closes. Every play or pause starts it over too, unless
-  **Play Resets Sleep Timer** (Playback Settings) is turned off. It is not
+  **Games Reset Sleep Timer** (Playback Settings) is turned off. It is not
   kept across restarts.
 - **Chapters**: an M4B's chapters, or a book's files. A plays from the start
   of the one you pick; the one already playing just carries on. L1/R1 and a

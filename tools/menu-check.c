@@ -639,7 +639,9 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == 6, "six rows with only music (plorpos-935)");
+		ck(mn == 7, "seven rows with only music (plorpos-935, bn9.14)");
+		ck(!strcmp(mrows[mn - 1].label, "Hotkeys") && mrows[mn - 1].live,
+		   "Hotkeys last, out of Playback Settings (plorpos-bn9.14)");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[2].label, "Sort By") && mrows[2].live &&
@@ -687,51 +689,51 @@ static void system_menu(void)
 		m.muse_src = MSRC_BOOKS;
 		m.game_count = 2;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6, "six rows on books");
+		ck(mn == 7, "seven rows on books");
 		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
 		   "how many books");
 		ck(!strcmp(val(&mrows[2]), "Author"), "by author when nothing says otherwise");
 		ck(!strcmp(val(&mrows[1]), "Local Audiobooks"), "Source, on books");
-		ck(!strcmp(mrows[mn - 1].label, "Local Books Settings"), "the card's books: Local Books Settings");
+		ck(!strcmp(mrows[mn - 2].label, "Local Books Settings"), "the card's books: Local Books Settings");
 		for (k = 0; k < mn; k++)
 			ck(strcmp(mrows[k].label, "Album Art") != 0,
 			   "no Album Art on books: MusicBrainz knows records");
 		m.muse_src = MSRC_ABS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
-		   !strcmp(mrows[mn - 1].label, "Audiobookshelf Settings"),
+		ck(mn == 7 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
+		   !strcmp(mrows[mn - 2].label, "Audiobookshelf Settings"),
 		   "Audiobookshelf: its settings after Source");
 		m.muse_src = MSRC_PODCASTS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 5 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
-		   !strcmp(mrows[mn - 1].label, "Podcast Settings"),
+		ck(mn == 6 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
+		   !strcmp(mrows[mn - 2].label, "Podcast Settings"),
 		   "Podcasts: Episodes, its settings after Source");
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[2] == SMM_SORT && ids[3] == SMM_SETTINGS && ids[4] == SMM_UI &&
 			   ids[5] == SMM_LOCAL,
 			   "books alone: the count, Sort By, Source, Playback Settings, UI Settings, Local Books Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[3] == SMM_SETTINGS && ids[4] == SMM_UI && ids[5] == SMM_SRV,
 			   "Plex: no local settings, Plex Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 7 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 8 && ids[1] == SMM_SOURCE &&
 			   ids[4] == SMM_UI && ids[5] == SMM_SRV && ids[6] == SMM_DLQ,
 			   "Jellyfin: Plex's rows - its Settings, then Download Queue");
-			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 6 && ids[3] == SMM_SETTINGS &&
+			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 7 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_UI && ids[5] == SMM_ABS,
 			   "Audiobookshelf: Audiobookshelf Settings after UI Settings");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 5 && ids[0] == SMM_COUNT &&
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 6 && ids[0] == SMM_COUNT &&
 			   ids[1] == SMM_SOURCE && ids[2] == SMM_SETTINGS && ids[3] == SMM_UI &&
 			   ids[4] == SMM_POD,
 			   "Podcasts: no Sort By, Podcast Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_SRV &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 8 && ids[5] == SMM_SRV &&
 			   ids[6] == SMM_DLQ,
 			   "Plex downloading: Download Queue right after Plex Settings (ps8.8)");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 6 && ids[5] == SMM_DLQ,
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 7 && ids[5] == SMM_DLQ,
 			   "Podcasts downloading: Download Queue after Podcast Settings");
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 6,
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 7,
 			   "a card's own books: no Download Queue, whatever is said");
 		}
 	}

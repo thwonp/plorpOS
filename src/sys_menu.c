@@ -48,6 +48,9 @@ int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
 	if (dlq && remote) out[n++] = SMM_DLQ;
+	/* On the Flip too: Now Playing's hotkeys work there, and Playback
+	 * Settings, where the row was, is not (plorpos-bn9.14). */
+	out[n++] = SMM_HOTKEYS;
 	return n;
 }
 
@@ -111,6 +114,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_SETTINGS:
 					out[k] = (menu_row){ "Playback Settings", NULL, true };
+					break;
+				case SMM_HOTKEYS:
+					out[k] = (menu_row){ "Hotkeys", NULL, true };
 					break;
 				}
 			return n;

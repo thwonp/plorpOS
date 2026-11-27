@@ -170,7 +170,9 @@ typedef enum { SR_CORE, SR_DISPLAY, SR_SHADER, SR_HOTKEYS, SR_PALETTE, SR_TURBO,
  * and the Source's own settings - a card Source's Album Art and Rescan Folder
  * are behind Local Music Settings / Local Books Settings (SMM_LOCAL). */
 typedef enum { SMM_COUNT, SMM_SOURCE, SMM_SORT, SMM_SETTINGS, SMM_UI, SMM_LOCAL,
-               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
+               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ,
+               SMM_HOTKEYS /* always last, from Playback Settings (plorpos-bn9.14) */
+} sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
  * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan

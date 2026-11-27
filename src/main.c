@@ -1960,7 +1960,7 @@ static void sleep_timer_game(bool on)
 	if (!on && g_sleep_held) { g_sleep_held = false; sleep_timer_arm(); }
 }
 
-/* Playback Settings' Play Resets Sleep Timer (i8d.6): a play or a pause
+/* Playback Settings' Games Reset Sleep Timer (i8d.6): a play or a pause
  * starts the countdown over. */
 static void sleep_timer_on_state(mu_state st)
 {
@@ -11229,7 +11229,7 @@ enum { PS_WAKE, PS_SCREEN_OFF,
 #if !defined(PLATFORM_MIYOO)
        PS_PAUSE_DELAY,
 #endif
-       PS_LOCK, PS_SLEEPRESET, PS_REWIND, PS_HOTKEYS, PS_COUNT };
+       PS_LOCK, PS_SLEEPRESET, PS_REWIND, PS_COUNT };
 
 static int muse_set_build(void *ctx, menu_row *rows, int max,
                           const char **heading)
@@ -11260,7 +11260,7 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	rows[PS_LOCK] = (menu_row){ "Sleep Button Lock",
 	                      muse_hold() ? "On" : "Off", true };
 	/* A play or a pause starts a book's Sleep Timer over (owner, i8d.6). */
-	rows[PS_SLEEPRESET] = (menu_row){ "Play Resets Sleep Timer",
+	rows[PS_SLEEPRESET] = (menu_row){ "Games Reset Sleep Timer",
 	                      db_get_int(db_dev(), "muse.sleepreset", 1) ? "On" : "Off", true };
 	/* Auto Rewind (owner, plorpos-5eq.4): books and podcasts; on a music
 	 * Source the row is there, off and not to be changed. */
@@ -11268,11 +11268,11 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 		rows[PS_REWIND] = (menu_row){ "Auto Rewind", "Off", false };
 	else
 		rows[PS_REWIND] = (menu_row){ "Auto Rewind", auto_rewind_on() ? "On" : "Off", true };
-	rows[PS_HOTKEYS] = (menu_row){ "Hotkeys", NULL, true };   /* Now-Playing Layout: UI Settings (plorpos-935) */
+	/* Now-Playing Layout: UI Settings (plorpos-935); Hotkeys: Muse+'s menu (bn9.14) */
 	return PS_COUNT;
 }
 
-/* Hotkeys, from Playback Settings (owner, plorpos-5eq.6, .26): a row an
+/* Hotkeys, from Muse+'s menu (plorpos-bn9.14; was Playback Settings) (owner, plorpos-5eq.6, .26): a row an
  * action, listing its buttons. A records one more: the row asks for a button
  * and the next L1/R1/L2/R2, D-pad or stick press is the action's, taken off
  * whichever action had it (storage stays a button's action). X clears the
@@ -11474,7 +11474,6 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "muse.autorewind", g_auto_rewind);
 		musec_set_auto_rewind(g_auto_rewind);
 	}
-	if (sel == PS_HOTKEYS && key == IN_ACCEPT) muse_hotkeys_screen(a);
 	return MENU_STAY;
 }
 
@@ -13844,6 +13843,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 				if (id == SMM_ABS) return abs_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_POD) return pod_settings_screen(a) ? MENU_DONE : MENU_STAY;
 				if (id == SMM_DLQ) { muse_dlq_screen(a); return MENU_STAY; }
+				if (id == SMM_HOTKEYS) { muse_hotkeys_screen(a); return MENU_STAY; }
 				return MENU_STAY;
 			}
 		}
