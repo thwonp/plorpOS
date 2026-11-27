@@ -150,6 +150,11 @@ elif [ "$PLATFORM" = zero40 ] || [ "$PLATFORM" = zero28 ]; then
 	cp "$OB/dropbearmulti" "$P/"          # ssh: oakMOSS has no server (sd/oakmoss/ssh.sh)
 	[ -f "$OB/curl" ] || { echo "no $OB/curl; run mk/build-curl-zero40.sh" >&2; exit 1; }
 	cp "$OB/curl" "$P/"                   # oakMOSS has no curl: net.c finds this one beside cacert.pem
+	if [ "$PLATFORM" = zero40 ]; then     # Bluetooth (plorpos-auv.6); the Zero 28 has no antenna
+		cp "$B/btplayer" "$P/"            # a headset's volume reports and buttons (tools/btplayer.c)
+		cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # one ALSA PCM per bonded headset, as on the Brick
+		cp "$ROOT/sd/oakmoss/uinput.ko" "$P/" # headset buttons: the kernel has no uinput (radio.sh)
+	fi
 	mkdir -p "$P/usb-audio"               # USB DACs: oakMOSS ships no USB audio modules, launch.sh loads these (plorpos-czp)
 	cp "$ROOT/sd/oakmoss/usb-audio/"*.ko "$P/usb-audio/"
 	mkdir -p "$OUT/.tmp_update"
@@ -365,6 +370,7 @@ gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; echo "no release zip: ROCKNIX GKD is development only (plorpos-qylg)"; exit 0 ;;
 zero40|zero28) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
+      [ -f "$P/btplayer" ] && chmod +x "$P/btplayer"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
       echo "release zip:  $ZIP  ($(du -h "$ZIP" | cut -f1))"; exit 0 ;;
