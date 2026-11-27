@@ -25685,6 +25685,10 @@ static void muse_on_secondary(app *a, void (*tick)(void))
  * these (plorpos-rgds.33.3), and the loop that would see it is under them. */
 static void sec_session_poll(void)
 {
+	/* The game being played is not idleness: its buttons are its own and
+	 * never reach this clock, which ran out under a game and turned the
+	 * screens off (or slept) mid-play. Diatom keeps the game's own. */
+	if (g_rgds_app) g_rgds_app->idle.since_ms = plat_now_ms();
 	sec_tick_run();
 	if (g_sec_tick != on_game_tick) return;
 	plat_resident_levels();            /* a level set in the game: its bar here (rgds.28) */
