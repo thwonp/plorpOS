@@ -1532,10 +1532,11 @@ void plat_input_poll(in_state *st)
 		for (int b = 0; b < IN_COUNT; b++) {
 			/* Home is half of brightness (Home + volume): not a press. */
 			if (!ps.pressed[b] || st->pressed[b] || b == IN_HOME) continue;
-			/* Beside a game the pad is the game's: Quick Settings and the
-			 * switcher stay up through play, and only Menu (the in-game
-			 * menu) ends them (plorpos-rgds.33.3). Muse ends on any. */
-			if (b_game && b_close_key == IN_MENU && b != IN_MENU) continue;
+			/* Beside a game the pad is the game's: what runs on the
+			 * secondary - Muse, Quick Settings, the switcher - stays up
+			 * through play, and only Menu (the in-game menu) ends it
+			 * (plorpos-rgds.33.3, owner). */
+			if (b_game && b != IN_MENU) continue;
 			b_pad_again[b] = true;
 			b_primary_tap = true;
 		}

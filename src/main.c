@@ -24509,6 +24509,8 @@ static void muse_textures_forget(app *a)
 	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
 }
 
+static void sec_session_poll(void);
+
 static void muse_on_secondary(app *a, void (*tick)(void))
 {
 	SDL_Renderer *was = a->r, *r;
@@ -24534,7 +24536,10 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	}
 	fprintf(stderr, "muse: on the secondary%s (%u ms to switch)\n", tick ? " beside a game" : "",
 	        SDL_GetTicks() - t0);
+	/* The pad does not end it beside a game: the game ending or pausing does. */
+	if (tick) plat_bottom_poll_hook(sec_session_poll);
 	muse_open(a, NULL, NULL);
+	plat_bottom_poll_hook(NULL);
 	g_sec_tick = NULL;
 	shot_phase = ph;
 	g_muse_sec = false;
