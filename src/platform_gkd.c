@@ -363,6 +363,10 @@ static bool b_game;                       /* the session is beside a running gam
 static void (*b_want_fn)(void);           /* opens Muse there: plat_bottom_on_want */
 static float b_drag, b_ly;                /* the queue's drag: px moved, last y */
 static bool b_primary_tap;                /* the primary touched during a session */
+/* What ends a session for its screen: SELECT for Muse; MENU for the others
+ * (switcher, Quick Settings), which unwinds every menu they opened - in
+ * those SELECT is Muse (plorpos-rgds.33.3). */
+static in_button b_close_key = IN_SELECT;
 /* Focus follows the finger (plorpos-rgds.18.3.7): a finger landing on the
  * panel that is not live asks for the switch, and its events so far are kept
  * here and handed to the touch engine on the other side once it is live -
@@ -391,6 +395,7 @@ static void held_give(float w, float h)
 static void bottom_touch(const SDL_Event *e);
 
 void plat_bottom_keep(bool on) { b_keep = on; }
+void plat_bottom_close_key(in_button b) { b_close_key = b; }
 
 /* Edge swipes on the secondary (plorpos-rgds.33.4), whatever it shows: down
  * from its top edge is Muse+ on or off, up from its bottom edge the recent
@@ -1465,6 +1470,8 @@ static void swap_tick(void)
 void plat_input_poll(in_state *st)
 {
 #ifdef PLATFORM_RGDS
+	bool end;
+
 	if (swap_req) { swap_req = false; swap_primary(); }
 	/* A finger on the secondary's resting Muse, from any screen's loop - a
 	 * menu, the in-game menu (plorpos-rgds.18.3.8): Muse opens there now,
@@ -1550,12 +1557,16 @@ void plat_input_poll(in_state *st)
 		/* No switcher from Muse on the secondary: a game it opened would
 		 * start with the launcher on the wrong panel. */
 		st->pressed[IN_SWITCHER] = false;
-		if (b_primary_tap) st->pressed[IN_SELECT] = true;
 	}
+	end = b_session && b_primary_tap;
 	b_primary_tap = false;
 #endif
 #endif
 	menu_filter(st);
+#ifdef PLATFORM_RGDS
+	/* After the filter, which takes a MENU on its press away. */
+	if (end) st->pressed[b_close_key] = true;
+#endif
 	plat_sink_follow(false);
 }
 

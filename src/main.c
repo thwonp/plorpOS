@@ -4271,9 +4271,6 @@ static void muse_queue_tick(void);
 /* Muse open on the secondary beside a game: that game's tick, run from Muse's
  * own loop meanwhile (plorpos-rgds.18.3.5). NULL on the shelf. */
 static void (*g_sec_tick)(void);
-/* The switcher runs there too (plorpos-rgds.33.4): SELECT, which a press on
- * the primary becomes, closes it rather than opening Muse. */
-static bool g_sw_sec;
 
 static void sec_tick_run(void)
 {
@@ -14015,7 +14012,6 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 		if (a->in.quit_requested) break;
 #if defined(PLATFORM_RGDS)
 		sec_tick_run();          /* on the secondary beside a game: its duties */
-		if (g_sw_sec && a->in.pressed[IN_SELECT]) { done = -1; continue; }
 #endif
 		{
 			int hint = ui_hit_take();   /* a footer hint tapped: its button */
@@ -24560,6 +24556,7 @@ static bool sec_begin(app *a, void (*tick)(void), sec_sess *ss)
 	a->r = r;
 	SDL_RenderSetScale(r, plat_scale(), plat_scale());
 	ui_hit_set(1);
+	plat_bottom_close_key(IN_MENU);   /* not SELECT: in these screens that is Muse */
 	plat_bottom_session(true, tick != NULL);
 	if (tick) { g_sec_tick = tick; shot_phase = 0; plat_input_flush(); }
 	return true;
@@ -24567,6 +24564,8 @@ static bool sec_begin(app *a, void (*tick)(void), sec_sess *ss)
 
 static void sec_end(app *a, void (*tick)(void), sec_sess *ss)
 {
+	g_menu_closing = false;            /* the MENU that ended it is spent */
+	plat_bottom_close_key(IN_SELECT);
 	g_sec_tick = NULL;
 	shot_phase = ss->ph;
 	ui_hit_set(0);
@@ -24595,10 +24594,8 @@ static void switcher_on_secondary(app *a, void (*tick)(void))
 
 	if (tick && tick != on_game_tick) return;
 	if (!sec_begin(a, tick, &ss)) return;
-	g_sw_sec = true;
 	fprintf(stderr, "switcher: on the secondary%s\n", tick ? " beside a game" : "");
 	picked = switcher_run(a, NULL, tick != NULL, &pk, &powered);
-	g_sw_sec = false;
 	sec_end(a, tick, &ss);
 	if (tick) {
 		const char *tag, *file;
@@ -24699,7 +24696,6 @@ static void qs_on_secondary(app *a, void (*tick)(void))
 	qs_style(a, &q);
 	fprintf(stderr, "quick settings: on the secondary\n");
 	menu_run(a, &q.gm.st, qs_build, qs_key, &q);
-	g_menu_closing = false;
 	sec_end(a, tick, &ss);
 }
 

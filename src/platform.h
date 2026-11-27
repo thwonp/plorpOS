@@ -445,6 +445,8 @@ int  plat_bottom_swipe(void);
 /* An edge swipe on the secondary since the last call (plorpos-rgds.33.4): +1 down
  * from its top edge (Muse+), -1 up from its bottom edge (recent games), 0 none. */
 int  plat_bottom_edge(void);
+/* The press that ends a session on the secondary: IN_SELECT (Muse) unless set. */
+void plat_bottom_close_key(in_button b);
 /* A tap on the bottom panel since the last call, in its pixels (plorpos-rgds.18.1.2). */
 bool plat_bottom_tap(int *x, int *y);
 /* Primary Screen = Bottom: the launcher and single-screen games on the bottom
