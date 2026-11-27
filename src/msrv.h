@@ -237,6 +237,9 @@ void msrv_set_pl_mirror(msrv *m, bool on);
 
 void msrv_set_offline(msrv *m, bool on);
 bool msrv_get_offline(msrv *m);
+/* A connection to the server is known: the last look found one, and no
+ * request through it has failed since. */
+bool msrv_connected(msrv *m);
 bool msrv_signed_in(msrv *m);
 bool msrv_ready(msrv *m);          /* signed in, library chosen */
 const char *msrv_library(msrv *m); /* the library's name, "" before one is chosen */

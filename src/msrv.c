@@ -1845,6 +1845,14 @@ void msrv_set_offline(msrv *m, bool on)
 }
 
 bool msrv_get_offline(msrv *m) { return m->offline; }
+
+bool msrv_connected(msrv *m)
+{
+	char b[256];
+
+	m->o->base_now(b, sizeof b);
+	return b[0] != '\0';
+}
 const char *msrv_name(msrv *m) { return m->o->music; }
 bool msrv_signed_in(msrv *m) { return m->o->signed_in(); }
 bool msrv_ready(msrv *m) { return m->o->ready(); }
