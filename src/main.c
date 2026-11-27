@@ -253,9 +253,10 @@ static float font_size_k(bool head) { return (head ? g_head_size : g_body_size) 
  * so it follows a smaller size but stops at 100%. */
 static float details_size_k(bool head) { float k = font_size_k(head); return k < 1.0f ? k : 1.0f; }
 #endif
-#if defined(PLATFORM_RGDS)
-static unsigned g_face_gen;   /* bumped by a font change: Details draws again */
-#endif
+/* Bumped by a font change: the RG DS's Details draws again, and the lists'
+ * fitted titles and facts are fitted again - kept from the old size, they ran
+ * past the column into the art pane's "1 / 68" (plorpos-bn9.15). */
+static unsigned g_face_gen;
 
 static void font_path(int k, char *out, size_t n)
 {
@@ -276,8 +277,8 @@ static void font_apply(bool head, int k)
 #if defined(PLATFORM_RGDS)
 	/* The second screen's Details too (plorpos-g8i.1), and the size. */
 	details_set_face(head, path, FONTS[k].scale * details_size_k(head));
-	g_face_gen++;
 #endif
+	g_face_gen++;
 }
 #define DMODE_ASPECT 1
 #define DMODE_DS_A   4
@@ -5934,7 +5935,7 @@ static void gl_art_rect(const gl_list *L, SDL_Rect *out, SDL_Texture **tex)
  * the title's hash too, because a list's rows change under the same key (an
  * artist filter, a sort, a playlist edited) and a slot must not outlive the
  * words it was made from. */
-static struct { int key, idx, w; Uint32 h; bool used; char s[192]; } g_gl_fit[64];
+static struct { int key, idx, w; Uint32 h; unsigned gen; bool used; char s[192]; } g_gl_fit[64];
 
 static const char *gl_fit(int key, int idx, const char *title, int w)
 {
@@ -5943,13 +5944,14 @@ static const char *gl_fit(int key, int idx, const char *title, int w)
 
 	for (const unsigned char *p = (const unsigned char *)title; *p; p++) h = (h ^ *p) * 16777619u;
 	if (!g_gl_fit[k].used || g_gl_fit[k].key != key || g_gl_fit[k].idx != idx ||
-	    g_gl_fit[k].w != w || g_gl_fit[k].h != h) {
+	    g_gl_fit[k].w != w || g_gl_fit[k].h != h || g_gl_fit[k].gen != g_face_gen) {
 		ui_fit_text(ui_font(UI_F_LIST), title, g_gl_fit[k].s, sizeof g_gl_fit[k].s, w);
 		g_gl_fit[k].used = true;
 		g_gl_fit[k].key = key;
 		g_gl_fit[k].idx = idx;
 		g_gl_fit[k].w = w;
 		g_gl_fit[k].h = h;
+		g_gl_fit[k].gen = g_face_gen;
 	}
 	return g_gl_fit[k].s;
 }
@@ -6212,7 +6214,7 @@ static bool gl_active(const app *a)
 /* The facts, read once per focused game rather than per frame: one row from
  * the card's games table, kept until the cursor or the shelf moves. Fitted to
  * `w` when read. */
-static struct { int sys, idx, n; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, { "" } };
+static struct { int sys, idx, n; unsigned gen; char line[GL_FACTS][160]; } g_gl_facts = { -1, -1, 0, 0, { "" } };
 
 static void gl_facts(app *a, sysview *v, int idx, int w)
 {
@@ -6220,7 +6222,8 @@ static void gl_facts(app *a, sysview *v, int idx, int w)
 	const system_cfg *gs;
 	int n = 0;
 
-	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx) return;
+	if (g_gl_facts.sys == a->sys_cursor && g_gl_facts.idx == idx && g_gl_facts.gen == g_face_gen) return;
+	g_gl_facts.gen = g_face_gen;
 	g_gl_facts.sys = a->sys_cursor;
 	g_gl_facts.idx = idx;
 	g_gl_facts.n = 0;
@@ -7614,6 +7617,24 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 					 *
 					 * WHICH clock depends on why this row moves, not on what
 					 * is in it. See MQ_FIXED. */
+					ui_text_marquee(a->r, fm, rows[i].value,
+					                content_x + content_w - room, ty, room,
+					                mq_row_phase(i == sel, heading, n, sel), vc);
+				} else {
+					ui_fit_text(fm, rows[i].value, val, sizeof val, room);
+					ui_text(a->r, fm, val, content_x + content_w, ty, 1, vc);
+				}
+			} else if (vw && content_w - (vw + gap) < vw) {
+				/* Two of a size that do not fit together: a setting and its
+				 * value at a big Body Size ("Gamelist Layout", "Detailed
+				 * List"). Neither is the caption, so each gives up its share
+				 * - not the "Gameli..." the rule below gave (plorpos-bn9.15). */
+				int lroom = (content_w - gap) * lw / (lw + vw);
+
+				room = content_w - gap - lroom;
+				ui_fit_text(fm, rows[i].label, lbl, sizeof lbl, lroom);
+				ui_text(a->r, fm, lbl, content_x, ty, -1, lc);
+				if (moves) {   /* the value whole, sliding, on the row picked */
 					ui_text_marquee(a->r, fm, rows[i].value,
 					                content_x + content_w - room, ty, room,
 					                mq_row_phase(i == sel, heading, n, sel), vc);
