@@ -144,6 +144,9 @@ docker run --rm -v "$W:/w:z" -e STRIP="$STRIP" "$IMAGE" sh -euc '
 	done
 	install -m 755 /w/in/fs-resize usr/lib/rocknix/fs-resize
 	M=usr/share/inputplumber/capability_maps/anbernic_rgds.yaml
+	# Only on the broken map: on a fixed one the range never closes and strips
+	# "gamepad:" from every entry after Home (plorpos-rgds.35).
+	grep -q "button: KeyF1" $M && \
 	sed -i "/event_code: BTN_BACK/,/button: KeyF1/{/gamepad:/d;s/        button: KeyF1/      keyboard: KeyF1/}" $M
 	grep -q "keyboard: KeyF1" $M || echo "map: Home was not KeyF1 in this ROCKNIX; left as it is" >&2
 	for d in /w/in/system.d/*.service.d; do

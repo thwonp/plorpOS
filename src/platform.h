@@ -490,6 +490,8 @@ void plat_set_primary_bottom(bool on);
  * new Primary Screen, to keep it. */
 void plat_on_swap(void (*fn)(bool bottom));
 bool rgds_home_held(void);
+/* The lid shut for LID_DWELL_MS (plorpos-rgds.35): true once per close. */
+bool rgds_lid_take(void);
 /* The crash fallback's Diatom, run alone: its window onto the primary
  * (plorpos-rgds.34). From that run's tick. */
 void plat_rgds_alone_tick(void);

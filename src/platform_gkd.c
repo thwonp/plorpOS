@@ -893,6 +893,8 @@ static bool home_down;
  * otherwise a one-poll press on release (anb_pulse: up the next poll). */
 static bool anb_down, anb_sent, anb_spent, anb_pulse;
 static bool swap_req;     /* Anbernic + Home: the screens' swap, at the next poll (rgds.33.2) */
+static int fd_hall = -1;  /* gpio-keys-hall: the lid (rgds.35) */
+static bool lid_up;       /* the lid's POWER tap: up at the next poll */
 static bool bright_top;   /* the next brightness press is the top panel's (Anbernic) */
 #endif
 /* The d-pad and the stick each keep their own state, so letting go of one
@@ -954,6 +956,9 @@ bool plat_input_init(void)
 	/* Read though logind is reading it too: launch.sh's inhibitor only stops
 	 * logind acting on it. */
 	if (fd_power < 0) fd_power = evdev_open("rk805 pwrkey");
+#ifdef PLATFORM_RGDS
+	if (fd_hall < 0) fd_hall = evdev_open("gpio-keys-hall");
+#endif
 	return true;
 }
 
@@ -1340,6 +1345,50 @@ static void power_read(in_state *st)
 }
 
 #ifdef PLATFORM_RGDS
+/* The lid (plorpos-rgds.35). ROCKNIX's logind suspended on the hall sensor's
+ * every close, and it reports one by itself now and then: "Lid closed.
+ * Suspending... Lid opened." within a second, mid-game. launch.sh now keeps
+ * the lid from logind too, and a close counts here only once the lid has
+ * read closed for LID_DWELL_MS - then it is a POWER tap, as the H700 SPs'
+ * lid is. Read as a level every 100 ms, not as events: a blip between two
+ * reads is never seen at all. Closed at the first read: the baseline, so a
+ * unit started shut does not sleep by itself. */
+#define LID_DWELL_MS 1000u
+static bool lid_fire;              /* fired, not yet taken */
+
+static void lid_watch(void)
+{
+	static unsigned next, since;
+	static int first = 1;
+	static bool spent;             /* this close has fired; wait for it to open */
+	unsigned long sw[SW_MAX / (8 * sizeof(unsigned long)) + 1] = { 0 };
+	unsigned now = plat_now_ms();
+	bool closed;
+
+	if (fd_hall < 0 || (int)(now - next) < 0) return;
+	next = now + 100;
+	closed = ioctl(fd_hall, EVIOCGSW(sizeof sw), sw) >= 0 &&
+	         (sw[SW_LID / (8 * sizeof sw[0])] >> (SW_LID % (8 * sizeof sw[0])) & 1);
+	if (first) { first = 0; spent = closed; }
+	if (!closed) { since = 0; spent = false; return; }
+	if (spent) return;
+	if (!since) { since = now ? now : 1; return; }
+	if (now - since < LID_DWELL_MS) return;
+	spent = true;
+	lid_fire = true;
+	fprintf(stderr, "lid: closed %u ms, sleep\n", now - since);
+}
+
+bool rgds_lid_take(void)
+{
+	lid_watch();
+	if (!lid_fire) return false;
+	lid_fire = false;
+	return true;
+}
+#endif
+
+#ifdef PLATFORM_RGDS
 /* ---- touch over a game: edge swipes from evdev (plorpos-rgds.24.3) -------
  *
  * As the RG Rotate's (platform_rotate.c): during a game the launcher's window
@@ -1599,6 +1648,14 @@ void plat_input_poll(in_state *st)
 	} else
 #endif
 	power_read(st);
+#ifdef PLATFORM_RGDS
+	/* The lid: a POWER tap, down now and up at the next poll. Beside a game
+	 * the game loop's, as power is: the session ends and it is taken there. */
+	if (lid_up) { set_btn(st, IN_POWER, false); lid_up = false; }
+	lid_watch();
+	if (lid_fire && b_session && b_game) b_primary_tap = true;
+	else if (rgds_lid_take()) { set_btn(st, IN_POWER, true); lid_up = true; }
+#endif
 #ifdef PLATFORM_RGDS
 	touch_poll(st);      /* before menu_filter: three fingers are a Menu tap */
 #ifdef PLATFORM_RGDS

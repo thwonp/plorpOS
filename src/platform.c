@@ -863,7 +863,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (ev.value == 1) lv_press(&hold, fd_lv, ev.code, levels_alt(), d);
 			else if (ev.value == 0) lv_release(&hold, fd_lv, ev.code);
 		}
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_RGDS)
 		bool lid_tap = false;
 #endif
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
@@ -893,7 +893,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				lid_tap = true;
 #endif
 		}
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_RGDS)
+		lid_tap = rgds_lid_take();       /* the hall, debounced (plorpos-rgds.35) */
+#endif
+#if defined(PLATFORM_H700) || defined(PLATFORM_RGDS)
 		/* A closed lid is a POWER tap: down, and up on the call below. Not
 		 * in the music dark, where a tap wakes (plorpos-5tm.21). */
 #if defined(PLATFORM_ROTATE)
@@ -2584,7 +2587,7 @@ static int diatom_wait(void)
 #ifdef __linux__
 		{
 			struct input_event ev;
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_H700) || defined(PLATFORM_RGDS)
 			bool lid_tap = false;
 #endif
 			while (fd_power >= 0 &&
@@ -2607,7 +2610,10 @@ static int diatom_wait(void)
 			    d_gesture_asked == GESTURE_NONE)
 				sw_swipe = swivel_in_game(&lid_tap);
 #endif
-#if defined(PLATFORM_H700)
+#if defined(PLATFORM_RGDS)
+			lid_tap = rgds_lid_take();   /* the hall, debounced (plorpos-rgds.35) */
+#endif
+#if defined(PLATFORM_H700) || defined(PLATFORM_RGDS)
 			/* A closed lid is a POWER tap here too, as on the shelf and in a
 			 * one-shot child: down, and up on the call below (plorpos-31p). */
 			if (lid_tap && !sent_stop && !pwr_down) plat_power_tap_or_hold(true);

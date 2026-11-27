@@ -15,12 +15,13 @@ FALLBACK=/run/plorpos-fallback
 # are in the profile.d files it sources.
 . /etc/profile
 
-# plorpOS decides what the power and sleep keys do (gkd.7), so logind must
+# plorpOS decides what the power and sleep keys do (gkd.7), and the lid
+# (rgds.35: logind suspended on the hall sensor's every blip), so logind must
 # not suspend under it. Held for the whole script, restarts included, and
 # released on the way to ES.
 if [ -z "$PLORPOS_INHIBITED" ]; then
 	export PLORPOS_INHIBITED=1
-	exec systemd-inhibit --what=handle-power-key:handle-suspend-key:handle-hibernate-key \
+	exec systemd-inhibit --what=handle-power-key:handle-suspend-key:handle-hibernate-key:handle-lid-switch \
 		--mode=block --who=plorpOS --why="plorpOS handles the power key" \
 		/bin/sh "$0"
 fi

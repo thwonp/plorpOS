@@ -3,8 +3,11 @@
 # unimplemented button: KeyF1", ROCKNIX 20261101), so the key does nothing. It
 # is a keyboard key: the same map with that one target corrected, written to
 # /run and bound over the read-only original. plorpOS reads F1 from
-# InputPlumber's keyboard as Home (src/platform_gkd.c, plorpos-rgds.3). A
-# ROCKNIX that fixes its map leaves the sed with nothing to change.
+# InputPlumber's keyboard as Home (src/platform_gkd.c, plorpos-rgds.3).
+# Only while the map still says "button: KeyF1": on a map already right (the
+# plorpOS image patches it, mk/rgds-image.sh) the sed's range never closed and
+# took "gamepad:" off every entry after it - the Anbernic key (Guide) and the
+# sticks went dead (plorpos-rgds.35, 2026-11-27).
 #
 # Its own unit, not an ExecStartPre of inputplumber.service: that unit has
 # ProtectSystem=, and a mount made inside its namespace is gone before
@@ -16,4 +19,4 @@ Before=inputplumber.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'umount /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml 2>/dev/null; sed "/event_code: BTN_BACK/,/button: KeyF1/{/gamepad:/d;s/        button: KeyF1/      keyboard: KeyF1/}" /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml > /run/plorpos-rgds-map.yaml && mount --bind /run/plorpos-rgds-map.yaml /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml'
+ExecStart=/bin/sh -c 'umount /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml 2>/dev/null; grep -q "button: KeyF1" /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml || exit 0; sed "/event_code: BTN_BACK/,/button: KeyF1/{/gamepad:/d;s/        button: KeyF1/      keyboard: KeyF1/}" /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml > /run/plorpos-rgds-map.yaml && mount --bind /run/plorpos-rgds-map.yaml /usr/share/inputplumber/capability_maps/anbernic_rgds.yaml'
