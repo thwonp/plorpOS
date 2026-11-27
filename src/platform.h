@@ -337,9 +337,27 @@ void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its
- * defaults. Setting it persists it and, mid-game, resends the map at once. */
+ * defaults. Setting it persists it; the shelf's default since plorpos-bn9.4,
+ * so it no longer reaches a running game (plat_live_keys_set does). */
 const char *plat_btnmap(const char *tag);
 void        plat_btnmap_set(const char *tag, const char *spec);
+
+/* Save Per-Game Overrides (plorpos-bn9.4), Game Settings: on, a change made
+ * in a game is kept as that game's own; off, it lasts the session. A saved
+ * one applies either way. db_dev "saveoverrides", default on. */
+bool        plat_save_overrides(void);
+
+/* One game's own hotkeys and Button Mapping (plorpos-bn9.4), keyed on the
+ * rom's file name: the game's when it has them (returns true), else the
+ * shelf's. Set writes both, a full copy; clear goes back to the shelf's. */
+bool        plat_game_keys(const char *tag, const char *file, char *hk, size_t hkn,
+                           char *bm, size_t bmn);
+void        plat_game_keys_set(const char *tag, const char *file, const char *hk, const char *bm);
+void        plat_game_keys_clear(const char *tag, const char *file);
+/* The running game's, as resolved at RUN; set sends both to it at once and,
+ * with `save`, keeps them as its own. */
+void        plat_live_keys(const char **hk, const char **bm);
+void        plat_live_keys_set(const char *hk, const char *bm, bool save);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the

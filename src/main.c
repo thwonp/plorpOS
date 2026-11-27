@@ -13242,6 +13242,92 @@ static void shelf_resort(app *a, int sys)
 	cf_reset(&v->cf, v->cursor);
 }
 
+/* Turbo Assignments (plorpos-bn9.4): what the Turbo Assign hotkey sets in a
+ * game, as a list - one row per host button, the turbo it fires or None. A
+ * shelf's default (turbomap.<TAG>, from <Shelf> Defaults) or one game's own
+ * (turbomap.<TAG>/<file>, from its Game Overrides), the format the platform
+ * reads at RUN. Saved on every change; a game's first change makes a full copy
+ * of the shelf's. No game is running here, so nothing is sent. */
+typedef struct { app *a; const char *tag, *file; int t[BM_SRC_N]; bool own; char v[BM_SRC_N][12]; } te_ctx;
+
+static void te_key(char *k, size_t n, const char *tag, const char *file)
+{
+	const char *b = file ? strrchr(file, '/') : NULL;
+
+	if (file) snprintf(k, n, "turbomap.%s/%s", tag, b ? b + 1 : file);
+	else      snprintf(k, n, "turbomap.%s", tag);
+}
+
+static void te_load(te_ctx *c)
+{
+	char key[LIB_PATH + 48], v[96];
+
+	te_key(key, sizeof key, c->tag, c->file);
+	c->own = c->file && db_get_str(db_lib(), key, v, sizeof v, NULL);
+	if (!c->own) {
+		te_key(key, sizeof key, c->tag, NULL);
+		db_get_str(db_lib(), key, v, sizeof v, "");
+	}
+	bm_turbo_parse(v, c->t);
+}
+
+static void te_save(te_ctx *c)
+{
+	char key[LIB_PATH + 48], v[96];
+	int n = bm_turbo_format(c->t, v, sizeof v);
+
+	te_key(key, sizeof key, c->tag, c->file);
+	if (c->file) { db_set_str(db_lib(), key, v); c->own = true; }   /* "" is the game's none */
+	else if (n)  db_set_str(db_lib(), key, v);
+	else         db_del(db_lib(), key);
+}
+
+static int te_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	te_ctx *c = ctx;
+	int i, n = 0;
+
+	(void)max;
+	*heading = "Turbo Assignments";
+	for (i = 0; i < BM_SRC_N; i++) {
+		snprintf(c->v[i], sizeof c->v[i], "Turbo %s", c->t[i] ? BM_SRC_LABEL[c->t[i] - 1] : "");
+		rows[n++] = (menu_row){ BM_SRC_LABEL[i], c->t[i] ? c->v[i] : "None", true };
+	}
+	if (c->file) rows[n++] = (menu_row){ "Use Shelf Default", NULL, c->own };
+	return n;
+}
+
+static menu_result te_key_fn(app *a, void *ctx, in_button key, int sel)
+{
+	te_ctx *c = ctx;
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+
+	(void)a;
+	if (!d) return MENU_STAY;
+	if (sel >= 0 && sel < BM_SRC_N) {
+		c->t[sel] = (c->t[sel] + d + BM_SRC_N + 1) % (BM_SRC_N + 1);
+		te_save(c);
+	} else if (sel == BM_SRC_N && key == IN_ACCEPT && c->file) {
+		char k[LIB_PATH + 48];
+
+		te_key(k, sizeof k, c->tag, c->file);
+		db_del(db_lib(), k);
+		te_load(c);
+	}
+	return MENU_STAY;
+}
+
+/* `file` NULL: the shelf's default. */
+static void turbo_screen(app *a, const char *tag, const char *file)
+{
+	te_ctx c = { .a = a, .tag = tag, .file = file };
+
+	te_load(&c);
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .follow_tint = true,
+	                           .fixed_w = menu_std_width(a) },
+	         te_build, te_key_fn, &c);
+}
+
 /* <Shelf> Defaults (plorpos-bn9.3): the rows the shelf menu carried until
  * then - Core, Display Mode, Shader, Palette - plus the shelf's Hotkeys and
  * Turbo Assignments. A game with its own keeps it; Reset Overrides takes
@@ -13319,6 +13405,9 @@ static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	case SD_HOTKEYS:
 		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF);
+		break;
+	case SD_TURBO:
+		if (!d) turbo_screen(a, sc->tag, NULL);
 		break;
 	default:
 		break;
@@ -14329,6 +14418,11 @@ static void game_switch(app *a)
 	if (bg) SDL_DestroyTexture(bg);
 }
 
+/* What the in-game menu changed in this session but did not keep, with Save
+ * Per-Game Overrides off (plorpos-bn9.4): -1 = nothing, the saved one shows.
+ * Emptied at every launch. The display mode needs no slot: diatom says it. */
+static struct { int fill, shader, pal; } g_sess = { -1, -1, -1 };
+
 /* Change the mode, keep it, tell the running game, and take back the rect so
  * the backdrop behind the menu redraws where the game is about to be. */
 /* The mode the paused game is drawn in: Diatom's word for it when it has
@@ -14358,7 +14452,7 @@ static void gm_cycle_display(app *a, int d)
 	 * moved on from the saved one (plorpos-3yv.62). This game's own from
 	 * now on; the shelf's default stays as it was (plorpos-1a6). */
 	k = dmode_step(a->sys.systems[sys].tag, gm_dmode_now(a), d);
-	game_dmode_save(a, sys, g, k);
+	if (plat_save_overrides()) game_dmode_save(a, sys, g, k);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[k].name);
 	plat_resident_sync_rect(150);
 }
@@ -14369,8 +14463,9 @@ static void gm_fill_step(app *a, int d)
 	int sys, v;
 	const game_entry *g = playing(a, &sys);
 
-	v = ds_fill_next(game_fill(a, sys, g), d);
-	game_fill_save(a, sys, g, v);
+	v = ds_fill_next(g_sess.fill >= 0 ? g_sess.fill : game_fill(a, sys, g), d);
+	if (plat_save_overrides()) game_fill_save(a, sys, g, v);
+	else g_sess.fill = v;
 	plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[v]);
 	plat_resident_sync_rect(150);
 }
@@ -14390,14 +14485,16 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 
 		u.dmode  = DMODES[gm_dmode_now(a)].label;
 		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
-		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
-		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+		u.fill   = ds_fill_shown(a->sys.systems[sys].tag)
+		           ? FILL_LABEL[g_sess.fill >= 0 ? g_sess.fill : game_fill(a, sys, g)] : NULL;
+		u.shader = a->shaders.e[g_sess.shader >= 0 ? g_sess.shader : game_shader(a, sys, g)].name;
 	}
 	u.shaders = a->shaders.count > 1;
 	{
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
+		if (pal >= 0 && g_sess.pal >= 0) pal = g_sess.pal;
 		u.palette = pal < 0 ? NULL : gbpal_label(pal);
 	}
 	u.stylus = NULL;
@@ -19484,8 +19581,43 @@ static const struct { in_button b; const char *src; } BM_CAPTURE[] = {
 	{ IN_L1, "l1" }, { IN_R1, "r1" }, { IN_L2, "l2" }, { IN_R2, "r2" },
 };
 
-static void button_map_screen(app *a, SDL_Texture *bg, const char *tag, int mode)
+/* What the Hotkeys screen and its Button Mapping edit, and where a change goes
+ * (plorpos-bn9.4): the shelf's two rows, the game's own (both written, a full
+ * copy), or the running game's - sent at once, kept as its own only under
+ * Save Per-Game Overrides. */
+typedef struct { const char *tag, *file; int mode; char hk[320], bm[160]; bool own; } hk_edit;
+
+static void hk_edit_load(hk_edit *e)
 {
+	const char *hk, *bm;
+
+	if (e->mode == HK_GAME) {
+		e->own = plat_game_keys(e->tag, e->file, e->hk, sizeof e->hk, e->bm, sizeof e->bm);
+		return;
+	}
+	if (e->mode == HK_LIVE) plat_live_keys(&hk, &bm);
+	else { hk = plat_hotkey_map(e->tag); bm = plat_btnmap(e->tag); }
+	snprintf(e->hk, sizeof e->hk, "%s", hk);
+	snprintf(e->bm, sizeof e->bm, "%s", bm);
+}
+
+static void hk_edit_commit(hk_edit *e)
+{
+	if (e->mode == HK_SHELF) {
+		plat_hotkey_set(e->tag, e->hk);
+		plat_btnmap_set(e->tag, e->bm);
+	} else if (e->mode == HK_GAME) {
+		plat_game_keys_set(e->tag, e->file, e->hk, e->bm);
+		e->own = true;
+	} else {
+		plat_live_keys_set(e->hk, e->bm, plat_save_overrides());
+	}
+}
+
+static void button_map_screen(app *a, SDL_Texture *bg, hk_edit *e)
+{
+	const char *tag = e->tag;
+	int mode = e->mode;
 	const bm_row *bm;
 	const int nr = bm_rows(tag, &bm), R_RESET = nr, NROWS = nr + 1;
 	int held[BM_ROWS_MAX], sel = 0, done = 0, i;
@@ -19494,7 +19626,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag, int mode
 	char spec[160];
 	ui_pace pace = {0};
 
-	bm_parse(tag, plat_btnmap(tag), held);
+	bm_parse(tag, e->bm, held);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -19541,7 +19673,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, const char *tag, int mode
 
 		if (changed) {
 			bm_serialize(tag, held, spec, sizeof spec);
-			plat_btnmap_set(tag, spec);
+			snprintf(e->bm, sizeof e->bm, "%s", spec);
+			hk_edit_commit(e);
 			changed = false;
 		}
 
@@ -19588,7 +19721,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	 * legend are drawn after them and are never selected. */
 	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
-	menu_row rows[ROWS + 2];
+	menu_row rows[ROWS + 3];
+	hk_edit e = { tag, file, mode, "", "", false };
 	char vals[HK_ROW_COUNT][40];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
@@ -19604,7 +19738,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	bool changed = false;
 	char spec[320];
 
-	hk_parse(plat_hotkey_map(tag), trig_for_row, mod_for_row);
+	hk_edit_load(&e);
+	hk_parse(e.hk, trig_for_row, mod_for_row);
 	/* Screen Layout and Swap Screens are the DS's (plorpos-jcj), Stylus Tap the DS's where there is no panel to touch, and
 	 * Stylus Mode where there is no stick either (two sticks: always on), and
 	 * Blow Into Mic on every device (plorpos-6ei.3): five of the last six action rows (the last, HUD Focus, is PokeDaisy's).
@@ -19633,7 +19768,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 		}
 		if (shown) vis[nact++] = i;
 	}
-	const int NROWS = FIRST_ACT + nact;
+	/* One game's own (plorpos-bn9.4): Use Shelf Default under the actions
+	 * gives back the shelf's hotkeys and Button Mapping. */
+	const int R_DEFAULT = mode == HK_GAME ? FIRST_ACT + nact : -1;
+	const int NROWS = FIRST_ACT + nact + (mode == HK_GAME);
 	/* Rewind Speed Off: the Rewind row is greyed, its binding kept for when
 	 * rewind is back on (plorpos-5tm.8). The cursor steps over it. */
 	int rw_dead = -1;
@@ -19645,6 +19783,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	rows[R_MAPPING] = (menu_row){ "Button Mapping", "", true };
 	for (i = 0; i < nact; i++)   /* live flags before the first poll */
 		rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], "", FIRST_ACT + i != rw_dead };
+	if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
@@ -19691,12 +19830,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 			if (in_repeat(&a->in, IN_DOWN)) sel = menu_step_sel(rows, NROWS, sel, +1);
 
 			if (a->in.pressed[IN_ACCEPT] && sel == R_MAPPING) {
-				button_map_screen(a, bg, tag, mode);
+				button_map_screen(a, bg, &e);
 				pace = (ui_pace){0};
+			} else if (a->in.pressed[IN_ACCEPT] && sel == R_DEFAULT) {
+				plat_game_keys_clear(tag, file);
+				hk_edit_load(&e);
+				hk_parse(e.hk, trig_for_row, mod_for_row);
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
-			} else if (a->in.pressed[IN_X] && sel >= FIRST_ACT &&
+			} else if (a->in.pressed[IN_X] && sel >= FIRST_ACT && sel < FIRST_ACT + nact &&
 			           trig_for_row[vis[sel - FIRST_ACT]]) {
 				trig_for_row[vis[sel - FIRST_ACT]] = 0;
 				changed = true;
@@ -19707,16 +19850,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 
 		if (changed) {
 			hk_serialize(trig_for_row, mod_for_row, spec, sizeof spec);
-			plat_hotkey_set(tag, spec);
-			/* Live, not only persisted, in-game: the change takes hold
-			 * without the player having to quit and relaunch to see it. */
-			if (mode == HK_LIVE) {
-				char wire[256];
-
-				plat_hotkeys_for_diatom(spec, wire, sizeof wire);
-				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-				                   wire, legacy_wire);
-			}
+			snprintf(e.hk, sizeof e.hk, "%s", spec);
+			/* In-game, live too: the change takes hold without the player
+			 * having to quit and relaunch to see it. */
+			hk_edit_commit(&e);
 			changed = false;
 		}
 
@@ -19749,6 +19886,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[vis[i]], vals[i],
 			                                  FIRST_ACT + i != rw_dead };
 		}
+		if (R_DEFAULT >= 0) rows[R_DEFAULT] = (menu_row){ "Use Shelf Default", NULL, e.own };
 		rows[NROWS] = MENU_RULE;
 		rows[NROWS + 1] = MENU_NOTE(capturing ? "Press button(s)    Menu: cancel"
 		                                     : "A: set    X: clear");
@@ -20348,6 +20486,7 @@ typedef struct {
 /* The game's shader in-game, the shelf's default from its menu. */
 static int sh_cur(app *a, const sh_ctx *c)
 {
+	if (c->g && g_sess.shader >= 0) return g_sess.shader;
 	return c->g ? game_shader(a, c->sys, c->g) : a->view[c->sys].shader;
 }
 
@@ -20392,7 +20531,8 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
 		return MENU_DONE;
 	}
-	game_shader_save(a, c->sys, c->g, sel);
+	if (plat_save_overrides()) game_shader_save(a, c->sys, c->g, sel);
+	else g_sess.shader = sel;
 	return MENU_DONE;
 }
 
@@ -20471,7 +20611,8 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
 	}
-	palette_save(c->tag, c->g, sel);
+	if (plat_save_overrides()) palette_save(c->tag, c->g, sel);
+	else g_sess.pal = sel;
 	return MENU_DONE;
 }
 
@@ -20488,6 +20629,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 
 	c.cur = palette_of(a, o, c.g);
 	if (c.cur < 0) return;
+	if (g_sess.pal >= 0) c.cur = g_sess.pal;
 	st.fixed_w  = 0;
 	st.backdrop = pal_backdrop;
 	st.on_power = pal_power;
@@ -21974,6 +22116,7 @@ static void launch_one(app *a)
 	unsigned t_in = plat_now_ms(), t_prep, t_ready, t_a, t_b, t_c, t_d;
 
 	if (v->list.count == 0) return;
+	g_sess.fill = g_sess.shader = g_sess.pal = -1;   /* a new session (plorpos-bn9.4) */
 
 	snprintf(core, sizeof core, "%s/cores/%s_libretro.so", P_ROOT, shelf_core(a, o, v->list.items[v->cursor].file));
 	snprintf(elf, sizeof elf, "%s/diatom", P_ROOT);
@@ -22311,8 +22454,10 @@ static void launch_one(app *a)
 			 * on the path where the player is waiting for the shelf rather
 			 * than for a game to start. */
 			stats_end(NULL, plat_now_ms());
-			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj). */
-			game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
+			/* A DS game keeps the screen Swap Screens left big (plorpos-jcj),
+			 * as its own only under Save Per-Game Overrides (plorpos-bn9.4). */
+			if (plat_save_overrides())
+				game_dsswap_note(a, o, &v->list.items[v->cursor], plat_resident_mode());
 
 			/* Whatever was earned is sent now, behind the shelf rather than in
 			 * front of it - see ra_flush_start. It used to be sent right here,
