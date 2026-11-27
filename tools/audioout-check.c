@@ -376,6 +376,13 @@ static void limits(void)
 	   "steps stop at both ends");
 	ck(aout_limit_step(50, -1) == 40 && aout_limit_step(50, +1) == 60, "a step is ten");
 	ck(aout_limit_pct(AOUT_BT) == 10, "each output keeps its own");
+	/* A cable plugged in caps at the DAC's limit while a DAC plays, which
+	 * still wins - not the 3.5mm one (plorpos-bn9.22). */
+	ck(aout_limit_plug_level(20) == 12, "nothing in use yet: a cable's own limit");
+	aout_limit_in_use(AOUT_USB);
+	ck(aout_limit_plug_level(20) == 2, "a DAC playing: the DAC's limit");
+	aout_limit_in_use(AOUT_SPK);
+	ck(aout_limit_plug_level(20) == 12, "the speaker: the cable's own limit");
 }
 
 int main(void)

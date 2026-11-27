@@ -154,3 +154,17 @@ int aout_limit_level(aout_dest d, int level_max)
 	/* Rounded: 10 % of 20 rungs is rung 2, never 1 by truncation. */
 	return (aout_limit_pct(d) * level_max + 50) / 100;
 }
+
+static aout_dest g_in_use;   /* atomic: the ports' jack polls read it */
+
+void aout_limit_in_use(aout_dest d)
+{
+	__atomic_store_n(&g_in_use, d, __ATOMIC_RELAXED);
+}
+
+int aout_limit_plug_level(int level_max)
+{
+	aout_dest d = __atomic_load_n(&g_in_use, __ATOMIC_RELAXED);
+
+	return aout_limit_level(d == AOUT_USB ? AOUT_USB : AOUT_WIRED, level_max);
+}

@@ -3881,6 +3881,7 @@ static void vlim_follow(aout_dest d)
 	static int told = PLAT_VOL_MAX;
 	int count = 0, level;
 
+	aout_limit_in_use(d);
 	g_vlim_top = aout_limit_level(d, PLAT_VOL_MAX);
 	plat_volume_ceiling(g_vlim_top);
 	if (g_vlim_top >= PLAT_VOL_MAX && (!g_game_ticking || told == g_vlim_top)) return;
@@ -8306,6 +8307,14 @@ static bool g_sw_shelf;
 /* Menu Hold on Muse+ (plorpos-bn9.13): this Muse+ is a hold's over a paused
  * game; it was really shown; and a hold, not B or SELECT, closed it. */
 static bool g_hold_game, g_muse_shown, g_muse_held;
+/* A game is paused under the menus up now - the in-game or a native port's
+ * menu and what they opened (plorpos-bn9.22). */
+static bool g_game_under;
+/* Muse+'s own MENU is up (muse_menu), and the key that closed it to go back
+ * to Muse+ with: SELECT or a hold (plorpos-bn9.22). */
+static int       g_muse_menu_up;
+static in_button g_muse_menu_key = IN_NONE;
+static bool muse_hold_acts(void);
 
 /* The Controls page says what the setting does (src/controls.c). */
 static void shortcut_told(void)
@@ -8325,15 +8334,35 @@ static void shortcut_told(void)
  * what was underneath it - muse_open's answer. */
 static bool shortcut_keys(app *a, const menu_style *over, void *ctx)
 {
-	bool gone = false;
+	bool gone = false, opened = false;
 
-	if (a->in.pressed[IN_SWITCHER] && g_sc_hold == SC_MUSE && !g_muse_up)
-		return muse_open(a, over, ctx);
-	if (!a->in.pressed[IN_SELECT]) return false;
-	if (g_sc_select == SC_MUSE) gone = muse_open(a, over, ctx);
-	else if (g_sc_select == SC_SWITCHER) g_go_switcher = true;
+	/* In Muse+'s own MENU, or what it opened: a hold and SELECT (a swivel
+	 * turn's SELECT too) close back to Muse+, which then does what it does
+	 * with them - the hold, or closing, whatever Select Shortcut says, as
+	 * SELECT does in Muse+ itself (plorpos-bn9.22). */
+	if (g_muse_menu_up &&
+	    ((a->in.pressed[IN_SWITCHER] && muse_hold_acts()) || a->in.pressed[IN_SELECT])) {
+		g_muse_menu_key = a->in.pressed[IN_SWITCHER] ? IN_SWITCHER : IN_SELECT;
+		g_menu_closing = true;
+		return false;
+	}
+	if (a->in.pressed[IN_SWITCHER]) {
+		if (g_sc_hold != SC_MUSE || g_muse_up) return false;
+		gone = muse_open(a, over, ctx);
+		opened = true;
+	} else if (!a->in.pressed[IN_SELECT]) {
+		return false;
+	} else if (g_sc_select == SC_MUSE) {
+		gone = muse_open(a, over, ctx);
+		opened = true;
+	} else if (g_sc_select == SC_SWITCHER) {
+		g_go_switcher = true;
+	}
 	/* Muse's own menu may have asked for it too, and Muse cleared the flag. */
 	if (g_go_switcher) g_menu_closing = true;
+	/* A hold closed that Muse+ over a paused game's menu: back to the game,
+	 * not to the menu (plorpos-bn9.22), as from Muse+ a hold opened. */
+	if (opened && !gone && g_muse_held && g_game_under) g_menu_closing = true;
 	return gone;
 }
 #if defined(PLATFORM_ROTATE)
@@ -16191,16 +16220,24 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 static muse_exit muse_menu(app *a)
 {
 	unsigned gen = g_muse_gen;
+	in_button key;
 
+	g_muse_menu_up++;
 	tortos_menu_for(a, SCREEN_GAMES);
+	g_muse_menu_up--;
+	key = g_muse_menu_key;
+	g_muse_menu_key = IN_NONE;
 	/* MENU inside it closed it, and only it: Muse is still up, and may itself
 	 * be over a menu SELECT opened it from, which has to stay open. */
 	g_menu_closing = false;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	/* SELECT there asked for the switcher: Muse closes on the way to it
-	 * (plorpos-bn9.12). */
-	if (want_quit || !a->running || g_go_switcher) return MUSE_CLOSE;
+	 * (plorpos-bn9.12). SELECT there closes Muse+, as in Muse+ itself - and
+	 * so does a swivel turn's (bn9.22). */
+	if (want_quit || !a->running || g_go_switcher || key == IN_SELECT) return MUSE_CLOSE;
+	/* A hold there is a hold in Muse+ (plorpos-bn9.22). */
+	if (key == IN_SWITCHER && muse_switch_unwind(a)) return MUSE_CLOSE;
 	return g_muse_gen != gen ? MUSE_REBUILT : MUSE_BACK;
 }
 
@@ -17749,7 +17786,10 @@ static void muse_src_follow(app *a)
 static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
+	/* A Muse+ opened from Muse+'s MENU has its own (plorpos-bn9.22). */
+	int menu_was = g_muse_menu_up;
 
+	g_muse_menu_up = 0;
 	g_muse_up++;
 	g_muse_shown = g_muse_held = false;
 	g_muse_over = over;
@@ -17789,6 +17829,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		g_muse_over_ctx = NULL;
 		g_menu_closing = false;
 		g_muse_up--;
+		g_muse_menu_up = menu_was;
 		return g_muse_gone;
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
@@ -17807,6 +17848,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	/* Nothing Muse did closes the menu it may have been opened over. */
 	g_menu_closing = false;
 	g_muse_up--;
+	g_muse_menu_up = menu_was;
 	return g_muse_gone;
 }
 
@@ -21554,6 +21596,7 @@ static void game_menu(app *a, bool muse_only)
 	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
 #endif
 	g_go_switcher = false;
+	g_game_under = true;
 	if (muse_only) {
 		bool held = g_hold_game;
 
@@ -21571,6 +21614,7 @@ static void game_menu(app *a, bool muse_only)
 	} else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
+	g_game_under = false;
 	/* SELECT set to the switcher, somewhere under this menu: the switcher
 	 * over the paused game, as a Menu hold opens it (plorpos-bn9.12). */
 	if (g_go_switcher) {
@@ -21875,6 +21919,7 @@ static run_choice native_menu(void *ctx)
 	 * back to the game (plorpos-3yv.46). A swipe from the bottom or Menu
 	 * held is the switcher: another game ends this one, and launch() starts
 	 * it (plorpos-gl5.3). */
+	g_game_under = true;      /* plorpos-bn9.22 */
 	if (plat_run_menu_why() == GESTURE_SHELF) {
 #if defined(PLATFORM_ROTATE)
 		g_sw_shelf = true;        /* the swivel: the game ends for the shelf */
@@ -21903,6 +21948,7 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+	g_game_under = false;
 	/* SELECT set to the switcher, as in game_menu (plorpos-bn9.12). */
 	if (g_go_switcher) {
 		bool powered;
