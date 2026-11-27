@@ -1,7 +1,8 @@
 # Turbo
 
 **Turbo is chosen in the game, per button, with the Turbo Assign hotkey**
-(plorpos-tkh, plorpos-c4l). Bind it under Hotkeys in the in-game menu. Then,
+(plorpos-tkh, plorpos-c4l). Bind it under Hotkeys (in a game, or in
+<Shelf> Defaults). Then,
 in a game:
 
 - Turbo Assign, then the button to turbo, then the button it goes on.
@@ -21,15 +22,26 @@ makes X a turbo of the game's B.
 A, B, X, Y, L1, R1, L2 and R2 can be turbo. Directions, START and SELECT
 cannot. A notice says what happened each time.
 
-**It lasts for the game.** The in-game menu and Muse+ leave it alone; quitting
-ends it, and the next game starts with none.
+**It is kept for the game** while **Save Per-Game Overrides** is on (Game
+Settings, the default; plorpos-bn9.4): every change is saved as
+`turbomap.<TAG>/<ROM file>` (`x:a,a:a`, button:turbo) in the library database,
+and the next launch starts with it. Off, a change lasts until the game quits.
+A saved map always applies, whichever way the setting is.
 
-**Persistent Turbo Assignments** (Game Settings, off by default) keeps it instead: every
-change is saved for that game, as `turbomap.<TAG>/<ROM file>` (`x:a,a:a`, button:turbo) in the library
-database beside its hotkeys, and the next launch of the same game starts with
-it. Off, nothing is read or written, and rows already saved stay for when it
-is turned back on. A game saved by an older build as `turbo.<TAG>/<ROM file>`
-is read once and converted.
+**A shelf has a default**, `turbomap.<TAG>`, set from <Shelf> Defaults >
+Turbo Assignments. A game with no map of its own starts with it. A game's
+first change copies the whole default and changes that copy, so later changes
+to the default do not reach it. A game that clears every turbo keeps an empty
+row, so it stays at none.
+
+**Turbo Assignments** is the same map as a list: one row per button (A to R2),
+None or the turbo it fires, left/right/A to change it. From <Shelf> Defaults it
+edits the shelf's; from a game's X menu > Game Overrides it edits that game's,
+with **Use Shelf Default** to drop the game's own. Reset Overrides > Turbo
+Assignments drops every game's on the shelf.
+
+A game saved by an older build as `turbo.<TAG>/<ROM file>` is read once and
+converted. The old `persistturbo` setting is no longer read.
 
 ## Why X and Y are not turbo any more
 

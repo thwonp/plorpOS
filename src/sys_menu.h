@@ -68,22 +68,60 @@ typedef enum {
 #define SYS_HAS_MUTESW 0
 #endif
 
+/* System Settings > Volume Limiter (plorpos-bn9.9): a limit for each output
+ * the port can tell apart - Bluetooth where there is a radio, a USB DAC, and
+ * the 3.5 mm jack where its switch is read. The Flip has none of the three
+ * (no row at all there), the Rotate no jack. The speaker has no limit. */
+#define VL_HAS_BT SYS_HAS_BT
+#if !defined(PLATFORM_MIYOO)
+#define VL_HAS_DAC 1
+#else
+#define VL_HAS_DAC 0
+#endif
+#if !defined(PLATFORM_MIYOO) && !defined(PLATFORM_ROTATE)
+#define VL_HAS_WIRED 1
+#else
+#define VL_HAS_WIRED 0
+#endif
+#define SYS_HAS_VLIM (VL_HAS_BT || VL_HAS_DAC || VL_HAS_WIRED)
+typedef enum {
+#if VL_HAS_BT
+	VL_BT,
+#endif
+#if VL_HAS_DAC
+	VL_DAC,
+#endif
+#if VL_HAS_WIRED
+	VL_WIRED,
+#endif
+	VL_ROWS
+} vl_row;
+
+/* What SELECT opens where it opened Muse+ (Select Shortcut, plorpos-bn9.12),
+ * and a Menu hold (Menu Hold, .13): db "shortcut.select" / "shortcut.hold". */
+typedef enum { SC_MUSE, SC_SWITCHER, SC_OFF, SC_COUNT } sc_action;
+
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
 	ST_CLOCK,
 	ST_AUDIO,                   /* Audio Output, from the top menu (plorpos-eiz) */
+#if SYS_HAS_VLIM
+	ST_VOLLIM,                  /* a door: Volume Limiter (plorpos-bn9.9) */
+#endif
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
-	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
+	ST_SLEEP, ST_AUTO_OFF, ST_LID,
 #else
 #if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
 	ST_AUTO_OFF,
 #endif
-	ST_SLEEP, ST_BATTPCT,
+	ST_SLEEP,                   /* Battery Percentage: UI Settings (plorpos-bn9.11) */
+#endif
+	ST_SELECT,                  /* Select Shortcut (plorpos-bn9.12) */
+	ST_HOLD,                    /* Menu Hold (plorpos-bn9.13) */
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
 	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
-#endif
 #endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
@@ -96,33 +134,52 @@ typedef enum {
 
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
-typedef enum { US_THEME, US_DIR, US_ORDER, US_HEADFONT, US_FONT,
-       US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
+typedef enum { US_THEME, US_DIR, US_ORDER, US_FONTS /* a door: Fonts */,
+       US_BATTPCT /* from System Settings (plorpos-bn9.11) */,
+       US_TILES /* a door: Visible Tiles, was Ports Tile (plorpos-bn9.10) */,
        US_ROWS } us_row;
+
+/* UI Settings > Fonts (plorpos-bn9.6): each face with its size under it. */
+typedef enum { UF_HEADFONT, UF_HEADSIZE, UF_FONT, UF_BODYSIZE, UF_ROWS } uf_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
  * with, and importing gamelist.xml metadata already on the card. */
 typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
 
-/* The system menu. Games and Core carry real values rather than invented ones,
- * because a placeholder that lies about the machine it is describing is worse
- * than no row. The rest name capabilities that already exist on the emulator
- * side - Diatom has per-system display modes and core-supplied button labels -
- * so these are hooks waiting to be wired, not wishes. */
+/* The system menu (plorpos-bn9.3): what this shelf is and does. Everything
+ * about how its games play moved a level down - the shelf's defaults under
+ * "<Shelf> Defaults", every game's own under Reset Overrides - so the MENU
+ * button on a shelf is system options only and a game's own settings live in
+ * its X menu (Game Overrides). Scrape Shelf was Box Art. */
 typedef enum {
-	SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
-	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */
+	SM_SORT, SM_DEFAULTS,
+	SM_RESET, /* Reset Overrides: only on a shelf diatom plays */
+	SM_BOXART, SM_RESCAN,
 	SM_ROWS
 } sm_row;
 
-/* SM_FILL, the DS's Display (Aspect | Stretch, plorpos-6ei.13), is drawn only
- * where it means something - see sys_ui.fill - so on every other shelf the
- * rows below it sit one higher. The build and the key handler both go through
- * these two, so they cannot disagree about which row is where. */
-static inline int sm_index(bool fill, sm_row r) { return !fill && r > SM_FILL ? (int)r - 1 : (int)r; }
-static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >= SM_FILL ? i + 1 : i); }
+/* SM_RESET is drawn only on a shelf diatom plays - see sys_ui.overrides - so
+ * on Ports the rows below it sit one higher. The build and the key handler
+ * both go through these two, so they cannot disagree about which row is where. */
+static inline int sm_index(bool reset, sm_row r) { return !reset && r > SM_RESET ? (int)r - 1 : (int)r; }
+static inline sm_row sm_row_at(bool reset, int i) { return (sm_row)(!reset && i >= SM_RESET ? i + 1 : i); }
+
+/* <Shelf> Defaults (plorpos-bn9.3): what a game on this shelf plays with until
+ * it has its own. Fill is the DS's Display, shown where the panel has more
+ * than one; Palette a Game Boy shelf's; Hotkeys and Turbo Assignments only
+ * where diatom plays. sys_menu_defaults_build says which rows are there. */
+typedef enum { SD_CORE, SD_DISPLAY, SD_FILL, SD_SHADER, SD_HOTKEYS, SD_PALETTE, SD_TURBO,
+               SD_ROWS } sd_row;
+
+/* Reset Overrides (plorpos-bn9.3): one row per kind of per-game setting,
+ * each with how many games on the shelf have one. Display covers the DS's
+ * fill and swap too, Hotkeys the Button Mapping. */
+typedef enum { SR_CORE, SR_DISPLAY, SR_SHADER, SR_HOTKEYS, SR_PALETTE, SR_TURBO,
+               SR_ROWS,
+               SR_ALL = SR_ROWS   /* Reset All, the top row (plorpos-bn9.24): every kind at once */
+} sr_row;
+#define SR_MENU_ROWS (SR_ROWS + 1)
 
 /* What the Favorites shelf's menu is, which is two of those rows.
  *
@@ -152,7 +209,9 @@ static inline sm_row sm_row_at(bool fill, int i) { return (sm_row)(!fill && i >=
  * and the Source's own settings - a card Source's Album Art and Rescan Folder
  * are behind Local Music Settings / Local Books Settings (SMM_LOCAL). */
 typedef enum { SMM_COUNT, SMM_SOURCE, SMM_SORT, SMM_SETTINGS, SMM_UI, SMM_LOCAL,
-               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
+               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ,
+               SMM_HOTKEYS /* always last, from Playback Settings (plorpos-bn9.14) */
+} sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
  * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan
@@ -200,7 +259,10 @@ _Static_assert(MENU_MAX_ROWS >= ST_ROWS, "MENU_MAX_ROWS < ST_ROWS");
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
  * keeps it alive as long as it keeps the rows. */
-typedef struct { char a[24], b[CFG_STR], c[16], d[40]; } menu_bufs;
+typedef struct { char a[24], b[CFG_STR], c[16], d[40];
+                 char h[CFG_STR + 16];   /* "<Shelf> Defaults" (plorpos-bn9.3) */
+                 char n[SR_ROWS][12];    /* Reset Overrides' counts */
+} menu_bufs;
 
 /* Everything either menu needs to know about the device, gathered by the
  * caller. A struct rather than a dozen arguments so that adding a fact to a
@@ -232,9 +294,8 @@ typedef struct {
 	const char *gamelist;    /* how game shelves draw, from GAMELISTS */
 	const char *font;        /* the body face's name (plorpos-8m1.3) */
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
+	int         head_size, body_size; /* their sizes, percent (plorpos-bn9.6) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
-	bool        has_ports;   /* systems.cfg has a Ports shelf: US_PORTS is listed */
-	bool        ports_hidden; /* Ports Tile reads Hidden */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
@@ -251,6 +312,9 @@ typedef struct {
 	 * on its own is a rule, not somewhere you can hear. */
 	aout_policy audio_policy;
 	aout_dest   audio_dest;
+	int         vlim[AOUT_USB + 1]; /* Volume Limiter, percent, by aout_dest (bn9.9) */
+	int         sc_select;   /* Select Shortcut, an sc_action (bn9.12) */
+	int         sc_hold;     /* Menu Hold, an sc_action (bn9.13) */
 
 	/* Bluetooth: the name of the connected headset, or NULL. The row used to
 	 * read "not yet" and be dead, which was true of the pairing screen and
@@ -262,7 +326,7 @@ typedef struct {
 	const char *sys_name;
 	const char *sys_core;
 	/* PICO-8's shelf: the engine's label; a shelf with two cores (main.c
-	 * ALT_CORES): the core's. Shown in Core's place and turned over there.
+	 * ALT_CORES): the shelf's default core. Shown in Core's place and turned over there.
 	 * NULL on every other shelf, whose Core is a fact. */
 	const char *engine;
 	int         game_count;
@@ -271,8 +335,9 @@ typedef struct {
 	 * value - "Aspect", "Stretch" or "Integer" - or NULL where they all draw
 	 * the same, as on the Brick (plorpos-6ei.13, .17). */
 	bool        nds;
-	const char *palette;     /* a Game Boy shelf's Default Palette, in SM_FILL's place; NULL elsewhere */
-	bool        overrides;   /* games here keep their own display settings: Reset Display Overrides is listed */
+	const char *palette;     /* a Game Boy shelf's Default Palette; NULL elsewhere */
+	bool        overrides;   /* diatom plays this shelf: Reset Overrides, Hotkeys and Turbo are listed */
+	bool        core_game;   /* a game here can pick its own core (main.c ALT_CORES; not PICO-8) */
 	const char *fill;
 	/* The system's shader name (plorpos-8xu), the in-game Shader row's choice,
 	 * and whether choosing one means anything: not without a list, and not
@@ -296,16 +361,51 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n);
 int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                    const char **heading);
 
+/* <Shelf> Defaults' rows; ids[i] is the sd_row that row i shows. Returns how many. */
+int sys_menu_defaults_build(const sys_ui *u, menu_row *out, sd_row *ids, menu_bufs *b,
+                            const char **heading);
+
+/* Reset Overrides' rows, `count` games per kind (indexed by sr_row). A kind
+ * that cannot apply here and has nothing to clear is not listed; one at 0 is
+ * greyed. Reset All leads, greyed when nothing is set (plorpos-bn9.24).
+ * ids[i] is the sr_row that row i shows, SR_ALL for Reset All. Returns how
+ * many; out and ids hold SR_MENU_ROWS. */
+int sys_menu_reset_build(const sys_ui *u, const int *count, menu_row *out, sr_row *ids,
+                         menu_bufs *b, const char **heading);
+
 /* Settings > Scraping's rows, from the same sys_ui. Returns SC_ROWS. */
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* Scraping > Scrape Systems (plorpos-bn9.2): "All", then one row per system
+ * with games, `on` saying which are checked, then a note for START. Rows go
+ * from SP_FIRST; returns the count, at most n + 3. */
+enum { SP_ALL, SP_FIRST };
+int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
+                               menu_row *out, const char **heading);
+
+/* An sc_action as its row reads: "Muse+", "Switcher", "off". */
+const char *sys_menu_sc_label(int a);
 
 /* Settings > System Settings. Returns ST_ROWS. */
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
 
-/* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
- * shelf to hide. */
+/* System Settings > Volume Limiter (plorpos-bn9.9). Returns VL_ROWS; the
+ * percentages are written into b. */
+int sys_menu_vollimit_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                            const char **heading);
+
+/* Settings > UI Settings. Returns US_ROWS. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* UI Settings > Visible Tiles (plorpos-bn9.10): a row a shelf, on or off,
+ * in the order given (Ports, Muse+, then the systems). Returns n. */
+int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
+                         menu_row *out, const char **heading);
+
+/* UI Settings > Fonts. Returns UF_ROWS; the sizes are written into b. */
+int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                         const char **heading);
 
 
 #endif

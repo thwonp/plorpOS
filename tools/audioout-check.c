@@ -357,6 +357,34 @@ static void disconnect_pause(void)
 	ck(!aout_pause_on_loss(AOUT_USB, true, &s), "unrelated headset loss leaves USB music alone");
 }
 
+/* Volume Limiter (plorpos-bn9.9): tens from 10 to 100, none on the speaker. */
+static void limits(void)
+{
+	printf("volume limits\n");
+	ck(aout_limit_pct(AOUT_BT) == 100 && aout_limit_level(AOUT_BT, 20) == 20,
+	   "an unset limit is none");
+	aout_limit_set(AOUT_BT, 10);
+	ck(aout_limit_level(AOUT_BT, 20) == 2, "10 % of 20 rungs is rung 2");
+	aout_limit_set(AOUT_WIRED, 55);
+	ck(aout_limit_pct(AOUT_WIRED) == 60, "a limit is rounded to a ten");
+	aout_limit_set(AOUT_USB, 0);
+	ck(aout_limit_pct(AOUT_USB) == 10, "never below 10 %");
+	aout_limit_set(AOUT_SPK, 10);
+	ck(aout_limit_pct(AOUT_SPK) == 100, "the speaker has no limit");
+	ck(aout_limit_level(AOUT_WIRED, 20) == 12, "60 % is rung 12");
+	ck(aout_limit_step(100, +1) == 100 && aout_limit_step(10, -1) == 10,
+	   "steps stop at both ends");
+	ck(aout_limit_step(50, -1) == 40 && aout_limit_step(50, +1) == 60, "a step is ten");
+	ck(aout_limit_pct(AOUT_BT) == 10, "each output keeps its own");
+	/* A cable plugged in caps at the DAC's limit while a DAC plays, which
+	 * still wins - not the 3.5mm one (plorpos-bn9.22). */
+	ck(aout_limit_plug_level(20) == 12, "nothing in use yet: a cable's own limit");
+	aout_limit_in_use(AOUT_USB);
+	ck(aout_limit_plug_level(20) == 2, "a DAC playing: the DAC's limit");
+	aout_limit_in_use(AOUT_SPK);
+	ck(aout_limit_plug_level(20) == 12, "the speaker: the cable's own limit");
+}
+
 int main(void)
 {
 	priority();
@@ -372,6 +400,7 @@ int main(void)
 	the_measured_case();
 	ladder();
 	disconnect_pause();
+	limits();
 	if (fails) { printf("\n%d audio output check(s) failed\n", fails); return 1; }
 	printf("\nok: sound goes where it should\n");
 	return 0;

@@ -31,6 +31,9 @@ typedef struct {
 	 * place on the makers| line, or past the end for a maker not on it. */
 	int row;
 	int maker;
+	/* Visible Tiles off (plorpos-bn9.10): set by the launcher, never read
+	 * from the file. Only the systems row skips the shelf. */
+	bool hidden;
 } system_cfg;
 
 typedef struct {

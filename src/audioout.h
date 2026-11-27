@@ -87,6 +87,26 @@ bool        aout_usb_card(const char *cards, char *dev, int cap, int *card);
 const char *aout_policy_name(aout_policy p);
 const char *aout_dest_name(aout_dest d);
 
+/* ---- Volume Limiter (plorpos-bn9.9) ---------------------------------------
+ *
+ * A ceiling per output, in percent of the level's range: 10..100 in tens, 100
+ * being none. The speaker has none. One table, so the launcher's volume keys
+ * and the ports' own sink threads (platform_gkd.c, platform_rotate.c, which cap
+ * a new headset or DAC) read the same numbers. Atomic, for those threads. */
+#define AOUT_LIMIT_MIN 10
+void aout_limit_set(aout_dest d, int pct);   /* rounded to a ten, 10..100 */
+int  aout_limit_pct(aout_dest d);            /* 100 for the speaker */
+/* The highest level the limit lets `d` have, `level_max` being the top index. */
+int  aout_limit_level(aout_dest d, int level_max);
+/* A limit one step of ten along, held to 10..100. */
+int  aout_limit_step(int pct, int dir);
+/* The output in use, as the launcher last resolved it (plorpos-bn9.22). A
+ * cable plugged in while a DAC plays changes nothing about where the sound
+ * goes - the DAC still wins (aout_resolve) - so a jack poll caps a new cable
+ * at the 3.5mm limit only when the DAC is not the one playing. */
+void aout_limit_in_use(aout_dest d);
+int  aout_limit_plug_level(int level_max);
+
 /* ---- the headphone jack, and why a remembered state is not enough --------- */
 
 /* "Nobody has acted on the jack yet, or whatever was acted on happened while

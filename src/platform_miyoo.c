@@ -466,7 +466,7 @@ void levels_save(void)
 void apply_volume(int v)
 {
 	cur_vol = v;
-	if (v >= 0) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", v, VOL_MAX + 1);
+	if (v >= 0) plat_resident_volume_set(v);
 }
 bool plat_headphones_present(void) { return false; }
 void plat_audio_jack_poll(void) { }

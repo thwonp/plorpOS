@@ -200,13 +200,13 @@ diatom watches every frame
 (its [ADR-0025](https://github.com/thwonp/diatom/blob/main/docs/decisions/0025-achievements-belong-to-the-frontend.md)
 and [ADR-0026](https://github.com/thwonp/diatom/blob/main/docs/decisions/0026-achievements-on-the-launcher-protocol.md)).
 
-**The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> Achievements Sign-In,
+**The device does the normal thing.** Sign in once under `MENU` -> Game Settings -> RetroAchievements -> RetroAchievements Sign-In,
 and the first time you launch a game plorpOS hashes the ROM, asks
 RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After
 that the launch is instant and works with Wi-Fi off.
 
-**Game Settings -> Download Achievement Sets** does that first-play fetch for
+**Game Settings -> RetroAchievements -> Download Achievement Sets** does that first-play fetch for
 the whole library at once (plorpos-3yv.107.3), so a game never started online
 still has its set offline. One game at a time, one request started or polled
 per frame; the ROM is hashed on a thread, since a whole GBA cartridge is 32 MB

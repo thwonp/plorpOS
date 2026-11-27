@@ -58,6 +58,21 @@ int main(void)
 	bm_parse("NES", "zz:a,a:q,b", held);
 	CHECK(held[0] == -1 && held[1] == SRC("b"), "junk pairs are skipped");
 
+	/* Turbo Assign's map, as turbomap.<TAG>[/<file>] keeps it (plorpos-bn9.4) */
+	{
+		int t[BM_SRC_N];
+
+		bm_turbo_parse("x:a,a:a", t);
+		CHECK(t[SRC("x")] == SRC("a") + 1 && t[SRC("a")] == SRC("a") + 1 && t[SRC("b")] == 0,
+		      "turbo: host:turbo, plus one");
+		CHECK(bm_turbo_format(t, out, sizeof out) == 2 && !strcmp(out, "a:a,x:a"),
+		      "turbo: written back in button order");
+		bm_turbo_parse("", t);
+		CHECK(bm_turbo_format(t, out, sizeof out) == 0 && out[0] == '\0', "turbo: none is empty");
+		bm_turbo_parse("zz:a,b:q,r2:l1,y", t);
+		CHECK(t[SRC("r2")] == SRC("l1") + 1 && t[SRC("b")] == 0, "turbo: junk pairs are skipped");
+	}
+
 	if (failures) {
 		printf("\n%d check(s) failed\n", failures);
 		return 1;

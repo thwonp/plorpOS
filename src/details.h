@@ -28,8 +28,8 @@ typedef struct {
 } details_info;
 
 /* The launcher's Header Font (head) or Body Font: its file and its width
- * correction (main.c FONTS). Both before the first draw; again on a change,
- * then draw again. Fonts open on first use. */
+ * correction (main.c FONTS) times its Size (plorpos-bn9.6). Both before the
+ * first draw; again on a change, then draw again. Fonts open on first use. */
 void details_set_face(bool head, const char *path, float scale);
 void details_draw(SDL_Renderer *r, int w, int h, const details_info *d, int page);
 /* The system under the carousel's cursor, while no game is (plorpos-rgds.18.1). */

@@ -286,6 +286,10 @@ void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
 void plat_resident_on_tick(void (*fn)(void));
 /* Diatom only: one protocol line (RESUME, STOP, SAVE\tpath=...), newline added. */
 bool plat_resident_line(const char *fmt, ...);
+/* Diatom's volume, `index` of PLAT_VOL_MAX + 1, with the Volume Limiter's
+ * ceiling as max= (plorpos-bn9.20): every volume SETLEVEL goes through here,
+ * since one without max= clears Diatom's ceiling. */
+bool plat_resident_volume_set(int index);
 /* Whether the game should be heard - Diatom's QUIET, its ADR-0032. Sent when it
  * changes, and before every RUN whether it changed or not, so it is safe to
  * call as often as the answer might have moved. */
@@ -344,9 +348,27 @@ void plat_hotkeys_for_diatom(const char *spec, char *out, size_t cap);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
 /* Button Mapping (plorpos-c4l): the system's spec (btnmap.h), "" for its
- * defaults. Setting it persists it and, mid-game, resends the map at once. */
+ * defaults. Setting it persists it; the shelf's default since plorpos-bn9.4,
+ * so it no longer reaches a running game (plat_live_keys_set does). */
 const char *plat_btnmap(const char *tag);
 void        plat_btnmap_set(const char *tag, const char *spec);
+
+/* Save Per-Game Overrides (plorpos-bn9.4), Game Settings: on, a change made
+ * in a game is kept as that game's own; off, it lasts the session. A saved
+ * one applies either way. db_dev "saveoverrides", default on. */
+bool        plat_save_overrides(void);
+
+/* One game's own hotkeys and Button Mapping (plorpos-bn9.4), keyed on the
+ * rom's file name: the game's when it has them (returns true), else the
+ * shelf's. Set writes both, a full copy; clear goes back to the shelf's. */
+bool        plat_game_keys(const char *tag, const char *file, char *hk, size_t hkn,
+                           char *bm, size_t bmn);
+void        plat_game_keys_set(const char *tag, const char *file, const char *hk, const char *bm);
+void        plat_game_keys_clear(const char *tag, const char *file);
+/* The running game's, as resolved at RUN; set sends both to it at once and,
+ * with `save`, keeps them as its own. */
+void        plat_live_keys(const char **hk, const char **bm);
+void        plat_live_keys_set(const char *hk, const char *bm, bool save);
 
 /* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
  * parallel wire-name/label arrays (count returned, first = default), the
@@ -581,8 +603,11 @@ bool plat_resident_sleep_asked(void);
  * plorpos-rgds.24.4; the Rotate's diatom does its own). */
 /* GESTURE_SHELF: the Rotate's swivel opened with "main shelf" and the game
  * not kept (plorpos-5eq.23): the game ends and the shelf is next. */
+/* GESTURE_RECENTS: the swivel opened with "recents" - the switcher whatever
+ * Menu Hold says, which GESTURE_SWITCHER (a Menu hold, a swipe up) follows
+ * (plorpos-bn9.13). */
 typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU,
-               GESTURE_SHELF } gesture;
+               GESTURE_SHELF, GESTURE_RECENTS } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30
@@ -644,6 +669,12 @@ void plat_settings_init(void);
 int  plat_volume_get(void);
 int  plat_brightness_get(void);
 void plat_volume_nudge(int delta);
+/* Volume Limiter (plorpos-bn9.9): no nudge up takes the level past `top`. */
+void plat_volume_ceiling(int top);
+/* Menu Hold off (plorpos-bn9.21): a Menu hold in a game is nothing - Diatom
+ * told so with SETHOTKEYS hold=off, and a native port's run loop and the
+ * Rotate's swipe up do not pause the game for it. */
+void plat_menu_hold(bool on);
 void plat_brightness_nudge(int delta);
 void plat_volume_set_pct(int pct);
 void plat_brightness_set(int level);

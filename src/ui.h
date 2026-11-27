@@ -63,8 +63,9 @@ void ui_quit(void);
  * or every other role. Kept across ui_init, so a screen that tears the UI down
  * and brings it back keeps it; when the fonts are open, they are reopened at
  * once and the text drawn from the old face dropped. NULL path: ui_init's own
- * (head.ttf, or the font it was given), from the next ui_init. */
-void ui_set_face(bool head, const char *path, float scale);
+ * (head.ttf, or the font it was given), from the next ui_init. size: UI
+ * Settings > Fonts' Header or Body Size, 1.0 = 100% (plorpos-bn9.6). */
+void ui_set_face(bool head, const char *path, float scale, float size);
 
 /* The type scale. One base size, a multiplier per role, and a global user
  * scale over the top -- so retuning a role is one number here instead of a

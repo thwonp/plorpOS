@@ -263,9 +263,27 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
 	n = sys_menu_scraping_build(&u, rows, &heading);
 	ck(n == SC_ROWS && !strcmp(heading, "Scraping"), "Scraping submenu");
-	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
-	ck(!rows[SC_BOXART].live, "Box Art is not selectable offline");
+	ck(!strcmp(rows[SC_BOXART].label, "Scrape Systems"), "Box Art is Scrape Systems (plorpos-bn9.2)");
+	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Scrape Systems says why");
+	ck(!rows[SC_BOXART].live, "Scrape Systems is not selectable offline");
 	ck(rows[SC_IMPORT].live, "Import is selectable offline");
+	{
+		static const char *const names[] = { "Game Boy", "SNES" };
+		bool on[2] = { true, false };
+
+		n = sys_menu_scrape_pick_build(names, on, 2, rows, &heading);
+		ck(n == SP_FIRST + 2 + 2 && !strcmp(heading, "Scrape Systems"), "Scrape Systems: All, two systems, rule, note");
+		ck(!strcmp(rows[SP_ALL].label, "All") && !strcmp(val(&rows[SP_ALL]), "off"),
+		   "All reads off while one is unchecked");
+		ck(!strcmp(rows[SP_FIRST].label, "Game Boy") && !strcmp(val(&rows[SP_FIRST]), "on")
+		   && !strcmp(val(&rows[SP_FIRST + 1]), "off"), "each system shows its check");
+		ck(ROW_IS_NOTE(rows[n - 1]), "a note says what START does");
+		on[1] = true;
+		sys_menu_scrape_pick_build(names, on, 2, rows, &heading);
+		ck(!strcmp(val(&rows[SP_ALL]), "on"), "All reads on when every system is checked");
+		n = sys_menu_scrape_pick_build(names, on, 0, rows, &heading);
+		ck(!rows[SP_ALL].live && !rows[SP_FIRST].live, "no systems: nothing to check");
+	}
 	n = sys_menu_system_build(&u, rows, &b, &heading);
 	ck(n == ST_ROWS && !strcmp(heading, "System Settings"), "System Settings submenu");
 	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
@@ -273,28 +291,72 @@ static void tortos_menu_offline(void)
 	   "Audio Output follows it (plorpos-eiz)");
 	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "then Auto Off");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
-	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Battery Percentage") != 0,
+		   "no Battery Percentage: it is UI Settings' now (plorpos-bn9.11)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
-	   "Battery Percentage defaults to off");
+	/* Volume Limiter (plorpos-bn9.9): a door under Audio Output, three limits
+	 * on a Brick, each its own percentage. */
+	ck(ST_VOLLIM == ST_AUDIO + 1 && !strcmp(rows[ST_VOLLIM].label, "Volume Limiter")
+	   && rows[ST_VOLLIM].live && !rows[ST_VOLLIM].value, "Volume Limiter is a door under Audio Output");
+	/* Select Shortcut (plorpos-bn9.12): after the sleep rows, before the
+	 * side switch; Muse+ until set. */
+	ck(ST_SELECT > ST_SLEEP && ST_SELECT < ST_MUTESW && !strcmp(rows[ST_SELECT].label, "Select Shortcut")
+	   && !strcmp(val(&rows[ST_SELECT]), "Muse+"), "Select Shortcut reads Muse+, under the sleep rows");
+	ck(!strcmp(sys_menu_sc_label(SC_SWITCHER), "Switcher") && !strcmp(sys_menu_sc_label(SC_OFF), "off"),
+	   "and Switcher, off");
+	/* Menu Hold (plorpos-bn9.13) right under it. */
+	ck(ST_HOLD == ST_SELECT + 1 && !strcmp(rows[ST_HOLD].label, "Menu Hold"), "Menu Hold follows it");
+	u.sc_hold = SC_SWITCHER;
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_HOLD]), "Switcher"), "Menu Hold reads Switcher");
+	u.vlim[AOUT_BT] = 100; u.vlim[AOUT_USB] = 40; u.vlim[AOUT_WIRED] = 10;
+	n = sys_menu_vollimit_build(&u, rows, &b, &heading);
+	ck(n == 3 && !strcmp(heading, "Volume Limiter"), "Volume Limiter: three outputs on the Brick");
+	ck(!strcmp(rows[VL_BT].label, "Bluetooth Limit") && !strcmp(val(&rows[VL_BT]), "100%"),
+	   "Bluetooth Limit reads 100%");
+	ck(!strcmp(rows[VL_DAC].label, "DAC Limit") && !strcmp(val(&rows[VL_DAC]), "40%"),
+	   "DAC Limit reads its own");
+	ck(!strcmp(rows[VL_WIRED].label, "3.5mm Limit") && !strcmp(val(&rows[VL_WIRED]), "10%"),
+	   "3.5mm Limit reads its own");
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
-	u.has_ports = true;
-	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_ROWS, "with a Ports shelf, one row more");
+	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
 	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
+	ck(US_BATTPCT == US_FONTS + 1 && !strcmp(rows[US_BATTPCT].label, "Battery Percentage")
+	   && !strcmp(val(&rows[US_BATTPCT]), "off") && rows[US_BATTPCT].live,
+	   "Battery Percentage after Fonts, off to begin with (plorpos-bn9.11)");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
-	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
-	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
-	   "Ports Tile reads Visible by default");
-	u.ports_hidden = true;
+	ck(US_TILES == US_ROWS - 1 && !strcmp(rows[US_TILES].label, "Visible Tiles")
+	   && !rows[US_TILES].value && rows[US_TILES].live,
+	   "Visible Tiles, a door, last - Ports Tile is gone (plorpos-bn9.10)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Ports Tile") != 0, "no Ports Tile row");
+	{
+		const char *tn[] = { "Ports", "Muse+", "Game Boy" };
+		bool ton[] = { false, true, true };
+
+		n = sys_menu_tiles_build(tn, ton, 3, rows, &heading);
+		ck(n == 3 && !strcmp(heading, "Visible Tiles"), "Visible Tiles: a row a shelf");
+		ck(!strcmp(rows[0].label, "Ports") && !strcmp(val(&rows[0]), "off") && rows[0].live,
+		   "a hidden one reads off, as Scrape Systems' rows");
+		ck(!strcmp(val(&rows[1]), "on") && !strcmp(val(&rows[2]), "on"), "a shown one reads on");
+	}
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
+	ck(!strcmp(rows[US_FONTS].label, "Fonts") && !rows[US_FONTS].value && rows[US_FONTS].live,
+	   "Fonts is a door after System Order (plorpos-bn9.6)");
+	u.head_font = "Fredoka"; u.font = "Quicksand";
+	u.head_size = 90; u.body_size = 150;
+	n = sys_menu_fonts_build(&u, rows, &b, &heading);
+	ck(n == UF_ROWS && !strcmp(heading, "Fonts"), "Fonts submenu");
+	ck(!strcmp(rows[UF_HEADFONT].label, "Header Font") && !strcmp(val(&rows[UF_HEADFONT]), "Fredoka")
+	   && !strcmp(rows[UF_HEADSIZE].label, "Header Size") && !strcmp(val(&rows[UF_HEADSIZE]), "90%")
+	   && !strcmp(rows[UF_FONT].label, "Body Font") && !strcmp(val(&rows[UF_FONT]), "Quicksand")
+	   && !strcmp(rows[UF_BODYSIZE].label, "Body Size") && !strcmp(val(&rows[UF_BODYSIZE]), "150%"),
+	   "each face, then its size in percent");
 	n = sys_menu_build(&u, rows, &b, &heading);
 	/* Live since 2026-09-06, when the pairing screen landed. The row used to
 	 * be dead and read "not yet", which was true of the screen and false of
@@ -377,8 +439,8 @@ static void tortos_menu_online(void)
 	sys_menu_system_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[ST_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 	u.batt_pct = true;
-	sys_menu_system_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[ST_BATTPCT]), "on"), "Battery Percentage reads on");
+	sys_menu_ui_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[US_BATTPCT]), "on"), "Battery Percentage reads on");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -463,61 +525,112 @@ static void system_menu(void)
 	u.overrides = true;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
+	/* plorpos-bn9.3: system options only, the shelf's defaults and every
+	 * game's own a level down. */
 	printf("system menu:\n");
-	ck(n == SM_ROWS - 1, "every row is filled, no DS Display row off the DS");
-	ck(!strcmp(rows[n - 1].label, "Reset Display Overrides") && rows[n - 1].live,
-	   "Reset Display Overrides is the last row, and live (plorpos-36e)");
+	ck(n == SM_ROWS, "Sort By, Defaults, Reset Overrides, Scrape Shelf, Rescan Folder");
+	ck(!strcmp(rows[SM_SORT].label, "Sort By"), "Sort By leads");
+	ck(!strcmp(rows[SM_DEFAULTS].label, "Game Boy Defaults") && rows[SM_DEFAULTS].live,
+	   "the defaults row is named for the shelf");
+	ck(!strcmp(rows[SM_RESET].label, "Reset Overrides") && rows[SM_RESET].live,
+	   "Reset Overrides under it, and live");
+	ck(!strcmp(rows[SM_BOXART].label, "Scrape Shelf") && rows[SM_BOXART].live,
+	   "Scrape Shelf is live on a network");
+	ck(!strcmp(rows[SM_RESCAN].label, "Rescan Folder") && rows[SM_RESCAN].live, "Rescan last");
+	for (int r = 0; r < n; r++) {
+		ck(strcmp(rows[r].label, "Core") && strcmp(rows[r].label, "Default Display Mode"),
+		   "no Core or Default rows at the top level");
+		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
+	}
+	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
 	u.overrides = false;
-	ck(sys_menu_build(&u, rows, &b, &heading) == SM_ROWS - 2 &&
-	   !strcmp(rows[SM_ROWS - 3].label, "Rescan Folder"),
+	ck(sys_menu_build(&u, rows, &b, &heading) == SM_ROWS - 1 &&
+	   !strcmp(rows[sm_index(false, SM_BOXART)].label, "Scrape Shelf") &&
+	   !strcmp(rows[sm_index(false, SM_RESCAN)].label, "Rescan Folder") &&
+	   sm_row_at(false, SM_RESET) == SM_BOXART,
 	   "a shelf diatom does not play (Ports) has no Reset row");
 	u.overrides = true;
-	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(heading, "Game Boy"), "heading is the system, not TortOS");
-	for (int r = 0; r < n; r++)
-		ck(strcmp(rows[r].label, "Games") != 0, "no Games count row: the shelf shows it (plorpos-9jo)");
-	ck(!strcmp(val(&rows[SM_CORE]), "gambatte"), "the core is the real one");
-	ck(!strcmp(val(&rows[SM_DISPLAY]), "Sharp"), "display mode is passed through");
-	ck(sm_index(false, SM_SHADER) == SM_DISPLAY + 1 && !strcmp(rows[sm_index(false, SM_SHADER)].label, "Default Shader"),
-	   "Shader sits under Display Mode");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Default Display Mode"), "Default Display Mode off the DS");
-	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Scanlines") && rows[sm_index(false, SM_SHADER)].live,
-	   "and carries the system's shader");
-	ck(rows[SM_DISPLAY].live && rows[sm_index(false, SM_RESCAN)].live, "the two live rows are live");
-	ck(!rows[SM_CORE].live, "reported facts are not rows to press");
-	ck(rows[sm_index(false, SM_BOXART)].live, "Box Art is live on a network");
 
-	/* The same menu with the radio down. Only Box Art changes. */
+	/* The same menu with the radio down. Only Scrape Shelf changes. */
 	u.wifi = WIFI_OFF;
 	sys_menu_build(&u, rows, &b, &heading);
-	ck(!rows[sm_index(false, SM_BOXART)].live, "Box Art dies with the radio");
-	ck(!strcmp(val(&rows[sm_index(false, SM_BOXART)]), "needs Wi-Fi"), "and says why");
-	ck(rows[sm_index(false, SM_RESCAN)].live, "Rescan does not need a network");
-
-	/* No list, or PICO-8 running native: nothing a shader would reach. */
-	u.shader = NULL; u.shader_live = false;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[sm_index(false, SM_SHADER)]), "None") && !rows[sm_index(false, SM_SHADER)].live,
-	   "Shader reads None and is not a stop when it cannot apply");
-
-	/* The DS (plorpos-6ei.13): its layouts are Layout, and Display - Aspect
-	 * or Stretch - sits under it where the panel is not 4:3. */
+	ck(!rows[SM_BOXART].live, "Scrape Shelf dies with the radio");
+	ck(!strcmp(val(&rows[SM_BOXART]), "needs Wi-Fi"), "and says why");
+	ck(rows[SM_RESCAN].live, "Rescan does not need a network");
 	u.wifi = WIFI_CONNECTED;
-	u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
-	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(n == SM_ROWS, "DS: every row, Display included");
-	ck(!strcmp(rows[SM_DISPLAY].label, "Default Layout") && !strcmp(val(&rows[SM_DISPLAY]), "Top Overlay"),
-	   "DS: the layout row is Layout");
-	ck(!strcmp(rows[SM_FILL].label, "Default Display") && !strcmp(val(&rows[SM_FILL]), "Stretch") && rows[SM_FILL].live,
-	   "DS: Display under it, with its value");
-	ck(!strcmp(rows[sm_index(true, SM_SHADER)].label, "Default Shader") && sm_row_at(true, SM_FILL + 1) == SM_SHADER,
-	   "DS: Shader under Display");
-	u.fill = NULL;
-	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(n == SM_ROWS - 1 && !strcmp(rows[SM_DISPLAY].label, "Default Layout")
-	   && !strcmp(rows[SM_FILL].label, "Default Shader") && sm_row_at(false, SM_FILL) == SM_SHADER,
-	   "DS on a 4:3 panel: Layout, no Display row, the rows below one higher");
-	u.nds = false; u.dmode = "Sharp";
+
+	/* <Shelf> Defaults. */
+	{
+		sd_row ids[SD_ROWS];
+
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		printf("shelf defaults:\n");
+		ck(!strcmp(heading, "Game Boy Defaults"), "headed with the shelf's name");
+		ck(n == 5 && ids[0] == SD_CORE && ids[1] == SD_DISPLAY && ids[2] == SD_SHADER &&
+		   ids[3] == SD_HOTKEYS && ids[4] == SD_TURBO,
+		   "Core, Display Mode, Shader, Hotkeys, Turbo Assignments; no Palette or DS Display");
+		ck(!strcmp(val(&rows[0]), "gambatte") && !rows[0].live, "one core: a fact, greyed");
+		ck(!strcmp(rows[1].label, "Display Mode") && !strcmp(val(&rows[1]), "Sharp"),
+		   "display mode is passed through");
+		ck(!strcmp(rows[2].label, "Shader") && !strcmp(val(&rows[2]), "Scanlines") && rows[2].live,
+		   "and carries the system's shader");
+		u.engine = "PokeDaisy"; u.palette = "Auto";
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		ck(rows[0].live && !strcmp(val(&rows[0]), "PokeDaisy"), "two cores: the default, live");
+		ck(n == 6 && ids[4] == SD_PALETTE && !strcmp(val(&rows[4]), "Auto"),
+		   "a Game Boy shelf's Palette, under Hotkeys");
+		u.engine = NULL; u.palette = NULL;
+		u.overrides = false;
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		ck(n == 3, "no Hotkeys or Turbo where diatom does not play");
+		u.overrides = true;
+		u.shader = NULL; u.shader_live = false;
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		ck(!strcmp(val(&rows[2]), "None") && !rows[2].live,
+		   "Shader reads None and is not a stop when it cannot apply");
+		u.shader = "Scanlines"; u.shader_live = true;
+
+		/* The DS (plorpos-6ei.13): its layouts are Layout, and Display - Aspect
+		 * or Stretch - sits under it where the panel is not 4:3. */
+		u.nds = true; u.fill = "Stretch"; u.dmode = "Top Overlay";
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		ck(n == 6 && ids[2] == SD_FILL && !strcmp(rows[1].label, "Layout")
+#if !defined(PLATFORM_RGDS)
+		   && !strcmp(val(&rows[1]), "Top Overlay") && !strcmp(rows[2].label, "Display")
+		   && !strcmp(val(&rows[2]), "Stretch") && rows[2].live
+#endif
+		   , "DS: Layout, then Display");
+		u.fill = NULL;
+		n = sys_menu_defaults_build(&u, rows, ids, &b, &heading);
+		ck(n == 5 && ids[2] == SD_SHADER, "DS on a 4:3 panel: no Display row");
+		u.nds = false; u.dmode = "Sharp";
+	}
+
+	/* Reset Overrides. */
+	{
+		sr_row ids[SR_MENU_ROWS];
+		int cnt[SR_ROWS] = { 0 };
+
+		cnt[SR_DISPLAY] = 3;
+		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
+		printf("reset overrides:\n");
+		ck(!strcmp(heading, "Reset Overrides"), "its heading");
+		ck(n == 5 && ids[0] == SR_ALL && !strcmp(rows[0].label, "Reset All") && rows[0].live,
+		   "Reset All on top, live while anything is set (plorpos-bn9.24)");
+		ck(ids[1] == SR_DISPLAY && ids[2] == SR_SHADER && ids[3] == SR_HOTKEYS && ids[4] == SR_TURBO,
+		   "no Core on one core, no Palette off the Game Boy");
+		ck(!strcmp(val(&rows[1]), "3") && rows[1].live, "a count, live");
+		ck(!strcmp(val(&rows[2]), "0") && !rows[2].live, "0 is greyed");
+		cnt[SR_PALETTE] = 1;
+		u.core_game = true;
+		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
+		ck(n == 7 && ids[1] == SR_CORE && ids[5] == SR_PALETTE && rows[5].live,
+		   "a choice of core lists Core; rows left behind are still listed to clear");
+		memset(cnt, 0, sizeof cnt);
+		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
+		ck(ids[0] == SR_ALL && !rows[0].live, "Reset All greyed with nothing to reset");
+		u.core_game = false;
+	}
 
 	/* Favorites, which is not a system: no core and no folder, so four of the
 	 * six rows have nothing to describe and one of them - Display Mode -
@@ -564,7 +677,9 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == 6, "six rows with only music (plorpos-935)");
+		ck(mn == 7, "seven rows with only music (plorpos-935, bn9.14)");
+		ck(!strcmp(mrows[mn - 1].label, "Hotkeys") && mrows[mn - 1].live,
+		   "Hotkeys last, out of Playback Settings (plorpos-bn9.14)");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[2].label, "Sort By") && mrows[2].live &&
@@ -612,51 +727,51 @@ static void system_menu(void)
 		m.muse_src = MSRC_BOOKS;
 		m.game_count = 2;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6, "six rows on books");
+		ck(mn == 7, "seven rows on books");
 		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
 		   "how many books");
 		ck(!strcmp(val(&mrows[2]), "Author"), "by author when nothing says otherwise");
 		ck(!strcmp(val(&mrows[1]), "Local Audiobooks"), "Source, on books");
-		ck(!strcmp(mrows[mn - 1].label, "Local Books Settings"), "the card's books: Local Books Settings");
+		ck(!strcmp(mrows[mn - 2].label, "Local Books Settings"), "the card's books: Local Books Settings");
 		for (k = 0; k < mn; k++)
 			ck(strcmp(mrows[k].label, "Album Art") != 0,
 			   "no Album Art on books: MusicBrainz knows records");
 		m.muse_src = MSRC_ABS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
-		   !strcmp(mrows[mn - 1].label, "Audiobookshelf Settings"),
+		ck(mn == 7 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
+		   !strcmp(mrows[mn - 2].label, "Audiobookshelf Settings"),
 		   "Audiobookshelf: its settings after Source");
 		m.muse_src = MSRC_PODCASTS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 5 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
-		   !strcmp(mrows[mn - 1].label, "Podcast Settings"),
+		ck(mn == 6 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
+		   !strcmp(mrows[mn - 2].label, "Podcast Settings"),
 		   "Podcasts: Episodes, its settings after Source");
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[2] == SMM_SORT && ids[3] == SMM_SETTINGS && ids[4] == SMM_UI &&
 			   ids[5] == SMM_LOCAL,
 			   "books alone: the count, Sort By, Source, Playback Settings, UI Settings, Local Books Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[3] == SMM_SETTINGS && ids[4] == SMM_UI && ids[5] == SMM_SRV,
 			   "Plex: no local settings, Plex Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 7 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 8 && ids[1] == SMM_SOURCE &&
 			   ids[4] == SMM_UI && ids[5] == SMM_SRV && ids[6] == SMM_DLQ,
 			   "Jellyfin: Plex's rows - its Settings, then Download Queue");
-			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 6 && ids[3] == SMM_SETTINGS &&
+			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 7 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_UI && ids[5] == SMM_ABS,
 			   "Audiobookshelf: Audiobookshelf Settings after UI Settings");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 5 && ids[0] == SMM_COUNT &&
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 6 && ids[0] == SMM_COUNT &&
 			   ids[1] == SMM_SOURCE && ids[2] == SMM_SETTINGS && ids[3] == SMM_UI &&
 			   ids[4] == SMM_POD,
 			   "Podcasts: no Sort By, Podcast Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_SRV &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 8 && ids[5] == SMM_SRV &&
 			   ids[6] == SMM_DLQ,
 			   "Plex downloading: Download Queue right after Plex Settings (ps8.8)");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 6 && ids[5] == SMM_DLQ,
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 7 && ids[5] == SMM_DLQ,
 			   "Podcasts downloading: Download Queue after Podcast Settings");
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 6,
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 7,
 			   "a card's own books: no Download Queue, whatever is said");
 		}
 	}
@@ -730,17 +845,9 @@ static void cursor_reaches(void)
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
 	printf("system menu, what the cursor can reach:\n");
-	ck(k == 6, "six rows, not eight");
-	ck(holds(got, k, sm_index(false, SM_RESET)), "Reset Display Overrides");
-	ck(holds(got, k, SM_DISPLAY), "Display Mode");
-	ck(holds(got, k, sm_index(false, SM_SHADER)), "Shader");
-	/* Live since sorting stopped being alphabetical-only. It was a
-	 * placeholder for long enough that this check counted three. */
-	ck(holds(got, k, SM_SORT), "Sort By");
-	ck(holds(got, k, sm_index(false, SM_BOXART)), "Box Art");
-	ck(holds(got, k, sm_index(false, SM_RESCAN)), "Rescan Folder");
-	ck(!holds(got, k, SM_CORE),
-	   "the reported facts are not stops");
+	ck(k == SM_ROWS, "every row: nothing here only reports");
+	ck(holds(got, k, SM_SORT) && holds(got, k, SM_DEFAULTS) && holds(got, k, SM_RESET) &&
+	   holds(got, k, SM_BOXART) && holds(got, k, SM_RESCAN), "each of them");
 
 	memset(&u, 0, sizeof u);
 	u.wifi = WIFI_OFF;
@@ -950,19 +1057,63 @@ static void info_rows(void)
 	n = gi_rows(rows, &gi, false);
 	printf("game info, a game on the card:\n");
 	ck(!strcmp(rows[n - 1].label, "Delete Game"), "Delete Game comes last");
-	ck(!strcmp(rows[n - 2].label, "Rename") && rows[n - 2].live,
-	   "Rename just above it, live without a network (plorpos-gkd.86.4)");
+	ck(!strcmp(rows[n - 3].label, "Rename") && rows[n - 3].live,
+	   "Rename above Box Art, live without a network (plorpos-gkd.86.4, bn9.23)");
 	ck(rows[n - 1].live, "and needs no network");
 	k = reachable(rows, n, got, GI_MAX);
 	ck(got[k - 1] == n - 1, "and is reachable");
 	snprintf(gi.year, sizeof gi.year, "1995");
 	snprintf(gi.genre, sizeof gi.genre, "Platform");
+	gi.overrides = true;
 	n = gi_rows(rows, &gi, true);
 	ck(n == GI_MAX, "every row at once fits GI_MAX");
+	ck(!strcmp(rows[n - 4].label, "Game Overrides") && rows[n - 4].live &&
+	   !strcmp(rows[n - 3].label, "Rename") && !strcmp(rows[n - 2].label, "Replace Box Art"),
+	   "Game Overrides, Rename, Box Art, Delete (plorpos-bn9.23)");
 	gi.deletable = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)
 		ck(strcmp(rows[i].label, "Delete Game") != 0, "Splore has no Delete Game");
+	ck(!strcmp(rows[n - 2].label, "Game Overrides") && !strcmp(rows[n - 1].label, "Replace Box Art"),
+	   "no Rename: Game Overrides, then Box Art");
+	gi.overrides = false;
+	n = gi_rows(rows, &gi, true);
+	for (i = 0; i < n; i++)
+		ck(strcmp(rows[i].label, "Game Overrides") != 0, "not where diatom does not play");
+}
+
+/* Game Overrides (plorpos-bn9.5). */
+static void game_overrides(void)
+{
+	go_ui u;
+	menu_row rows[GO_ROWS];
+	go_row ids[GO_ROWS];
+	int n;
+
+	memset(&u, 0, sizeof u);
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a one-core shelf on a Brick:\n");
+	ck(n == 4 && ids[0] == GO_CORE && ids[1] == GO_DISPLAY && ids[2] == GO_HOTKEYS && ids[3] == GO_TURBO,
+	   "Core, Display Mode, Hotkeys, Turbo Assignments");
+	ck(!rows[0].live && !strcmp(rows[0].value, GO_DEFAULT), "one core: greyed");
+	for (int i = 0; i < n; i++) ck(!strcmp(rows[i].value, GO_DEFAULT), "every row the shelf's default");
+
+	u.core_live = true; u.core = "PokeDaisy"; u.shaders = true; u.shader = "Scanlines";
+	u.palette_shown = true; u.hotkeys = true; u.dmode = "Aspect";
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a Game Boy game with its own:\n");
+	ck(n == 6 && ids[2] == GO_SHADER && ids[3] == GO_HOTKEYS && ids[4] == GO_PALETTE,
+	   "Shader under Display, Palette under Hotkeys");
+	ck(rows[0].live && !strcmp(rows[0].value, "PokeDaisy"), "the game's core");
+	ck(!strcmp(rows[1].value, "Aspect") && !strcmp(rows[3].value, "custom") &&
+	   !strcmp(rows[4].value, GO_DEFAULT), "own values, custom hotkeys, the shelf's palette");
+
+	memset(&u, 0, sizeof u);
+	u.nds = true; u.fill_shown = true; u.fill = "Stretch";
+	n = go_rows(&u, rows, ids);
+	printf("game overrides, a DS game:\n");
+	ck(n == 5 && !strcmp(rows[1].label, "Layout") && ids[2] == GO_FILL && !strcmp(rows[2].label, "Display"),
+	   "Layout, then Display");
 }
 
 
@@ -1000,7 +1151,7 @@ static void ingame_rows(void)
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(GM_FILL == GM_DISPLAY + 1 && GM_SHADER == GM_FILL + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
 	   "Shader is under Display (plorpos-gkd.72.4), the DS's Display between them");
-	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display"),
+	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display Mode"),
 	   "not a DS: Display is the mode, no second Display row");
 	u.nds = true; u.fill = "Aspect";
 	gm_rows(&u, rows, &b);
@@ -1113,7 +1264,7 @@ static void native_rows(void)
 	printf("native PICO-8 menu:\n");
 	ck(n == 5, "five rows");
 	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
-	   !strcmp(rows[GMN_DISPLAY].label, "Display") &&
+	   !strcmp(rows[GMN_DISPLAY].label, "Display Mode") &&
 	   !strcmp(rows[GMN_RESET].label, "Reset") &&
 	   !strcmp(rows[GMN_SPLORE].label, "Splore") &&
 	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Display, Reset, Splore, Quit");
@@ -1293,6 +1444,7 @@ int main(void)
 	window_returns();
 	what_scrolls();
 	info_rows();
+	game_overrides();
 	ingame_rows();
 	native_rows();
 	audio_row();
