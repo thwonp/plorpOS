@@ -112,6 +112,9 @@ static int anywhere(menu_row *out)
 	out[n++] = (menu_row){ "Volume rocker", "Sound",      false };
 	out[n++] = (menu_row){ ctl_bright_keys, "Brightness", false };
 	out[n++] = (menu_row){ "POWER",         "Tap sleep, hold off", false };
+#if defined(PLATFORM_RGDS)
+	out[n++] = (menu_row){ "Anbernic+Home", "Swap screens", false };   /* plorpos-rgds.33.2 */
+#endif
 	return n;
 }
 
