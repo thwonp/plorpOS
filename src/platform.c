@@ -1388,56 +1388,60 @@ void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { 
 static int  d_turbo[BM_SRC_N];
 static bool d_turbo_gba;
 static char d_tag[16];            /* the running game's system, for its Button Mapping */
+static char d_file[512];          /* and its rom's file name, for its own settings (plorpos-bn9.4) */
 static char d_turbo_key[600];     /* "turbomap.<TAG>/<rom file>": this game's saved turbo */
 static char d_turbo_old[600];     /* "turbo.<TAG>/<rom file>": the bits it replaced */
+/* The running game's hotkeys and Button Mapping, resolved at RUN and changed
+ * by the in-game Hotkeys screen for this session (plorpos-bn9.4). */
+static char d_hk[320], d_bm[160];
 
-/* Persistent Turbo Assignments (plorpos-pyz.9): On, a game's Turbo Assign choices outlive
- * the session - one row per game in the library db, beside its hotkeys, saved
- * on every change and read back at RUN. Off is session-only, as before, and
- * leaves saved rows alone, so turning it back On brings them back. */
-static bool d_turbo_persist(void) { return db_get_int(db_dev(), "persistturbo", 0) != 0; }
+bool plat_save_overrides(void) { return db_get_int(db_dev(), "saveoverrides", 1) != 0; }
 
-/* "x:a,a:a" - host:turbo - the same names SETMAP uses. */
+/* The shelf's default turbo, turbomap.<TAG> (plorpos-bn9.4); "" for none. */
+static void d_turbo_shelf(const char *tag, char *v, size_t n)
+{
+	char key[32];
+
+	snprintf(key, sizeof key, "turbomap.%s", tag);
+	db_get_str(db_lib(), key, v, n, "");
+}
+
+/* Every change, as this game's own when Save Per-Game Overrides is on
+ * (plorpos-bn9.4; it was Persistent Turbo Assignments, plorpos-pyz.9, whose
+ * persistturbo row is no longer read). Off is this session only. A game
+ * left with none where the shelf has some keeps an empty row: none is its
+ * choice, not the default's. */
 static void d_turbo_save(void)
 {
-	char v[64];
-	int i, n = 0;
+	char v[64], shelf[64];
 
-	if (!d_turbo_persist() || !d_turbo_key[0]) return;
-	v[0] = '\0';
-	for (i = 0; i < BM_SRC_N; i++)
-		if (d_turbo[i])
-			n += snprintf(v + n, sizeof v - (size_t)n, "%s%s:%s", n ? "," : "",
-			              BM_SRC[i], BM_SRC[d_turbo[i] - 1]);
-	if (n) db_set_str(db_lib(), d_turbo_key, v);
-	else   db_del(db_lib(), d_turbo_key);
+	if (!plat_save_overrides() || !d_turbo_key[0]) return;
+	d_turbo_shelf(d_tag, shelf, sizeof shelf);
+	if (bm_turbo_format(d_turbo, v, sizeof v) || shelf[0]) db_set_str(db_lib(), d_turbo_key, v);
+	else db_del(db_lib(), d_turbo_key);
 	db_del(db_lib(), d_turbo_old);   /* converted; never read back again */
 }
 
-/* At RUN: the saved turbo, or the bits a launcher before plorpos-c4l kept
- * (bit i: button i turbos itself), converted. */
+/* At RUN: the game's saved turbo, or the bits a launcher before plorpos-c4l
+ * kept (bit i: button i turbos itself), converted, or the shelf's default.
+ * A saved one always applies, whatever Save Per-Game Overrides says now. */
 static void d_turbo_load(void)
 {
-	char v[64], *save = NULL, *tok;
+	char v[64];
 	int i, bits;
 
-	memset(d_turbo, 0, sizeof d_turbo);
-	if (!d_turbo_persist()) return;
 	if (db_get_str(db_lib(), d_turbo_key, v, sizeof v, NULL)) {
-		for (tok = strtok_r(v, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
-			char *c = strchr(tok, ':');
-			int h, t;
-			if (!c) continue;
-			*c = '\0';
-			h = bm_src_index(tok);
-			t = bm_src_index(c + 1);
-			if (h >= 0 && t >= 0) d_turbo[h] = t + 1;
-		}
+		bm_turbo_parse(v, d_turbo);
 		return;
 	}
-	bits = db_get_int(db_lib(), d_turbo_old, 0);
-	for (i = 0; i < BM_SRC_N; i++)
-		if (bits & (1 << i)) d_turbo[i] = i + 1;
+	memset(d_turbo, 0, sizeof d_turbo);
+	if ((bits = db_get_int(db_lib(), d_turbo_old, 0))) {
+		for (i = 0; i < BM_SRC_N; i++)
+			if (bits & (1 << i)) d_turbo[i] = i + 1;
+		return;
+	}
+	d_turbo_shelf(d_tag, v, sizeof v);
+	bm_turbo_parse(v, d_turbo);
 }
 static void d_turbo_send(void);
 
@@ -1613,12 +1617,14 @@ bool plat_resident_send(const plat_game *g)
 		{
 			const char *f = g->rom ? strrchr(g->rom, '/') : NULL;
 
-			snprintf(d_turbo_key, sizeof d_turbo_key, "turbomap.%s/%s", tag ? tag : "",
-			         f ? f + 1 : g->rom ? g->rom : "");
-			snprintf(d_turbo_old, sizeof d_turbo_old, "turbo.%s/%s", tag ? tag : "",
-			         f ? f + 1 : g->rom ? g->rom : "");
+			snprintf(d_file, sizeof d_file, "%s", f ? f + 1 : g->rom ? g->rom : "");
+			snprintf(d_turbo_key, sizeof d_turbo_key, "turbomap.%s/%s", tag ? tag : "", d_file);
+			snprintf(d_turbo_old, sizeof d_turbo_old, "turbo.%s/%s", tag ? tag : "", d_file);
 		}
 		snprintf(d_tag, sizeof d_tag, "%s", tag ? tag : "");
+		/* The game's own hotkeys and Button Mapping, else the shelf's
+		 * (plorpos-bn9.4): the mapping rides the turbo map just below. */
+		plat_game_keys(d_tag, d_file, d_hk, sizeof d_hk, d_bm, sizeof d_bm);
 		d_turbo_load();
 		/* GBA has no L2/R2, so they are cleared for mGBA - but PokeDaisy's core takes its quick menu, companion and HUD cursor
 		 * on them (its SETTINGS rows), so it keeps them (plorpos-oe0.17). */
@@ -1637,7 +1643,7 @@ bool plat_resident_send(const plat_game *g)
 		 * the same "a state that does nothing looks identical to a bug"
 		 * reasoning the comment above already gives). */
 		{
-			const char *hk = plat_hotkey_map(tag);
+			const char *hk = d_hk;
 			char kept[256];
 
 			plat_hotkeys_for_diatom(hk, kept, sizeof kept);
@@ -1914,10 +1920,10 @@ const char *plat_btnmap(const char *tag)
 
 static void d_turbo_send(void)
 {
-	char map[200], spec[160];
+	char map[200];
+	const char *spec = d_bm;   /* the running game's, own or its shelf's (plorpos-bn9.4) */
 	int i, n = 0;
 
-	d_btnmap_get(d_tag, spec, sizeof spec);
 	map[0] = '\0';
 	for (i = 0; i < BM_SRC_N; i++) {
 		const char *tgt = bm_target(d_tag, spec, i), *tt = NULL;
@@ -1943,8 +1949,71 @@ void plat_btnmap_set(const char *tag, const char *spec)
 	snprintf(key, sizeof key, "btnmap.%s", tag);
 	if (spec && *spec) db_set_str(db_lib(), key, spec);
 	else               db_del(db_lib(), key);
-	/* Live, as the hotkeys are: this screen only opens mid-game. */
-	if (!strcmp(tag, d_tag)) d_turbo_send();
+}
+
+/* ---- one game's own hotkeys and Button Mapping (plorpos-bn9.4) -----------
+ * ghotkey.<TAG>/<file> and gbtnmap.<TAG>/<file> in the library db, beside
+ * turbomap.<TAG>/<file>: a full copy of the shelf's two taken at the first
+ * edit and written together, so later shelf changes do not reach a game that
+ * has its own. Not "hotkey.": hotkeys_load reads every row under that prefix
+ * into a table of one per shelf. The file is the rom's name, as turbo's is. */
+static void g_key(char *out, size_t n, const char *kind, const char *tag, const char *file)
+{
+	const char *b = file ? strrchr(file, '/') : NULL;
+
+	snprintf(out, n, "%s.%s/%s", kind, tag ? tag : "", b ? b + 1 : file ? file : "");
+}
+
+bool plat_game_keys(const char *tag, const char *file, char *hk, size_t hkn, char *bm, size_t bmn)
+{
+	char key[600];
+	bool own_hk, own_bm;
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	own_hk = file && db_get_str(db_lib(), key, hk, hkn, NULL);
+	if (!own_hk) snprintf(hk, hkn, "%s", plat_hotkey_map(tag));
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	own_bm = file && db_get_str(db_lib(), key, bm, bmn, NULL);
+	if (!own_bm) d_btnmap_get(tag ? tag : "", bm, bmn);
+	return own_hk || own_bm;
+}
+
+void plat_game_keys_set(const char *tag, const char *file, const char *hk, const char *bm)
+{
+	char key[600];
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	db_set_str(db_lib(), key, hk ? hk : "");
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	db_set_str(db_lib(), key, bm ? bm : "");
+}
+
+void plat_game_keys_clear(const char *tag, const char *file)
+{
+	char key[600];
+
+	g_key(key, sizeof key, "ghotkey", tag, file);
+	db_del(db_lib(), key);
+	g_key(key, sizeof key, "gbtnmap", tag, file);
+	db_del(db_lib(), key);
+}
+
+void plat_live_keys(const char **hk, const char **bm)
+{
+	*hk = d_hk;
+	*bm = d_bm;
+}
+
+void plat_live_keys_set(const char *hk, const char *bm, bool save)
+{
+	char wire[256];
+
+	snprintf(d_hk, sizeof d_hk, "%s", hk ? hk : "");
+	snprintf(d_bm, sizeof d_bm, "%s", bm ? bm : "");
+	plat_hotkeys_for_diatom(d_hk, wire, sizeof wire);
+	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", wire, plat_hotkey_modifier());
+	d_turbo_send();
+	if (save) plat_game_keys_set(d_tag, d_file, d_hk, d_bm);
 }
 
 /* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tpick=a", "TURBO\tbtn=a\ton=x",

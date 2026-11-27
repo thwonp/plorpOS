@@ -115,44 +115,17 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 				}
 			return n;
 		}
-		out[SM_CORE]    = (menu_row){ "Core", u->engine ? u->engine : b->b,
-		                              u->engine != NULL };
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
-		/* Defaults: a game set from the in-game menu keeps its own
-		 * (plorpos-0xv, plorpos-1a6). */
-		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
-		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
-		                             : (menu_row){ "Default Display", u->fill,    true };
-#if defined(PLATFORM_RGDS)
-		/* A DS game always has both panels here, each screen filling its
-		 * own: no layout or fit to pick (plorpos-rgds.18.1). */
-		if (u->nds) {
-			out[SM_DISPLAY] = (menu_row){ "Default Layout",  "both screens", false };
-			out[SM_FILL]    = (menu_row){ "Default Display", "full panel",   false };
-		}
-#endif
-		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
-		                              u->shader_live };
-		/* Button Mapping is out until there is something behind it. Diatom
-		 * supplies core button labels, so the hook is real - but a dead row
-		 * in a menu of live ones is a promise the launcher is not keeping,
-		 * and it has sat there unwired longer than it was ever going to be
-		 * worth. Put the enum entry back with it when it is built.
-		 *
-		 * Show went with it on 2026-09-17, and it was the weaker of the two:
-		 * Button Mapping at least named something the emulator can do, where
-		 * Show read "All games" because that string was written here and
-		 * nothing could ever change it. Games and Core are dead rows too and
-		 * they stay, because what they report is true - the shelf's count and
-		 * the core that will run it. Except on PICO-8's shelf, where Core is
-		 * the switch between fake08 and the owner's pico8_64. The filter Show promised is on the shelf
-		 * already: Y marks a favorite and Favorites is its own shelf. */
-		/* out[SM_BUTTONS] = (menu_row){ "Button Mapping", NULL,    false }; */
-		/* Just this system. Needs the network like its counterpart in the
-		 * TortOS menu, and says so rather than opening a screen that can only
-		 * report the same thing. */
-		out[SM_BOXART]  = (menu_row){ "Box Art",       NEEDS_WIFI(net), net };
+		/* How this shelf's games play until one has its own, and the reset
+		 * of every game's own: a level down each (plorpos-bn9.3). */
+		snprintf(b->h, sizeof b->h, "%s Defaults", u->sys_name ? u->sys_name : "Shelf");
+		out[SM_DEFAULTS] = (menu_row){ b->h, NULL, true };
+		out[SM_RESET]   = (menu_row){ "Reset Overrides", NULL, true };
+		/* Just this system. Needs the network like its counterpart in
+		 * Settings > Scraping, and says so rather than opening a screen that
+		 * can only report the same thing. */
+		out[SM_BOXART]  = (menu_row){ "Scrape Shelf",  NEEDS_WIFI(net), net };
 		/* Live now that there is something behind it. It rescans the whole
 		 * card rather than this one folder - the work is three directory reads
 		 * and the shared parts (hiding a system that emptied, rebuilding
@@ -160,16 +133,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * is the one you came here to refresh, so the name still describes
 		 * what you asked for. */
 		out[SM_RESCAN]  = (menu_row){ "Rescan Folder", NULL,        true  };
-		out[SM_RESET]   = (menu_row){ "Reset Display Overrides", NULL, true };
-		{
-			int i, n = u->overrides ? SM_ROWS : SM_ROWS - 1;   /* Reset is last: dropped by not counting it */
-
-			if (!u->fill && !u->palette) {
-				for (i = SM_FILL; i < n - 1; i++) out[i] = out[i + 1];
-				n--;
-			}
-			return n;
+		if (!u->overrides) {   /* no game here plays in diatom: nothing to reset */
+			out[SM_RESET]  = out[SM_BOXART];
+			out[SM_BOXART] = out[SM_RESCAN];
+			return SM_ROWS - 1;
 		}
+		return SM_ROWS;
 	}
 
 	*heading = "plorpOS";
@@ -310,6 +279,57 @@ int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[DU_FUNCTION]  = (menu_row){ "Secondary Function", u->dual_muse ? "Muse+" : "Details", true };
 	out[DU_PRIMARY]   = (menu_row){ "Primary Screen", u->dual_bottom ? "Bottom" : "Top", true };
 	return DU_ROWS;
+}
+
+int sys_menu_defaults_build(const sys_ui *u, menu_row *out, sd_row *ids, menu_bufs *b,
+                            const char **heading)
+{
+	int n = 0;
+
+	snprintf(b->h, sizeof b->h, "%s Defaults", u->sys_name ? u->sys_name : "Shelf");
+	snprintf(b->b, sizeof b->b, "%s", u->sys_core ? u->sys_core : "");
+	*heading = b->h;
+	/* A fact on a shelf with one core; PICO-8's engine, or the default of a
+	 * shelf with more, where there is a choice. */
+	ids[n] = SD_CORE;    out[n++] = (menu_row){ "Core", u->engine ? u->engine : b->b, u->engine != NULL };
+	ids[n] = SD_DISPLAY; out[n++] = (menu_row){ u->nds ? "Layout" : "Display Mode", u->dmode, true };
+	/* The DS's Display, only where the panel has more than one. */
+	if (u->fill) { ids[n] = SD_FILL; out[n++] = (menu_row){ "Display", u->fill, true }; }
+#if defined(PLATFORM_RGDS)
+	/* A DS game always has both panels here, each screen filling its
+	 * own: no layout or fit to pick (plorpos-rgds.18.1). */
+	if (u->nds) {
+		out[1] = (menu_row){ "Layout",  "both screens", false };
+		if (u->fill) out[2] = (menu_row){ "Display", "full panel", false };
+	}
+#endif
+	ids[n] = SD_SHADER;  out[n++] = (menu_row){ SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
+	                                            u->shader_live };
+	if (u->overrides) { ids[n] = SD_HOTKEYS; out[n++] = (menu_row){ "Hotkeys", NULL, true }; }
+	if (u->palette)   { ids[n] = SD_PALETTE; out[n++] = (menu_row){ "Palette", u->palette, true }; }
+	if (u->overrides) { ids[n] = SD_TURBO;   out[n++] = (menu_row){ "Turbo Assignments", NULL, true }; }
+	return n;
+}
+
+int sys_menu_reset_build(const sys_ui *u, const int *count, menu_row *out, sr_row *ids,
+                         menu_bufs *b, const char **heading)
+{
+	static const char *const L[SR_ROWS] = {
+		"Core", "Display Mode", SHADER_LABEL, "Hotkeys", "Palette", "Turbo Assignments"
+	};
+	/* A kind that can never be set here is left out, unless a card from
+	 * another build or an older one left rows of it behind. */
+	bool can[SR_ROWS] = { u->core_game, true, u->shader_live, true, u->palette != NULL, true };
+	int n = 0, k;
+
+	*heading = "Reset Overrides";
+	for (k = 0; k < SR_ROWS; k++) {
+		if (!can[k] && !count[k]) continue;
+		snprintf(b->n[k], sizeof b->n[k], "%d", count[k]);
+		ids[n] = (sr_row)k;
+		out[n++] = (menu_row){ L[k], b->n[k], count[k] > 0 };
+	}
+	return n;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)

@@ -114,3 +114,37 @@ const char *bm_target(const char *tag, const char *spec, int src)
 		if (!strcmp(rows[r].target, BM_SRC[src])) return "none";
 	return BM_SRC[src];
 }
+
+void bm_turbo_parse(const char *v, int turbo[BM_SRC_N])
+{
+	char buf[96], *save = NULL, *tok;
+
+	memset(turbo, 0, BM_SRC_N * sizeof *turbo);
+	snprintf(buf, sizeof buf, "%s", v ? v : "");
+	for (tok = strtok_r(buf, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
+		char *c = strchr(tok, ':');
+		int h, t;
+
+		if (!c) continue;
+		*c = '\0';
+		h = bm_src_index(tok);
+		t = bm_src_index(c + 1);
+		if (h >= 0 && t >= 0) turbo[h] = t + 1;
+	}
+}
+
+int bm_turbo_format(const int turbo[BM_SRC_N], char *out, size_t n)
+{
+	size_t len = 0;
+	int i, k = 0;
+
+	if (!n) return 0;
+	out[0] = '\0';
+	for (i = 0; i < BM_SRC_N; i++)
+		if (turbo[i] > 0 && turbo[i] <= BM_SRC_N && len < n) {
+			len += (size_t)snprintf(out + len, n - len, "%s%s:%s", k ? "," : "",
+			                        BM_SRC[i], BM_SRC[turbo[i] - 1]);
+			k++;
+		}
+	return k;
+}
