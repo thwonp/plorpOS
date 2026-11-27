@@ -650,11 +650,9 @@ once after that. Plex needs Wi-Fi. The tabs, Now Playing, the queue and the
 second screen work as they do for the card's music.
 
 - **Streaming** plays at the quality in **Plex Settings**: Original, or an
-  Opus transcode at 96 to 320 kbps (128 by default; transcoding needs Plex
-  Pass). On a server with no Plex Pass, Muse+ says so once, shows it beside
-  the server's name in Plex Settings, and plays and downloads the original
-  files; if the server's owner has turned downloads off for your account,
-  a download says so instead of starting.
+  Opus transcode at 96 to 320 kbps (128 by default). Plex Pass is not
+  needed, at home or away. If the server's owner has turned downloads off
+  for your account, a download says so instead of starting.
 - **X on an album** (in any album list, Coverflow, or its track list)
   downloads it, or deletes the copy. Progress shows under the cover. While
   it downloads, X offers **Cancel Download**, which stops it and removes
