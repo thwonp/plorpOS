@@ -11968,13 +11968,18 @@ static bool plex_choose_server(app *a)
 static bool plex_choose_library(app *a)
 {
 	const char *labels[MENU_RUN_ROWS];
+	char named[MENU_RUN_ROWS][280];
 	int n, k, i;
 
 	plex_libraries_ask();
 	n = plex_wait(a, plex_msg_libraries, plex_libraries_poll);
 	if (n == 0) return false;
 	if (n < 0) { plex_say(a, "No music libraries on that server"); return false; }
-	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) labels[i] = plex_library_at(i);
+	/* "Music (carol)": an account with several servers sees whose it is. */
+	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) {
+		snprintf(named[i], sizeof named[i], "%s (%s)", plex_library_at(i), plex_server_name());
+		labels[i] = named[i];
+	}
 	k = n == 1 ? 0 : muse_pick_run(a, "Music Library", labels, i);
 	if (k < 0) return false;
 	plex_library_pick(k);
@@ -12211,13 +12216,20 @@ static bool jellyfin_sign_in(app *a)
 static bool jellyfin_choose_library(app *a)
 {
 	const char *labels[MENU_RUN_ROWS];
+	char named[MENU_RUN_ROWS][280];
 	int n, k, i;
 
 	jellyfin_libraries_ask();
 	n = src_wait(a, "Jellyfin", jf_msg_libraries, jellyfin_libraries_poll);
 	if (n == 0) return false;
 	if (n < 0) { plex_say(a, jellyfin_why()[0] ? jellyfin_why() : "No music libraries on that server"); return false; }
-	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) labels[i] = jellyfin_library_at(i);
+	for (i = 0; i < n && i < MENU_RUN_ROWS; i++) {
+		const char *srv = jellyfin_server_name();
+
+		if (srv[0]) snprintf(named[i], sizeof named[i], "%s (%s)", jellyfin_library_at(i), srv);
+		else snprintf(named[i], sizeof named[i], "%s", jellyfin_library_at(i));
+		labels[i] = named[i];
+	}
 	k = n == 1 ? 0 : muse_pick_run(a, "Music Library", labels, i);
 	if (k < 0) return false;
 	jellyfin_library_pick(k);

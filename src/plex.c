@@ -57,6 +57,7 @@ typedef struct { char uri[256]; bool local, relay; } conn;
 static struct {
 	char client[48], token[128], account[128];
 	char server[128], server_id[64];
+	char stoken[128];                     /* the server's own token; a shared server takes only it (plorpos-5eq.9) */
 	char tailnet[256];                    /* the server's address on the tailnet, or "" (plorpos-vgr.7) */
 	conn conns[MAX_CONNS]; int nconns;
 	int  section; char library[128];
@@ -72,6 +73,7 @@ static void cfg_key(const char *k, const char *v)
 	else if (!strcmp(k, "account"))   snprintf(C.account, sizeof C.account, "%s", v);
 	else if (!strcmp(k, "server"))    snprintf(C.server, sizeof C.server, "%s", v);
 	else if (!strcmp(k, "server_id")) snprintf(C.server_id, sizeof C.server_id, "%s", v);
+	else if (!strcmp(k, "server_token")) snprintf(C.stoken, sizeof C.stoken, "%s", v);
 	else if (!strcmp(k, "tailnet"))   snprintf(C.tailnet, sizeof C.tailnet, "%s", v);
 	else if (!strcmp(k, "section"))   C.section = atoi(v);
 	else if (!strcmp(k, "library"))   snprintf(C.library, sizeof C.library, "%s", v);
@@ -105,14 +107,19 @@ static void cfg_write(FILE *f)
 {
 	int i;
 
-	fprintf(f, "client=%s\ntoken=%s\naccount=%s\nserver=%s\nserver_id=%s\n",
-	        C.client, C.token, C.account, C.server, C.server_id);
+	fprintf(f, "client=%s\ntoken=%s\naccount=%s\nserver=%s\nserver_id=%s\nserver_token=%s\n",
+	        C.client, C.token, C.account, C.server, C.server_id, C.stoken);
 	for (i = 0; i < C.nconns; i++)
 		fprintf(f, "conn=%d %d %s\n", C.conns[i].local, C.conns[i].relay, C.conns[i].uri);
 	fprintf(f, "section=%d\nlibrary=%s\ntailnet=%s\n", C.section, C.library, C.tailnet);
 }
 
 #define cfg_save() msrv_cfg_save(P)
+
+/* The token a request to the server carries: the one plex.tv lists for it
+ * (a server shared with this account answers 401 to the account's own),
+ * else the account's - an owned server's is the same. */
+static const char *srv_token(void) { return C.stoken[0] ? C.stoken : C.token; }
 
 static bool signed_in(void) { return C.token[0] != '\0'; }
 static bool ready(void) { return C.token[0] && C.server_id[0] && C.section > 0; }
@@ -172,7 +179,10 @@ static int plex_req_c(const char *method, const char *url, bool with_token,
 	snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Platform: " PLATFORM); nh++;
 	snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Device-Name: plorpOS"); nh++;
 	snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Client-Identifier: %s", C.client); nh++;
-	if (with_token) { snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Token: %s", C.token); nh++; }
+	if (with_token) {
+		const char *t = strncmp(url, PLEX_TV, sizeof PLEX_TV - 1) ? srv_token() : C.token;
+		snprintf(hdr[nh], sizeof hdr[nh], "X-Plex-Token: %s", t); nh++;
+	}
 	for (int i = 0; i < nh; i++) h[i] = hdr[i];
 	msrv_tmpfile(P, "req", tmp, sizeof tmp);
 	/* Plex's relay drops about one TLS handshake in three at once (curl 35,
@@ -361,7 +371,7 @@ static char g_pin_code[16];
 static unsigned g_pin_until;
 
 /* Choices for the pickers. */
-typedef struct { char name[128], id[64]; bool owned; conn conns[MAX_CONNS]; int nconns; } server_t;
+typedef struct { char name[128], id[64], token[128]; bool owned; conn conns[MAX_CONNS]; int nconns; } server_t;
 static server_t g_servers[MAX_SERVERS];
 static volatile int g_nservers;            /* 0 waiting, -1 failed */
 typedef struct { char name[128]; int key; } lib_t;
@@ -438,6 +448,7 @@ static void do_servers(void)
 		memset(s, 0, sizeof *s);
 		jstr(r, "name", s->name, sizeof s->name);
 		jstr(r, "clientIdentifier", s->id, sizeof s->id);
+		jstr(r, "accessToken", s->token, sizeof s->token);
 		{ jsv o; s->owned = js_member(r, "owned", &o) && js_is_true(o); }
 		if (!js_member(r, "connections", &conns)) continue;
 		/* Local plain http first (address:port), as its own entry, then the
@@ -485,6 +496,7 @@ static bool refresh_conns(void)
 		LOCK();
 		memcpy(C.conns, g_servers[i].conns, sizeof C.conns);
 		C.nconns = g_servers[i].nconns;
+		if (g_servers[i].token[0]) snprintf(C.stoken, sizeof C.stoken, "%s", g_servers[i].token);
 		UNLOCK();
 		cfg_save();
 		fprintf(stderr, "plex: %d connections from plex.tv\n", C.nconns);
@@ -500,6 +512,9 @@ static void do_libs(void)
 	jsv root, mc, dirs, it = { 0 }, d;
 	int n = 0;
 
+	/* A server picked before its token was kept (plorpos-5eq.28): ask
+	 * plex.tv for it, or a shared server answers 401. */
+	if (!C.stoken[0]) refresh_conns();
 	if (server_get("/library/sections", &b, &len, 15) != 200 || !b) { g_nlibs = -1; return; }
 	root = js_root(b, len);
 	if (js_member(root, "MediaContainer", &mc) && js_member(mc, "Directory", &dirs))
@@ -577,7 +592,7 @@ static int cover_get(msrv *m, const char *thumb, const char *dest, const volatil
 	urlenc(thumb, enc, sizeof enc);
 	snprintf(url, sizeof url, "%s/photo/:/transcode?width=%d&height=%d&minSize=1&upscale=1&url=%s",
 	         base, COVER_PX, COVER_PX, enc);
-	snprintf(hdr, sizeof hdr, "X-Plex-Token: %s", C.token);
+	snprintf(hdr, sizeof hdr, "X-Plex-Token: %s", srv_token());
 	return msrv_offline(m) ? 0 : net_fetch(url, "GET", h, 1, dest, 5, 30, cancel);
 }
 
@@ -863,7 +878,7 @@ static void plex_stream_url(const char *base, const msrv_track *t, int kbps, boo
 	unsigned sess = download ? (unsigned)t->key : now_ms() + ++seq;
 
 	if (!kbps) {
-		snprintf(out, n, "%s%s?X-Plex-Token=%s", base, t->part, C.token);
+		snprintf(out, n, "%s%s?X-Plex-Token=%s", base, t->part, srv_token());
 		return;
 	}
 	snprintf(out, n,
@@ -873,7 +888,7 @@ static void plex_stream_url(const char *base, const msrv_track *t, int kbps, boo
 	         "&X-Plex-Platform=" PLATFORM "&X-Plex-Client-Profile-Extra=%s"
 	         "&X-Plex-Token=%s",
 	         base, verb, t->key, kbps, t->key, sess, t->key, sess,
-	         download ? "&X-Plex-Chunked=1" : "", C.client, OPUS_PROFILE, C.token);
+	         download ? "&X-Plex-Chunked=1" : "", C.client, OPUS_PROFILE, srv_token());
 }
 
 static void stream_url(msrv *m, const char *base, const msrv_track *t, char *out, size_t n,
@@ -1123,7 +1138,7 @@ void plex_sign_out(void)
 {
 	msrv_download_cancel(P);
 	LOCK();
-	C.token[0] = C.account[0] = C.server[0] = C.server_id[0] = C.library[0] = C.tailnet[0] = '\0';
+	C.token[0] = C.account[0] = C.server[0] = C.server_id[0] = C.stoken[0] = C.library[0] = C.tailnet[0] = '\0';
 	C.nconns = 0; C.section = 0; g_base[0] = '\0';
 	msrv_rel_root_set(P);
 	UNLOCK();
@@ -1182,6 +1197,7 @@ void plex_server_pick(int i)
 	if (strcmp(C.server_id, g_servers[i].id)) C.tailnet[0] = '\0';   /* another server's */
 	snprintf(C.server, sizeof C.server, "%s", g_servers[i].name);
 	snprintf(C.server_id, sizeof C.server_id, "%s", g_servers[i].id);
+	snprintf(C.stoken, sizeof C.stoken, "%s", g_servers[i].token);
 	memcpy(C.conns, g_servers[i].conns, sizeof C.conns);
 	C.nconns = g_servers[i].nconns;
 	C.section = 0; C.library[0] = '\0';
