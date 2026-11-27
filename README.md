@@ -245,12 +245,10 @@ while holding it. Holding MENU about 0.7 s opens the game switcher.
 <details>
 <summary><b>How does turbo work?</b></summary>
 
-Bind **Turbo Assign** under **Hotkeys**. In a game:
-
-- **Turbo Assign, the button to turbo, the button to put it on.** Turbo Assign
-  + A + X makes X a turbo A (about ten presses a second while held).
-- **The same again** makes that button normal.
-- **Turbo Assign held 2 s** clears every turbo.
+In a game, MENU > **Hotkeys > Turbo Assignments**: set a button to **Turbo
+A** (or any other) and it fires that button about ten times a second while
+held. **None** makes it normal again. Works at once; per shelf in **<Shelf>
+Defaults > Hotkeys**.
 
 A, B, X, Y, L1, R1, L2 and R2 can be turbo. More:
 [Turbo](docs/guide.md#turbo).

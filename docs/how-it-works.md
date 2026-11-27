@@ -281,10 +281,12 @@ different slot 2 loads with slot 2 reset (logged).
 - The map is per game (`turbomap.<TAG>/<rom>`, format `x:a,a:a` =
   button:turbo), with a shelf default; see the table above. Older
   `turbo.<TAG>/<rom>` rows are converted once; `persistturbo` is no longer read.
-- Diatom, not the core, pulses, so it is the same on every system. Diatom
-  reports Turbo Assign (`TURBO arm=1|0`, `btn=<name>`, `clear=1`; diatom
-  ADR-0045) and keeps no state.
-- The launcher holds the map and answers each change with the whole map:
+- Diatom, not the core, pulses, so it is the same on every system, and keeps
+  no state. The Turbo Assign hotkey and its `TURBO` reports are retired
+  (plorpos-5tm.26; diatom ADR-0045): turbo is set only on the Turbo
+  Assignments screen under Hotkeys, live in a game through
+  `plat_live_turbo`/`plat_live_turbo_set`.
+- The launcher holds the map and sends the whole map on each change:
   `b:b~3` per turbo button, plus `l2:none,r2:none` on GBA. It also sends it
   just after `RUN`, which resets the map to identity.
 - `turbo_period` is half a cycle in frames (3 = ~10 Hz at 60 Hz); see diatom

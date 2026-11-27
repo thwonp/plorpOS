@@ -43,9 +43,12 @@ plorpOS uses the main screen and puts something useful on the other.
   (cover, scrape info, play time, achievements). Swipe sideways for its three
   pages.
 - Second screen in a game: **Quick Settings**, the in-game menu's rows by
-  touch. The game keeps running: Display, Shader and the rest apply live, Save
-  and Load open their slots there, **Reset** and **Save and Quit** need a second
-  tap.
+  touch (no Hotkeys). The game keeps running: Display, Shader and the rest apply
+  live; **Reset** and **Save and Quit** need a second tap.
+- **Quick Save** / **Quick Load** use the game's Auto state, like the hotkeys,
+  and the game keeps running. Quick Load needs a second tap ("Tap again") and
+  is greyed until there is an Auto state. The row reads "Saved" / "Loaded" for
+  a moment. Numbered save slots stay in the regular in-game menu.
 - DS games use both screens: top on top, bottom below, and the bottom one takes
   your finger or stylus. PokeDaisy DS keeps its own picture on the top screen.
 

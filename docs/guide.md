@@ -276,9 +276,8 @@ On Favorites the menu is only Sort By.
 | **Core** | a choice on Game Boy, Game Boy Color, Game Boy Advance, Nintendo DS (and some systems on some devices); PICO-8: fake-08 or native. Elsewhere it names the core |
 | **Display Mode** | `Stretch`, `Aspect`, `Integer` (and `Integer Overscale` on square screens). Nintendo DS: **Layout** and **Display** |
 | **Shader** | Left/Right steps, A opens the list. Greyed on native PICO-8 |
-| **Hotkeys** | the shelf's hotkeys and Button Mapping |
+| **Hotkeys** | the shelf's hotkeys, Button Mapping and [Turbo Assignments](#turbo) |
 | **Palette** | Game Boy / Game Boy Color: the starting palette |
-| **Turbo Assignments** | the shelf's turbo buttons. See [Turbo](#turbo) |
 
 Changes save at once. A game with its own value keeps it whatever the default
 does later.
@@ -297,12 +296,13 @@ X on a game:
 | **Delete Game** | asked first. Removes the file; saves stay. On Ports, PortMaster's uninstall, saves included |
 
 **Game Overrides** lists Core, Display Mode (Layout and Display on the DS),
-Shader, Hotkeys, Palette and Turbo Assignments.
+Shader, Hotkeys and Palette.
 
 - Each reads **Shelf Default** until the game has its own. Left/Right/A cycle;
   picking Shelf Default drops the game's own.
-- Hotkeys and Turbo Assignments open their screens, with **Use Shelf
-  Default**; they read `custom` once set.
+- Hotkeys opens its screen (with Button Mapping and Turbo Assignments) and
+  **Use Shelf Default**; it reads `custom` once the game has its own hotkeys
+  or turbo.
 - From Favorites or Recents it works on the game's own console.
 
 Changes made in a game (Display Mode, Layout, Shader, Palette, Hotkeys,
@@ -365,9 +365,10 @@ MENU in a game:
 own; none are set for you.
 
 - Actions: **Fast Forward (Hold)**, **Fast Forward (Toggle)**, **Rewind**,
-  **Quick Save**, **Quick Load**, **Screenshot**, **Turbo Assign**, **Save and
-  Quit**. DS games add Screen Layout, Swap Screens, Blow Into Mic and stylus
+  **Quick Save**, **Quick Load**, **Screenshot**, **Save and Quit**. DS games add Screen Layout, Swap Screens, Blow Into Mic and stylus
   actions.
+- **Quick Save** writes the game's Auto state and refreshes the Auto card's
+  picture. **Quick Load** loads it.
 - **Save and Quit** is the menu's Save and Quit in one press, with no
   question.
 - Pick an action, **A**, then press its trigger: a button alone or under a
@@ -391,27 +392,20 @@ Game Overrides) or per console (<Shelf> Defaults).
 
 ### Turbo
 
-Bind **Turbo Assign** under Hotkeys. Then, in a game:
+**Hotkeys > Turbo Assignments**: in a game (in-game menu > Hotkeys), for a
+shelf (**<Shelf> Defaults > Hotkeys**) or for one game (**Game Overrides >
+Hotkeys**).
 
-- **Turbo Assign, the button to turbo, the button to put it on.** Turbo Assign
-  + A + X: X is a turbo A (about ten presses a second while held), A stays
-  plain. Turbo Assign + A + A: A is its own turbo. The picking presses never
-  reach the game.
-- **The same again**: that button is normal again. Another turbo on a button
-  replaces it. Any number of buttons can be turbo.
-- **Turbo Assign again** before the last press: cancelled.
-- **Turbo Assign held 2 s**: every turbo cleared.
-
+- A row per button: **None**, or the button it fires as a turbo (about ten
+  presses a second while held). **Left/Right/A** step through. X set to Turbo
+  A: X is a turbo A, A stays plain. A set to Turbo A: A is its own turbo.
 - A, B, X, Y, L1, R1, L2, R2 can be turbo. Directions, START and SELECT can't.
-- A notice says what happened each time.
-- A turbo follows Button Mapping: with A and B swapped, Turbo Assign + A + X
-  makes X a turbo of the game's B.
-- Kept for the game while **Save Per-Game Overrides** is on; off, it lasts
-  until the game quits.
-- **Turbo Assignments** (<Shelf> Defaults, or Game Overrides) is the same as a
-  list: each button None or the turbo it fires. A game with none of its own
-  uses the shelf's. The first change in a game copies the shelf's and edits
-  the copy.
+- In a game a change works at once. It is kept as the game's own while **Save
+  Per-Game Overrides** is on; off, it lasts until the game quits.
+- A game with none of its own uses the shelf's. **Use Shelf Default** (Game
+  Overrides) drops the game's own.
+- A turbo follows Button Mapping: with A and B swapped, X set to Turbo A fires
+  the game's B.
 
 ### Nintendo DS
 
