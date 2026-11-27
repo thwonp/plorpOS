@@ -29,7 +29,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-btnmap check-shaderlist check-battery \
-        check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
+        check-gbpal check-titles check-clock check-sysorder check-ota-names hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
@@ -62,7 +62,7 @@ CHECKS = check-jellyfin check-cheevos check-hare check-httpd check-idle check-ra
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
-         check-playlist check-podfeed check-ota check-emptywrap
+         check-playlist check-podfeed check-ota check-ota-names check-emptywrap
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -958,11 +958,16 @@ check-backlog:
 check-ota:
 	@sh tools/ota-check.sh
 
+# Each port's update check finds its own release zip, and only it (plorpos-fbay)
+check-ota-names:
+	@sh tools/ota-names-check.sh
+
 payload: all
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
 # payload.sh names the zip: out/plorpOS-v$(VERSION)-brick.zip for the Brick,
-# out/plorpOS-v$(VERSION)-gkd.zip for PLATFORM=gkd (docs/building.md, "Releases").
+# out/plorpOS-v$(VERSION)-gkd350based.zip for PLATFORM=gkdb (docs/building.md,
+# "Releases"); make check-ota-names checks each port's name against src/ota.h.
 release: payload
 
 # Copy the assembled payload onto a mounted FAT32 card. CARD must be set.

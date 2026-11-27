@@ -19,8 +19,8 @@
 # GKD on BasedOS (PLATFORM=gkdb, plorpos-gkd.94): out/gkdb/, the card's root -
 # System/launch_frontend.sh (BasedOS's frontend hook), plorpOS/ with Muse's
 # FFmpeg in plorpOS/lib/, the empty folders, and docs/install-gkdb.md as
-# INSTALL.md. Asset gkdb, never gkd: ROCKNIX
-# GKDs download gkd.
+# INSTALL.md. Asset gkd350based (plorpOS-v<ver>-gkd350based.zip), never gkd:
+# ROCKNIX GKDs download gkd. src/ota.h's OTA_PORT must match.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/mk/plorpos-files.sh"
@@ -55,7 +55,7 @@ elif [ "$PLATFORM" = gkdb ]; then
 	B=$ROOT/build/gkdb
 	OUT=$ROOT/out/gkdb
 	CARD=$OUT
-	PORT=gkdb
+	PORT=gkd350based
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
