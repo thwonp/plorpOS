@@ -211,7 +211,7 @@ static const struct { const char *id, *name, *file; float scale; } FONTS[] = {
 	/* Latin plus Japanese - kana and the JIS kanji (plorpos-g8i): the face to
 	 * pick for Japanese tags and file names, which the four above have no
 	 * glyphs for. The id stays "japanese" whichever face jp.ttf holds. */
-	{ "japanese",  "M PLUS 1p",    "jp.ttf",      0.93f },
+	{ "japanese",  "Kosugi Maru",  "jp.ttf",      0.96f },
 };
 #define FONT_COUNT ((int)(sizeof FONTS / sizeof FONTS[0]))
 static int g_head = 0, g_font = 2;
@@ -4322,8 +4322,10 @@ static void music_keys(void)
  * Muse's pause/play, playing or not (plorpos-7wu.5), and then neither steps,
  * skips or repeats until both are up. The press steps at once, so volume
  * answers at the press and not at the release; a skip or a chord takes that
- * step back, so reaching for either leaves the level where it was. */
-static void vol_keys(in_state *st)
+ * step back, so reaching for either leaves the level where it was.
+ * `skips` false: a hold is only the repeat, whatever the Volume Held hotkeys
+ * say - Now Playing with the screen on (owner, plorpos-57h.1). */
+static void vol_keys_as(in_state *st, bool skips)
 {
 	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
 	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
@@ -4360,7 +4362,7 @@ static void vol_keys(in_state *st)
 			plat_volume_nudge(dir);
 			moved[k] = plat_volume_get() != before;
 			/* A hold set to None is a volume key held: it steps on. */
-			armed[k] = musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
+			armed[k] = skips && musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
 		} else if (!armed[k]) {
 			if (in_repeat(st, b)) plat_volume_nudge(dir);
 		} else {
@@ -4379,6 +4381,8 @@ static void vol_keys(in_state *st)
 		}
 	}
 }
+
+static void vol_keys(in_state *st) { vol_keys_as(st, true); }
 
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
  * the headset rather than reaching it a tick later. */
@@ -7087,6 +7091,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	int notes_drawn = 0;   /* which marquee slot the next long note takes */
 	int scroll = 0;        /* pixels the body is lifted by, cursorless */
 	int scroll_h = 0;      /* the body viewport's height, 0 if nothing scrolls */
+	int scroll_in = 0;     /* its clip's inset at each end: see notes_drawn */
 	int scroll_span = 0;
 	int scroll_split = 0;  /* first pinned row: the rule, or n if there is none */
 	int scroll_foot = 0;   /* the pinned rows' total height */
@@ -7552,9 +7557,19 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	}
 
 	notes_drawn = 0;
+	/* A scrolling body is clipped where its text sits at rest, not at the
+	 * viewport's edge: the band between them - a row's centering and the
+	 * font's room above its capitals - is empty on a still card, and text
+	 * scrolled into it read as running past the panel's text area, up under
+	 * the heading rule and down into the bottom pad (plorpos-57h.3). */
+	if (scroll_h && fm) {
+		scroll_in = (note_h - text_h) / 2 + ink_off
+		          + ui_font_ascent(fm) - ui_font_cap(fm);
+		if (scroll_in < 0 || scroll_in * 4 > scroll_h) scroll_in = 0;
+	}
 	if (scroll_h)
-		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y,
-		                                         panel.w, scroll_h });
+		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y + scroll_in,
+		                                         panel.w, scroll_h - scroll_in * 2 });
 	/* Clipped to the panel, and ONE ROW BEYOND THE WINDOW at each end.
 	 * Offsetting the rows opens a gap at one edge and pushes the far row past
 	 * the other; without the extra row the gap is empty, and without the clip
@@ -7846,11 +7861,12 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			SDL_SetRenderDrawColor(a->r, 22, 24, 32, al);
 			if (scroll > 0)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + e,
+					panel.x + UI_PANEL_BORDER, content_y + scroll_in + e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 			if (scroll < scroll_span)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + scroll_h - 1 - e,
+					panel.x + UI_PANEL_BORDER,
+					content_y + scroll_h - scroll_in - 1 - e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 		}
 		SDL_RenderSetClipRect(a->r, NULL);
@@ -16383,7 +16399,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		snprintf(help, sizeof help, "A: %s%s%s%s%s%s%s    %s", state ? "play" : "pause",
 		         trk[0] ? "    " : "", trk, trk[0] ? ": track" : "",
 		         sk[0] ? "    " : "", sk, sk[0] ? ": seek" : "",
-		         musec_is_book() ? "X: more" : "Y: mode");
+		         musec_is_book() ? "X: more" : "Y: mode    X: more");
 		np_help(r, fs, help);
 	}
 	draw_battery(r);
@@ -16452,10 +16468,10 @@ static void np_under_draw(app *a, void *ctx)
 	np_draw(a, musec_now(), next, muse_hold());
 }
 
-/* ---- A book's More (plorpos-i8d.1) ---------------------------------------- *
+/* ---- Now Playing's More (plorpos-i8d.1) ------------------------------------ *
  *
  * X on a book's Now Playing, on either audiobook source: Speed, Sleep Timer,
- * Chapters and Timeline. */
+ * Chapters and Timeline. On music, the Sleep Timer alone (owner, 57h.2). */
 
 /* A list too long for a menu - a book's chapters, its timeline - on the
  * lists' own drawer: the row chosen, or -1 for B. */
@@ -16779,9 +16795,13 @@ static int np_more_build(void *ctx, menu_row *rows, int max, const char **headin
 	(void)ctx;
 	(void)max;
 	*heading = "More";
-	speed_label(musec_speed(), spd, sizeof spd);
 	if (left > 0) snprintf(slp, sizeof slp, "%d min", (left + 59) / 60);
 	else snprintf(slp, sizeof slp, "Off");
+	if (!musec_is_book()) {
+		rows[0] = (menu_row){ "Sleep Timer", slp, true };
+		return 1;
+	}
+	speed_label(musec_speed(), spd, sizeof spd);
 	if (musec_chapters() > 1) snprintf(chp, sizeof chp, "%d of %d", musec_chapter_now() + 1, musec_chapters());
 	else snprintf(chp, sizeof chp, "%d of %d", mn->index + 1, mn->count);
 	rows[0] = (menu_row){ "Speed", spd, true };
@@ -16799,6 +16819,7 @@ static menu_result np_more_key(app *a, void *ctx, in_button key, int sel)
 	bool step = key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT;
 
 	(void)ctx;
+	if (!musec_is_book()) sel = sel == 0 ? 1 : -1;     /* music: the timer alone */
 	if (sel == 0 && step) {
 		double x = round(musec_speed() * 10) / 10;
 
@@ -16885,14 +16906,14 @@ static muse_exit muse_now_screen(app *a)
 		/* The mode, on music. A book plays in order whatever the mode says;
 		 * its speed is under X's More (plorpos-i8d.1). */
 		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
-		if (a->in.pressed[IN_X] && musec_is_book()) {
+		if (a->in.pressed[IN_X]) {
 			np_more(a);
 			memset(&drawn, 0, sizeof drawn);     /* the menu drew over it */
 			continue;
 		}
 		/* The shoulders, the D-pad and the stick: Muse's Hotkeys. */
 		muse_hk_poll(&a->in, true);
-		vol_keys(&a->in);
+		vol_keys_as(&a->in, false);      /* holds repeat, never skip (57h.1) */
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 

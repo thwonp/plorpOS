@@ -392,8 +392,10 @@ and the licence text are in the `res/fonts/` file named below.
 - `res/fonts/josefin.ttf` - **Josefin Sans** (`OFL-JosefinSans.txt`). One of the
   faces UI Settings > Font offers.
 - `res/fonts/lato.ttf` - **Lato** (`OFL-Lato.txt`). The other one.
-- `res/fonts/jp.ttf` - **M PLUS 1p** Medium (`OFL-MPLUS1p.txt`). The face
-  with Japanese (kana and kanji) as well as Latin, in UI Settings beside the others.
+- `res/fonts/jp.ttf` - **Kosugi Maru** Regular (Apache License 2.0,
+  `LICENSE-KosugiMaru.txt`). The face with Japanese (kana and kanji) as well
+  as Latin, in UI Settings beside the others. Modified: `tools/jp-fold.py` maps
+  the accented letters it lacks onto their plain ones (ú to u) in its cmap.
 - `res/fonts/wordmark.ttf` - **Josefin Sans** too (`OFL-JosefinSans.txt`), for
   the plorpOS wordmark.
 
