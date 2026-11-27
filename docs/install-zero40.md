@@ -16,24 +16,24 @@ width of the panel.
 You need the Zero 40, a microSD card for oakMOSS (and optionally a second one
 for your games) and a computer.
 
-## 1. Put oakMOSS on the first card
+## 1. Flash the image
 
-Follow oakMOSS's own guide, [Using oakMOSS](https://github.com/spruceUI/oakMOSS/blob/main/docs/using.md).
-Back up the Zero 40's stock card first: it is the only way back. Then boot the
-new card once in the Zero 40. That first boot adds a FAT32 partition called
-`SPRUCEOS` to the free space on the card, which is where plorpOS can go.
+The release has one image for the Zero 40: oakMOSS (Shaun Inman's boot chain with our system) with plorpOS
+already in it. Back up the Zero 40's stock card first: it is the only way back.
 
-## 2. Copy plorpOS onto a card
+- **New card:** write `plorpOS-v<version>-zero40.img.xz` to a microSD card with
+  [Etcher](https://etcher.balena.io/) or `dd`. It replaces everything on the
+  card.
+- **A card that already runs oakMOSS:** copy `plorpOS-v<version>-zero40.omupd`
+  to the root of the card's `SPRUCEOS` partition and reboot. The board
+  installs it, restarts and deletes the file. Your games and saves stay. It
+  waits while the battery is under 30% with no charger.
 
-Unzip `plorpOS-v<version>-zero40.zip` onto either card:
+The first boot adds a FAT32 partition called `SPRUCEOS` to the free space on
+the card and puts plorpOS on it. That is the partition a computer sees as an
+ordinary drive.
 
-- **The first card's `SPRUCEOS` partition**, for one card that does
-  everything. A computer sees it as an ordinary drive.
-- **A second card (SD2)**, formatted FAT32. oakMOSS cannot read exFAT.
-
-If the second card has a launcher on it (spruceOS, say), it wins and plorpOS
-on the first card does not start. Take spruceOS off that card, or put plorpOS
-on it instead.
+## 2. What is on the card
 
 ```
 .tmp_update/updater   oakMOSS starts plorpOS through this
@@ -41,6 +41,18 @@ plorpOS/              the launcher, its cores and settings
 Roms/                 one folder per system
 Saves/  Bios/  Music/  Audiobooks/
 ```
+
+The image puts these on the card only when the card has no launcher yet. A
+card that already has plorpOS, spruceOS or anything else is left alone, and
+plorpOS updates itself from then on (see Updating).
+
+**Already running oakMOSS and want to keep it?** Unzip
+`plorpOS-v<version>-zero40.zip` onto the first card's `SPRUCEOS` partition
+instead, or onto a second card (SD2) formatted FAT32; oakMOSS cannot read
+exFAT. If the second card has a launcher on it (spruceOS, say), it wins and
+plorpOS on the first card does not start.
+
+The zip is for the Zero 40 only.
 
 ## 3. Add games
 
@@ -123,6 +135,9 @@ What to expect:
 
 ## Limits
 
+- Charging can slow to a trickle after a USB DAC is plugged in or pulled out
+  with a charger connected. Re-plug the charger. The fix is in oakMOSS
+  ([guide](guide.md#usb-dac)).
 - No Bluetooth yet.
 - Native PICO-8 needs your own `pico8_64` and `pico8.dat` in `Bios/`;
   without them the PICO-8 shelf plays carts on the fake08 core.
@@ -130,6 +145,11 @@ What to expect:
 - Below and above a landscape game the screen is black.
 
 ## Updating
+
+Two things update separately. The base system (oakMOSS, the kernel, the DAC
+drivers) comes from a new `.omupd` file, copied to the card as in step 1. plorpOS
+itself updates from the menu, below. An image update never replaces the
+plorpOS on a card that already has it.
 
 From v1.10, **MENU > Network Services > Check for update** does this over
 Wi-Fi ([guide](guide.md#check-for-update)). By hand:
