@@ -279,6 +279,10 @@ void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
 void plat_resident_on_tick(void (*fn)(void));
 /* Diatom only: one protocol line (RESUME, STOP, SAVE\tpath=...), newline added. */
 bool plat_resident_line(const char *fmt, ...);
+/* Diatom's volume, `index` of PLAT_VOL_MAX + 1, with the Volume Limiter's
+ * ceiling as max= (plorpos-bn9.20): every volume SETLEVEL goes through here,
+ * since one without max= clears Diatom's ceiling. */
+bool plat_resident_volume_set(int index);
 /* Whether the game should be heard - Diatom's QUIET, its ADR-0032. Sent when it
  * changes, and before every RUN whether it changed or not, so it is safe to
  * call as often as the answer might have moved. */
@@ -641,6 +645,10 @@ int  plat_brightness_get(void);
 void plat_volume_nudge(int delta);
 /* Volume Limiter (plorpos-bn9.9): no nudge up takes the level past `top`. */
 void plat_volume_ceiling(int top);
+/* Menu Hold off (plorpos-bn9.21): a Menu hold in a game is nothing - Diatom
+ * told so with SETHOTKEYS hold=off, and a native port's run loop and the
+ * Rotate's swipe up do not pause the game for it. */
+void plat_menu_hold(bool on);
 void plat_brightness_nudge(int delta);
 void plat_volume_set_pct(int pct);
 void plat_brightness_set(int level);

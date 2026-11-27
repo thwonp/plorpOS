@@ -100,6 +100,12 @@ int  aout_limit_pct(aout_dest d);            /* 100 for the speaker */
 int  aout_limit_level(aout_dest d, int level_max);
 /* A limit one step of ten along, held to 10..100. */
 int  aout_limit_step(int pct, int dir);
+/* The output in use, as the launcher last resolved it (plorpos-bn9.22). A
+ * cable plugged in while a DAC plays changes nothing about where the sound
+ * goes - the DAC still wins (aout_resolve) - so a jack poll caps a new cable
+ * at the 3.5mm limit only when the DAC is not the one playing. */
+void aout_limit_in_use(aout_dest d);
+int  aout_limit_plug_level(int level_max);
 
 /* ---- the headphone jack, and why a remembered state is not enough --------- */
 

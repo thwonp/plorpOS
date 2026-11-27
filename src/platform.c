@@ -713,6 +713,11 @@ void menu_filter(in_state *st)
 	}
 }
 
+/* Menu Hold off (plorpos-bn9.21): SETHOTKEYS says hold=off, and no run loop
+ * here pauses a game for a hold. */
+static bool menu_hold_off;
+void plat_menu_hold(bool on) { menu_hold_off = !on; }
+
 static gesture run_menu_why;
 
 gesture plat_run_menu_why(void) { return run_menu_why; }
@@ -1021,6 +1026,10 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			menu_spent = true;
 			swipe = GESTURE_SWITCHER;
 		}
+		/* Menu Hold off (plorpos-bn9.21): a hold - or a swipe up - is
+		 * nothing, so the child is not frozen and the menu not set up for
+		 * a screen that would close at once. Its release stays spent. */
+		if (swipe == GESTURE_SWITCHER && menu_hold_off) swipe = GESTURE_NONE;
 		/* An edge swipe opens the same frozen-child screen, told why
 		 * (plorpos-3yv.45): Menu wins a tie. */
 		if (dark) { menu = false; swipe = GESTURE_NONE; }   /* no menu in the dark */
@@ -1394,6 +1403,10 @@ static char d_turbo_old[600];     /* "turbo.<TAG>/<rom file>": the bits it repla
 /* The running game's hotkeys and Button Mapping, resolved at RUN and changed
  * by the in-game Hotkeys screen for this session (plorpos-bn9.4). */
 static char d_hk[320], d_bm[160];
+/* Every volume SETLEVEL carries the Volume Limiter's ceiling (plorpos-bn9.20):
+ * Diatom then never sets or shows a level above it. vol_top is set below. */
+#define SETLEVEL_VOLUME "SETLEVEL\tkind=volume\tindex=%d\tcount=%d\tmax=%d"
+static int vol_top;
 
 bool plat_save_overrides(void) { return db_get_int(db_dev(), "saveoverrides", 1) != 0; }
 
@@ -1650,8 +1663,8 @@ bool plat_resident_send(const plat_game *g)
 			hk = kept;
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
-			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
-			      plat_hotkey_modifier());
+			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", hk ? hk : "",
+			      plat_hotkey_modifier(), menu_hold_off ? "off" : "pause");
 		}
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
@@ -1686,8 +1699,7 @@ bool plat_resident_send(const plat_game *g)
 		 * Both are written off the shared maxima now. */
 		vol = plat_volume_get();
 		bri = plat_brightness_get();
-		if (vol >= 0) dsend("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                    vol, PLAT_VOL_MAX + 1);
+		if (vol >= 0) dsend(SETLEVEL_VOLUME, vol, PLAT_VOL_MAX + 1, vol_top);
 		if (bri >= 0) dsend("SETLEVEL\tkind=brightness\tindex=%d\tcount=%d",
 		                    bri, PLAT_BRIGHT_MAX + 1);
 #ifdef PLATFORM_RGDS
@@ -1797,6 +1809,11 @@ bool plat_resident_line(const char *fmt, ...)
 	 * connection, and nothing of the line reached the old one to repeat. */
 	if (!dconnect()) return false;
 	return dsend("%s", line);
+}
+
+bool plat_resident_volume_set(int index)
+{
+	return plat_resident_line(SETLEVEL_VOLUME, index, PLAT_VOL_MAX + 1, vol_top);
 }
 
 const char *plat_resident_last_preview(void) { return d_preview; }
@@ -2011,7 +2028,8 @@ void plat_live_keys_set(const char *hk, const char *bm, bool save)
 	snprintf(d_hk, sizeof d_hk, "%s", hk ? hk : "");
 	snprintf(d_bm, sizeof d_bm, "%s", bm ? bm : "");
 	plat_hotkeys_for_diatom(d_hk, wire, sizeof wire);
-	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", wire, plat_hotkey_modifier());
+	dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s\thold=%s", wire, plat_hotkey_modifier(),
+	      menu_hold_off ? "off" : "pause");
 	d_turbo_send();
 	if (save) plat_game_keys_set(d_tag, d_file, d_hk, d_bm);
 }
@@ -2482,6 +2500,8 @@ static int diatom_wait(void)
 #if defined(PLATFORM_ROTATE)
 			if (g == GESTURE_NONE) g = sw_swipe;
 #endif
+			/* A swipe up with Menu Hold off: nothing (plorpos-bn9.21). */
+			if (g == GESTURE_SWITCHER && menu_hold_off) g = GESTURE_NONE;
 			if (g != GESTURE_NONE && d_got_running && !sent_stop &&
 			    !d_sleep_asked && d_gesture_asked == GESTURE_NONE) {
 				d_gesture_asked = g;
@@ -3024,7 +3044,7 @@ void plat_draw_osd(SDL_Renderer *r)
 
 /* The Volume Limiter's ceiling for the output in use (plorpos-bn9.9): a step
  * up stops there, and the OSD shows where it stopped. Set by the launcher. */
-static int vol_top = VOL_MAX;
+static int vol_top = PLAT_VOL_MAX;
 void plat_volume_ceiling(int top) { vol_top = clampi(top, 0, VOL_MAX); }
 
 void plat_volume_nudge(int delta)

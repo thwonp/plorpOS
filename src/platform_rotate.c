@@ -1147,7 +1147,7 @@ void plat_sink_follow(bool game)
 	if (now - since < 500) return;
 	seen = -1;
 	fprintf(stderr, "audio: output is at level %d, was %d\n", want, have);
-	if (game) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", want, VOL_MAX + 1);
+	if (game) plat_resident_volume_set(want);
 	else      plat_volume_nudge(want - have);
 }
 

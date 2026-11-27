@@ -1444,7 +1444,9 @@ bool plat_hold_switch(void) { return switch_locks && mute_switch_down(); }
 void plat_audio_jack_poll(void)
 {
 	bool in = jack_present() != 0;
-	int top = aout_limit_level(AOUT_WIRED, VOL_MAX);
+	/* The DAC's limit if a DAC is what plays: the cable is not heard then
+	 * (plorpos-bn9.22). */
+	int top = aout_limit_plug_level(VOL_MAX);
 
 	if (!aout_should_reapply(jack_was, in, cur_vol >= 0))
 		return;
