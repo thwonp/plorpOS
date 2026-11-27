@@ -44,7 +44,7 @@ default `../diatom/build/<platform>/diatom` (Flip: `../diatom-miyoo/...`).
 |---|---|---|---|
 | TrimUI Brick / Brick Pro | `mk/fetch-sysroot.sh` (adb) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-brick.sh`, `mk/build-unzip.sh` | `make && make payload` -> `out/sd/`, `out/plorpOS-v<VER>-brick.zip` |
 | GKD 350H Ultra (BasedOS) | `mk/fetch-gkdb-sysroot.sh`: the fork's Buildroot output (`BR_OUT`) and the H700's sysroot for Muse+'s FFmpeg; no device | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`); `mk/build-curl-zero40.sh`; the H700's `mk/build-pmtools-h700.sh` and `make PLATFORM=h700`; diatom's GKD build | `make PLATFORM=gkdb && make PLATFORM=gkdb payload` -> `out/gkdb/`, zip |
-| GKD 350H Ultra (ROCKNIX, not released in 2.0) | `mk/fetch-gkd-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`) | `make PLATFORM=gkd && make PLATFORM=gkd payload` -> `out/gkd/`, zip |
+| GKD 350H Ultra (ROCKNIX, not released in 2.0) | `mk/fetch-gkd-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`) | `make PLATFORM=gkd && make PLATFORM=gkd payload` -> `out/gkd/` (development only, no zip) |
 | Anbernic RG DS (ROCKNIX) | `mk/fetch-rgds-sysroot.sh` (ssh) | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-gkd`), `mk/fetch-rgds-adbd.sh` | `make PLATFORM=rgds && make PLATFORM=rgds payload` -> `out/rgds/card`, zip; then `mk/rgds-image.sh <ROCKNIX RK3566 image>` (card image) |
 | Anbernic H700 (BaseOS) | `mk/fetch-h700-sysroot.sh` (~10 min) | `mk/build-dsperate-brick.sh`, `mk/build-pmtools-h700.sh`, `mk/build-sdl2-armhf.sh` | `make PLATFORM=h700 && make PLATFORM=h700 payload` -> `out/h700/`, zip |
 | RG Rotate | `mk/fetch-rotate-sysroot.sh` | `mk/build-dsperate.sh`, `mk/build-melondsds.sh` (-> `vendor/cores-rotate`), `mk/build-unzip.sh`; image: `mk/build-ports-mesa.sh` | `make PLATFORM=rotate`, then `mk/rotate-deploy.sh package` (update zip) and `mk/rotate-image.sh` (card image) |
@@ -89,8 +89,9 @@ releases by these rules, so every release follows them:
   on GitHub; the devices skip pre-releases and drafts.
 - One zip per port, named `plorpOS-v<VER>-<port>.zip`, exactly as the
   packagers above write it: `brick`, `gkd350based` (from `PLATFORM=gkdb`), `h700`, `rgds`, `zero40`, `zero28`,
-  `rotate-update` and `miyoominiflip`. No `gkd` zip in 2.0: ROCKNIX GKDs look for
-  `gkd`, so they are not offered it. A device takes the newest release that
+  `rotate-update` and `miyoominiflip`. No `gkd` zip in 2.0: the ROCKNIX GKD build is
+  development only (`make PLATFORM=gkd payload` writes none), and 1.9.x GKD
+  cards have no update check. A device takes the newest release that
   has its own port's zip, so a release for some ports only is fine.
 - A `SHA256SUMS` beside them, covering every asset:
   `cd out && sha256sum plorpOS-v<VER>-*.zip > SHA256SUMS`.
@@ -99,6 +100,8 @@ releases by these rules, so every release follows them:
 - Other downloads keep names outside that pattern: the card images
   `plorpOS-v<VER>-<port>.img.xz` (`rotate`, `rgds`, `zero40`, `zero28`) and
   `plorpOS-miyoominiflip-fast-boot.zip`.
+- The fast-boot zip: `mk/flip-fw/build-lean.sh <stock miyoo285_fw.img> <lean.img>`,
+  then `mk/flip-fw/package-fast-boot.sh <lean.img>` (writes it to `out/`).
 
 ## Checks
 
