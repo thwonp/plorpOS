@@ -6553,16 +6553,46 @@ static void draw_games(app *a)
  * ROMs one directory too deep, needs to be told where the games go rather
  * than left to conclude the device is dead. The path is named because that is
  * the actual question being asked. */
+/* s centred on x from y, broken at spaces into lines no wider than w (a
+ * portrait 480 is narrower than the help below, plorpos-d98.20); returns the
+ * y under the last line. A single word wider than w is drawn as it is. */
+static int text_wrapped(app *a, ui_font_role role, const char *s, int x, int y, int w,
+                        SDL_Color c)
+{
+	TTF_Font *f = ui_font(role);
+	char line[256];
+
+	while (*s) {
+		size_t n = strlen(s);
+
+		if (n >= sizeof line) n = sizeof line - 1;
+		memcpy(line, s, n);
+		line[n] = '\0';
+		while (ui_text_width(f, line) > w) {
+			char *sp = strrchr(line, ' ');
+
+			if (!sp) break;
+			*sp = '\0';
+		}
+		ui_text(a->r, f, line, x, y, 0, c);
+		y += ui_font_line(role);
+		s += strlen(line);
+		while (*s == ' ') s++;
+	}
+	return y;
+}
+
 static void draw_no_games(app *a)
 {
-	int cy = TORTOS_SCREEN_H / 2;
+	int cy = TORTOS_SCREEN_H / 2, w = TORTOS_SCREEN_W - 48, y;
 
 	ui_text(a->r, ui_font(UI_F_TITLE), "No games found",
 	        TORTOS_SCREEN_W / 2, cy - 60, 0, UI_TEXT_SOFT);
-	ui_text(a->r, ui_font(UI_F_MENU), "Put ROMs in Roms/<System>/ on the card",
-	        TORTOS_SCREEN_W / 2, cy + 6, 0, UI_TEXT_DIM);
-	ui_text(a->r, ui_font(UI_F_META), "one folder per system, named as in systems.cfg",
-	        TORTOS_SCREEN_W / 2, cy + 56, 0, UI_TEXT_DIM);
+	y = text_wrapped(a, UI_F_MENU, "Put ROMs in Roms/<System>/ on the card",
+	                 TORTOS_SCREEN_W / 2, cy + 6, w, UI_TEXT_DIM);
+	/* The gap the two lines had before either wrapped: 50 from top to top. */
+	text_wrapped(a, UI_F_META, "one folder per system, named as in systems.cfg",
+	             TORTOS_SCREEN_W / 2, y + 50 - ui_font_line(UI_F_MENU), w, UI_TEXT_DIM);
 }
 
 /* The background and the focus glow as one picture, kept while nothing they

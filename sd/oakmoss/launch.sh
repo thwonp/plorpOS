@@ -32,6 +32,17 @@ export HOME=$USERDATA_PATH
 # must come first (oakMOSS hardware-notes); then plorpOS/lib, Muse's FFmpeg.
 export LD_LIBRARY_PATH=/usr/magicx/lib:$TORTOS_DIR/lib:$LD_LIBRARY_PATH
 export PATH=/usr/magicx/bin:$PATH
+# The Zero 40 image boots Dedicated OS's chain (oakMOSS make-hybrid-zero40.sh),
+# whose device tree numbers the pad its own way: A 304 plus 353, B 305, X 307,
+# Y 308 (ours: A 305, B 304, X 308, Y 307). The extra 353 is the tell: SDL
+# then counts 21 buttons, and every index from it on is one higher. The
+# launcher, Diatom, native PICO-8 and PortMaster all read MAGICX_PAD.
+MAGICX_PAD=$(awk '/^N: Name="magicx-input"/ { p = 1 }
+	p && /^B: KEY=/ { sub(/^B: KEY=/, ""); n = split($0, w, " ")
+		x = n > 5 ? w[n - 5] : ""; while (length(x) < 16) x = "0" x
+		d = index("0123456789abcdef", substr(x, 8, 1)) - 1
+		print (int(d / 2) % 2 ? "dedicated" : "oakmoss"); exit }' /proc/bus/input/devices)
+export MAGICX_PAD
 # For SDL_GameController readers (native PICO-8): SDL's automatic mapping
 # drops the four-button d-pad and MENU. Positional, as SDL names them: a is
 # the bottom button. The Zero 40's one stick has its axes swapped, the
@@ -42,6 +53,7 @@ case $BOARD in
 zero28) PAD="${PAD}rightstick:b11,dpup:b12,dpleft:b13,dpright:b14,dpdown:b15,guide:b18,leftx:a0,lefty:a1,rightx:a2,righty:a3," ;;
 *) PAD="${PAD}dpup:b11,dpleft:b12,dpright:b13,dpdown:b14,guide:b17,leftx:a1~,lefty:a0," ;;
 esac
+[ "$MAGICX_PAD" = dedicated ] && PAD="1900000012b400006666000000010000,magicx-input,a:b1,b:b0,x:b3,y:b2,back:b8,start:b9,leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,leftstick:b10,dpup:b12,dpleft:b13,dpright:b14,dpdown:b15,guide:b18,leftx:a1~,lefty:a0,"
 export SDL_GAMECONTROLLERCONFIG="${PAD}platform:Linux,"
 
 # USB Debugging (plorpos-auv.12, System Settings): the OTG port reads its ID
