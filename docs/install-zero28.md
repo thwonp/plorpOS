@@ -67,7 +67,7 @@ set a hotkey on it.
 ## Display
 
 Games start in **Aspect**: their own shape, as large as the screen allows. A
-system's menu > **Defaults** sets its Display Mode, and the game menu's Display
+system's menu > **Defaults** sets its Display Mode, and the game menu's Display Mode
 changes it for one game. DS games start in **Overlay**; the game menu's Layout
 row has Single Screen and Hybrid.
 

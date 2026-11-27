@@ -1110,7 +1110,7 @@ static void ingame_rows(void)
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(GM_FILL == GM_DISPLAY + 1 && GM_SHADER == GM_FILL + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
 	   "Shader is under Display (plorpos-gkd.72.4), the DS's Display between them");
-	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display"),
+	ck(!rows[GM_FILL].live && !strcmp(rows[GM_DISPLAY].label, "Display Mode"),
 	   "not a DS: Display is the mode, no second Display row");
 	u.nds = true; u.fill = "Aspect";
 	gm_rows(&u, rows, &b);
@@ -1223,7 +1223,7 @@ static void native_rows(void)
 	printf("native PICO-8 menu:\n");
 	ck(n == 5, "five rows");
 	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
-	   !strcmp(rows[GMN_DISPLAY].label, "Display") &&
+	   !strcmp(rows[GMN_DISPLAY].label, "Display Mode") &&
 	   !strcmp(rows[GMN_RESET].label, "Reset") &&
 	   !strcmp(rows[GMN_SPLORE].label, "Splore") &&
 	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Display, Reset, Splore, Quit");

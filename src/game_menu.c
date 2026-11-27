@@ -123,7 +123,7 @@ int go_rows(const go_ui *u, menu_row *out, go_row *ids)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Display", SHADER_LABEL, "Palette", "Disc",
+		"Continue", "Save", "Load", "Display Mode", "Display", SHADER_LABEL, "Palette", "Disc",
 		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
 	};
 	int i;
@@ -188,7 +188,7 @@ int gm_compact(menu_row *rows, int n, int *ids)
 
 int gm_native_rows(bool in_splore, const char *display, menu_row *out)
 {
-	static const char *label[GMN_ROWS] = { "Continue", "Display", "Reset", "Splore", "Quit" };
+	static const char *label[GMN_ROWS] = { "Continue", "Display Mode", "Reset", "Splore", "Quit" };
 	int i;
 
 	for (i = 0; i < GMN_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
