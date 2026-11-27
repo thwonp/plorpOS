@@ -567,7 +567,13 @@ static bool ext_allowed(const char *name, const char *exts)
 /* The ROM stems in one folder. `.media/` and any dotfile are not games, and
  * neither is a stray text file - which is what the extension list in
  * systems.cfg is for. Without it this reports missing art for things that
- * were never going to have any. */
+ * were never going to have any.
+ *
+ * Then the shelf's folder games (library.c pass 2): a subfolder holding a
+ * disc image is one game named after the folder - its cover is
+ * .media/<folder>.png - unless a file of the same stem already is that game.
+ * ScreenScraper is asked by the folder's name with the launched image's
+ * extension (plorpos-5tm.25). */
 static void read_roms(const char *dir, const char *exts)
 {
 	DIR *d = opendir(dir);
@@ -595,6 +601,31 @@ static void read_roms(const char *dir, const char *exts)
 			*dot = '\0';
 		}
 		g_nroms++;
+	}
+
+	{
+		int files = g_nroms, k;
+
+		rewinddir(d);
+		while ((e = readdir(d)) && g_nroms < ENTRIES_MAX) {
+			char full[ARTPATH_MAX], inside[NAME_MAX_];
+			const char *dot;
+			struct stat st;
+
+			if (e->d_name[0] == '.') continue;
+			if (snprintf(full, sizeof full, "%s/%s", dir, e->d_name)
+			    >= (int)sizeof full) continue;
+			if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+			for (k = 0; k < files; k++)
+				if (!strcasecmp(g_roms[k], e->d_name)) break;
+			if (k < files) continue;
+			if (!lib_folder_game(full, inside, sizeof inside)) continue;
+			if (snprintf(g_roms[g_nroms], NAME_MAX_, "%s", e->d_name)
+			    >= NAME_MAX_) continue;
+			dot = strrchr(inside, '.');
+			snprintf(g_rext[g_nroms], sizeof g_rext[0], "%s", dot ? dot : "");
+			g_nroms++;
+		}
 	}
 	closedir(d);
 }

@@ -70,8 +70,9 @@ static int disc_rank(const char *name)
 }
 
 /* Pick the file to launch inside a game folder: the best-ranked disc image,
- * ties broken alphabetically so a discs-only folder lands on Disc 1. */
-static bool folder_launch_file(const char *dirpath, char *out, size_t outsz)
+ * ties broken alphabetically so a discs-only folder lands on Disc 1. Scrape Art
+ * lists folder games by the same rule (artscrape.c read_roms). */
+bool lib_folder_game(const char *dirpath, char *out, size_t outsz)
 {
 	DIR *d = opendir(dirpath);
 	struct dirent *e;
@@ -378,7 +379,7 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 		for (int k = 0; k < files_n; k++)
 			if (strcasecmp(list[k].name, e->d_name) == 0) { shadowed = true; break; }
 		if (shadowed) continue;
-		if (!folder_launch_file(full, inside, sizeof inside)) {
+		if (!lib_folder_game(full, inside, sizeof inside)) {
 			char shown[LIB_NAME];
 
 			snprintf(shown, sizeof shown, "%.*s/", LIB_NAME - 2, e->d_name);

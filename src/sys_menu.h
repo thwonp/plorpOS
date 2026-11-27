@@ -55,9 +55,6 @@ typedef enum {
 #endif
 	PM_NET,
 	PM_SYSTEM, PM_UI,
-#if defined(PLATFORM_RGDS)
-	PM_DUAL,                    /* Dual Screen Settings (plorpos-rgds.18.1) */
-#endif
 	PM_GAME,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
@@ -310,11 +307,6 @@ typedef struct {
 	bool        sw_game;     /* Rotate: opening always resumes a running game (5eq.23) */
 	bool        adb;         /* RG DS, Zero 40: adb over USB is on (plorpos-rgds.11) */
 	bool        adb_restart; /* Zero 40: turned off, still on until a restart (auv.12) */
-	/* RG DS, Dual Screen Settings (plorpos-rgds.18.1): the second panel
-	 * shows Muse rather than Details; the launcher and single-screen games
-	 * are on the bottom panel. A DS game uses both panels whatever these
-	 * say. The second panel is off at brightness 0 (plorpos-rgds.30). */
-	bool        dual_muse, dual_bottom;
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
@@ -415,8 +407,5 @@ int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
 int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                          const char **heading);
 
-/* Settings > Dual Screen Settings (RG DS). Returns DU_ROWS. */
-typedef enum { DU_FUNCTION, DU_PRIMARY, DU_ROWS } du_row;
-int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif

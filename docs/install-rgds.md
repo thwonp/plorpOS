@@ -55,16 +55,26 @@ or Over the Hare.
 
 ## Screens
 
-plorpOS uses one screen and puts something useful on the other. Choose which
-in Menu > **Dual Screen Settings**:
+plorpOS uses one screen (the main screen) and puts something useful on the
+other. Press **Anbernic + Home** together to swap them, on the shelf or in a
+game. plorpOS remembers your choice.
 
-- **Primary Screen**: Top or Bottom - where plorpOS and your games go.
-- **Secondary Function**: **Details** shows the game under the cursor (cover,
-  what the scrape knows, play time, achievements; swipe for its three pages).
-  **Muse+** puts Muse+'s Now Playing there, also beside your game. Touch it and
-  the whole of Muse+ runs on that screen (see Touch). While Muse+ is open on
-  the main screen, the other one shows the queue: drag to scroll, tap a track
-  to play it.
+The second screen shows:
+
+- **On the shelf**: Details for the game under the cursor (cover, what the
+  scrape knows, play time, achievements). Swipe sideways for its three pages.
+- **In a game**: Quick Settings, the in-game menu's rows, by touch. Your game
+  keeps running: Display, Shader and the rest change it live, Save and Load
+  open their slots right there, and Reset and Quit need a second tap.
+
+Two swipes work on the second screen wherever you are:
+
+- **Down from the top edge**: Muse+ (Now Playing). It stays there through
+  games until you swipe down from the top again. Tap it to browse all of
+  Muse+ on that screen. While Muse+ is open on the main screen, the second
+  screen shows the queue: drag to scroll, tap a track to play it.
+- **Up from the bottom edge**: Recent games, by touch. Pick one to play it,
+  even from inside another game.
 
 Nintendo DS games always use both screens: the top one on top, the bottom one
 below, and the bottom screen takes your finger or stylus. PokeDaisy DS keeps
@@ -86,8 +96,8 @@ The level bar shows on the screen you are changing, in games too.
 
 - The second screen goes all the way down to **off**: that's how you turn it
   off. While it's off, touching it does nothing.
-- The main screen (Primary Screen) never goes fully dark.
-- Switch Primary Screen and the brightness goes with it: the new main screen
+- The main screen never goes fully dark.
+- Swap the screens and the brightness goes with them: the new main screen
   takes the old one's level, and the other screen takes the second screen's.
 - A DS game needs both screens, so a screen that is off lights up for the game
   and goes dark again after it.
@@ -111,11 +121,12 @@ In a game, the game's screen takes the edge swipes (Muse+, Recent games) and a
 long press opens the in-game menu. In a DS game that is the top screen: the
 bottom one is only ever the game's.
 
-With Secondary Function set to Muse+, touch works on both screens without
-tapping in first. Whichever screen your finger lands on takes over, and the
-same swipe carries on there. Muse+ on the second screen is touch only: the
-buttons, a touch on the main screen, or playing your game hand control back
-and return it to Now Playing. Swiping back at Muse+'s top level goes to Now
+Touch works on both screens without tapping in first. Whichever screen your
+finger lands on takes over, and the same swipe carries on there. Muse+, Quick
+Settings and Recent games on the second screen are touch only. Beside a game
+they stay open while you play: the Anbernic button closes them, and so does a
+swipe in from the side edge (Back). On the shelf any button or a touch on the
+main screen hands control back. Swiping back at Muse+'s top level goes to Now
 Playing there.
 
 ## Ports
