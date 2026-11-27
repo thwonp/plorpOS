@@ -13315,7 +13315,6 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 #if defined(PLATFORM_ROTATE)
 	/* Rotate (Closed) / Rotate (Open) (plorpos-5eq.1): left/right and A go
 	 * round (owner). */
@@ -13334,11 +13333,6 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		return MENU_STAY;
 	}
 #endif
-	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
-		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
-		battery_indicator_changed();
-		return MENU_STAY;
-	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
 #if SYS_HAS_MUTESW
@@ -13417,6 +13411,14 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	/* A door (plorpos-bn9.6): only A opens it. */
 	if (sel == US_FONTS) {
 		if (key == IN_ACCEPT) fonts_screen(a);
+		return MENU_STAY;
+	}
+
+	/* Battery Percentage (from System Settings, plorpos-bn9.11): a toggle,
+	 * A or left/right, as Mute Switch. */
+	if (sel == US_BATTPCT && (d || key == IN_ACCEPT)) {
+		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
+		battery_indicator_changed();
 		return MENU_STAY;
 	}
 

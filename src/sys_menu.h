@@ -77,12 +77,12 @@ typedef enum {
 	ST_CLOCK,
 	ST_AUDIO,                   /* Audio Output, from the top menu (plorpos-eiz) */
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
-	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
+	ST_SLEEP, ST_AUTO_OFF, ST_LID,
 #else
 #if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
 	ST_AUTO_OFF,
 #endif
-	ST_SLEEP, ST_BATTPCT,
+	ST_SLEEP,                   /* Battery Percentage: UI Settings (plorpos-bn9.11) */
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
 	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
@@ -100,6 +100,7 @@ typedef enum {
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
 typedef enum { US_THEME, US_DIR, US_ORDER, US_FONTS /* a door: Fonts */,
+       US_BATTPCT /* from System Settings (plorpos-bn9.11) */,
        US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
        US_ROWS } us_row;
 

@@ -224,9 +224,6 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 #endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
-	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
-	 * screen but the game's. Off, the disc is only the low-battery dot. */
-	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
 #if defined(PLATFORM_ROTATE)
 	{
 		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping
@@ -271,6 +268,10 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_DIR]   = (menu_row){ "Gamelist Layout", u->gamelist, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_FONTS]    = (menu_row){ "Fonts", NULL, true };
+	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
+	 * screen but the game's. Off, the disc is only the low-battery dot.
+	 * How the screen looks, so here, not System Settings (bn9.11). */
+	out[US_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
 	out[US_PORTS]    = (menu_row){ "Ports Tile",
 	                               u->ports_hidden ? "Hidden" : "Visible", true };
 	return u->has_ports ? US_ROWS : US_PORTS;

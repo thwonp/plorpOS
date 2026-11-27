@@ -291,11 +291,10 @@ static void tortos_menu_offline(void)
 	   "Audio Output follows it (plorpos-eiz)");
 	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "then Auto Off");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
-	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Battery Percentage") != 0,
+		   "no Battery Percentage: it is UI Settings' now (plorpos-bn9.11)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
-	   "Battery Percentage defaults to off");
 	n = sys_menu_ui_build(&u, rows, &heading);
 	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	u.has_ports = true;
@@ -304,6 +303,9 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
 	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
+	ck(US_BATTPCT == US_FONTS + 1 && !strcmp(rows[US_BATTPCT].label, "Battery Percentage")
+	   && !strcmp(val(&rows[US_BATTPCT]), "off") && rows[US_BATTPCT].live,
+	   "Battery Percentage after Fonts, off to begin with (plorpos-bn9.11)");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
 	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
 	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
@@ -406,8 +408,8 @@ static void tortos_menu_online(void)
 	sys_menu_system_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[ST_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 	u.batt_pct = true;
-	sys_menu_system_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[ST_BATTPCT]), "on"), "Battery Percentage reads on");
+	sys_menu_ui_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[US_BATTPCT]), "on"), "Battery Percentage reads on");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
