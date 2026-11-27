@@ -1637,6 +1637,7 @@ void plat_input_poll(in_state *st)
 			bool sec = bwin && e.tfinger.windowID == SDL_GetWindowID(bwin);
 
 			if (sec && sec_dark()) continue;   /* dark: its touches are nobody's */
+			touch_note();                      /* the secondary's resting touches too */
 			if (sec && edge_watch(&e)) continue;
 
 			if (b_session) {

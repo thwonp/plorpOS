@@ -15,5 +15,9 @@ void touch_poll(in_state *st);
  * by a screen where the two differ (plorpos-5eq.19). */
 bool touch_long_take(void);
 void touch_reset(void);     /* a flush: all but the screen's free-drag ask */
+/* Any finger at all - a drag too - is somebody using it: the idle clock asks
+ * whether this count moved (plorpos-rgds.42). touch_note counts one. */
+void touch_note(void);
+unsigned touch_activity(void);
 
 #endif

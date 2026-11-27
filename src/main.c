@@ -54,6 +54,7 @@
 #include "muse_empty.h"
 #include "textwrap.h"
 #include "playlist.h"
+#include "touch.h"
 #include "ss.h"
 #include "ssrun.h"
 #include "sys_menu.h"
@@ -5211,6 +5212,13 @@ static bool idle_due(app *a)
 	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
+	/* A finger is input too, a drag included - not only the taps that come
+	 * out as presses (plorpos-rgds.42). */
+	{
+		static unsigned seen;
+
+		if (touch_activity() != seen) { seen = touch_activity(); b = 0; }
+	}
 
 	/* Music does NOT hold the clock (it did until TortOS-a5k): an album is
 	 * somebody using the device with nobody touching it, so running out
