@@ -307,6 +307,13 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 /* Settings > Scraping's rows, from the same sys_ui. Returns SC_ROWS. */
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading);
 
+/* Scraping > Scrape Systems (plorpos-bn9.2): "All", then one row per system
+ * with games, `on` saying which are checked, then a note for START. Rows go
+ * from SP_FIRST; returns the count, at most n + 3. */
+enum { SP_ALL, SP_FIRST };
+int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
+                               menu_row *out, const char **heading);
+
 /* Settings > System Settings. Returns ST_ROWS. */
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
