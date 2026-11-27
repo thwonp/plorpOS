@@ -1376,3 +1376,17 @@ const char *musec_path(void)
 }
 
 bool musec_playing(void) { return g_now.state == MU_PLAYING; }
+
+bool musec_stuck(unsigned ms)
+{
+	static double last = -1;
+	static unsigned since;
+	unsigned now = plat_now_ms();
+
+	if (g_now.state != MU_PLAYING || g_now.at != last) {
+		last = g_now.at;
+		since = now;
+		return false;
+	}
+	return now - since >= ms;
+}

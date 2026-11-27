@@ -199,6 +199,10 @@ const char *musec_path(void);
 /* Playing right now, for Auto Off: music is somebody using the device with
  * nobody touching it, the same as the charger. */
 bool musec_playing(void);
+/* Playing, by the daemon's word, with a position that has not moved for
+ * `ms` - an output wedged under it (plorpos-3yv.102). Asked often: a call
+ * that finds the position moved starts the count again. */
+bool musec_stuck(unsigned ms);
 
 /* Playing, or asked to and not yet answered. What decides who holds a
  * Bluetooth headset, which has to be true from the moment a PLAY is sent:
