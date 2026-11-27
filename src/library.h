@@ -57,6 +57,9 @@ typedef struct {
  * space separated list, without dots; empty means take everything). */
 /* Whether a filename is a disc image rather than a cartridge. */
 bool lib_is_disc(const char *name);
+/* A subfolder the shelf lists as one game: true, with the disc image it
+ * launches (.m3u first) in out. */
+bool lib_folder_game(const char *dirpath, char *out, size_t outsz);
 
 bool lib_scan(const char *roms_root, const char *folder, const char *exts,
               game_list *out);

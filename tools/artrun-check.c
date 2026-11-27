@@ -589,6 +589,68 @@ int main(void)
 		g_serve_image = g_serve_also = NULL;
 	}
 
+	printf("  a disc game in a folder of its own is asked for by the folder's name:\n");
+	{
+		char shelf[400], media[420], p[600];
+		systems_cfg sys;
+		int steps = 0, r;
+		FILE *f;
+
+		snprintf(shelf, sizeof shelf, "%s/PlayStation", g_root);
+		snprintf(media, sizeof media, "%s/.media", shelf);
+		mkdir(shelf, 0755);
+		mkdir(media, 0755);
+		/* .cue + .bin in a folder: the user's layout (plorpos-5tm.25) */
+		snprintf(p, sizeof p, "%s/Folder Game", shelf);        mkdir(p, 0755);
+		snprintf(p, sizeof p, "%s/Folder Game/fg.cue", shelf); write_file(p, "cue");
+		snprintf(p, sizeof p, "%s/Folder Game/fg.bin", shelf); write_file(p, "bin");
+		/* a multi-disc set: one game, never its discs */
+		snprintf(p, sizeof p, "%s/Multi Set", shelf);          mkdir(p, 0755);
+		snprintf(p, sizeof p, "%s/Multi Set/ms.m3u", shelf);   write_file(p, "d1.chd\nd2.chd\n");
+		snprintf(p, sizeof p, "%s/Multi Set/d1.chd", shelf);   write_file(p, "chd");
+		snprintf(p, sizeof p, "%s/Multi Set/d2.chd", shelf);   write_file(p, "chd");
+		/* a same-named file already is the game */
+		snprintf(p, sizeof p, "%s/Shadow.chd", shelf);         write_file(p, "chd");
+		snprintf(p, sizeof p, "%s/Shadow", shelf);             mkdir(p, 0755);
+		snprintf(p, sizeof p, "%s/Shadow/s.cue", shelf);       write_file(p, "cue");
+		/* no disc inside: not a game */
+		snprintf(p, sizeof p, "%s/Notes", shelf);              mkdir(p, 0755);
+		snprintf(p, sizeof p, "%s/Notes/readme.txt", shelf);   write_file(p, "txt");
+
+		memset(&sys, 0, sizeof sys);
+		sys.count = 1;
+		snprintf(sys.systems[0].folder, sizeof sys.systems[0].folder, "PlayStation");
+		snprintf(sys.systems[0].exts, sizeof sys.systems[0].exts, "chd,cue,m3u,pbp");
+		g_serve_image = "/Folder%20Game.png";
+		g_serve_also = "/Multi%20Set.png";
+		g_index = NULL;
+		g_urls[0] = '\0';
+		g_nreq = 0;
+		art_begin(&sys, g_root, NULL, NULL);
+		while ((r = art_step()) == 1 && steps < 1000) steps++;
+		CHECK(r == 0, "the run did not finish");
+		snprintf(p, sizeof p, "%s/Folder Game.png", media);
+		f = fopen(p, "rb");
+		CHECK(f != NULL, "no cover saved as Folder Game.png:\n%s", g_urls);
+		if (f) fclose(f);
+		snprintf(p, sizeof p, "%s/Multi Set.png", media);
+		f = fopen(p, "rb");
+		CHECK(f != NULL, "no cover saved as Multi Set.png:\n%s", g_urls);
+		if (f) fclose(f);
+		CHECK(!strstr(g_urls, "/fg.") && !strstr(g_urls, "/d1.") && !strstr(g_urls, "/ms."),
+		      "asked for a file inside a game folder:\n%s", g_urls);
+		CHECK(!strstr(g_urls, "Notes"), "a folder with no disc was asked for:\n%s", g_urls);
+		{
+			const char *q = g_urls;
+			int shadow = 0;
+
+			while ((q = strstr(q, "/Shadow.png"))) { shadow++; q++; }
+			CHECK(shadow == 1, "Shadow asked for %d time(s), wanted 1 (file and folder are one game):\n%s",
+			      shadow, g_urls);
+		}
+		g_serve_image = g_serve_also = NULL;
+	}
+
 	{
 		char cmd[400];
 		snprintf(cmd, sizeof cmd, "rm -rf '%s'", g_root);
