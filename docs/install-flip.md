@@ -99,7 +99,7 @@ RPG), where Snes9x 2005 Plus stays the better pick.
 ## Controls
 
 - **Menu**, tapped: the in-game menu (Continue, Save, Load, Display, Scanline
-  Filter, Hotkeys, Reset, Quit and the rows a system adds). On the shelf it
+  Filter, Hotkeys, Reset, Save and Quit and the rows a system adds). On the shelf it
   opens the shelf's menu.
 - **Menu**, held: the switcher (recent games, Muse+).
 - **Volume keys**: volume. **Menu + volume keys**: brightness. Both volume
@@ -189,7 +189,7 @@ server, so `scp` fails; copy with `ssh plorpos@<flip> 'cat > /path' < file`.
   About 30 large arcade games are too big as well, Gunbird 2, Strikers 1945 III
   and Raiden Fighters among them.
 - **A game that cannot run** (too big, or a set that does not match) shows
-  FinalBurn Neo's error message; press **Menu**, then **Quit**. Some too-big
+  FinalBurn Neo's error message; press **Menu**, then **Save and Quit**. Some too-big
   games go back to the shelf by themselves after about 10 seconds instead.
 - **PlayStation** is **experimental**: it held full speed in testing, but only
   one game (Ace Combat 2) was checked at length, and memory is tight, so other

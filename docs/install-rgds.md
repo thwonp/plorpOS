@@ -65,7 +65,7 @@ The second screen shows:
   scrape knows, play time, achievements). Swipe sideways for its three pages.
 - **In a game**: Quick Settings, the in-game menu's rows, by touch. Your game
   keeps running: Display, Shader and the rest change it live, Save and Load
-  open their slots right there, and Reset and Quit need a second tap.
+  open their slots right there, and Reset and Save and Quit each need a second tap.
 
 Two swipes work on the second screen wherever you are:
 

@@ -125,7 +125,7 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
 		"Continue", "Save", "Load", "Display Mode", "Display", SHADER_LABEL, "Palette", "Disc",
-		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Quit"
+		"Achievements", "Hotkeys", "Stylus Stick", "Reset", "Save and Quit"
 	};
 	int i;
 

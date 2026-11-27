@@ -1232,8 +1232,8 @@ static void ingame_rows(void)
 		ck(!shader && !palette && !disc, "no such label is anywhere");
 		ck(ids[GM_DISPLAY + 1] == GM_CHEEVOS && !strcmp(rows[GM_DISPLAY + 1].label, "Achievements"),
 		   "the row under Display reads back as Achievements");
-		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Quit"),
-		   "and the last as Quit");
+		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Save and Quit"),
+		   "and the last as Save and Quit");
 		ck(!rows[GM_DISPLAY + 1].live,
 		   "a dead Cheevos stays drawn (its none is an answer)");
 

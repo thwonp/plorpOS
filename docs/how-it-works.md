@@ -66,7 +66,7 @@ starts a Genesis game first. Measured 2026-09-08.
 
 The in-game menu is the launcher's own: MENU makes diatom hand the display
 over with a preview of the paused frame, and Continue, Save, Load, Reset and
-Quit act through one protocol line each. **Display** cycles the running game's
+Save and Quit act through one protocol line each. **Display** cycles the running game's
 mode as you press it, which is the one to use when you want to see the
 difference rather than guess at it, and **Achievements** shows how much of this
 game's set you have earned, or reads `none` and stays unselectable when there
