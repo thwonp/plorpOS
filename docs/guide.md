@@ -854,7 +854,7 @@ the middle of the column once the list is long enough to scroll.
 Card art comes from, in order:
 
 1. box art in `Roms/<system>/.media/<name>.png`, whether you put it there or
-   the Box Art row fetched it. With a ScreenScraper account the fetch asks
+   Scrape Shelf or Scrape Systems fetched it. With a ScreenScraper account the fetch asks
    ScreenScraper first, and brings the game's year, genre and synopsis with the
    cover. Without one, or for a game ScreenScraper does not have, it asks
    libretro: by file name, and where no name matches, by checksum: a zip

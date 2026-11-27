@@ -90,7 +90,7 @@ In a DS game the touches go to the lower screen.
 ## Display
 
 Games start in **Aspect**: their own shape, as wide as the screen. A system's
-menu has its Default Display Mode, and the game menu's Display changes it for
+menu > **Defaults** sets its Display Mode, and the game menu's Display changes it for
 one game. DS games start in **Even Split**, both screens stacked; the game
 menu's Layout row has the others.
 

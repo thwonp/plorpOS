@@ -70,17 +70,18 @@ The PIN is new every time you open Over The Hare.
 
 ## Nintendo DS
 
-Put `.nds` files in `Roms/Nintendo DS/`. The shelf's Core row picks
-DSperate-lr (the default) or PokeDaisy DS for the game under the cursor (the
+Put `.nds` files in `Roms/Nintendo DS/`. **Nintendo DS Defaults > Core**
+in the shelf menu picks DSperate-lr (the default) or PokeDaisy DS for the shelf, and
+a game's X menu > **Game Overrides > Core** picks it for that game (the
 Pokemon games' companion: Party, Dex, Map, Bag and Guide from the game).
 
 The Brick has three layouts: **Overlay**,
 one screen filling the display and the other, 80% opaque, over its bottom-right
 corner; **Single Screen**, one screen fullscreen; and **Hybrid**, one screen at
 three times the size of the other, which sits against its right edge. The shelf
-menu's **Default Layout** sets the shelf's; the in-game **Layout** row sets the
-game's own. The **Swap Screens** hotkey puts the other screen in the big place and is remembered for each game; **Screen Layout** steps through the layouts and keeps the screen you swapped to. The shelf menu's **Reset Display Overrides**
-puts every game back on the shelf's defaults.
+menu's **Nintendo DS Defaults > Layout** sets the shelf's; the in-game **Layout** row sets the
+game's own. The **Swap Screens** hotkey puts the other screen in the big place and is remembered for each game; **Screen Layout** steps through the layouts and keeps the screen you swapped to. The shelf menu's **Reset Overrides > Display Mode**
+puts every game back on the shelf's.
 (The other handhelds' Aspect/Stretch/Integer Display row would change nothing
 on the Brick's 1024x768 panel, where 4x is the whole screen, so it is not
 shown.)
