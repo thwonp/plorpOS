@@ -295,11 +295,23 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
 	out[US_DIR]   = (menu_row){ "Gamelist Layout", u->gamelist, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
-	out[US_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
-	out[US_FONT]     = (menu_row){ "Body Font",   u->font,      true };
+	out[US_FONTS]    = (menu_row){ "Fonts", NULL, true };
 	out[US_PORTS]    = (menu_row){ "Ports Tile",
 	                               u->ports_hidden ? "Hidden" : "Visible", true };
 	return u->has_ports ? US_ROWS : US_PORTS;
+}
+
+int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                         const char **heading)
+{
+	*heading = "Fonts";
+	snprintf(b->a, sizeof b->a, "%d%%", u->head_size);
+	snprintf(b->c, sizeof b->c, "%d%%", u->body_size);
+	out[UF_HEADFONT] = (menu_row){ "Header Font", u->head_font, true };
+	out[UF_HEADSIZE] = (menu_row){ "Header Size", b->a,         true };
+	out[UF_FONT]     = (menu_row){ "Body Font",   u->font,      true };
+	out[UF_BODYSIZE] = (menu_row){ "Body Size",   b->c,         true };
+	return UF_ROWS;
 }
 
 int sys_menu_dual_build(const sys_ui *u, menu_row *out, const char **heading)

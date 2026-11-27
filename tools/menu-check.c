@@ -295,6 +295,17 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
+	ck(!strcmp(rows[US_FONTS].label, "Fonts") && !rows[US_FONTS].value && rows[US_FONTS].live,
+	   "Fonts is a door after System Order (plorpos-bn9.6)");
+	u.head_font = "Fredoka"; u.font = "Quicksand";
+	u.head_size = 90; u.body_size = 150;
+	n = sys_menu_fonts_build(&u, rows, &b, &heading);
+	ck(n == UF_ROWS && !strcmp(heading, "Fonts"), "Fonts submenu");
+	ck(!strcmp(rows[UF_HEADFONT].label, "Header Font") && !strcmp(val(&rows[UF_HEADFONT]), "Fredoka")
+	   && !strcmp(rows[UF_HEADSIZE].label, "Header Size") && !strcmp(val(&rows[UF_HEADSIZE]), "90%")
+	   && !strcmp(rows[UF_FONT].label, "Body Font") && !strcmp(val(&rows[UF_FONT]), "Quicksand")
+	   && !strcmp(rows[UF_BODYSIZE].label, "Body Size") && !strcmp(val(&rows[UF_BODYSIZE]), "150%"),
+	   "each face, then its size in percent");
 	n = sys_menu_build(&u, rows, &b, &heading);
 	/* Live since 2026-09-06, when the pairing screen landed. The row used to
 	 * be dead and read "not yet", which was true of the screen and false of
