@@ -71,11 +71,47 @@ typedef enum {
 #define SYS_HAS_MUTESW 0
 #endif
 
+/* System Settings > Volume Limiter (plorpos-bn9.9): a limit for each output
+ * the port can tell apart - Bluetooth where there is a radio, a USB DAC, and
+ * the 3.5 mm jack where its switch is read. The Flip has none of the three
+ * (no row at all there), the Rotate no jack. The speaker has no limit. */
+#define VL_HAS_BT SYS_HAS_BT
+#if !defined(PLATFORM_MIYOO)
+#define VL_HAS_DAC 1
+#else
+#define VL_HAS_DAC 0
+#endif
+#if !defined(PLATFORM_MIYOO) && !defined(PLATFORM_ROTATE)
+#define VL_HAS_WIRED 1
+#else
+#define VL_HAS_WIRED 0
+#endif
+#define SYS_HAS_VLIM (VL_HAS_BT || VL_HAS_DAC || VL_HAS_WIRED)
+typedef enum {
+#if VL_HAS_BT
+	VL_BT,
+#endif
+#if VL_HAS_DAC
+	VL_DAC,
+#endif
+#if VL_HAS_WIRED
+	VL_WIRED,
+#endif
+	VL_ROWS
+} vl_row;
+
+/* What SELECT opens where it opened Muse+ (Select Shortcut, plorpos-bn9.12),
+ * and a Menu hold (Menu Hold, .13): db "shortcut.select" / "shortcut.hold". */
+typedef enum { SC_MUSE, SC_SWITCHER, SC_OFF, SC_COUNT } sc_action;
+
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
 	ST_CLOCK,
 	ST_AUDIO,                   /* Audio Output, from the top menu (plorpos-eiz) */
+#if SYS_HAS_VLIM
+	ST_VOLLIM,                  /* a door: Volume Limiter (plorpos-bn9.9) */
+#endif
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
 	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
 #else
@@ -83,10 +119,12 @@ typedef enum {
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
+#endif
+	ST_SELECT,                  /* Select Shortcut (plorpos-bn9.12) */
+	ST_HOLD,                    /* Menu Hold (plorpos-bn9.13) */
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
 	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
-#endif
 #endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
@@ -278,6 +316,9 @@ typedef struct {
 	 * on its own is a rule, not somewhere you can hear. */
 	aout_policy audio_policy;
 	aout_dest   audio_dest;
+	int         vlim[AOUT_USB + 1]; /* Volume Limiter, percent, by aout_dest (bn9.9) */
+	int         sc_select;   /* Select Shortcut, an sc_action (bn9.12) */
+	int         sc_hold;     /* Menu Hold, an sc_action (bn9.13) */
 
 	/* Bluetooth: the name of the connected headset, or NULL. The row used to
 	 * read "not yet" and be dead, which was true of the pairing screen and
@@ -344,9 +385,17 @@ enum { SP_ALL, SP_FIRST };
 int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
                                menu_row *out, const char **heading);
 
+/* An sc_action as its row reads: "Muse+", "Switcher", "off". */
+const char *sys_menu_sc_label(int a);
+
 /* Settings > System Settings. Returns ST_ROWS. */
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
+
+/* System Settings > Volume Limiter (plorpos-bn9.9). Returns VL_ROWS; the
+ * percentages are written into b. */
+int sys_menu_vollimit_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                            const char **heading);
 
 /* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
  * shelf to hide. */

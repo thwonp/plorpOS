@@ -124,3 +124,33 @@ int aout_level_to_raw(int level, int level_max, int win_top, int win_bottom)
 	if (raw > win_bottom) raw = win_bottom;
 	return (int)raw;
 }
+
+/* Indexed by aout_dest; 0 is "never set", which reads as no limit. */
+static int g_limit[AOUT_USB + 1];
+
+int aout_limit_step(int pct, int dir)
+{
+	pct = (pct + 5) / 10 * 10 + (dir > 0 ? 10 : dir < 0 ? -10 : 0);
+	return pct < AOUT_LIMIT_MIN ? AOUT_LIMIT_MIN : pct > 100 ? 100 : pct;
+}
+
+void aout_limit_set(aout_dest d, int pct)
+{
+	if (d <= AOUT_SPK || d > AOUT_USB) return;
+	__atomic_store_n(&g_limit[d], aout_limit_step(pct, 0), __ATOMIC_RELAXED);
+}
+
+int aout_limit_pct(aout_dest d)
+{
+	int v;
+
+	if (d <= AOUT_SPK || d > AOUT_USB) return 100;
+	v = __atomic_load_n(&g_limit[d], __ATOMIC_RELAXED);
+	return v ? v : 100;
+}
+
+int aout_limit_level(aout_dest d, int level_max)
+{
+	/* Rounded: 10 % of 20 rungs is rung 2, never 1 by truncation. */
+	return (aout_limit_pct(d) * level_max + 50) / 100;
+}

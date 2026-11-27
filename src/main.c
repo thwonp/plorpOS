@@ -3617,6 +3617,23 @@ static void aout_save(aout_policy p)
 	db_set_str(db_dev(), "audioout", p == AOUT_SPEAKER ? "speaker" : "auto");
 }
 
+/* Select Shortcut (plorpos-bn9.12): what SELECT opens wherever it opened
+ * Muse+ - an sc_action, db "shortcut.select". */
+static int  g_sc_select = SC_MUSE;
+/* Menu Hold (plorpos-bn9.13): what MENU held - a swipe up on the Rotate -
+ * opens, db "shortcut.hold". */
+static int  g_sc_hold = SC_SWITCHER;
+
+/* Volume Limiter (plorpos-bn9.9): db keys by aout_dest; the speaker has none. */
+static const char *const VLIM_KEY[AOUT_USB + 1] =
+	{ NULL, "vollimit.wired", "vollimit.bt", "vollimit.dac" };
+
+static void vlim_load(void)
+{
+	for (int d = AOUT_WIRED; d <= AOUT_USB; d++)
+		aout_limit_set((aout_dest)d, db_get_int(db_dev(), VLIM_KEY[d], 100));
+}
+
 /* The connected sink, published by bt_reconnect in launch.sh.
  *
  * A file rather than asking Bluetooth ourselves: asking means forking
@@ -3848,20 +3865,53 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
+/* The Volume Limiter's ceiling for the output in use, kept by vlim_follow
+ * (plorpos-bn9.9). */
+static int g_vlim_top = PLAT_VOL_MAX;
+
+/* Volume Limiter (plorpos-bn9.9): the volume keys stop at the limit of the
+ * output in use, and a level above it - a cable just plugged in, a headset
+ * just connected, the limit just lowered - comes down to it. Where it goes:
+ * Diatom in a game, which answers with its new level. Every frame, so only
+ * compares unless something is over. */
+static void vlim_follow(aout_dest d)
+{
+	int count = 0, level;
+
+	g_vlim_top = aout_limit_level(d, PLAT_VOL_MAX);
+	plat_volume_ceiling(g_vlim_top);
+	if (g_vlim_top >= PLAT_VOL_MAX) return;
+	level = g_game_ticking ? plat_resident_volume(&count) : -1;
+	if (g_game_ticking) {
+		if (level < 0) level = plat_volume_get();
+		else if (count >= 2 && count != PLAT_VOL_MAX + 1)   /* on Diatom's own ladder */
+			level = (level * PLAT_VOL_MAX + (count - 1) / 2) / (count - 1);
+		if (level > g_vlim_top)
+			plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
+			                   g_vlim_top, PLAT_VOL_MAX + 1);
+		return;
+	}
+	level = plat_volume_get();
+	if (level > g_vlim_top) plat_volume_nudge(g_vlim_top - level);
+}
+
 #if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
 /* The level lowered to PLAT_OUT_CAP when it is above, where it goes: Diatom in
- * a game. Returns the level now. */
+ * a game. Returns the level now. The Volume Limiter's limit is a second
+ * ceiling under it (plorpos-bn9.9). */
 static int cap_level(const char *out, int level)
 {
-	if (level <= PLAT_OUT_CAP) return level;
+	int cap = g_vlim_top < PLAT_OUT_CAP ? g_vlim_top : PLAT_OUT_CAP;
+
+	if (level <= cap) return level;
 	if (g_game_ticking)
 		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+		                   cap, PLAT_VOL_MAX + 1);
 	else
-		plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+		plat_volume_nudge(cap - plat_volume_get());
 	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
-	        out, PLAT_OUT_CAP, level);
-	return PLAT_OUT_CAP;
+	        out, cap, level);
+	return cap;
 }
 
 /* Muse's sound landed on a DAC or headset - new, or back from the speaker it
@@ -3975,8 +4025,11 @@ static void aout_apply(bool force)
 {
 #if defined(PLAT_PIPEWIRE)
 	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
+	aout_state s = aout_now();
+
 	(void)force;
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
+	vlim_follow(aout_resolve(&s));
 #else
 	static char  link_seen[32];
 	static bool  on_usb, muse_was_heard;
@@ -4012,6 +4065,8 @@ static void aout_apply(bool force)
 	 * are already on. */
 	bool        fresh = named && link[0] && strcmp(link, link_seen);
 
+	/* Before any volume goes to a new headset or DAC (plorpos-bn9.9). */
+	vlim_follow(aout_resolve(&s));
 	if (!muse) {
 		musec_sink(codec);
 		if (named && !musec_sink_settled()) return;     /* Muse is still letting go */
@@ -7856,6 +7911,9 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 #endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
+		for (int d = AOUT_SPK; d <= AOUT_USB; d++) u.vlim[d] = aout_limit_pct((aout_dest)d);
+		u.sc_select = g_sc_select;
+		u.sc_hold = g_sc_hold;
 
 		/* The connected headset's name.
 		 *
@@ -8231,6 +8289,48 @@ typedef struct {
  * because it borrows two of its hooks. */
 static bool muse_open(app *a, const menu_style *over, void *ctx);
 static bool g_muse_card;              /* muse_open is the card's, not SELECT's */
+
+/* SELECT asked for the switcher away from the shelf: every menu and screen
+ * closes (g_menu_closing), and the shelf's loop - or, over a game, the game's
+ * menu - opens it, as a swivel turn is carried (plorpos-bn9.12). */
+static bool g_go_switcher;
+static int  g_muse_up;            /* muse_open's depth */
+/* The game was ended for the main shelf: the swivel's (plorpos-5eq.23), or
+ * Muse+ left without a hold (bn9.13). */
+static bool g_sw_shelf;
+/* Menu Hold on Muse+ (plorpos-bn9.13): this Muse+ is a hold's over a paused
+ * game; it was really shown; and a hold, not B or SELECT, closed it. */
+static bool g_hold_game, g_muse_shown, g_muse_held;
+
+/* The Controls page says what the setting does (src/controls.c). */
+static void shortcut_told(void)
+{
+	static char game_sel[32];
+
+	ctl_select_does = g_sc_select == SC_MUSE ? "Muse+"
+	                : g_sc_select == SC_SWITCHER ? "Recent" : NULL;
+	if (ctl_select_does) snprintf(game_sel, sizeof game_sel, "%s, in that menu", ctl_select_does);
+	ctl_select_game = ctl_select_does ? game_sel : NULL;
+	ctl_hold_does = g_sc_hold == SC_MUSE ? "Muse+"
+	              : g_sc_hold == SC_SWITCHER ? "Recent" : NULL;
+}
+
+/* SELECT where it opened Muse+ (plorpos-bn9.12), and a Menu hold there set
+ * to Muse+ (.13) - not from a menu over Muse+ itself. True when Muse ended
+ * what was underneath it - muse_open's answer. */
+static bool shortcut_keys(app *a, const menu_style *over, void *ctx)
+{
+	bool gone = false;
+
+	if (a->in.pressed[IN_SWITCHER] && g_sc_hold == SC_MUSE && !g_muse_up)
+		return muse_open(a, over, ctx);
+	if (!a->in.pressed[IN_SELECT]) return false;
+	if (g_sc_select == SC_MUSE) gone = muse_open(a, over, ctx);
+	else if (g_sc_select == SC_SWITCHER) g_go_switcher = true;
+	/* Muse's own menu may have asked for it too, and Muse cleared the flag. */
+	if (g_go_switcher) g_menu_closing = true;
+	return gone;
+}
 #if defined(PLATFORM_ROTATE)
 /* The swivel (plorpos-5eq.1). A turn that asks for a screen - Muse, the
  * shelf, the switcher, the last game - is carried here to the shelf's loop,
@@ -8247,9 +8347,7 @@ enum { SW_GO_NONE, SW_GO_MUSE, SW_GO_SHELF, SW_GO_RECENTS, SW_GO_RESUME,
 #define SW_GO_MS 1500u
 static int      g_sw_go;
 static unsigned g_sw_at;
-static int      g_muse_up;            /* muse_open's depth */
 static bool     g_native_menu;        /* a port's or PICO-8's menu is up */
-static bool     g_sw_shelf;           /* the game was ended for the main shelf */
 
 static void swivel_apply(void)
 {
@@ -8348,8 +8446,8 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * borrows its backdrop and its power rule for as long as it is up.
 		 * Rebuilt on the way back, because anything may have changed while
 		 * Muse covered it - a Bluetooth headset connecting, for one. */
-		if (a->in.pressed[IN_SELECT]) {
-			if (muse_open(a, st, ctx)) return MENU_LEFT_GONE;
+		if (a->in.pressed[IN_SELECT] || a->in.pressed[IN_SWITCHER]) {
+			if (shortcut_keys(a, st, ctx)) return MENU_LEFT_GONE;
 			continue;
 		}
 
@@ -10381,7 +10479,7 @@ static void bt_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		if (in_repeat(&a->in, IN_DOWN) && sel < u.n) sel++;
 		if (in_repeat(&a->in, IN_UP)   && sel > 0)   sel--;
@@ -10707,7 +10805,7 @@ static bool stats_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return false; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		/* A goes to the row under the cursor: the game on its own shelf, or in
 		 * by-system mode that system's. Not a launch.
@@ -10850,7 +10948,7 @@ static void about_screen(app *a)
 			if (pa == PWR_POWEROFF) { power_off(a); return; }
 		}
 		if (menu_leaving(a)) done = true;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		vol_keys(&a->in);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
@@ -10906,7 +11004,7 @@ static void controls_screen(app *a)
 		if (menu_leaving(a)) done = true;
 		/* SELECT opens Muse here as it does on every other menu screen -
 		 * which is one of the things this page exists to tell you. */
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 
 		if (in_repeat(&a->in, IN_RIGHT)) page = (ctl_page)((page + 1) % CTL_PAGES);
 		if (in_repeat(&a->in, IN_LEFT))
@@ -13224,6 +13322,10 @@ static int system_settings_build(void *ctx, menu_row *rows, int max,
 	return sys_menu_system_build(&u, rows, &c->bufs, heading);
 }
 
+#if SYS_HAS_VLIM
+static void vollimit_screen(app *a);
+#endif
+
 static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
@@ -13293,6 +13395,27 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		aout_apply(true);
 		return MENU_STAY;
 	}
+#if SYS_HAS_VLIM
+	/* A door (plorpos-bn9.9): only A opens it. */
+	if (sel == ST_VOLLIM) {
+		if (key == IN_ACCEPT) vollimit_screen(a);
+		return MENU_STAY;
+	}
+#endif
+	/* Select Shortcut (plorpos-bn9.12): left/right and A go round. */
+	if (sel == ST_SELECT && (d || key == IN_ACCEPT)) {
+		g_sc_select = (g_sc_select + (d ? d : 1) + SC_COUNT) % SC_COUNT;
+		db_set_int(db_dev(), "shortcut.select", g_sc_select);
+		shortcut_told();
+		return MENU_STAY;
+	}
+	/* Menu Hold (plorpos-bn9.13): the same. */
+	if (sel == ST_HOLD && (d || key == IN_ACCEPT)) {
+		g_sc_hold = (g_sc_hold + (d ? d : 1) + SC_COUNT) % SC_COUNT;
+		db_set_int(db_dev(), "shortcut.hold", g_sc_hold);
+		shortcut_told();
+		return MENU_STAY;
+	}
 #if defined(PLATFORM_MIYOO)
 	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
 	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
@@ -13349,6 +13472,56 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 #endif
 	return MENU_STAY;
 }
+
+#if SYS_HAS_VLIM
+static int vollimit_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_vollimit_build(&u, rows, &c->bufs, heading);
+}
+
+/* A limit, a step of ten; left, right and A step, A wrapping from 100 to 10
+ * (plorpos-bn9.9). Saved at once; the menu loop's aout_apply brings the level
+ * down to it on its next frame if the output is in use. */
+static menu_result vollimit_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const aout_dest dest[VL_ROWS] = {
+#if VL_HAS_BT
+		AOUT_BT,
+#endif
+#if VL_HAS_DAC
+		AOUT_USB,
+#endif
+#if VL_HAS_WIRED
+		AOUT_WIRED,
+#endif
+	};
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	int pct;
+
+	(void)a; (void)ctx;
+	if (!d || sel < 0 || sel >= VL_ROWS) return MENU_STAY;
+	pct = aout_limit_pct(dest[sel]);
+	pct = key == IN_ACCEPT && pct >= 100 ? AOUT_LIMIT_MIN : aout_limit_step(pct, d);
+	aout_limit_set(dest[sel], pct);
+	db_set_int(db_dev(), VLIM_KEY[dest[sel]], pct);
+	return MENU_STAY;
+}
+
+static void vollimit_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         vollimit_build, vollimit_key, &c);
+}
+#endif
 
 static void system_settings_screen(app *a)
 {
@@ -14618,8 +14791,12 @@ static bool switcher_run(app *a, SDL_Texture *bg, bool in_game, sw_pick *pick,
 				if (off != 0 || lift != 0) ui_redraw_now();
 			}
 		}
-		if (menu_leaving(a) || a->in.pressed[IN_SWITCHER]) done = -1;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		/* A hold closes it on Switcher; on Muse+ it is Muse+ over it
+		 * (plorpos-bn9.13, shortcut_keys). */
+		if (menu_leaving(a) || (a->in.pressed[IN_SWITCHER] && g_sc_hold == SC_SWITCHER)) done = -1;
+		/* SELECT set to the switcher closes it again (plorpos-bn9.12). */
+		if (a->in.pressed[IN_SELECT] && g_sc_select == SC_SWITCHER) done = -1;
+		else shortcut_keys(a, NULL, NULL);
 		if (n > 0 && a->in.pressed[IN_ACCEPT]) {
 			pick->sys = e[sel].sys;
 			pick->item = e[sel].item;
@@ -14716,6 +14893,10 @@ static bool g_muse_sw_ok;
 static bool muse_switch_unwind(app *a)
 {
 	bool powered;
+
+	/* Menu Hold on Muse+ (plorpos-bn9.13): the hold closes Muse+ - over a
+	 * game, back into it (game_menu). */
+	if (g_sc_hold == SC_MUSE) { g_muse_held = true; return true; }
 
 	if (!g_muse_sw_ok) { g_muse_sw = true; return true; }
 	if (switcher_run(a, NULL, false, &g_muse_pick, &powered)) { g_muse_sw = true; return true; }
@@ -14995,7 +15176,7 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 		/* Only over the shelf. Over a game this card is the in-game menu's,
 		 * and Muse would need that menu's power rule, which this screen does
 		 * not have to give it. SELECT from the in-game menu itself works. */
-		if (over_shelf && a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (over_shelf) shortcut_keys(a, NULL, NULL);
 		/* Same reasoning as the list below: this screen is not inside
 		 * plat_resident_wait, so nothing else is watching power for it. Over
 		 * the shelf there is no game to stop, and stopping one is not what
@@ -15518,6 +15699,13 @@ static const menu_style *g_muse_over;
 static void             *g_muse_over_ctx;
 static bool              g_muse_gone;    /* that rule ended what was underneath */
 
+/* A Menu hold inside Muse+ acts: on Switcher, not over a menu or game (as
+ * before); on Muse+, always - it closes Muse+ (plorpos-bn9.13). */
+static bool muse_hold_acts(void)
+{
+	return g_sc_hold == SC_MUSE || (g_sc_hold == SC_SWITCHER && !g_muse_over);
+}
+
 static void muse_backdrop(app *a)
 {
 	draw_shelf(a);
@@ -16004,7 +16192,9 @@ static muse_exit muse_menu(app *a)
 	g_menu_closing = false;
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
-	if (want_quit || !a->running) return MUSE_CLOSE;
+	/* SELECT there asked for the switcher: Muse closes on the way to it
+	 * (plorpos-bn9.12). */
+	if (want_quit || !a->running || g_go_switcher) return MUSE_CLOSE;
 	return g_muse_gen != gen ? MUSE_REBUILT : MUSE_BACK;
 }
 
@@ -16452,7 +16642,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
 			memset(&drawn, 0, sizeof drawn);     /* the switcher drew over it */
 			continue;
@@ -17294,7 +17484,7 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) { how = MUSE_CLOSE; break; }
 			continue;
 		}
@@ -17554,9 +17744,8 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
 
-#if defined(PLATFORM_ROTATE)
 	g_muse_up++;
-#endif
+	g_muse_shown = g_muse_held = false;
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
@@ -17593,14 +17782,13 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 		g_muse_over = NULL;
 		g_muse_over_ctx = NULL;
 		g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 		g_muse_up--;
-#endif
 		return g_muse_gone;
 	}
 	/* SELECT goes to what is playing; Muse's card opens its tabs, on the
 	 * one left, whatever is playing (owner, plorpos-era.9). */
 	muse_offline_note();                /* "Offline Mode", once per Source (5tm.16) */
+	g_muse_shown = true;
 #if defined(PLATFORM_RGDS)
 	/* From the secondary: Now Playing whenever something is queued, the
 	 * albums when nothing is (owner, plorpos-rgds.18.3). */
@@ -17612,9 +17800,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over_ctx = NULL;
 	/* Nothing Muse did closes the menu it may have been opened over. */
 	g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 	g_muse_up--;
-#endif
 	return g_muse_gone;
 }
 
@@ -19180,7 +19366,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) { muse_power(a); break; }
 		}
-		if (a->in.pressed[IN_SWITCHER] && !g_muse_over) {
+		if (a->in.pressed[IN_SWITCHER] && muse_hold_acts()) {
 			if (muse_switch_unwind(a)) break;
 			continue;
 		}
@@ -19728,7 +19914,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
 		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT] || a->in.pressed[IN_X]) done = 1;
-		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		shortcut_keys(a, NULL, NULL);
 		/* Nothing else watches power for this screen, the same as every other
 		 * loop the launcher runs outside plat_resident_wait. */
 		{
@@ -19807,7 +19993,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		if (in_repeat(&a->in, IN_L1))   sel = sel > 8 ? sel - 8 : 0;
 		if (in_repeat(&a->in, IN_R1))   sel = sel < n - 9 ? sel + 8 : n - 1;
 		if (menu_leaving(a)) done = 1;
-		if (over_shelf && a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
+		if (over_shelf) shortcut_keys(a, NULL, NULL);
 		/* A used to close this screen. It opens the achievement instead,
 		 * which is the only thing on it there was ever anything more to say
 		 * about; BACK and MENU still close, so nothing lost a way out. */
@@ -21361,11 +21547,34 @@ static void game_menu(app *a, bool muse_only)
 #if defined(PLATFORM_ROTATE)
 	g_sw_go = SW_GO_NONE;     /* a turn from before this pause is over */
 #endif
-	if (muse_only)
+	g_go_switcher = false;
+	if (muse_only) {
+		bool held = g_hold_game;
+
+		g_hold_game = false;
 		c.resume = !muse_open(a, &c.st, &c);
-	else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
+		/* Opened by a Menu hold (plorpos-bn9.13): only another hold goes
+		 * back to the game. Left any other way, it is the main shelf, and
+		 * the game ends as the swivel's "main shelf" ends it (STOP: saved
+		 * as Quit saves it) - so the next hold is Muse+ again. */
+		if (held && c.resume && g_muse_shown && !g_muse_held && !g_go_switcher) {
+			c.resume = false;
+			g_sw_shelf = true;
+			if (!want_quit) plat_resident_line("STOP");
+		}
+	} else if (menu_run(a, &c.st, gm_menu_build, gm_key, &c) == MENU_LEFT_BACK)
 		c.resume = true;
 	g_menu_closing = false;
+	/* SELECT set to the switcher, somewhere under this menu: the switcher
+	 * over the paused game, as a Menu hold opens it (plorpos-bn9.12). */
+	if (g_go_switcher) {
+		g_go_switcher = false;
+		if (c.resume) {
+			if (c.bg) SDL_DestroyTexture(c.bg);
+			game_switch(a);
+			return;
+		}
+	}
 #if defined(PLATFORM_ROTATE)
 	/* Turned closed with this menu up, and the row says Muse: the menu has
 	 * closed for it (swivel_check), and Muse opens over the game. */
@@ -21665,7 +21874,18 @@ static run_choice native_menu(void *ctx)
 		g_sw_shelf = true;        /* the swivel: the game ends for the shelf */
 #endif
 		c.choice = RUN_QUIT;
-	} else if (plat_run_menu_why() == GESTURE_SWITCHER) {
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
+		/* Menu Hold off (plorpos-bn9.13): straight back to the game. */
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
+		/* Muse+ over the game; only a hold goes back to it, as in game_menu. */
+		if (muse_open(a, &st, &c)) {
+			if (want_quit || !a->running) c.choice = RUN_QUIT;
+		} else if (g_muse_shown && !g_muse_held && !g_go_switcher) {
+			g_sw_shelf = true;
+			c.choice = RUN_QUIT;
+		}
+	} else if (plat_run_menu_why() == GESTURE_SWITCHER ||
+	           plat_run_menu_why() == GESTURE_RECENTS) {
 		bool powered;
 
 		if (switcher_in_game(a, NULL, &powered) || powered || want_quit)
@@ -21677,6 +21897,16 @@ static run_choice native_menu(void *ctx)
 	    (want_quit || !a->running))
 		c.choice = RUN_QUIT;
 	g_menu_closing = false;
+	/* SELECT set to the switcher, as in game_menu (plorpos-bn9.12). */
+	if (g_go_switcher) {
+		bool powered;
+
+		g_go_switcher = false;
+		if (c.choice == RUN_CONTINUE && a->running && !want_quit &&
+		    (switcher_in_game(a, NULL, &powered) || powered || want_quit))
+			c.choice = RUN_QUIT;
+		g_menu_closing = false;
+	}
 #if defined(PLATFORM_ROTATE)
 	/* Turned closed with the menu up: Muse over the game, as in game_menu. */
 	if (c.choice == RUN_CONTINUE && g_sw_go == SW_GO_MUSE_GAME && a->running && !want_quit) {
@@ -22791,7 +23021,19 @@ static void launch_one(app *a)
 				if (r == RES_PAUSED) {
 					gesture g = plat_resident_gesture_asked();
 
-					if (g == GESTURE_SWITCHER) { game_switch(a); continue; }
+					/* A Menu hold or a swipe up follows Menu Hold; the
+					 * swivel's "recents" is always the switcher (bn9.13).
+					 * Off: Diatom paused for it all the same, so back. */
+					if (g == GESTURE_SWITCHER && g_sc_hold == SC_OFF) {
+						plat_resident_line("RESUME");
+						continue;
+					}
+					if (g == GESTURE_SWITCHER && g_sc_hold == SC_MUSE) {
+						g_hold_game = true;
+						game_menu(a, true);
+						continue;
+					}
+					if (g == GESTURE_SWITCHER || g == GESTURE_RECENTS) { game_switch(a); continue; }
 #if defined(PLATFORM_ROTATE)
 					/* The swivel opened for the main shelf: the game ends
 					 * as Quit ends it (plorpos-5eq.23). */
@@ -25725,6 +25967,12 @@ int main(int argc, char *argv[])
 #endif
 		(void)muse_hk_get(0);     /* read, and the volume holds told (5eq.14) */
 		g_aout_policy = aout_load();
+		vlim_load();
+		g_sc_select = db_get_int(db_dev(), "shortcut.select", SC_MUSE);
+		if (g_sc_select < 0 || g_sc_select >= SC_COUNT) g_sc_select = SC_MUSE;
+		g_sc_hold = db_get_int(db_dev(), "shortcut.hold", SC_SWITCHER);
+		if (g_sc_hold < 0 || g_sc_hold >= SC_COUNT) g_sc_hold = SC_SWITCHER;
+		shortcut_told();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
 		net_set_ca_path(cp);
@@ -26143,12 +26391,12 @@ int main(int argc, char *argv[])
 		/* Back on the shelf, so any menu MENU closed is closed: put the flag
 		 * down before anything here can open another. See menu_leaving. */
 		g_menu_closing = false;
-#if defined(PLATFORM_ROTATE)
 		if (g_sw_shelf) {
 			g_sw_shelf = false;
 			a.screen = SCREEN_SYSTEMS;
 			ui_redraw_now();
 		}
+#if defined(PLATFORM_ROTATE)
 		if (g_sw_go) {
 			int go = g_sw_go;
 
@@ -26164,12 +26412,18 @@ int main(int argc, char *argv[])
 
 		/* SELECT is Muse, on the shelf and on every screen but a running
 		 * game - see muse_open. Before the shelf's own keys, which do not use
-		 * it, so every layout gets it from this one line. */
-		if (a.in.pressed[IN_SELECT]) { muse_open_shelf(&a, false); continue; }
+		 * it, so every layout gets it from this one line. Or the switcher, or
+		 * nothing: Select Shortcut (plorpos-bn9.12), whose switcher asked for
+		 * from a menu or screen opens here once they have all closed. */
+		if (g_go_switcher) { g_go_switcher = false; switcher_shelf(&a); continue; }
+		if (a.in.pressed[IN_SELECT] && g_sc_select == SC_MUSE) { muse_open_shelf(&a, false); continue; }
+		if (a.in.pressed[IN_SELECT] && g_sc_select == SC_SWITCHER) { switcher_shelf(&a); continue; }
 
 		/* Menu held a second (or a swipe up from the bottom of the Rotate's
-		 * panel) is the game switcher, here as in a game (plorpos-gl5.2). */
-		if (a.in.pressed[IN_SWITCHER]) { switcher_shelf(&a); continue; }
+		 * panel) is the game switcher, here as in a game (plorpos-gl5.2) - or
+		 * Muse+, or nothing: Menu Hold (plorpos-bn9.13). */
+		if (a.in.pressed[IN_SWITCHER] && g_sc_hold == SC_SWITCHER) { switcher_shelf(&a); continue; }
+		if (a.in.pressed[IN_SWITCHER] && g_sc_hold == SC_MUSE) { muse_open_shelf(&a, false); continue; }
 
 		/* MENU on the shelf is TortOS's own menu, the counterpart to the one
 		 * MENU opens in a game. It draws over the shelf and returns here. */

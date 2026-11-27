@@ -573,8 +573,11 @@ bool plat_resident_sleep_asked(void);
  * plorpos-rgds.24.4; the Rotate's diatom does its own). */
 /* GESTURE_SHELF: the Rotate's swivel opened with "main shelf" and the game
  * not kept (plorpos-5eq.23): the game ends and the shelf is next. */
+/* GESTURE_RECENTS: the swivel opened with "recents" - the switcher whatever
+ * Menu Hold says, which GESTURE_SWITCHER (a Menu hold, a swipe up) follows
+ * (plorpos-bn9.13). */
 typedef enum { GESTURE_NONE, GESTURE_MUSE, GESTURE_SWITCHER, GESTURE_MENU,
-               GESTURE_SHELF } gesture;
+               GESTURE_SHELF, GESTURE_RECENTS } gesture;
 #define GESTURE_BAND_PX  32
 #define GESTURE_TIGHT_PX 12
 #define GESTURE_IN_PX    30
@@ -636,6 +639,8 @@ void plat_settings_init(void);
 int  plat_volume_get(void);
 int  plat_brightness_get(void);
 void plat_volume_nudge(int delta);
+/* Volume Limiter (plorpos-bn9.9): no nudge up takes the level past `top`. */
+void plat_volume_ceiling(int top);
 void plat_brightness_nudge(int delta);
 void plat_volume_set_pct(int pct);
 void plat_brightness_set(int level);

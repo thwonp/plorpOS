@@ -701,9 +701,14 @@ bool plat_headphones_present(void) { return jack_present() != 0; }
 
 void plat_audio_jack_poll(void)
 {
-	if (!aout_should_reapply(jack_was, jack_present() != 0, cur_vol >= 0))
+	bool in = jack_present() != 0;
+	int top = aout_limit_level(AOUT_WIRED, VOL_MAX);
+
+	if (!aout_should_reapply(jack_was, in, cur_vol >= 0))
 		return;
-	apply_volume(cur_vol);
+	/* A cable goes in no louder than its Volume Limiter limit, from the
+	 * first write (plorpos-bn9.9); the launcher keeps it there after. */
+	apply_volume(in && cur_vol > top ? top : cur_vol);
 }
 
 void jack_forget(void) { jack_was = -1; }

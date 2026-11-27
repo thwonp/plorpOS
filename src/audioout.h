@@ -87,6 +87,20 @@ bool        aout_usb_card(const char *cards, char *dev, int cap, int *card);
 const char *aout_policy_name(aout_policy p);
 const char *aout_dest_name(aout_dest d);
 
+/* ---- Volume Limiter (plorpos-bn9.9) ---------------------------------------
+ *
+ * A ceiling per output, in percent of the level's range: 10..100 in tens, 100
+ * being none. The speaker has none. One table, so the launcher's volume keys
+ * and the ports' own sink threads (platform_gkd.c, platform_rotate.c, which cap
+ * a new headset or DAC) read the same numbers. Atomic, for those threads. */
+#define AOUT_LIMIT_MIN 10
+void aout_limit_set(aout_dest d, int pct);   /* rounded to a ten, 10..100 */
+int  aout_limit_pct(aout_dest d);            /* 100 for the speaker */
+/* The highest level the limit lets `d` have, `level_max` being the top index. */
+int  aout_limit_level(aout_dest d, int level_max);
+/* A limit one step of ten along, held to 10..100. */
+int  aout_limit_step(int pct, int dir);
+
 /* ---- the headphone jack, and why a remembered state is not enough --------- */
 
 /* "Nobody has acted on the jack yet, or whatever was acted on happened while
