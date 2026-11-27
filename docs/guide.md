@@ -515,7 +515,8 @@ it (B cancels); a button belongs to one action at a time, so it moves from
 any action that had it. **X** clears an action's buttons. They are the same
 for every Source, and A, B, X and Y stay as they are. **Global** there has
 the volume keys' two holds and Volume Up + Down together; a hold set to None
-goes back to stepping the volume while it is held. (In a game a hold set to
+goes back to stepping the volume while it is held. On Now Playing with the
+screen on, a held volume key always steps the volume. (In a game a hold set to
 None does nothing.) **Reset to Default** asks first, then puts them all back.
 A headset's own buttons are not changed by any of this.
 | **B** | the album's tracks; for a book, the list it was picked from |

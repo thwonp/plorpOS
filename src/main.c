@@ -4193,8 +4193,10 @@ static void music_keys(void)
  * Muse's pause/play, playing or not (plorpos-7wu.5), and then neither steps,
  * skips or repeats until both are up. The press steps at once, so volume
  * answers at the press and not at the release; a skip or a chord takes that
- * step back, so reaching for either leaves the level where it was. */
-static void vol_keys(in_state *st)
+ * step back, so reaching for either leaves the level where it was.
+ * `skips` false: a hold is only the repeat, whatever the Volume Held hotkeys
+ * say - Now Playing with the screen on (owner, plorpos-57h.1). */
+static void vol_keys_as(in_state *st, bool skips)
 {
 	static const in_button key[2] = { IN_VOLUP, IN_VOLDN };
 	static Uint32 skipped[2];       /* down_since of the hold that already skipped */
@@ -4231,7 +4233,7 @@ static void vol_keys(in_state *st)
 			plat_volume_nudge(dir);
 			moved[k] = plat_volume_get() != before;
 			/* A hold set to None is a volume key held: it steps on. */
-			armed[k] = musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
+			armed[k] = skips && musec_playing() && muse_hk_get(MH_VOLUP + k) != MA_NONE;
 		} else if (!armed[k]) {
 			if (in_repeat(st, b)) plat_volume_nudge(dir);
 		} else {
@@ -4250,6 +4252,8 @@ static void vol_keys(in_state *st)
 		}
 	}
 }
+
+static void vol_keys(in_state *st) { vol_keys_as(st, true); }
 
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
  * the headset rather than reaching it a tick later. */
@@ -16478,7 +16482,7 @@ static muse_exit muse_now_screen(app *a)
 		}
 		/* The shoulders, the D-pad and the stick: Muse's Hotkeys. */
 		muse_hk_poll(&a->in, true);
-		vol_keys(&a->in);
+		vol_keys_as(&a->in, false);      /* holds repeat, never skip (57h.1) */
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
