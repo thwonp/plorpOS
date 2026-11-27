@@ -85,6 +85,9 @@ typedef struct {
 	/* Not on the card, and its Source is in Offline Mode (plorpos-5tm.16):
 	 * not tried, as with no network, and said so. */
 	bool offline;
+	/* Not on the card, and no connection to its server answered: not
+	 * waited on any longer, and said so ("Could not reach the server"). */
+	bool unreachable;
 } musec_remote;
 /* `failed`: the daemon could not open a remote track; true to have it tried
  * once more (the resolver will look for its server again) - else skipped. */
