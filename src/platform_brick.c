@@ -676,6 +676,7 @@ static in_button map_joy_button(int jb)
 #endif
 
 static void set_dirs(in_state *st);
+static void stick_axis(bool *neg_pos, int v);
 
 #ifdef __linux__
 /* The pad as SDL would have reported it, for while it is grabbed. SDL numbers
@@ -701,6 +702,20 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 		set_dirs(st);
 		return true;
 	}
+#ifdef PLATFORM_ZERO28
+	/* Two sticks and button triggers (312/313 above): the left stick is a
+	 * second d-pad on ABS_X/ABS_Y, the right one drives only IN_RS* on
+	 * ABS_Z/ABS_RZ, as stick_axis does for SDL's axes 0-3 (plorpos-d98.13). */
+	if (ev->type == EV_ABS && (ev->code == ABS_X || ev->code == ABS_Y ||
+	                           ev->code == ABS_Z || ev->code == ABS_RZ)) {
+		bool *d = ev->code <= ABS_Y ? stick_dir : rstick_dir;
+		bool vertical = ev->code == ABS_Y || ev->code == ABS_RZ;
+
+		stick_axis(&d[vertical ? 2 : 0], ev->value);
+		set_dirs(st);
+		return true;
+	}
+#else
 	/* L2/R2, axes that only ever rest or slam: past the middle of the
 	 * range the node reports is pressed, as SDL's > 16384 is (plorpos-wjw.6
 	 * - without it no trigger could be bound here). */
@@ -708,6 +723,7 @@ static bool raw_pad_event(const struct input_event *ev, in_state *st)
 		set_btn(st, ev->code == ABS_Z ? IN_L2 : IN_R2, plat_abs_pressed(fd_joy, ev));
 		return true;
 	}
+#endif
 	if (ev->type != EV_KEY || ev->value == 2) return false;
 	for (i = 0; i < sizeof codes / sizeof codes[0]; i++)
 		if (ev->code == codes[i]) {
