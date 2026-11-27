@@ -53,15 +53,12 @@ int main(void)
 	hk_parse("l2:ff", b, NULL);
 	ck(b[5] == 0, "unbound by default");
 
-	printf("the Turbo Assign row (plorpos-tkh):\n");
+	printf("no Turbo Assign hotkey (plorpos-5tm.26):\n");
 	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo", b, NULL);
-	ck(!strcmp(HK_TRIG_NAME[b[6]], "R1") && !hk_trig_mod(b[6]), "turbo row -> R1, direct");
-	ck(!strcmp(HK_ACTION_LABEL[6], "Turbo Assign"), "labelled Turbo Assign");
 	hk_serialize(b, NULL, out, sizeof out);
-	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo"),
-	   "a full set of six round-trips byte for byte");
-	hk_parse("l2:ff", b, NULL);
-	ck(b[6] == 0, "unbound by default");
+	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot"),
+	   "an old turbo binding is dropped, the rest kept");
+	ck(!strcmp(HK_ACTION_LABEL[6], "Save and Quit"), "Save and Quit follows Screenshot");
 
 	printf("the L1/R1/A/B buttons (plorpos-gkd.22):\n");
 	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate", b, NULL);
@@ -148,14 +145,14 @@ int main(void)
 		ck(b[0] == hk_trig_from(HK_IN_A, 1) && m[0] == hk_mod_from_wire("l3"), "ff row -> L3 + A");
 		ck(b[2] == b[0] && m[2] == hk_mod_from_wire("menu"), "rewind row -> Menu + A, the same input");
 		ck(hk_trig_mod(b[3]) && m[3] == -1, "a prefixless binding names none (the device's hkmod)");
-		ck(!strcmp(HK_TRIG_NAME[b[10]], "R Stick Click") && !hk_trig_mod(b[10]) && m[10] == -1
-		   && b[10] == hk_trig_from(HK_IN_R3, 0), "stylus row -> R3 alone");
-		/* Save and Quit sits after Turbo Assign, before the DS's rows (plorpos-5tm.3). */
+		ck(!strcmp(HK_TRIG_NAME[b[9]], "R Stick Click") && !hk_trig_mod(b[9]) && m[9] == -1
+		   && b[9] == hk_trig_from(HK_IN_R3, 0), "stylus row -> R3 alone");
+		/* Save and Quit sits after Screenshot, before the DS's rows (plorpos-5tm.3). */
 		{
 			int q[HK_ROW_COUNT];
 
 			hk_parse("y:savequit", q, NULL);
-			ck(!strcmp(HK_ACTION_LABEL[7], "Save and Quit") && q[7] == hk_trig_from(HK_IN_Y, 1),
+			ck(!strcmp(HK_ACTION_LABEL[6], "Save and Quit") && q[6] == hk_trig_from(HK_IN_Y, 1),
 			   "savequit row -> Mod + Y");
 		}
 		ck(b[4] == hk_trig_from(HK_IN_UP, 1) && m[4] == hk_mod_from_wire("home"), "the GKD's Home names one too");

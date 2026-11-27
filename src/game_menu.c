@@ -113,9 +113,9 @@ int go_rows(const go_ui *u, menu_row *out, go_row *ids)
 	if (u->nds) for (int i = 1; i < n; i++) out[i].live = false;
 #endif
 	if (u->shaders) { ids[n] = GO_SHADER; out[n++] = (menu_row){ SHADER_LABEL, u->shader ? SHADER_VALUE(u->shader) : GO_DEFAULT, true }; }
-	ids[n] = GO_HOTKEYS; out[n++] = (menu_row){ "Hotkeys", u->hotkeys ? "custom" : GO_DEFAULT, true };
+	/* Turbo Assignments is a row inside Hotkeys (plorpos-5tm.26). */
+	ids[n] = GO_HOTKEYS; out[n++] = (menu_row){ "Hotkeys", u->hotkeys || u->turbo ? "custom" : GO_DEFAULT, true };
 	if (u->palette_shown) { ids[n] = GO_PALETTE; out[n++] = (menu_row){ "Palette", V(u->palette), true }; }
-	ids[n] = GO_TURBO;   out[n++] = (menu_row){ "Turbo Assignments", u->turbo ? "custom" : GO_DEFAULT, true };
 	return n;
 #undef V
 }
