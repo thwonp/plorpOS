@@ -19679,8 +19679,11 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Main menu > Game Settings (plorpos-pyz): how games start, stop and rewind,
  * for every system. Defaults are what plorpOS always did, Confirm off. */
-enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_TURBO, GS_RUMBLE, GS_CHEEVOS, GS_RA,
-       GS_RA_SETS, GS_SCRAPE, GS_ROWS };
+enum { GS_RESUME, GS_REWIND, GS_FF, GS_CONFIRM, GS_OVERRIDES, GS_RUMBLE, GS_RA_MENU,
+       GS_SCRAPE, GS_ROWS };
+/* Game Settings > RetroAchievements (plorpos-bn9.1): the three rows that were
+ * on Game Settings itself, unchanged. */
+enum { RA_ENABLED, RA_SIGNIN, RA_SETS, RA_ROWS };
 
 /* Fast-Forward Speed (plorpos-pyz.5): what holding the hotkey runs at. 4x is
  * what it always was. Sent to Diatom as SETFFSPEED after each RUN. */
@@ -19714,21 +19717,18 @@ static int game_settings_build(void *ctx, menu_row *rows, int max,
 	rows[GS_FF]       = (menu_row){ "Fast-Forward Speed", FF_NAME[gs_ff()], true };
 	rows[GS_CONFIRM]  = (menu_row){ "Confirm Reset/Quit",
 	                                db_get_int(db_dev(), "confirmquit", 0) ? "on" : "off", true };
-	/* Turbo Assign's choices kept per game (plorpos-pyz.9, platform.c). */
-	rows[GS_TURBO]    = (menu_row){ "Persistent Turbo Assignments",
-	                                db_get_int(db_dev(), "persistturbo", 0) ? "on" : "off", true };
+	/* Whether a change made in a game is kept for that game (plorpos-bn9.1):
+	 * the in-game menu reads "saveoverrides". */
+	rows[GS_OVERRIDES] = (menu_row){ "Save Per-Game Overrides",
+	                                 db_get_int(db_dev(), "saveoverrides", 1) ? "on" : "off", true };
 	/* A game's rumble on the device's motor; greyed where there is none
 	 * (plorpos-5tm.5). Told to Diatom before each RUN (platform.c). */
 	rows[GS_RUMBLE]   = (menu_row){ "Rumble Enabled",
 	                                plat_has_rumble() && db_get_int(db_dev(), "rumble", 1) ? "on" : "off",
 	                                plat_has_rumble() };
-	/* The account moved here from Network Services (plorpos-pyz.7), beside
-	 * the switch it is for. */
-	rows[GS_CHEEVOS]  = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
-	rows[GS_RA]       = (menu_row){ "Achievements Sign-In",
-	                                ra_signed_in() ? ra_user() : "sign in", true };
-	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
-	rows[GS_RA_SETS]  = (menu_row){ "Download Achievement Sets", NULL, true };
+	/* A door (plorpos-bn9.1); it names the account when there is one. */
+	rows[GS_RA_MENU]  = (menu_row){ "RetroAchievements",
+	                                ra_signed_in() ? ra_user() : NULL, true };
 	/* Moved here from the main menu (plorpos-icm). Always live: the gamelist
 	 * import needs no network - see sys_menu_scraping_build. */
 	rows[GS_SCRAPE]   = (menu_row){ "Scraping", NULL, true };
@@ -19757,26 +19757,60 @@ static void cheevos_warning(app *a)
 }
 #endif
 
+static int ra_menu_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	(void)ctx; (void)max;
+	*heading = "RetroAchievements";
+	rows[RA_ENABLED] = (menu_row){ "Achievements Enabled", gs_cheevos() ? "on" : "off", true };
+	/* The account moved here from Network Services (plorpos-pyz.7), beside
+	 * the switch it is for. */
+	rows[RA_SIGNIN]  = (menu_row){ "RetroAchievements Sign-In",
+	                               ra_signed_in() ? ra_user() : "sign in", true };
+	/* Every shelf's sets onto the card, for playing offline (plorpos-3yv.107.3). */
+	rows[RA_SETS]    = (menu_row){ "Download Achievement Sets", NULL, true };
+	return RA_ROWS;
+}
+
+/* Achievements Enabled flips on left, right and A; the other two are doors. */
+static menu_result ra_menu_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)ctx;
+	if (sel == RA_ENABLED && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		const int on = !gs_cheevos();
+
+		db_set_int(db_dev(), "cheevos", on);
+#if defined(PLATFORM_MIYOO)
+		if (on) cheevos_warning(a);
+#endif
+	} else if (key == IN_ACCEPT && sel == RA_SIGNIN) {
+		ra_signin_screen(a);
+	} else if (key == IN_ACCEPT && sel == RA_SETS) {
+		ra_sets_screen(a);
+	}
+	return MENU_STAY;
+}
+
 /* Left, right and A all change the row: the on/off ones flip, and the two
- * speeds step on with A too, as the shelf menus' cycling rows do. Sign-In,
- * Download Achievement Sets and Scraping are doors, so only A opens them. */
+ * speeds step on with A too, as the shelf menus' cycling rows do.
+ * RetroAchievements and Scraping are doors, so only A opens them. */
 static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const struct { const char *key; int def; } onoff[GS_ROWS] = {
-		[GS_RESUME]  = { "autoresume", 1 },
-		[GS_CONFIRM] = { "confirmquit", 0 },
-		[GS_TURBO]   = { "persistturbo", 0 },
-		[GS_RUMBLE]  = { "rumble", 1 },
-		[GS_CHEEVOS] = { "cheevos", CHEEVOS_DEFAULT },
+		[GS_RESUME]    = { "autoresume", 1 },
+		[GS_CONFIRM]   = { "confirmquit", 0 },
+		[GS_OVERRIDES] = { "saveoverrides", 1 },
+		[GS_RUMBLE]    = { "rumble", 1 },
 	};
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
 
 	(void)ctx;
 	if (!d || sel < 0 || sel >= GS_ROWS) return MENU_STAY;
-	if (sel == GS_RA || sel == GS_RA_SETS || sel == GS_SCRAPE) {
+	if (sel == GS_RA_MENU || sel == GS_SCRAPE) {
 		if (key == IN_ACCEPT) {
-			if (sel == GS_RA) ra_signin_screen(a);
-			else if (sel == GS_RA_SETS) ra_sets_screen(a);
+			if (sel == GS_RA_MENU)
+				menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+				                           .fixed_w = menu_std_width(a) },
+				         ra_menu_build, ra_menu_key, NULL);
 			else scraping_screen(a);
 		}
 		return MENU_STAY;
@@ -19795,9 +19829,6 @@ static menu_result game_settings_key(app *a, void *ctx, in_button key, int sel)
 		const int on = !db_get_int(db_dev(), onoff[sel].key, onoff[sel].def);
 
 		db_set_int(db_dev(), onoff[sel].key, on);
-#if defined(PLATFORM_MIYOO)
-		if (sel == GS_CHEEVOS && on) cheevos_warning(a);
-#endif
 	}
 	return MENU_STAY;
 }
