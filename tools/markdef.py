@@ -7,7 +7,7 @@ On 2026-08-28 the cell beside the head changed color and that meant editing
 the same table in four places - the identical failure the system accents had,
 where six of nine cards had drifted from config/systems.cfg.
 
-So: this module is the source. tools/genboot.py and tools/genmark.py import it.
+So: this module is the source. tools/genmark.py imports it.
 src/main.c used to hand-keep a copy for the shutdown animation (draw_shell,
 checked by tools/checkmark.py); the shutdown is three purple orbs since
 plorpos-3yv.91, so both are gone.

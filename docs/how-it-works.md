@@ -79,21 +79,27 @@ first second after boot, or if it has died - the launcher runs the same
 `diatom` binary standalone, one process for that game, and starts a fresh
 resident once the display is back.
 
-### The boot animation runs *behind* startup (Brick only)
+### Boot: one still picture, then the shelf (Brick)
 
-An animation that adds its own length to the boot is a delay with a picture on
-it. On the Brick, plorpOS plays its 2.4s animation in the background while the launcher does
-its entire startup - the card scan, GL init, font and card decode - and while
-the resident emulator builds its context and maps the cores it needs.
+The Brick shows the plorpOS wordmark from power-on until the shelf: u-boot draws
+it from `bootlogo.bmp`, and `pic2fb` redraws the same picture from `splash.png`
+once Linux is up. There is no boot animation. It used to play for 2.4 s while
+the launcher started, and once startup got faster than that, it was the thing
+holding the shelf back.
 
-`ffmpeg` and the launcher both write to `/dev/fb0`, and it is last-writer-wins,
-so they must never draw at the same time. A marker file is the handshake: the
-launcher initializes freely, blocks on the marker, and presents its first frame
-the moment the animation clears it. Bounded at 8 seconds, so a stuck decoder
-cannot hang the boot.
+What was cut, measured on a Brick and a Brick Pro (2026-11-27, plorpos-act):
 
-The same idle seconds pull the emulator, the cores and their libraries into the
-page cache. Cold reads of that set measure ~190 ms against ~30 ms warm.
+- **Kernel messages:** printing at `loglevel=8` to the 115200-baud serial port
+  cost 2.2 s. plorpOS sets the boot setting to 4.
+- **Card mount:** the boot hook mounts the card itself, about 1.4 s before
+  stock gets to it.
+- **Library scan:** each system's scan is cached while its folder is
+  unchanged. On a big card this took the cold scan from 4.3 s to 0.5 s.
+- **Brick Pro Bluetooth check:** one `grep` of its 8 MB `bluetoothd` instead
+  of two. That saved 3.4 s.
+
+From a reset to the kernel still takes about 7 s, all inside the stock
+bootloader.
 
 Startup phases are logged rather than guessed at. Both columns below are from
 one Brick boot on the main card - 1708 games across eleven systems - measured

@@ -177,13 +177,17 @@ plorpOS isn't on it:
 ```
 /usr/trimui/bin/runtrimui.sh            the hook
 /usr/trimui/bin/runtrimui-original.sh   the stock hook, moved aside
-/usr/trimui/bin/setbright               brightness before the boot animation,
+/usr/trimui/bin/setbright               brightness before the boot picture,
 /usr/trimui/bin/tortos-bootbright.sh    both installed on the first boot
 /etc/init.d/runtrimui                   patched to call the line above
 /etc/init.d/runtrimui.tortos-bak        the version before that patch
 /etc/splash.png                         the loading splash
 /mnt/boot/bootlogo.bmp                  the boot logo
 ```
+
+It also quiets the kernel's boot messages, which saves about 2 seconds:
+the boot setting `loglevel` goes from 8 to 4. To put it back, run
+`fw_setenv loglevel 8` on the Brick.
 
 None of them is a driver, and none replaces anything the system needs to run.
 

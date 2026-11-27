@@ -66,7 +66,8 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 
 /* A scan result per system folder, kept in `dir` and trusted while the folder's
  * mtime and the extension list are unchanged. The Flip's cold vfat reads cost
- * 2.7 s at boot (plorpos-f1p, scan cache); elsewhere this is never switched on.
+ * 2.7 s at boot (plorpos-f1p, scan cache), a big Brick card's 4.5 s
+ * (plorpos-act.2); elsewhere this is never switched on.
  *   lib_cache_dir(dir)    where the files live; NULL (the default) = no cache.
  *   lib_cache_use(true)   lib_scan may answer from it (boot); false = always read
  *                         the card, and still refresh the cache (a rescan). */

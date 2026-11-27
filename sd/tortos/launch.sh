@@ -1,10 +1,9 @@
 #!/bin/sh
 # TortOS boot entry. Called from .tmp_update/tg3040.sh; never returns.
 #
-# The order of things in here is the boot time. The animation runs in the
-# background and everything else -- the launcher's whole startup and the
-# resident emulator's -- happens behind it, so the animation costs its length
-# and nothing else.
+# The order of things in here is the boot time: the launcher's first frame
+# waits on everything above where it starts. Boot timeline and what was cut:
+# plorpos-act (2026-11-27).
 
 # Exported for radio.sh: plat_sleep() runs it in a shell of its own, which
 # sees only the launcher's environment (TortOS-1jx).
@@ -38,12 +37,6 @@ export HOME=$USERDATA_PATH
 export ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$HOME/.asoundrc
 export LD_LIBRARY_PATH=/usr/trimui/lib:$LD_LIBRARY_PATH
 export PATH=/usr/trimui/bin:$PATH
-
-# Cleared by the boot animation when it finishes. The launcher does all of its
-# startup while the animation plays, then blocks on this and presents its first
-# frame the moment the animation clears it.
-TORTOS_ANIM_FLAG=/tmp/tortos_bootanim
-export TORTOS_ANIM_FLAG
 
 mkdir -p "$BIOS_PATH" "$ROMS_PATH" "$SAVES_PATH" "$USERDATA_PATH" "$LOGS_PATH" \
          "$SHARED_USERDATA_PATH"
@@ -88,7 +81,7 @@ leds_off() {
 	for f in /sys/class/leds/sunxi_led*/brightness; do [ "$(cat "$f" 2> /dev/null)" = 0 ] || echo 0 > "$f" 2> /dev/null; done
 }
 
-# Apply the configured brightness now, so the boot animation is not dimmer than
+# Apply the configured brightness now, so the boot picture is not dimmer than
 # everything after it. tortos.elf has not started yet and cannot do it.
 #
 # This ladder is TortOS's own and is shared verbatim with platform.c and with
@@ -109,47 +102,51 @@ brightness_raw() {
 [ -x "$TORTOS_DIR/setbright" ] && "$TORTOS_DIR/setbright" "$(brightness_raw)"
 leds_off
 
-# One-time: replace the stock u-boot splash with a black frame, so the handoff
-# into the boot animation is seamless rather than a TrimUI logo followed by a
-# cut. Guarded by a marker; the stock logo is backed up first.
-if [ -f "$TORTOS_DIR/bootlogo.bmp" ] && [ ! -f "$TORTOS_DIR/.bootlogo_applied" ]; then
+# The u-boot splash and pic2fb's loading splash: the plorpOS wordmark on black,
+# one still from power-on until the launcher's first frame (plorpos-act.5;
+# made by mk/brick-bootlogo.py). Stock's pictures are backed up first.
+#
+# The markers hold BOOT_ART, not just exist: they ride along on reinstalls and
+# OTA updates, so a marker's presence once kept new pictures from ever
+# reaching a card that had the old ones. Bump BOOT_ART with any new picture.
+#
+# Ask the image on the device what it is, never a marker, before backing it
+# up. The marker is the card's, the image is the device's: reinstalling on a
+# freshly formatted card once "backed up the stock logo" - by then OUR logo -
+# over the real one, and the genuine stock image was gone for good (found
+# 2026-08-30). So a picture is only backed up when there is no backup yet and
+# it is not one plorpOS or TortOS ever shipped (shipped_art: their md5s).
+BOOT_ART=2
+shipped_art() {
+	case "$(md5sum "$1" 2> /dev/null | cut -d' ' -f1)" in
+	4cb66c6a79d96764049369e350fee809|b3c8d784f68d657766040eaedc826cf5) return 0;; # bootlogo.bmp
+	f5adf4613dc9483b189f5916e111b15f|781956faa127ae07f3fb9fbb41d01170) return 0;; # splash.png
+	esac
+	return 1
+}
+# apply_art PICTURE ON_DEVICE STOCK_BACKUP MARKER
+apply_art() {
+	if ! cmp -s "$2" "$1"; then
+		if [ -f "$2" ] && [ ! -f "$3" ] && ! shipped_art "$2"; then
+			cp "$2" "$3" || return
+		fi
+		cp "$1" "$2.new" && mv "$2.new" "$2" && sync || return
+	fi
+	echo "$BOOT_ART" > "$4"
+}
+if [ -f "$TORTOS_DIR/bootlogo.bmp" ] &&
+   [ "$(cat "$TORTOS_DIR/.bootlogo_applied" 2> /dev/null)" != "$BOOT_ART" ]; then
 	mkdir -p /mnt/boot
 	if mount -t vfat /dev/mmcblk0p1 /mnt/boot 2> /dev/null; then
-		# Ask the image on the boot partition what it is, rather than asking a
-		# marker on the card.
-		#
-		# The marker is the card's, the image is the device's, and a new card
-		# means a missing marker over an already-applied image. Reinstalling on
-		# a freshly formatted card then "backed up the stock logo" - which by
-		# then was OUR logo - straight over the real one, and the genuine stock
-		# image was gone for good on a device that had been reinstalled once.
-		# Found by doing exactly that, 2026-08-30.
-		if cmp -s /mnt/boot/bootlogo.bmp "$TORTOS_DIR/bootlogo.bmp"; then
-			touch "$TORTOS_DIR/.bootlogo_applied"      # already ours
-		else
-			if [ -f /mnt/boot/bootlogo.bmp ] && [ ! -f "$TORTOS_DIR/bootlogo.stock.bmp" ]; then
-				cp /mnt/boot/bootlogo.bmp "$TORTOS_DIR/bootlogo.stock.bmp"
-			fi
-			cp "$TORTOS_DIR/bootlogo.bmp" /mnt/boot/bootlogo.bmp && sync
-			touch "$TORTOS_DIR/.bootlogo_applied"
-		fi
+		apply_art "$TORTOS_DIR/bootlogo.bmp" /mnt/boot/bootlogo.bmp \
+		          "$TORTOS_DIR/bootlogo.stock.bmp" "$TORTOS_DIR/.bootlogo_applied"
 		umount /mnt/boot
 	fi
 fi
-
-# One-time: the stock "loading" splash that pic2fb blits from /etc/splash.png.
-# Same black frame, same reason.
-if [ -f "$TORTOS_DIR/splash.png" ] && [ ! -f "$TORTOS_DIR/.splash_applied" ]; then
-	# Same trap as the bootlogo above, same answer: compare, do not assume.
-	if cmp -s /etc/splash.png "$TORTOS_DIR/splash.png"; then
-		touch "$TORTOS_DIR/.splash_applied"           # already ours
-	else
-		if [ -f /etc/splash.png ] && [ ! -f "$TORTOS_DIR/splash.stock.png" ]; then
-			cp /etc/splash.png "$TORTOS_DIR/splash.stock.png"
-		fi
-		cp "$TORTOS_DIR/splash.png" /etc/splash.png && sync
-		touch "$TORTOS_DIR/.splash_applied"
-	fi
+if [ -f "$TORTOS_DIR/splash.png" ] &&
+   [ "$(cat "$TORTOS_DIR/.splash_applied" 2> /dev/null)" != "$BOOT_ART" ]; then
+	apply_art "$TORTOS_DIR/splash.png" /etc/splash.png \
+	          "$TORTOS_DIR/splash.stock.png" "$TORTOS_DIR/.splash_applied"
 fi
 
 # One-time: pic2fb blits that splash at the hardware default brightness, which
@@ -178,42 +175,33 @@ BB
 	touch "$TORTOS_DIR/.brightboot_applied"
 fi
 
-# The boot animation, played in the BACKGROUND.
-#
-# An animation that adds its own length to the boot is just a delay with a
-# picture on it. This one plays while the launcher does its entire startup --
-# card scan, GL init, font and card decode -- and while the resident emulator
-# builds its GL context and maps every core on the card.
-#
-# ffmpeg and the launcher both write to /dev/fb0, so they must never draw at
-# the same time: last writer wins, and they would fight at 30fps against 60.
-# The marker file is the handshake -- the launcher initializes freely, blocks
-# on the marker, and presents the moment the animation clears it. Removed in
-# the same subshell so it goes even if the decoder dies.
-if [ -f "$TORTOS_DIR/tortos-boot.mp4" ]; then
-	: > "$TORTOS_ANIM_FLAG"
-	(
-		ffmpeg -hide_banner -loglevel quiet -re -i "$TORTOS_DIR/tortos-boot.mp4" \
-		       -pix_fmt bgra -f fbdev /dev/fb0 2> /dev/null
-		rm -f "$TORTOS_ANIM_FLAG"
-	) &
-
-	# Free seconds: pull what the first launch needs off the card and into the
-	# page cache while nothing else is using the disk.
-	#
-	# The CORES are no longer read here. Diatom maps them itself at startup
-	# with --cores, which is the same work for less: measured 2026-09-08,
-	# reading all six through cost 480ms cold where mapping them costs 382ms,
-	# because dlopen takes what it needs rather than every byte - and mapping
-	# also pays the dynamic linker, which reading never did. A first launch
-	# used to pay that: 179ms of cold dlopen for genesis_plus_gx alone.
-	#
-	# The emulator binary is still read here. Diatom cannot warm the file it
-	# is about to be executed from.
-	(
-		cat "$TORTOS_DIR/diatom" > /dev/null 2>&1
-	) &
+# The kernel prints every boot message to a 115200-baud serial console nobody
+# reads (u-boot env loglevel=8), and printk waits for the UART: 2.2 s of the
+# kernel's 4.2 s on the Brick (plorpos-act.3, measured 2026-11-27). Level 4
+# still prints errors and dmesg keeps everything. Checked by value every boot
+# (fw_printenv is ~1 ms), not by a marker: a marker rides along in installs.
+# Only stock's 8 is changed; restore with `fw_setenv loglevel 8`.
+if [ "$(fw_printenv -n loglevel 2> /dev/null)" = 8 ]; then
+	fw_setenv loglevel 4 2> /dev/null
 fi
+
+# The boot hook (/usr/trimui/bin/runtrimui.sh) runs before the card is up, so
+# a newer one on the card only takes effect from the next boot. Kept current by
+# content, not by a marker (plorpos-act.4: it now mounts the card itself), and
+# only where the installer has already put a hook in place of stock's. Checked
+# with sh -n and moved in whole: a broken hook means no plorpOS and no stock.
+HOOK=/usr/trimui/bin/runtrimui.sh
+HOOK_SRC=$SDCARD/trimui/app/runtrimui.sh
+if [ -f "$HOOK_SRC" ] && [ -f /usr/trimui/bin/runtrimui-original.sh ] &&
+   ! cmp -s "$HOOK_SRC" "$HOOK"; then
+	cp "$HOOK_SRC" "$HOOK.new" && sh -n "$HOOK.new" && chmod +x "$HOOK.new" &&
+		mv "$HOOK.new" "$HOOK" && sync
+	rm -f "$HOOK.new"
+fi
+
+# No boot animation (plorpos-act.5): the still from bootlogo.bmp/splash.png
+# stays up and the launcher presents the moment it is ready. The animation it
+# replaced held the shelf back once startup got faster than its 2.4 s.
 
 # Rumble off, mute-switch gpio readable
 echo 227 > /sys/class/gpio/export 2> /dev/null
@@ -352,9 +340,7 @@ sh "$TORTOS_DIR/folder-move.sh" /mnt/SDCARD >> "$LOG" 2>&1
 
 # The resident emulator. It holds the GL context and every core between
 # games, which takes a launch from ~1100ms to ~200ms. Started here so its ~1s
-# of setup happens during the boot animation alongside the launcher's own --
-# and so the clearing it does while creating its context is hidden under the
-# animation rather than flashing over the launcher.
+# of setup happens alongside the launcher's own.
 #
 # Nothing depends on it: the launcher checks for its fifos and runs a game the
 # old way, one process per game, when they are not there. That is what happens
