@@ -267,6 +267,26 @@ static int rp_tries;
 
 static void swap_tick(void);
 
+/* The crash fallback's Diatom, run alone (plorpos-rgds.34): it asks for
+ * fullscreen on SDL's display 0, the top panel - the secondary's with
+ * Primary Bottom, so the game showed up there and the bottom stayed black.
+ * Its own window, by pid and never the resident's, onto workspace 1 once
+ * sway has mapped it: at 10 Hz, 5 s at most. */
+void plat_rgds_alone_tick(void)
+{
+	static pid_t pid_was;
+	static int tries;
+	char c[160];
+	char *argv[] = { "swaymsg", c, NULL };
+	pid_t pid = plat_run_child();
+
+	swap_tick();
+	if (pid != pid_was) { pid_was = pid; tries = 0; }
+	if (pid <= 0 || !g_prim_bottom || tries > 50) return;
+	snprintf(c, sizeof c, "[pid=%d title=\"^diatom$\"] move container to workspace 1, focus, fullscreen enable", (int)pid);
+	tries = helper(argv) ? 51 : tries + 1;
+}
+
 /* The game's window, once sway has mapped it: at a launch it can open on
  * another workspace than 1 while the panels are being rearranged. From the
  * launcher's 10 Hz tick during a game; up to 5 s. */
