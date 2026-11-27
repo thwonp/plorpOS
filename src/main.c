@@ -6951,6 +6951,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	int notes_drawn = 0;   /* which marquee slot the next long note takes */
 	int scroll = 0;        /* pixels the body is lifted by, cursorless */
 	int scroll_h = 0;      /* the body viewport's height, 0 if nothing scrolls */
+	int scroll_in = 0;     /* its clip's inset at each end: see notes_drawn */
 	int scroll_span = 0;
 	int scroll_split = 0;  /* first pinned row: the rule, or n if there is none */
 	int scroll_foot = 0;   /* the pinned rows' total height */
@@ -7416,9 +7417,19 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	}
 
 	notes_drawn = 0;
+	/* A scrolling body is clipped where its text sits at rest, not at the
+	 * viewport's edge: the band between them - a row's centering and the
+	 * font's room above its capitals - is empty on a still card, and text
+	 * scrolled into it read as running past the panel's text area, up under
+	 * the heading rule and down into the bottom pad (plorpos-57h.3). */
+	if (scroll_h && fm) {
+		scroll_in = (note_h - text_h) / 2 + ink_off
+		          + ui_font_ascent(fm) - ui_font_cap(fm);
+		if (scroll_in < 0 || scroll_in * 4 > scroll_h) scroll_in = 0;
+	}
 	if (scroll_h)
-		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y,
-		                                         panel.w, scroll_h });
+		SDL_RenderSetClipRect(a->r, &(SDL_Rect){ panel.x, content_y + scroll_in,
+		                                         panel.w, scroll_h - scroll_in * 2 });
 	/* Clipped to the panel, and ONE ROW BEYOND THE WINDOW at each end.
 	 * Offsetting the rows opens a gap at one edge and pushes the far row past
 	 * the other; without the extra row the gap is empty, and without the clip
@@ -7692,11 +7703,12 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			SDL_SetRenderDrawColor(a->r, 22, 24, 32, al);
 			if (scroll > 0)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + e,
+					panel.x + UI_PANEL_BORDER, content_y + scroll_in + e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 			if (scroll < scroll_span)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){
-					panel.x + UI_PANEL_BORDER, content_y + scroll_h - 1 - e,
+					panel.x + UI_PANEL_BORDER,
+					content_y + scroll_h - scroll_in - 1 - e,
 					panel.w - UI_PANEL_BORDER * 2, 1 });
 		}
 		SDL_RenderSetClipRect(a->r, NULL);
