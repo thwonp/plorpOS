@@ -23337,12 +23337,13 @@ static void launch_one(app *a)
 		 * emulator hands us on the way into its pause. */
 		aout_before_launch();
 		char shf[1024];
+		preview_path(a, o, &v->list.items[v->cursor], apv, sizeof apv);
 		plat_game g = {
 			.tag = s->tag, .core = core, .rom = rom,
 			/* Games Auto-Resume Off (plorpos-pyz.1): the Auto state is not
 			 * loaded, but still written on the way out, as always. */
 			.resume = gs_auto_resume() ? st : NULL, .exit_state = st,
-			.preview = pv, .save = save,
+			.preview = pv, .exit_preview = apv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
@@ -25990,7 +25991,20 @@ static void switcher_on_secondary(app *a, void (*tick)(void))
 /* gm first: gm_key takes it as its own context. armed: Reset or Quit tapped
  * once - a finger beside a running game slips more easily than a button, so
  * those two want a second tap whatever Confirm Quit says. */
-typedef struct { gm_ctx gm; int armed; } qs_ctx;
+/* armed: the row a first tap armed; said: the row that just did its work,
+ * which reads `said_txt` until the next key (plorpos-rgds.43). */
+typedef struct { gm_ctx gm; int armed, said; const char *said_txt; } qs_ctx;
+
+/* The Auto state of the game beside it, and its card's picture: what Quick
+ * Save and Quick Load use, as Diatom's save and load hotkeys do. */
+static void qs_auto_paths(app *a, char *st, size_t sn, char *pv, size_t pn)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+	state_path(a, o, &sv->list.items[sv->cursor], st, sn);
+	preview_path(a, o, &sv->list.items[sv->cursor], pv, pn);
+}
 
 static int qs_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
@@ -26003,17 +26017,27 @@ static int qs_build(void *ctx, menu_row *rows, int max, const char **heading)
 	*heading = NULL;       /* as the in-game menu: every row fits without one */
 	n = gm_compact(all, gm_build(c->a, all, &c->bufs), ids);
 	for (int i = 0; i < n; i++) {
-		if (ids[i] == GM_CONTINUE) continue;
+		/* No Hotkeys here: its capture is the pad's, which is the game's
+		 * beside it (plorpos-rgds.43). */
+		if (ids[i] == GM_CONTINUE || ids[i] == GM_HOTKEYS) continue;
 		rows[k] = all[i];
+		if (ids[i] == GM_SAVE) rows[k].label = "Quick Save";
+		if (ids[i] == GM_LOAD) {
+			char st[LIB_PATH * 2], pv[LIB_PATH * 2];
+
+			qs_auto_paths(c->a, st, sizeof st, pv, sizeof pv);
+			rows[k].label = "Quick Load";
+			rows[k].live = access(st, F_OK) == 0;   /* nothing saved yet */
+		}
 		if (ids[i] == q->armed) rows[k].value = "Tap again";
+		else if (ids[i] == q->said) rows[k].value = q->said_txt;
 		c->ids[k++] = ids[i];
 	}
 	return k;
 }
 
-/* As the in-game menu's, but Save and Load stay on the secondary, and a save
- * has no paused frame to show what it holds: that slot's old picture goes
- * rather than stand for the new state. */
+/* As the in-game menu's, but Save and Load are Quick Save and Quick Load,
+ * the Auto state's, and Reset and Save and Quit take a second tap. */
 static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 {
 	qs_ctx *q = ctx;
@@ -26024,7 +26048,25 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 	 * here has. A slower tap is still a tap (plorpos-rgds.41). */
 	if (key == IN_Y) key = IN_ACCEPT;
 
-	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1;
+	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1, q->said = -1;
+	/* Quick Save and Quick Load (plorpos-rgds.43): the Auto state, as the
+	 * hotkeys, the game running on; a load asks for a second tap. The
+	 * in-game menu keeps Save and Load to slots. */
+	if (key == IN_ACCEPT && (row == GM_SAVE || row == GM_LOAD)) {
+		char st[LIB_PATH * 2], pv[LIB_PATH * 2];
+
+		if (row == GM_LOAD && armed != row) { q->armed = row; return MENU_STAY; }
+		qs_auto_paths(a, st, sizeof st, pv, sizeof pv);
+		if (row == GM_SAVE) {
+			unlink(pv);   /* before the line: never after Diatom's new one */
+			plat_resident_line("SAVE\tpath=%s\tpreview=%s", st, pv);
+		} else {
+			plat_resident_line("LOAD\tpath=%s", st);
+		}
+		q->said = row;
+		q->said_txt = row == GM_SAVE ? "Saved" : "Loaded";
+		return MENU_STAY;
+	}
 	if (key == IN_ACCEPT && (row == GM_RESET || row == GM_QUIT)) {
 		if (armed != row) { q->armed = row; return MENU_STAY; }
 		/* Quit as the in-game menu's: the exit state may follow behind. */
@@ -26032,28 +26074,6 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_DONE;
 	}
 
-	if (key == IN_ACCEPT && (row == GM_SAVE || row == GM_LOAD)) {
-		int slot = slot_strip(a, NULL, row == GM_SAVE);
-		sysview *sv = &a->view[a->sys_cursor];
-		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
-
-		plat_input_flush();
-		memset(&a->in, 0, sizeof a->in);
-		if (!slot) return MENU_STAY;
-		slot_state_path(a, o, &sv->list.items[sv->cursor], slot, sp, sizeof sp);
-		if (row == GM_SAVE) {
-			/* The game runs on: Diatom writes its frame beside the state
-			 * (plorpos-rgds.38). The old picture goes first - never after,
-			 * which could take the new one - and an older Diatom leaves none. */
-			slot_preview_path(a, o, &sv->list.items[sv->cursor], slot, pp, sizeof pp);
-			unlink(pp);
-			plat_resident_line("SAVE\tpath=%s\tpreview=%s", sp, pp);
-		} else {
-			plat_resident_line("LOAD\tpath=%s", sp);
-		}
-		return MENU_DONE;
-	}
 	return gm_key(a, c, key, sel);
 }
 
@@ -26064,7 +26084,7 @@ static void qs_style(app *a, qs_ctx *q)
 	q->gm.st.accent   = MENU_ACCENT;     /* as drawn at rest */
 	q->gm.st.backdrop = gm_backdrop;     /* no paused frame: black */
 	q->gm.st.on_power = gm_power;
-	q->armed = -1;
+	q->armed = q->said = -1;
 }
 
 /* The Disc row is the in-game menu's g_disc, which only that menu asked
