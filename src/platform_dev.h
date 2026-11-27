@@ -50,6 +50,8 @@ void mute_forget(void);
 /* true: a resident game is about to own the screen; false: it handed it back.
  * Under a compositor the launcher's window has to get out of its way. */
 void screen_yield(bool to_game);
+/* The launcher sent STOP and the game's EXIT has not come yet (platform.c). */
+bool plat_resident_stopping(void);
 /* The resident Diatom's pid, from the socket's peer; -1 if none. */
 pid_t diatom_pid(void);
 bool battery_read(const char *dir, int *pct, bool *charging);
