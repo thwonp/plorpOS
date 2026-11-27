@@ -177,6 +177,13 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	return PM_ROWS;
 }
 
+const char *sys_menu_sc_label(int a)
+{
+	static const char *const label[SC_COUNT] = { "Muse+", "Switcher", "off" };
+
+	return label[a >= 0 && a < SC_COUNT ? a : SC_MUSE];
+}
+
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading)
 {
@@ -224,6 +231,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
 	 * screen but the game's. Off, the disc is only the low-battery dot. */
 	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
+	/* plorpos-bn9.12: SELECT where it opened Muse+ - Muse+, the game switcher,
+	 * or nothing. */
+	out[ST_SELECT]   = (menu_row){ "Select Shortcut", sys_menu_sc_label(u->sc_select), true };
 #if defined(PLATFORM_ROTATE)
 	{
 		/* In SWC_ / SWO_ order (platform.h). Opening always wakes a sleeping

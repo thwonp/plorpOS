@@ -232,6 +232,33 @@ static void pages_are_named(void)
 	   "a page number out of range is the first one");
 }
 
+/* Select Shortcut (plorpos-bn9.12): the pages say what SELECT is set to,
+ * and set to nothing, its rows go - every page still reads right. */
+static void select_follows_the_setting(void)
+{
+	menu_row rows[CTL_MAX_ROWS];
+	int n, i, said = 0;
+
+	printf("SELECT follows Select Shortcut\n");
+	ctl_select_does = "Recent";
+	ctl_select_game = "Recent, in that menu";
+	n = ctl_rows(CTL_ANYWHERE, CTL_COVERFLOW, rows);
+	for (i = 0; i < n; i++)
+		if (rows[i].label && !ROW_IS_NOTE(rows[i]) && !strcmp(rows[i].label, "SELECT"))
+			said = !strcmp(rows[i].value, "Recent");
+	ck(said, "Anywhere: SELECT reads Recent");
+	ctl_select_does = ctl_select_game = NULL;
+	n = ctl_rows(CTL_ANYWHERE, CTL_COVERFLOW, rows);
+	for (i = 0; i < n; i++)
+		ck(!rows[i].label || ROW_IS_NOTE(rows[i]) || strcmp(rows[i].label, "SELECT"),
+		   "off: Anywhere has no SELECT row");
+	ck(pages_naming("SELECT") == 1, "off: SELECT is only Muse+'s close");
+	no_page_repeats();
+	rows_fit();
+	ctl_select_does = "Muse+";
+	ctl_select_game = "Muse+, in that menu";
+}
+
 int main(void)
 {
 	printf("controls: what MENU > Controls says\n");
@@ -240,6 +267,7 @@ int main(void)
 	no_page_repeats();
 	rows_fit();
 	direction_changes_the_shelf();
+	select_follows_the_setting();
 
 	if (fails) {
 		printf("\n%d failure%s\n", fails, fails == 1 ? "" : "s");

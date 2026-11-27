@@ -100,6 +100,10 @@ typedef enum {
 	VL_ROWS
 } vl_row;
 
+/* What SELECT opens where it opened Muse+ (Select Shortcut, plorpos-bn9.12),
+ * and a Menu hold (Menu Hold, .13): db "shortcut.select" / "shortcut.hold". */
+typedef enum { SC_MUSE, SC_SWITCHER, SC_OFF, SC_COUNT } sc_action;
+
 /* Settings > System Settings: the clock, the two timers, the battery
  * indicator, and the side switch where there is one. */
 typedef enum {
@@ -115,10 +119,11 @@ typedef enum {
 	ST_AUTO_OFF,
 #endif
 	ST_SLEEP, ST_BATTPCT,
+#endif
+	ST_SELECT,                  /* Select Shortcut (plorpos-bn9.12) */
 #if defined(PLATFORM_ROTATE)
 	ST_SW_CLOSED, ST_SW_OPEN,   /* what a turn of the swivel does (plorpos-5eq.1) */
 	ST_SW_GAME,                 /* opening never leaves a running game (5eq.23) */
-#endif
 #endif
 #if SYS_HAS_MUTESW
 	ST_MUTESW,
@@ -311,6 +316,7 @@ typedef struct {
 	aout_policy audio_policy;
 	aout_dest   audio_dest;
 	int         vlim[AOUT_USB + 1]; /* Volume Limiter, percent, by aout_dest (bn9.9) */
+	int         sc_select;   /* Select Shortcut, an sc_action (bn9.12) */
 
 	/* Bluetooth: the name of the connected headset, or NULL. The row used to
 	 * read "not yet" and be dead, which was true of the pairing screen and
@@ -376,6 +382,9 @@ int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading
 enum { SP_ALL, SP_FIRST };
 int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
                                menu_row *out, const char **heading);
+
+/* An sc_action as its row reads: "Muse+", "Switcher", "off". */
+const char *sys_menu_sc_label(int a);
 
 /* Settings > System Settings. Returns ST_ROWS. */
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,

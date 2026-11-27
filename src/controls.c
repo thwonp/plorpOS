@@ -62,12 +62,18 @@ static int shelf(menu_row *out)
 	return n;
 }
 
+/* What SELECT does, from System Settings > Select Shortcut (plorpos-bn9.12):
+ * NULL when nothing, and its row goes. main sets them. */
+const char *ctl_select_does = "Muse+";
+const char *ctl_select_game = "Muse+, in that menu";
+
 static int game(menu_row *out)
 {
 	int n = 0;
 
 	out[n++] = (menu_row){ "MENU",   "Pause and menu",     false };
-	out[n++] = (menu_row){ "SELECT", "Muse+, in that menu", false };
+	if (ctl_select_game)
+		out[n++] = (menu_row){ "SELECT", ctl_select_game, false };
 	out[n++] = (menu_row){ "POWER",  "Tap sleep, hold off", false };
 	/* No turbo row: X/Y and GBA's L2/R2 turbo were retired for Turbo
 	 * Assign, a hotkey the player binds (plorpos-tkh). */
@@ -104,7 +110,8 @@ static int anywhere(menu_row *out)
 {
 	int n = 0;
 
-	out[n++] = (menu_row){ "SELECT",        "Muse+",      false };
+	if (ctl_select_does)
+		out[n++] = (menu_row){ "SELECT",        ctl_select_does, false };
 	/* MENU is here rather than on a shelf page because it is the same promise
 	 * wherever you are: the settings for whatever is in front of you. In a
 	 * game it is a different menu, and that page says so. */
@@ -128,7 +135,10 @@ static int touch(menu_row *out)
 	out[n++] = (menu_row){ "Two fingers",    "Game details",   false };
 	out[n++] = (menu_row){ "Three fingers",  "Menu",           false };
 	out[n++] = (menu_row){ "Side edge in",   "Back",           false };
-	out[n++] = (menu_row){ "Top edge down",  "Muse+",          false };
+	/* A swipe down is SELECT on the shelf (touch.c), so it follows the
+	 * setting there (plorpos-bn9.12). */
+	if (ctl_select_does)
+		out[n++] = (menu_row){ "Top edge down",  ctl_select_does, false };
 	out[n++] = (menu_row){ "Bottom edge up", "Recent",         false };
 	return n;
 }

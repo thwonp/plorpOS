@@ -300,6 +300,12 @@ static void tortos_menu_offline(void)
 	 * on a Brick, each its own percentage. */
 	ck(ST_VOLLIM == ST_AUDIO + 1 && !strcmp(rows[ST_VOLLIM].label, "Volume Limiter")
 	   && rows[ST_VOLLIM].live && !rows[ST_VOLLIM].value, "Volume Limiter is a door under Audio Output");
+	/* Select Shortcut (plorpos-bn9.12): after the sleep rows, before the
+	 * side switch; Muse+ until set. */
+	ck(ST_SELECT > ST_SLEEP && ST_SELECT < ST_MUTESW && !strcmp(rows[ST_SELECT].label, "Select Shortcut")
+	   && !strcmp(val(&rows[ST_SELECT]), "Muse+"), "Select Shortcut reads Muse+, under the sleep rows");
+	ck(!strcmp(sys_menu_sc_label(SC_SWITCHER), "Switcher") && !strcmp(sys_menu_sc_label(SC_OFF), "off"),
+	   "and Switcher, off");
 	u.vlim[AOUT_BT] = 100; u.vlim[AOUT_USB] = 40; u.vlim[AOUT_WIRED] = 10;
 	n = sys_menu_vollimit_build(&u, rows, &b, &heading);
 	ck(n == 3 && !strcmp(heading, "Volume Limiter"), "Volume Limiter: three outputs on the Brick");
