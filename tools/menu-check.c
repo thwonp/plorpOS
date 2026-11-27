@@ -291,11 +291,10 @@ static void tortos_menu_offline(void)
 	   "Audio Output follows it (plorpos-eiz)");
 	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "then Auto Off");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage"),
-	   "no Suspend Timeout row: Battery Percentage follows Auto Sleep (plorpos-3yv.95)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Battery Percentage") != 0,
+		   "no Battery Percentage: it is UI Settings' now (plorpos-bn9.11)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
-	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
-	   "Battery Percentage defaults to off");
 	/* Volume Limiter (plorpos-bn9.9): a door under Audio Output, three limits
 	 * on a Brick, each its own percentage. */
 	ck(ST_VOLLIM == ST_AUDIO + 1 && !strcmp(rows[ST_VOLLIM].label, "Volume Limiter")
@@ -321,20 +320,30 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(rows[VL_WIRED].label, "3.5mm Limit") && !strcmp(val(&rows[VL_WIRED]), "10%"),
 	   "3.5mm Limit reads its own");
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
-	u.has_ports = true;
-	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_ROWS, "with a Ports shelf, one row more");
+	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
 	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
+	ck(US_BATTPCT == US_FONTS + 1 && !strcmp(rows[US_BATTPCT].label, "Battery Percentage")
+	   && !strcmp(val(&rows[US_BATTPCT]), "off") && rows[US_BATTPCT].live,
+	   "Battery Percentage after Fonts, off to begin with (plorpos-bn9.11)");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
-	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
-	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
-	   "Ports Tile reads Visible by default");
-	u.ports_hidden = true;
+	ck(US_TILES == US_ROWS - 1 && !strcmp(rows[US_TILES].label, "Visible Tiles")
+	   && !rows[US_TILES].value && rows[US_TILES].live,
+	   "Visible Tiles, a door, last - Ports Tile is gone (plorpos-bn9.10)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Ports Tile") != 0, "no Ports Tile row");
+	{
+		const char *tn[] = { "Ports", "Muse+", "Game Boy" };
+		bool ton[] = { false, true, true };
+
+		n = sys_menu_tiles_build(tn, ton, 3, rows, &heading);
+		ck(n == 3 && !strcmp(heading, "Visible Tiles"), "Visible Tiles: a row a shelf");
+		ck(!strcmp(rows[0].label, "Ports") && !strcmp(val(&rows[0]), "off") && rows[0].live,
+		   "a hidden one reads off, as Scrape Systems' rows");
+		ck(!strcmp(val(&rows[1]), "on") && !strcmp(val(&rows[2]), "on"), "a shown one reads on");
+	}
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
 	ck(!strcmp(rows[US_FONTS].label, "Fonts") && !rows[US_FONTS].value && rows[US_FONTS].live,
@@ -430,8 +439,8 @@ static void tortos_menu_online(void)
 	sys_menu_system_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[ST_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 	u.batt_pct = true;
-	sys_menu_system_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[ST_BATTPCT]), "on"), "Battery Percentage reads on");
+	sys_menu_ui_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[US_BATTPCT]), "on"), "Battery Percentage reads on");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -663,7 +672,9 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == 6, "six rows with only music (plorpos-935)");
+		ck(mn == 7, "seven rows with only music (plorpos-935, bn9.14)");
+		ck(!strcmp(mrows[mn - 1].label, "Hotkeys") && mrows[mn - 1].live,
+		   "Hotkeys last, out of Playback Settings (plorpos-bn9.14)");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[2].label, "Sort By") && mrows[2].live &&
@@ -711,51 +722,51 @@ static void system_menu(void)
 		m.muse_src = MSRC_BOOKS;
 		m.game_count = 2;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6, "six rows on books");
+		ck(mn == 7, "seven rows on books");
 		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
 		   "how many books");
 		ck(!strcmp(val(&mrows[2]), "Author"), "by author when nothing says otherwise");
 		ck(!strcmp(val(&mrows[1]), "Local Audiobooks"), "Source, on books");
-		ck(!strcmp(mrows[mn - 1].label, "Local Books Settings"), "the card's books: Local Books Settings");
+		ck(!strcmp(mrows[mn - 2].label, "Local Books Settings"), "the card's books: Local Books Settings");
 		for (k = 0; k < mn; k++)
 			ck(strcmp(mrows[k].label, "Album Art") != 0,
 			   "no Album Art on books: MusicBrainz knows records");
 		m.muse_src = MSRC_ABS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 6 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
-		   !strcmp(mrows[mn - 1].label, "Audiobookshelf Settings"),
+		ck(mn == 7 && !strcmp(val(&mrows[1]), "Audiobookshelf") &&
+		   !strcmp(mrows[mn - 2].label, "Audiobookshelf Settings"),
 		   "Audiobookshelf: its settings after Source");
 		m.muse_src = MSRC_PODCASTS;
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
-		ck(mn == 5 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
-		   !strcmp(mrows[mn - 1].label, "Podcast Settings"),
+		ck(mn == 6 && !strcmp(mrows[0].label, "Episodes") && !strcmp(val(&mrows[1]), "Podcasts") &&
+		   !strcmp(mrows[mn - 2].label, "Podcast Settings"),
 		   "Podcasts: Episodes, its settings after Source");
 		{
 			sm_muse_row ids[SM_MUSE_ROWS];
 
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[2] == SMM_SORT && ids[3] == SMM_SETTINGS && ids[4] == SMM_UI &&
 			   ids[5] == SMM_LOCAL,
 			   "books alone: the count, Sort By, Source, Playback Settings, UI Settings, Local Books Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 6 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, false, ids) == 7 && ids[1] == SMM_SOURCE &&
 			   ids[3] == SMM_SETTINGS && ids[4] == SMM_UI && ids[5] == SMM_SRV,
 			   "Plex: no local settings, Plex Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 7 && ids[1] == SMM_SOURCE &&
+			ck(sys_menu_muse_rows(false, MSRC_JELLYFIN, true, ids) == 8 && ids[1] == SMM_SOURCE &&
 			   ids[4] == SMM_UI && ids[5] == SMM_SRV && ids[6] == SMM_DLQ,
 			   "Jellyfin: Plex's rows - its Settings, then Download Queue");
-			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 6 && ids[3] == SMM_SETTINGS &&
+			ck(sys_menu_muse_rows(true, MSRC_ABS, false, ids) == 7 && ids[3] == SMM_SETTINGS &&
 			   ids[4] == SMM_UI && ids[5] == SMM_ABS,
 			   "Audiobookshelf: Audiobookshelf Settings after UI Settings");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 5 && ids[0] == SMM_COUNT &&
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, false, ids) == 6 && ids[0] == SMM_COUNT &&
 			   ids[1] == SMM_SOURCE && ids[2] == SMM_SETTINGS && ids[3] == SMM_UI &&
 			   ids[4] == SMM_POD,
 			   "Podcasts: no Sort By, Podcast Settings after UI Settings");
-			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 7 && ids[5] == SMM_SRV &&
+			ck(sys_menu_muse_rows(false, MSRC_PLEX, true, ids) == 8 && ids[5] == SMM_SRV &&
 			   ids[6] == SMM_DLQ,
 			   "Plex downloading: Download Queue right after Plex Settings (ps8.8)");
-			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 6 && ids[5] == SMM_DLQ,
+			ck(sys_menu_muse_rows(true, MSRC_PODCASTS, true, ids) == 7 && ids[5] == SMM_DLQ,
 			   "Podcasts downloading: Download Queue after Podcast Settings");
-			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 6,
+			ck(sys_menu_muse_rows(true, MSRC_BOOKS, true, ids) == 7,
 			   "a card's own books: no Download Queue, whatever is said");
 		}
 	}

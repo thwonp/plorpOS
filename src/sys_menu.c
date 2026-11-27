@@ -48,6 +48,9 @@ int sys_menu_muse_rows(bool books, muse_src src, bool dlq, sm_muse_row *out)
 	if (src == MSRC_ABS) out[n++] = SMM_ABS;
 	if (src == MSRC_PODCASTS) out[n++] = SMM_POD;
 	if (dlq && remote) out[n++] = SMM_DLQ;
+	/* On the Flip too: Now Playing's hotkeys work there, and Playback
+	 * Settings, where the row was, is not (plorpos-bn9.14). */
+	out[n++] = SMM_HOTKEYS;
 	return n;
 }
 
@@ -111,6 +114,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 					break;
 				case SMM_SETTINGS:
 					out[k] = (menu_row){ "Playback Settings", NULL, true };
+					break;
+				case SMM_HOTKEYS:
+					out[k] = (menu_row){ "Hotkeys", NULL, true };
 					break;
 				}
 			return n;
@@ -228,9 +234,6 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 #endif
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
-	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
-	 * screen but the game's. Off, the disc is only the low-battery dot. */
-	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
 	/* plorpos-bn9.12: SELECT where it opened Muse+ - Muse+, the game switcher,
 	 * or nothing. */
 	out[ST_SELECT]   = (menu_row){ "Select Shortcut", sys_menu_sc_label(u->sc_select), true };
@@ -301,9 +304,24 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	out[US_DIR]   = (menu_row){ "Gamelist Layout", u->gamelist, true };
 	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	out[US_FONTS]    = (menu_row){ "Fonts", NULL, true };
-	out[US_PORTS]    = (menu_row){ "Ports Tile",
-	                               u->ports_hidden ? "Hidden" : "Visible", true };
-	return u->has_ports ? US_ROWS : US_PORTS;
+	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
+	 * screen but the game's. Off, the disc is only the low-battery dot.
+	 * How the screen looks, so here, not System Settings (bn9.11). */
+	out[US_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
+	/* Which shelves have a tile on the systems row (plorpos-bn9.10). */
+	out[US_TILES]    = (menu_row){ "Visible Tiles", NULL, true };
+	return US_ROWS;
+}
+
+int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
+                         menu_row *out, const char **heading)
+{
+	int i;
+
+	*heading = "Visible Tiles";
+	/* on/off, as Scrape Systems: the faces have no check mark. */
+	for (i = 0; i < n; i++) out[i] = (menu_row){ names[i], on[i] ? "on" : "off", true };
+	return n;
 }
 
 int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,

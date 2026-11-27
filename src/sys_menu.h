@@ -113,12 +113,12 @@ typedef enum {
 	ST_VOLLIM,                  /* a door: Volume Limiter (plorpos-bn9.9) */
 #endif
 #if defined(PLATFORM_MIYOO)     /* Flip: Sleep Poweroff sits below Auto Sleep (f1p.56) */
-	ST_SLEEP, ST_AUTO_OFF, ST_LID, ST_BATTPCT,
+	ST_SLEEP, ST_AUTO_OFF, ST_LID,
 #else
 #if !defined(PLATFORM_ROTATE)   /* sleep and suspend do it there (plorpos-3yv.100) */
 	ST_AUTO_OFF,
 #endif
-	ST_SLEEP, ST_BATTPCT,
+	ST_SLEEP,                   /* Battery Percentage: UI Settings (plorpos-bn9.11) */
 #endif
 	ST_SELECT,                  /* Select Shortcut (plorpos-bn9.12) */
 	ST_HOLD,                    /* Menu Hold (plorpos-bn9.13) */
@@ -138,7 +138,8 @@ typedef enum {
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
 typedef enum { US_THEME, US_DIR, US_ORDER, US_FONTS /* a door: Fonts */,
-       US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
+       US_BATTPCT /* from System Settings (plorpos-bn9.11) */,
+       US_TILES /* a door: Visible Tiles, was Ports Tile (plorpos-bn9.10) */,
        US_ROWS } us_row;
 
 /* UI Settings > Fonts (plorpos-bn9.6): each face with its size under it. */
@@ -208,7 +209,9 @@ typedef enum { SR_CORE, SR_DISPLAY, SR_SHADER, SR_HOTKEYS, SR_PALETTE, SR_TURBO,
  * and the Source's own settings - a card Source's Album Art and Rescan Folder
  * are behind Local Music Settings / Local Books Settings (SMM_LOCAL). */
 typedef enum { SMM_COUNT, SMM_SOURCE, SMM_SORT, SMM_SETTINGS, SMM_UI, SMM_LOCAL,
-               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ } sm_muse_row;
+               SMM_SRV, SMM_ABS, SMM_POD, SMM_DLQ,
+               SMM_HOTKEYS /* always last, from Playback Settings (plorpos-bn9.14) */
+} sm_muse_row;
 #define SM_MUSE_ROWS 8
 /* Source (plorpos-9rf.2): what Muse's shelf holds, one of four. It took over
  * Show (music or books) and Local/Plex. On Plex and Audiobookshelf, Rescan
@@ -293,8 +296,6 @@ typedef struct {
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	int         head_size, body_size; /* their sizes, percent (plorpos-bn9.6) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
-	bool        has_ports;   /* systems.cfg has a Ports shelf: US_PORTS is listed */
-	bool        ports_hidden; /* Ports Tile reads Hidden */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
@@ -397,9 +398,13 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 int sys_menu_vollimit_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                             const char **heading);
 
-/* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
- * shelf to hide. */
+/* Settings > UI Settings. Returns US_ROWS. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* UI Settings > Visible Tiles (plorpos-bn9.10): a row a shelf, on or off,
+ * in the order given (Ports, Muse+, then the systems). Returns n. */
+int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
+                         menu_row *out, const char **heading);
 
 /* UI Settings > Fonts. Returns UF_ROWS; the sizes are written into b. */
 int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,
