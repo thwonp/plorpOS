@@ -501,7 +501,7 @@ Audiobookshelf).
 | **L1/R1** | previous / next track, or a book's previous / next file; more than three seconds in, L1 starts it over |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
 | **Y** | the play mode (music) |
-| **X** | **More** (books): Speed, Sleep Timer, Chapters, Timeline |
+| **X** | **More**: Speed, Sleep Timer, Chapters and Timeline on a book; Sleep Timer on music |
 
 **Now-Playing Layout** in UI Settings picks how the screen is laid out.
 `Longer Titles` (the default) puts the title, artist and album across the top,
@@ -523,12 +523,12 @@ A headset's own buttons are not changed by any of this.
 | **MENU** | Muse+'s menu |
 | **SELECT** | close Muse+ |
 
-**More** (X on a book's Now Playing):
+**More** (X on Now Playing; music has only the Sleep Timer):
 
 - **Speed**: 0.8x to 2x in steps of 0.1, kept for each book. Any speed but 1x
   shows on Now Playing.
-- **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book pauses
-  and the device sleeps, even mid-book. Now Playing shows the minutes left
+- **Sleep Timer**: Off, or 10 to 90 minutes. When it runs out the book or the
+  music pauses and the device sleeps, even mid-book. Now Playing shows the minutes left
   ("Sleep 23m"). A game stops the countdown, and it starts over at its full
   length when the game closes. Every play or pause starts it over too, unless
   **Play Resets Sleep Timer** (Playback Settings) is turned off. It is not
