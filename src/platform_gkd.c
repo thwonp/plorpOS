@@ -429,8 +429,6 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 			return NULL;
 		}
 		SDL_SetRenderDrawBlendMode(bren, SDL_BLENDMODE_BLEND);
-	} else if (!b_shown) {
-		SDL_ShowWindow(bwin);
 	}
 	if (!b_shown) {
 		for (int i = 0; i < 100; i++) {   /* sway's first configure, as above */
@@ -439,21 +437,10 @@ SDL_Renderer *plat_bottom_begin(int *w, int *h)
 			if (bw > 1 && bh > 1) break;
 			SDL_Delay(10);
 		}
-		/* In the background: sway takes 350 ms to bring a DSI panel up
-		 * (measured), all of it the shelf's frame otherwise. The window is
-		 * drawn into meanwhile and is there when the panel lights. */
-		{
-			char c[200];
-
-			/* sway's rule puts a "Bottom" window on DSI-1 as it maps, which
-			 * is at its first present: with the primary there, it goes over
-			 * to the top panel after that one (plat_bottom_end). */
-			if (g_prim_bottom) b_move = true;
-			else {
-				snprintf(c, sizeof c, "swaymsg output DSI-1 power on > /dev/null 2>&1 &");
-				if (system(c) != 0) fprintf(stderr, "bottom: swaymsg did not start\n");
-			}
-		}
+		/* Onto the secondary panel after its next present (bottom_over):
+		 * sway's rule puts a new "Bottom" window on DSI-1, and a parked one
+		 * (plat_bottom_off) is on no panel at all. */
+		b_move = true;
 		b_shown = true;
 		fprintf(stderr, "bottom: on, %dx%d\n", bw, bh);
 	}
@@ -522,20 +509,25 @@ void plat_bottom_end(void)
 	SDL_RenderPresent(bren);
 }
 
-/* The secondary window onto the top panel (Primary Bottom), lit; false while
- * sway has not mapped it yet. */
+/* The secondary window onto the secondary panel, lit; false while sway has
+ * not mapped it yet. */
 static bool bottom_over(void)
 {
 	char c[200];
 	char *argv[] = { "swaymsg", c, NULL };
+	const char *out = g_prim_bottom ? "DSI-2" : "DSI-1";
 
 	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to workspace plorpos-secondary", (int)getpid());
 	if (!helper(argv)) return false;
-	/* Its own workspace, shown on the top panel: otherwise whatever is left
-	 * there - the launcher's hidden one, after a DS game - is what shows.
-	 * Lit, and the focus back on workspace 1: the next game opens there. */
-	snprintf(c, sizeof c, "workspace plorpos-secondary, move workspace to output DSI-2, output DSI-2 power on, workspace 1");
+	/* Its own workspace, shown on the secondary panel: otherwise whatever is
+	 * left there - the launcher's hidden one, after a DS game - is what
+	 * shows. The focus back on workspace 1: the next game opens there. */
+	snprintf(c, sizeof c, "workspace plorpos-secondary, move workspace to output %s, workspace 1", out);
 	helper(argv);
+	/* Lit in the background: sway takes 350 ms to bring a DSI panel up
+	 * (measured), all of it the shelf's frame otherwise. */
+	snprintf(c, sizeof c, "swaymsg output %s power on > /dev/null 2>&1 &", out);
+	if (system(c) != 0) fprintf(stderr, "bottom: swaymsg did not start\n");
 	snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] fullscreen enable", (int)getpid());
 	helper(argv);
 	return true;
@@ -544,8 +536,17 @@ static bool bottom_over(void)
 void plat_bottom_off(void)
 {
 	if (!b_shown) return;      /* never the panel a DS game is using */
-	SDL_HideWindow(bwin);
-	SDL_PumpEvents();
+	/* Parked, not hidden: a hidden window maps anew when shown, and sway's
+	 * rule puts a new "Bottom" window on DSI-1 - the primary with Primary
+	 * Bottom, so the panels swapped for a moment after a game
+	 * (plorpos-rgds.32). */
+	{
+		char c[160];
+
+		snprintf(c, sizeof c, "[pid=%d title=\"^plorpOS Bottom$\"] move window to workspace plorpos-parked",
+		         (int)getpid());
+		sway_cmd(c);
+	}
 	/* Not the top panel a DS game is about to use (Primary Bottom). */
 	if (!(b_away && g_prim_bottom && rgds_game_top))
 		sway_cmd(g_prim_bottom ? "output DSI-2 power off" : "output DSI-1 power off");
