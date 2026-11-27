@@ -1280,6 +1280,46 @@ bool plat_resident_ending(void)
 	return false;
 }
 
+/* Diatom's LEVEL lines that have arrived, applied now and taken out of the
+ * buffer; every other line stays, in order, for plat_resident_wait. For the
+ * same screens as plat_resident_ending: a level set in the game shows its bar
+ * on the RG DS's secondary while something runs there (plorpos-rgds.28). */
+static void d_note_level(const char *l);
+void plat_resident_levels(void)
+{
+	struct pollfd p = { dsock, POLLIN, 0 };
+	size_t i = 0, o = 0;
+
+	if (dsock < 0) return;
+	if (dused < sizeof dbuf && poll(&p, 1, 0) > 0 && (p.revents & POLLIN)) {
+		ssize_t n = read(dsock, dbuf + dused, sizeof dbuf - dused);
+
+		if (n <= 0) return;        /* dline sees the EOF and closes */
+		dused += (size_t)n;
+	}
+	while (i < dused) {
+		char *nl = memchr(dbuf + i, '\n', dused - i);
+		size_t len;
+
+		if (!nl) break;            /* a partial line: kept */
+		len = (size_t)(nl - (dbuf + i)) + 1;
+		if (len > 6 && !memcmp(dbuf + i, "LEVEL\t", 6)) {
+			char l[256];
+			size_t k = len - 1 < sizeof l - 1 ? len - 1 : sizeof l - 1;
+
+			memcpy(l, dbuf + i, k);
+			l[k] = '\0';
+			d_note_level(l);
+		} else {
+			memmove(dbuf + o, dbuf + i, len);
+			o += len;
+		}
+		i += len;
+	}
+	memmove(dbuf + o, dbuf + i, dused - i);
+	dused = o + (dused - i);
+}
+
 /* Whoever is on the other end of the socket. Not a pid file: only the Brick's
  * launch.sh wrote one, so on the GKD - and on the Brick after respawn_resident
  * started Diatom - there was no pid to escalate to, and a core wedged inside

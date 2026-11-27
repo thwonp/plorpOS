@@ -1562,6 +1562,11 @@ void plat_input_poll(in_state *st)
 #endif
 	keys_read(st);
 #ifdef PLATFORM_RGDS
+	/* Beside a game the level keys are Diatom's, which reads them too: here
+	 * they would step the level a second time (plorpos-rgds.28). */
+	if (b_session && b_game)
+		for (int k = IN_VOLUP; k <= IN_BRIGHTDN; k++)   /* the four, in a row */
+			st->pressed[k] = st->down[k] = false;
 	if (b_session && b_game) {
 		/* Beside a game the power button and the game's panel are the game
 		 * loop's to read (diatom_wait, plat_run): anything waiting on them

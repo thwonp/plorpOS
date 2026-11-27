@@ -24573,7 +24573,9 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 static void sec_session_poll(void)
 {
 	sec_tick_run();
-	if (g_sec_tick == on_game_tick && plat_resident_ending()) plat_bottom_end_session();
+	if (g_sec_tick != on_game_tick) return;
+	plat_resident_levels();            /* a level set in the game: its bar here (rgds.28) */
+	if (plat_resident_ending()) plat_bottom_end_session();
 }
 
 /* A screen of the launcher's run on the secondary by touch, as Muse runs

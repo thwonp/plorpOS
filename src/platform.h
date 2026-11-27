@@ -249,6 +249,8 @@ int  plat_resident_wait(void);
 bool plat_resident_running(void);
 /* Diatom has said EXIT or PAUSED, unread (or is gone): see platform.c. */
 bool plat_resident_ending(void);
+/* Diatom's LEVEL lines that have arrived, applied; the rest left unread. */
+void plat_resident_levels(void);
 void plat_resident_flush(unsigned timeout_ms);
 void plat_screen_off(void);
 
