@@ -179,7 +179,10 @@ typedef enum { SD_CORE, SD_DISPLAY, SD_FILL, SD_SHADER, SD_HOTKEYS, SD_PALETTE, 
  * each with how many games on the shelf have one. Display covers the DS's
  * fill and swap too, Hotkeys the Button Mapping. */
 typedef enum { SR_CORE, SR_DISPLAY, SR_SHADER, SR_HOTKEYS, SR_PALETTE, SR_TURBO,
-               SR_ROWS } sr_row;
+               SR_ROWS,
+               SR_ALL = SR_ROWS   /* Reset All, the top row (plorpos-bn9.24): every kind at once */
+} sr_row;
+#define SR_MENU_ROWS (SR_ROWS + 1)
 
 /* What the Favorites shelf's menu is, which is two of those rows.
  *
@@ -372,7 +375,9 @@ int sys_menu_defaults_build(const sys_ui *u, menu_row *out, sd_row *ids, menu_bu
 
 /* Reset Overrides' rows, `count` games per kind (indexed by sr_row). A kind
  * that cannot apply here and has nothing to clear is not listed; one at 0 is
- * greyed. ids[i] is the sr_row that row i shows. Returns how many. */
+ * greyed. Reset All leads, greyed when nothing is set (plorpos-bn9.24).
+ * ids[i] is the sr_row that row i shows, SR_ALL for Reset All. Returns how
+ * many; out and ids hold SR_MENU_ROWS. */
 int sys_menu_reset_build(const sys_ui *u, const int *count, menu_row *out, sr_row *ids,
                          menu_bufs *b, const char **heading);
 

@@ -388,7 +388,12 @@ int sys_menu_reset_build(const sys_ui *u, const int *count, menu_row *out, sr_ro
 	bool can[SR_ROWS] = { u->core_game, true, u->shader_live, true, u->palette != NULL, true };
 	int n = 0, k;
 
+	bool any = false;
+
 	*heading = "Reset Overrides";
+	for (k = 0; k < SR_ROWS; k++) any = any || count[k] > 0;
+	ids[n] = SR_ALL;
+	out[n++] = (menu_row){ "Reset All", NULL, any };
 	for (k = 0; k < SR_ROWS; k++) {
 		if (!can[k] && !count[k]) continue;
 		snprintf(b->n[k], sizeof b->n[k], "%d", count[k]);

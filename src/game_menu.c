@@ -82,17 +82,18 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 	 * is holding; publisher and developer run to 214 and 417 distinct values
 	 * of pure trivia. They stay stored - re-scraping to add a column is an
 	 * hour - and stay off this screen. */
-	out[n++] = (menu_row){ gi->has_art ? "Replace Box Art" : "Get Box Art",
-	                       net ? NULL : "needs Wi-Fi", net };
+	/* Owner's order (plorpos-bn9.23): Game Overrides, Rename, Box Art, then
+	 * Delete. Game Overrides is this one game's own settings, the shelf's
+	 * defaults until it has them (plorpos-bn9.5). */
+	if (gi->overrides)
+		out[n++] = (menu_row){ "Game Overrides", NULL, true };
 	/* The player's own name for it (plorpos-gkd.86.4): a game on the card,
 	 * like Delete - Splore's entry is not one to rename. */
 	if (gi->deletable)
 		out[n++] = (menu_row){ "Rename", NULL, true };
-	/* Under Rename, where it is: this one game's own settings, the shelf's
-	 * defaults until it has them (plorpos-bn9.5). */
-	if (gi->overrides)
-		out[n++] = (menu_row){ "Game Overrides", NULL, true };
-	/* Last, under the one that adds: the one that cannot be undone, asked
+	out[n++] = (menu_row){ gi->has_art ? "Replace Box Art" : "Get Box Art",
+	                       net ? NULL : "needs Wi-Fi", net };
+	/* Last: the one that cannot be undone, asked
 	 * again before it happens (plorpos-gkd.69). */
 	if (gi->deletable)
 		out[n++] = (menu_row){ "Delete Game", NULL, true };

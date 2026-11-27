@@ -14137,7 +14137,7 @@ static void shelf_defaults_screen(app *a, int sys)
  * many of this shelf's games have one, counted when the screen opens and after
  * each reset - never per frame. A clears that kind for every game here, asked
  * first with No selected; the shelf's defaults stay. */
-typedef struct { app *a; int sys; int count[SR_ROWS]; menu_bufs bufs; sr_row ids[SR_ROWS]; } sr_ctx;
+typedef struct { app *a; int sys; int count[SR_ROWS]; menu_bufs bufs; sr_row ids[SR_MENU_ROWS]; } sr_ctx;
 
 static void sr_recount(sr_ctx *c)
 {
@@ -14159,14 +14159,27 @@ static menu_result sr_key(app *a, void *ctx, in_button key, int sel)
 {
 	static const char *const YES[] = { "Yes" };
 	sr_ctx *c = ctx;
-	menu_row rows[SR_ROWS];
+	menu_row rows[SR_MENU_ROWS];
 	const char *heading;
 	char msg[160];
-	int n = sr_build(c, rows, SR_ROWS, &heading);
+	int n = sr_build(c, rows, SR_MENU_ROWS, &heading);
 	sr_row k;
 
 	if (key != IN_ACCEPT || sel < 0 || sel >= n || !rows[sel].live) return MENU_STAY;
 	k = c->ids[sel];
+	if (k == SR_ALL) {
+		int i;
+
+		if (pick_panel_ex(a, "Reset Overrides",
+		                  "Are you sure? This resets\nevery override on this shelf\nto the shelf defaults.",
+		                  YES, 1, "No") != 0)
+			return MENU_STAY;
+		for (i = 0; i < SR_ROWS; i++)
+			if (c->count[i]) ovr_clear(a, c->sys, (sr_row)i);
+		if (c->count[SR_CORE]) free_view_textures(&a->view[c->sys]);   /* previews are the core's */
+		sr_recount(c);
+		return MENU_STAY;
+	}
 	snprintf(msg, sizeof msg, "Are you sure? This resets\n%s for %d game%s\nto the shelf default.",
 	         rows[sel].label, c->count[k], c->count[k] == 1 ? "" : "s");
 	if (pick_panel_ex(a, "Reset Overrides", msg, YES, 1, "No") != 0) return MENU_STAY;

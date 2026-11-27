@@ -112,7 +112,7 @@ It holds system options only; a game's own settings are in its X menu.
 |---|---|
 | **Sort By** | left/right; `Name`, `Play Time`, `Last Played` or `Recently Added` |
 | **<Shelf> Defaults** | what every game on the shelf plays with until it has its own (below) |
-| **Reset Overrides** | every shelf but Ports: one row per kind of per-game setting, with how many games on this shelf have one. A asks Yes/No, then clears that kind for every game here. The defaults stay |
+| **Reset Overrides** | every shelf but Ports: **Reset All** on top clears every kind at once, then one row per kind of per-game setting, with how many games on this shelf have one. A asks Yes/No, then clears that kind for every game here. The defaults stay |
 | **Scrape Shelf** | fetch the art this system is missing, and nothing else (needs Wi-Fi) |
 | **Rescan Folder** | read the card again, for ROMs that arrived since boot |
 
@@ -142,9 +142,9 @@ wherever it was started from.
 | **Synopsis** | the scraped description; A opens it. Synopsis, Year and Genre appear only once the game has been scraped |
 | **Year**, **Genre** | from the scrape |
 | **Achievements** | earned / total; A opens the list |
-| **Get Box Art** / **Replace Box Art** | fetch a cover for this game alone (needs Wi-Fi); a cover already there stays unless a new one is found |
-| **Rename** | the name shown on the shelf, typed on the keyboard; the file keeps its name, and a rescrape never undoes it. Empty gives back the old name |
 | **Game Overrides** | this game's own settings (games played in diatom; not Ports or native PICO-8) |
+| **Rename** | the name shown on the shelf, typed on the keyboard; the file keeps its name, and a rescrape never undoes it. Empty gives back the old name |
+| **Get Box Art** / **Replace Box Art** | fetch a cover for this game alone (needs Wi-Fi); a cover already there stays unless a new one is found |
 | **Delete Game** | asked first; removes the file from the card (saves stay). On Ports it runs PortMaster's uninstall, saves included |
 
 **Game Overrides** lists Core, Display Mode (Layout and Display on the DS),

@@ -608,22 +608,27 @@ static void system_menu(void)
 
 	/* Reset Overrides. */
 	{
-		sr_row ids[SR_ROWS];
+		sr_row ids[SR_MENU_ROWS];
 		int cnt[SR_ROWS] = { 0 };
 
 		cnt[SR_DISPLAY] = 3;
 		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
 		printf("reset overrides:\n");
 		ck(!strcmp(heading, "Reset Overrides"), "its heading");
-		ck(n == 4 && ids[0] == SR_DISPLAY && ids[1] == SR_SHADER && ids[2] == SR_HOTKEYS && ids[3] == SR_TURBO,
+		ck(n == 5 && ids[0] == SR_ALL && !strcmp(rows[0].label, "Reset All") && rows[0].live,
+		   "Reset All on top, live while anything is set (plorpos-bn9.24)");
+		ck(ids[1] == SR_DISPLAY && ids[2] == SR_SHADER && ids[3] == SR_HOTKEYS && ids[4] == SR_TURBO,
 		   "no Core on one core, no Palette off the Game Boy");
-		ck(!strcmp(val(&rows[0]), "3") && rows[0].live, "a count, live");
-		ck(!strcmp(val(&rows[1]), "0") && !rows[1].live, "0 is greyed");
+		ck(!strcmp(val(&rows[1]), "3") && rows[1].live, "a count, live");
+		ck(!strcmp(val(&rows[2]), "0") && !rows[2].live, "0 is greyed");
 		cnt[SR_PALETTE] = 1;
 		u.core_game = true;
 		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
-		ck(n == 6 && ids[0] == SR_CORE && ids[4] == SR_PALETTE && rows[4].live,
+		ck(n == 7 && ids[1] == SR_CORE && ids[5] == SR_PALETTE && rows[5].live,
 		   "a choice of core lists Core; rows left behind are still listed to clear");
+		memset(cnt, 0, sizeof cnt);
+		n = sys_menu_reset_build(&u, cnt, rows, ids, &b, &heading);
+		ck(ids[0] == SR_ALL && !rows[0].live, "Reset All greyed with nothing to reset");
 		u.core_game = false;
 	}
 
@@ -1052,8 +1057,8 @@ static void info_rows(void)
 	n = gi_rows(rows, &gi, false);
 	printf("game info, a game on the card:\n");
 	ck(!strcmp(rows[n - 1].label, "Delete Game"), "Delete Game comes last");
-	ck(!strcmp(rows[n - 2].label, "Rename") && rows[n - 2].live,
-	   "Rename just above it, live without a network (plorpos-gkd.86.4)");
+	ck(!strcmp(rows[n - 3].label, "Rename") && rows[n - 3].live,
+	   "Rename above Box Art, live without a network (plorpos-gkd.86.4, bn9.23)");
 	ck(rows[n - 1].live, "and needs no network");
 	k = reachable(rows, n, got, GI_MAX);
 	ck(got[k - 1] == n - 1, "and is reachable");
@@ -1062,14 +1067,15 @@ static void info_rows(void)
 	gi.overrides = true;
 	n = gi_rows(rows, &gi, true);
 	ck(n == GI_MAX, "every row at once fits GI_MAX");
-	ck(!strcmp(rows[n - 2].label, "Game Overrides") && rows[n - 2].live &&
-	   !strcmp(rows[n - 3].label, "Rename"), "Game Overrides directly under Rename (plorpos-bn9.5)");
+	ck(!strcmp(rows[n - 4].label, "Game Overrides") && rows[n - 4].live &&
+	   !strcmp(rows[n - 3].label, "Rename") && !strcmp(rows[n - 2].label, "Replace Box Art"),
+	   "Game Overrides, Rename, Box Art, Delete (plorpos-bn9.23)");
 	gi.deletable = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)
 		ck(strcmp(rows[i].label, "Delete Game") != 0, "Splore has no Delete Game");
-	ck(!strcmp(rows[n - 1].label, "Game Overrides") && !strcmp(rows[n - 2].label, "Replace Box Art"),
-	   "no Rename: Game Overrides takes its place");
+	ck(!strcmp(rows[n - 2].label, "Game Overrides") && !strcmp(rows[n - 1].label, "Replace Box Art"),
+	   "no Rename: Game Overrides, then Box Art");
 	gi.overrides = false;
 	n = gi_rows(rows, &gi, true);
 	for (i = 0; i < n; i++)
