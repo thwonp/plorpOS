@@ -251,10 +251,16 @@ void plat_video_quit(void)
  *
  * Hiding first left sway's black background up for the 12-29 ms until the
  * launcher's first buffer. At a game's start and exit there is no resident
- * window to move; the move fails silently and nothing else changes. */
+ * window to move; the move fails silently and nothing else changes.
+ *
+ * Not for a game told to end (Quit, power, the swivel's shelf): it would come
+ * back only to close, and sway tiles it for a frame beside the menu's window
+ * on the way - the game on one half, the menu on the other (plorpos-3yv.114).
+ * The menu's last frame stays up until the shelf draws over it. */
 void screen_yield(bool to_game)
 {
 	if (!win) return;
+	if (to_game && plat_resident_stopping()) return;
 	if (to_game) {
 		resident_away_pending = false;
 		resident_place(true);

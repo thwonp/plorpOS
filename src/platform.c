@@ -1505,6 +1505,13 @@ void plat_resident_flush(unsigned timeout_ms)
 	fprintf(stderr, "flush: Diatom did not answer in %u ms\n", timeout_ms);
 }
 
+/* The launcher has told the game to end (STOP), from the menu or the power
+ * button; its EXIT is on the way. Until then the game is not handed the
+ * screen back (screen_yield): Quit's last frame stays up instead. */
+static bool d_stopping;
+
+bool plat_resident_stopping(void) { return d_stopping; }
+
 bool plat_resident_send(const plat_game *g)
 {
 	const char *tag = g->tag;
@@ -1515,6 +1522,7 @@ bool plat_resident_send(const plat_game *g)
 #endif
 
 	run_power_pressed = false;
+	d_stopping = false;
 	/* A new game has not reported RUNNING yet. Cleared HERE rather than in
 	 * diatom_wait, because the launcher re-enters that after every in-game
 	 * menu and the answer must survive those. */
@@ -1815,6 +1823,8 @@ bool plat_resident_line(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(line, sizeof line, fmt, ap);
 	va_end(ap);
+	if (!strncmp(line, "STOP", 4) && (!line[4] || line[4] == '\t'))
+		d_stopping = true;   /* Quit sends STOP\tlazy=1 */
 	if (dsend("%s", line)) return true;
 	/* Closed under us - Diatom restarted, or a newer client displaced this
 	 * connection (its ADR-0033). dsend has closed our end, so this is a fresh
@@ -2493,6 +2503,7 @@ int plat_resident_wait(void)
 	gesture_read();                  /* touches from before the game */
 	r = diatom_wait();
 	d_wake_fd = -1;
+	d_stopping = false;
 #if defined(PLATFORM_RGDS)
 	{
 		extern bool rgds_game_top;

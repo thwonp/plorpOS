@@ -619,7 +619,7 @@ build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscr
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
 	      -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/tailscale.c src/urlenc.c src/fbneodat.c src/setmap.c
+	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/tailscale.c src/urlenc.c src/fbneodat.c src/setmap.c src/library.c
 
 # Replace fetches over a cover rather than deleting it first. The real scraper
 # against a stubbed network, so a hit and a miss are both pinned with no device
@@ -631,7 +631,7 @@ build-native/artrun-check: tools/artrun-check.c src/artscrape.c src/artscrape.h 
                            src/fbneodat.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc -DSS_BUSY_WAIT=0 -DART_QUIET \
-	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c src/fbneodat.c src/setmap.c
+	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c src/fbneodat.c src/setmap.c src/library.c
 
 # The two hashers - one C for the device, one Python for the host tools - over
 # every ROM in the library. A wrong rule does not crash; it produces a hash RA
