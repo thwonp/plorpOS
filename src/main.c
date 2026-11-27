@@ -54,6 +54,7 @@
 #include "muse_empty.h"
 #include "textwrap.h"
 #include "playlist.h"
+#include "touch.h"
 #include "ss.h"
 #include "ssrun.h"
 #include "sys_menu.h"
@@ -1263,8 +1264,33 @@ static int muse_album_of(const char *track)
 static app *g_rgds_app;   /* main's, for the secondary's ticks */
 static bool g_muse_sec;   /* Muse is running on the secondary (.18.3.2) */
 static bool g_panel_fresh;/* the resting page redraws in full next time */
+/* Where Muse on the secondary was when a press on the primary ended it
+ * (plorpos-rgds.37): its last frame rests there (plat_bottom_snap_*) and a
+ * touch opens it at that place again, until the display goes off. */
+enum { SP_LIST, SP_ALBUM, SP_PLAYLIST };
+static struct {
+	bool set, now;            /* kept; on Now Playing (nothing to keep) */
+	bool books;
+	int tab, artist, asel, psel, album;   /* the list: tab, filter, rows, card */
+	int open, id, sel;        /* SP_*, the album, the track row */
+	char pl[PL_NAME_MAX];     /* the playlist's name, checked on the way back */
+	unsigned gen;             /* g_muse_gen it is good for */
+} g_sp;
+static int g_tset_sel0 = -1;  /* the row a track list opens on, once */
+static void sec_place_now(bool now)
+{
+	g_sp.now = now;
+	plat_bottom_snap_want(!now);
+}
+static void sec_place_drop(void)
+{
+	if (g_sp.set) g_panel_fresh = true;
+	g_sp.set = false;
+	plat_bottom_snap_drop();
+}
 #else
 #define g_muse_sec false
+#define sec_place_list(v) ((void)(v))
 #endif
 /* The boot walk of the library - see muse_walk. */
 static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
@@ -5194,6 +5220,13 @@ static bool idle_due(app *a)
 	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
+	/* A finger is input too, a drag included - not only the taps that come
+	 * out as presses (plorpos-rgds.42). */
+	{
+		static unsigned seen;
+
+		if (touch_activity() != seen) { seen = touch_activity(); b = 0; }
+	}
 
 	/* Music does NOT hold the clock (it did until TortOS-a5k): an album is
 	 * somebody using the device with nobody touching it, so running out
@@ -16873,6 +16906,9 @@ static muse_exit muse_now_screen(app *a)
 		char next[128] = "";
 		unsigned now;
 		bool touched = false;
+#if defined(PLATFORM_RGDS)
+		if (g_muse_sec) sec_place_now(true);
+#endif
 		int b;
 
 		muse_screen_poll();
@@ -17621,6 +17657,10 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		for (i = 0; p[0] && i < ts->n; i++)
 			if (!strcmp(p, g_muse.tracks[ts->trk[i]].path)) { sel = i; break; }
 	}
+#if defined(PLATFORM_RGDS)
+	if (g_tset_sel0 >= 0 && g_tset_sel0 < ts->n) sel = g_tset_sel0;
+	g_tset_sel0 = -1;
+#endif
 
 	if (now) {
 		how = muse_now_screen(a);
@@ -17639,6 +17679,15 @@ static muse_exit muse_tset_run(app *a, muse_tset *ts, bool now)
 		int n = 0, items;
 		const char *playing;
 
+#if defined(PLATFORM_RGDS)
+		if (g_muse_sec) {
+			g_sp.open = ts->pl ? SP_PLAYLIST : SP_ALBUM;
+			g_sp.id = ts->album;
+			g_sp.sel = sel;
+			snprintf(g_sp.pl, sizeof g_sp.pl, "%s", ts->pl ? ts->pl : "");
+			sec_place_now(false);
+		}
+#endif
 		muse_screen_poll();
 		if (cover_answers()) ui_redraw_now();
 		mn = musec_now();
@@ -19526,6 +19575,47 @@ static int muse_artist_jump(int sel, int dir)
 /* Muse, until it closes: the tabs, the Coverflow tab among them. `*vp` is
  * found again after a rescan. `now` with `playing`: straight to that album's
  * tracks, over the tab it was played from, which B comes back to (owner). */
+#if defined(PLATFORM_RGDS)
+/* The list's part of the place, as it stands (plorpos-rgds.37). */
+static void sec_place_list(const sysview *v)
+{
+	if (!g_muse_sec) return;
+	g_sp.tab = muse_tab();
+	g_sp.artist = muse_artist_filter();
+	g_sp.asel = g_mls_asel;
+	g_sp.psel = g_mls_psel;
+	g_sp.books = muse_books_shown();
+	g_sp.album = v->album && v->list.count > 0 ? v->album[v->cursor] : -1;
+	g_sp.open = SP_LIST;
+	sec_place_now(false);
+}
+
+/* Muse on the secondary opened again where it was left (plorpos-rgds.37). */
+static muse_exit sec_place_enter(app *a, sysview *v)
+{
+	bool ok = g_sp.gen == g_muse_gen;
+
+	g_sp.set = false;
+	plat_bottom_snap_drop();
+	if (!ok) return MUSE_BACK;
+	if (g_sp.books != muse_books_shown()) muse_show(v, g_sp.books);
+	muse_tab_set(g_sp.tab);
+	g_muse_favs = g_sp.tab == MT_FAVORITES;
+	muse_set_filter(v, g_sp.artist, g_sp.album);
+	g_mls_asel = g_sp.asel;
+	g_mls_psel = g_sp.psel;
+	g_tset_sel0 = g_sp.sel;
+	if (g_sp.open == SP_ALBUM) return muse_tracks(a, g_sp.id, false);
+	if (g_sp.open == SP_PLAYLIST) {
+		muse_playlists_load();
+		if (g_sp.psel < g_npls && !strcmp(g_pls[g_sp.psel].name, g_sp.pl))
+			return muse_playlist_open(a, g_sp.psel, false);
+	}
+	g_tset_sel0 = -1;
+	return MUSE_BACK;
+}
+#endif
+
 static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 {
 	sysview *v = *vp;
@@ -19536,6 +19626,18 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 	g_mls_asel = g_mls_psel = 0;
 	g_muse_list_up = true;
 	muse_artists_build();
+#if defined(PLATFORM_RGDS)
+	if (g_muse_sec && g_sp.set) {
+		muse_exit how = sec_place_enter(a, v);
+
+		if (how == MUSE_CLOSE || g_muse_gone) { g_muse_list_up = false; return; }
+		if (how == MUSE_REBUILT) {
+			if (!(v = muse_shelf_refind(a))) { g_muse_list_up = false; return; }
+			*vp = v;
+			muse_artists_build();
+		}
+	} else
+#endif
 	if (playing >= 0 && g_muse.albums[playing].book == muse_books_shown()) {
 		int pa = muse_artist_of(playing);
 
@@ -19549,6 +19651,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 			if (fp >= 0) {
 				muse_tab_set(MT_PLAYLISTS);
 				g_mls_psel = fp;
+				sec_place_list(v);
 				how = muse_playlist_open(a, fp, true);
 			} else {
 				int ft = g_muse_from.tab;
@@ -19563,6 +19666,7 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 					g_muse_favs = false;
 					muse_set_filter(v, pa, playing);
 				}
+				sec_place_list(v);
 				/* A book's Now Playing goes back to its list (plorpos-i8d.2). */
 				how = g_muse.albums[playing].book ? muse_now_screen(a)
 				                                  : muse_tracks(a, playing, true);
@@ -19595,6 +19699,9 @@ static void muse_list_screen(app *a, sysview **vp, bool now, int playing)
 		unsigned ft0, ft1;
 
 		if (tab != synced) { muse_favs_sync(v, tab); synced = tab; }
+#if defined(PLATFORM_RGDS)
+		sec_place_list(v);
+#endif
 		/* A podcast download landed, or a copy went: Downloads and the rows. */
 		if (g_muse_pod && pod_download_take_changed())
 			muse_refilter(v, v->album && v->list.count > 0 ? v->album[v->cursor] : -1);
@@ -21074,6 +21181,9 @@ static dark_end music_dark(app *a, unsigned *waited)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	plat_screen(false);
+#if defined(PLATFORM_RGDS)
+	sec_place_drop();                     /* Now Playing again on a wake (rgds.37) */
+#endif
 #if defined(PLATFORM_H700) && !defined(PLATFORM_ROTATE) && !defined(PLATFORM_MIYOO)
 	(void)plat_lid_opened();              /* an opening from before the dark */
 #endif
@@ -21184,6 +21294,9 @@ static bool sleep_cycle(app *a)
 	unsigned t0, waited = 0;
 	bool awake;
 
+#if defined(PLATFORM_RGDS)
+	sec_place_drop();                     /* Now Playing again on a wake (rgds.37) */
+#endif
 	/* Dark before the checkpoint, not after: it is a synced state write, 1-4 s
 	 * on the RG35XX H's card, and the screen sat on for all of it after the
 	 * power tap. The save is still made before anything sleeps
@@ -25477,6 +25590,14 @@ static void muse_panel_tick(bool fresh, bool busy, bool slide)
 	 * panel, beside a game too (plorpos-rgds.27). */
 	if (epoch != plat_bottom_epoch()) fresh = true, epoch = plat_bottom_epoch();
 	while (plat_bottom_tap(&x, &y)) { }          /* a tap opens Muse: details_tick */
+	if (g_sp.set && g_sp.gen != g_muse_gen) { sec_place_drop(); fresh = true; g_panel_fresh = false; }
+	if (g_sp.set) {
+		/* Muse's place, kept: its frame as it was left (plorpos-rgds.37). */
+		if (fresh && (r = plat_bottom_begin(&w, &h))) {
+			if (!plat_bottom_snap_draw(r)) { sec_place_drop(); g_panel_fresh = false; }
+			else { plat_bottom_end(); shown[0] = 0; return; }
+		} else return;
+	}
 	if (gen != g_muse_gen) {                      /* Rescan Folder: albums renumbered */
 		if (np_b.tex) SDL_DestroyTexture(np_b.tex);
 		np_b = (struct np_cover){ .album = -1 };
@@ -25548,6 +25669,7 @@ static int sec_edge(app *a, void (*tick)(void))
 
 	if (e > 0) {
 		g_dual_muse = !g_dual_muse;
+		sec_place_drop();
 		fprintf(stderr, "secondary: %s\n", g_dual_muse ? "Muse+" : "Details");
 	}
 	if (e < 0 && a) switcher_on_secondary(a, tick);
@@ -25747,8 +25869,15 @@ static void muse_on_secondary(app *a, void (*tick)(void))
 	muse_textures_forget(a);
 	SDL_RenderSetScale(r, 1.0f, 1.0f);
 	a->r = was;
-	/* The resting Now Playing at once, not Muse's last frame - a menu on the
-	 * primary does not tick the secondary. */
+	/* Its last frame stays, its place kept, when the primary took it and it
+	 * was not on Now Playing (plorpos-rgds.37); else the resting Now Playing
+	 * at once - a menu on the primary does not tick the secondary. */
+	if (g_dual_muse && !g_sp.now && plat_bottom_snapped()) {
+		g_sp.set = true;
+		g_sp.gen = g_muse_gen;
+		fprintf(stderr, "muse: place kept on the secondary (tab %d, open %d, row %d)\n",
+		        g_sp.tab, g_sp.open, g_sp.sel);
+	} else sec_place_drop();
 	muse_panel_tick(true, false, false);
 	ui_redraw_now();
 	memset(&a->in, 0, sizeof a->in);
@@ -25820,7 +25949,7 @@ static void sec_end(app *a, void (*tick)(void), sec_sess *ss)
 	memset(&a->in, 0, sizeof a->in);
 	plat_bottom_session(false, tick != NULL);
 	/* The swipe that closed it is not one to open it again. */
-	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse;
+	if (plat_bottom_edge() > 0) g_dual_muse = !g_dual_muse, sec_place_drop();
 }
 
 /* The recent games there (plorpos-rgds.33.4). A pick launches from the
@@ -25887,6 +26016,10 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 	gm_ctx *c = &q->gm;
 	int row = c->ids[sel], armed = q->armed;
 
+	/* A finger held 500 ms is a long press: the row, then Y - which nothing
+	 * here has. A slower tap is still a tap (plorpos-rgds.41). */
+	if (key == IN_Y) key = IN_ACCEPT;
+
 	if (key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) q->armed = -1;
 	if (key == IN_ACCEPT && (row == GM_RESET || row == GM_QUIT)) {
 		if (armed != row) { q->armed = row; return MENU_STAY; }
@@ -25906,9 +26039,12 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 		if (!slot) return MENU_STAY;
 		slot_state_path(a, o, &sv->list.items[sv->cursor], slot, sp, sizeof sp);
 		if (row == GM_SAVE) {
-			plat_resident_line("SAVE\tpath=%s", sp);
+			/* The game runs on: Diatom writes its frame beside the state
+			 * (plorpos-rgds.38). The old picture goes first - never after,
+			 * which could take the new one - and an older Diatom leaves none. */
 			slot_preview_path(a, o, &sv->list.items[sv->cursor], slot, pp, sizeof pp);
 			unlink(pp);
+			plat_resident_line("SAVE\tpath=%s\tpreview=%s", sp, pp);
 		} else {
 			plat_resident_line("LOAD\tpath=%s", sp);
 		}

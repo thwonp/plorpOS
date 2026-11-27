@@ -204,6 +204,8 @@ void touch_event(const SDL_Event *e, float w, float h)
 {
 	/* Panel pixels, so the distances above are what a finger travels. */
 	if (w <= 0 || h <= 0) w = h = 720;
+	if (e->type == SDL_FINGERDOWN || e->type == SDL_FINGERUP || e->type == SDL_FINGERMOTION)
+		touch_note();
 
 	if (e->type == SDL_FINGERDOWN) {
 		if (touch.fingers++ == 0) {
@@ -354,3 +356,9 @@ void touch_reset(void)
 	touch.free = keep;
 }
 #endif
+
+/* On every build - a device without a panel never moves it (plorpos-rgds.42). */
+#include "touch.h"
+static unsigned touch_seen;
+void touch_note(void) { touch_seen++; }
+unsigned touch_activity(void) { return touch_seen; }

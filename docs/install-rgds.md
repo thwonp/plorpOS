@@ -126,8 +126,9 @@ finger lands on takes over, and the same swipe carries on there. Muse+, Quick
 Settings and Recent games on the second screen are touch only. Beside a game
 they stay open while you play: the Anbernic button closes them, and so does a
 swipe in from the side edge (Back). On the shelf any button or a touch on the
-main screen hands control back. Swiping back at Muse+'s top level goes to Now
-Playing there.
+main screen hands control back. Muse+ stays where you left it, and a touch
+picks up there again; once the screen turns off, it rests on Now Playing.
+Swiping back at Muse+'s top level goes to Now Playing there.
 
 ## Ports
 
