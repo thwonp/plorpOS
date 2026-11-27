@@ -9302,7 +9302,7 @@ static void xfer_screen(app *a)
 /* The heading and rows, in one place so a shot cannot picture a screen that
  * does not exist - the lesson from --hare, where the fixture claimed a byte
  * count the code could not produce. */
-static void art_head(char *out, size_t n, const char *now)
+static void art_head(char *out, size_t n, const char *title, const char *now)
 {
 	char fit[128];
 
@@ -9313,7 +9313,7 @@ static void art_head(char *out, size_t n, const char *now)
 	 * the panel a margin it can keep. */
 	ui_fit_text(ui_font(UI_F_LABEL), now, fit, sizeof fit,
 	            TORTOS_SCREEN_W * 3 / 4);
-	snprintf(out, n, "Box Art\n%s", fit);
+	snprintf(out, n, "%s\n%s", title, fit);
 }
 
 static int art_rows(menu_row *out, const char *where, const char *counts,
@@ -9332,7 +9332,7 @@ void art_preview(app *a, const char *now, const char *where,
 	char head[192];
 	int n = art_rows(rows, where, counts, working);
 
-	art_head(head, sizeof head, now);
+	art_head(head, sizeof head, "Scrape Systems", now);
 	draw_shelf(a);
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
@@ -9431,12 +9431,16 @@ static void art_run(app *a, const char *only, const bool *pick, const char *one,
 	/* Whether the one game already had a cover, so a miss can say it kept it
 	 * rather than read as though the cover went. */
 	bool         had = one && stem && only && has_box_art(only, stem);
+	/* The panel is headed by the row that started it (plorpos-bn9.16); one
+	 * game's Get/Replace Box Art keeps "Box Art". */
+	const char  *title = one ? "Box Art" : pick ? "Scrape Systems"
+	                     : only ? "Scrape Shelf" : "Box Art";
 
 	if (!net_online()) {
 		menu_row row = { "No network", NULL, false };
 
 		draw_shelf(a);
-		menu_draw(a, "Box Art", &row, 1, -1, 0, accent);
+		menu_draw(a, title, &row, 1, -1, 0, accent);
 		draw_chrome(a->r);
 		plat_present(a->r);
 		SDL_Delay(1600);
@@ -9500,7 +9504,7 @@ static void art_run(app *a, const char *only, const bool *pick, const char *one,
 					 * uses, so the two sources look like one feature. */
 					menu_row row[2];
 
-					art_head(head, sizeof head, one);
+					art_head(head, sizeof head, title, one);
 					row[0] = (menu_row){ "Box Art",
 					                     had ? "replaced" : "found", false };
 					row[1] = (menu_row){ "B to close", NULL, false };
@@ -9521,7 +9525,7 @@ static void art_run(app *a, const char *only, const bool *pick, const char *one,
 				}
 				if (st < 0) { ss_run_cancel(); ss_working = false; break; }
 
-				art_head(head, sizeof head, one);
+				art_head(head, sizeof head, title, one);
 				rows[0] = (menu_row){ "Box Art", ss_run_where(), false };
 				rows[1] = (menu_row){ "B to stop", NULL, false };
 				tick_tint(a);
@@ -9571,7 +9575,7 @@ static void art_run(app *a, const char *only, const bool *pick, const char *one,
 			/* Asked about one game, answer about one game: the run is that
 			 * game alone (art_begin's `only`), and "1 found, 19 already" would
 			 * be a true statement about work the player did not ask for. */
-			art_head(head, sizeof head, one);
+			art_head(head, sizeof head, title, one);
 			rows[0] = (menu_row){ "Box Art",
 			                      working ? "fetching"
 			                      : p.found ? (had ? "replaced" : "found")
@@ -9585,7 +9589,7 @@ static void art_run(app *a, const char *only, const bool *pick, const char *one,
 			 * that it is done - never the last game it happened to fetch,
 			 * which is what this said before and reads as still working
 			 * on it. */
-			art_head(head, sizeof head,
+			art_head(head, sizeof head, title,
 			         working ? (p.now[0] ? p.now : "starting")
 			         : p.problem[0] ? p.problem : "Done");
 			nrows = art_rows(rows, where, counts, working);
@@ -9881,7 +9885,8 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
  * Game Overrides), or the running game's (in-game: sent at once, and kept as
  * the game's own only under Save Per-Game Overrides). */
 enum { HK_SHELF, HK_GAME, HK_LIVE };
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode,
+                           unsigned accent);
 static void game_settings_screen(app *a);
 static void shelf_shader_screen(app *a, int sys);
 static void default_palette_screen(app *a, int sys);
@@ -10136,7 +10141,7 @@ static menu_result go_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	}
 	case GO_HOTKEYS:
-		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME);
+		if (key == IN_ACCEPT) hotkeys_screen(a, NULL, s->tag, g->file, HK_GAME, s->accent);
 		break;
 	case GO_TURBO:
 		if (key == IN_ACCEPT) turbo_screen(a, s->tag, g->file);
@@ -13737,7 +13742,7 @@ static menu_result sd_key(app *a, void *ctx, in_button key, int sel)
 		else default_palette_screen(a, sys);
 		break;
 	case SD_HOTKEYS:
-		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF);
+		if (!d) hotkeys_screen(a, NULL, sc->tag, NULL, HK_SHELF, a->tint);   /* as Defaults' follow_tint */
 		break;
 	case SD_TURBO:
 		if (!d) turbo_screen(a, sc->tag, NULL);
@@ -19926,7 +19931,8 @@ static const struct { in_button b; const char *src; } BM_CAPTURE[] = {
  * (plorpos-bn9.4): the shelf's two rows, the game's own (both written, a full
  * copy), or the running game's - sent at once, kept as its own only under
  * Save Per-Game Overrides. */
-typedef struct { const char *tag, *file; int mode; char hk[320], bm[160]; bool own; } hk_edit;
+typedef struct { const char *tag, *file; int mode; char hk[320], bm[160]; bool own;
+                 unsigned accent; /* the caller's panel's (plorpos-bn9.17) */ } hk_edit;
 
 static void hk_edit_load(hk_edit *e)
 {
@@ -20043,7 +20049,7 @@ static void button_map_screen(app *a, SDL_Texture *bg, hk_edit *e)
 			continue;
 		}
 		chv_backdrop(a, bg, mode != HK_LIVE);
-		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Button Mapping", rows, NROWS + 2, sel, 0, e->accent);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
@@ -20054,7 +20060,8 @@ static void button_map_screen(app *a, SDL_Texture *bg, hk_edit *e)
 
 static int gs_rewind(void);
 
-static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode)
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char *file, int mode,
+                           unsigned accent)
 {
 	/* Button Mapping, then the action rows, action vis[i] at row
 	 * FIRST_ACT + i. Rewind Speed moved to Game Settings (plorpos-pyz.3),
@@ -20063,7 +20070,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 	enum { R_MAPPING = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS };
 	int trig_for_row[HK_ROW_COUNT], mod_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS + 3];
-	hk_edit e = { tag, file, mode, "", "", false };
+	hk_edit e = { tag, file, mode, "", "", false, accent };
 	char vals[HK_ROW_COUNT][40];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
@@ -20237,7 +20244,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag, const char 
 			continue;
 		}
 		chv_backdrop(a, bg, mode != HK_LIVE);
-		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, NROWS + 2, sel, 0, e.accent);
 		draw_battery(a->r);
 		plat_present(a->r);
 	}
@@ -21232,7 +21239,8 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 
-		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, sv->list.items[sv->cursor].file, HK_LIVE);
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag, sv->list.items[sv->cursor].file, HK_LIVE,
+		               MENU_ACCENT);
 		break;
 	}
 	case GM_RESET:
