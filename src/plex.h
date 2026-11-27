@@ -48,10 +48,8 @@ bool plex_ready(void);
 const char *plex_server_name(void);
 const char *plex_library_name(void);
 const char *plex_account_name(void);
-/* The server, as it last described itself (plorpos-5eq.9): tied to a Plex
- * Pass account or not, and whether this account may download from it.
- * 1 yes, 0 no, -1 not known (not asked yet, or it did not say). */
-int plex_pass(void);
+/* Whether this account may download from the server, as it last said
+ * (plorpos-5eq.9): 1 yes, 0 no, -1 not known (not asked yet, or it did not say). */
 int plex_allow_sync(void);
 void plex_sign_out(void);
 
@@ -82,7 +80,7 @@ const char *plex_library_at(int i);
 void plex_library_pick(int i);
 
 /* Quality, as the pak has it: 0 = Original, else an Opus transcode at that
- * many kbps (Plex Pass). Streaming and downloads each have one. */
+ * many kbps. Streaming and downloads each have one. */
 #define PLEX_QUALITIES 6
 int  plex_quality_at(int i);
 const char *plex_quality_label(int kbps);

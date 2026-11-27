@@ -11798,22 +11798,6 @@ static void plex_say(app *a, const char *msg)
 /* The server will not give this account downloads (its owner's setting). */
 #define PLEX_NO_SYNC "This server does not allow downloads"
 
-/* A server with no Plex Pass, said once a server when its music is opened
- * (plorpos-5eq.9). What exactly Plex refuses without one has not been
- * measured (unverified - no such account to test with): streaming away from
- * home and downloads are what Plex's own apps keep for Plex Pass. A refusal,
- * when it comes, is the "Could not reach the server" toast, not an error. */
-static void plex_pass_note(app *a)
-{
-	char told[CFG_STR];
-
-	if (plex_pass() != 0 || !plex_server_name()[0]) return;
-	db_get_str(db_dev(), "plex.passnote", told, sizeof told, "");
-	if (!strcmp(told, plex_server_name())) return;
-	db_set_str(db_dev(), "plex.passnote", plex_server_name());
-	plex_say(a, "No Plex Pass on this server");
-}
-
 /* `poll` behind a panel saying `msg()`, until it returns non-zero (that) or
  * B gives up (0). The work goes on either way: B only stops waiting. */
 static int src_wait(app *a, const char *title, const char *(*msg)(void), int (*poll)(void))
@@ -12988,28 +12972,14 @@ static int srv_set_build(void *ctx, menu_row *rows, int max, const char **headin
 	else u->sync[0] = '\0';
 	rows[PX_OFFLINE]  = (menu_row){ "Offline Mode", on_off(off), true };
 	rows[PX_ACCOUNT]  = (menu_row){ "Account", in ? (acct[0] ? acct : "signed in") : "Sign In", !in && !off };
-	/* A server with no Plex Pass says so here (plorpos-5eq.9). */
-	{
-		static char srv[160];
-
-		snprintf(srv, sizeof srv, "%s%s", sv[0] ? sv : "Choose",
-		         plex && sv[0] && plex_pass() == 0 ? " (no Plex Pass)" : "");
-		rows[PX_SERVER] = (menu_row){ "Server", srv, in && !off };
-	}
+	rows[PX_SERVER]   = (menu_row){ "Server", sv[0] ? sv : "Choose", in && !off };
 #if TS_ROWS
 	rows[PX_TAILNET]  = (menu_row){ "Tailnet Server", abs_addr_shown(plex ? plex_tailnet() : jellyfin_tailnet()),
 	                                in && sv[0] && !off };
 #endif
 	rows[PX_LIBRARY]  = (menu_row){ "Library", lib[0] ? lib : "Choose", in && sv[0] && !off };
-	/* A Plex transcode needs Plex Pass on the server: without one it is the
-	 * file as it is, and there is nothing to choose (plorpos-5eq.9). */
-	if (plex && plex_pass() == 0) {
-		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", "Original", false };
-		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", "Original", false };
-	} else {
-		rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(msrv_stream_kbps(u->m)), true };
-		rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(msrv_download_kbps(u->m)), true };
-	}
+	rows[PX_STREAM]   = (menu_row){ "Streaming Quality", plex_quality_label(msrv_stream_kbps(u->m)), true };
+	rows[PX_DOWNLOAD] = (menu_row){ "Download Quality", plex_quality_label(msrv_download_kbps(u->m)), true };
 	/* plorpos-1lw.22; streaming ports cache ahead too (plorpos-vgr.12). */
 	snprintf(u->ahead, sizeof u->ahead, "%d", msrv_ahead(u->m));
 	rows[PX_AHEAD]    = (menu_row){ "Pre-fetch Tracks", u->ahead, true };
@@ -18017,7 +17987,6 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
-	if (g_srv && g_srv_src == MSRC_PLEX) plex_pass_note(a);
 	if (!abs_offline()) abs_progress_refresh();   /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */

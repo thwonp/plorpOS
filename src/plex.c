@@ -219,11 +219,12 @@ static int plex_req(const char *method, const char *url, bool with_token,
  * One thread probes at a time; the others wait for its answer. */
 static pthread_mutex_t g_pick_mu = PTHREAD_MUTEX_INITIALIZER;
 
-/* What the server says of itself at "/" (plorpos-5eq.9): whether it is tied
- * to a Plex Pass account - a shared user rides on the owner's - and whether
- * this account may download from it. -1 until it has been asked; asked each
- * time a connection is picked, so a pass bought or lapsed is seen. */
-static volatile int g_srv_pass = -1, g_srv_sync = -1;
+/* What the server says of itself at "/" (plorpos-5eq.9): whether this
+ * account may download from it. -1 until it has been asked; asked each time
+ * a connection is picked. Plex Pass is not asked: a server without one
+ * streams, transcodes and downloads music all the same (measured 2026-11-27,
+ * at home and away). */
+static volatile int g_srv_sync = -1;
 
 static void server_caps(const char *uri)
 {
@@ -235,13 +236,11 @@ static void server_caps(const char *uri)
 	if (plex_req_c("GET", url, true, &b, &len, 5, 6) != 200 || !b) { free(b); return; }
 	root = js_root(b, len);
 	if (js_member(root, "MediaContainer", &mc)) {
-		int pass = js_member(mc, "myPlexSubscription", &v) ? js_is_true(v) : -1;
 		int sync = js_member(mc, "allowSync", &v) ? js_is_true(v) : -1;
 
-		if (pass != g_srv_pass || sync != g_srv_sync)
-			fprintf(stderr, "plex: server Plex Pass %s, downloads %s\n",
-			        pass < 0 ? "unknown" : pass ? "yes" : "no", sync < 0 ? "unknown" : sync ? "allowed" : "not allowed");
-		g_srv_pass = pass;
+		if (sync != g_srv_sync)
+			fprintf(stderr, "plex: server downloads %s\n",
+			        sync < 0 ? "unknown" : sync ? "allowed" : "not allowed");
 		g_srv_sync = sync;
 	}
 	free(b);
@@ -302,13 +301,8 @@ static bool try_conns(char *out, size_t n)
 
 static bool refresh_conns(void);
 
-int plex_pass(void) { return g_srv_pass; }
-
-/* The quality asked of the server: Plex transcodes music only for a Plex
- * Pass server, so one known to have none is asked for the file as it is
- * (0, Original) whatever the settings say (plorpos-5eq.9). */
-static int kbps_stream(void)   { return g_srv_pass == 0 ? 0 : msrv_stream_kbps(P); }
-static int kbps_download(void) { return g_srv_pass == 0 ? 0 : msrv_download_kbps(P); }
+static int kbps_stream(void)   { return msrv_stream_kbps(P); }
+static int kbps_download(void) { return msrv_download_kbps(P); }
 
 int plex_allow_sync(void) { return g_srv_sync; }
 
