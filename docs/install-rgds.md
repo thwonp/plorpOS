@@ -1,185 +1,204 @@
-# Installing on the Anbernic RG DS
+# Installing plorpOS on the Anbernic RG DS
 
-On the RG DS, plorpOS is a whole microSD card image: flash it, put the card in,
-turn the RG DS on. Underneath is a trimmed ROCKNIX (its emulators and
-EmulationStation removed). The RG DS's own system on its internal storage is
-never touched: take the card out and it starts as it always did.
+You need the RG DS, a microSD card of 16 GB or more and a computer. The RG DS's
+own system on its internal storage is never touched: take the card out and it
+starts as before.
 
-You need the RG DS, a microSD card of 16 GB or more (everything on it is
-erased) and a computer that can write images to a card.
+### 1. Extract the image
 
-## 1. Flash the card
+Unpack `plorpOS-v<version>-rgds.img.xz` to `plorpOS-v<version>-rgds.img`
+first, with [7-Zip](https://www.7-zip.org/) for example. Some imagers fail on
+`.xz` files.
 
-Download the RG DS image from
-[Releases](https://github.com/thwonp/plorpOS/releases/latest) and write it to
-the card with [balenaEtcher](https://etcher.balena.io/), Rufus, or `dd`:
+### 2. Flash the image
 
-```sh
-sudo dd if=plorpOS-rgds.img of=/dev/sdX bs=4M conv=fsync status=progress
-```
+Write `plorpOS-v<version>-rgds.img` to the card with your imager of choice
+([Etcher](https://etcher.balena.io/), [Rufus](https://rufus.ie/), `dd`, etc).
+Everything on the card is erased.
 
-`/dev/sdX` is the card itself, not a partition on it. Check it twice: `dd`
-erases whatever it is pointed at.
+### 3. Boot
 
-## 2. First boot
+Put the card in while the RG DS is off, then turn it on. The first boot takes
+about a minute: it makes a **PLORPOS** partition (exFAT) from the free space,
+copies plorpOS onto it and restarts. Don't turn it off. That is the drive a
+computer sees.
 
-Put the card in the RG DS while it's off, then turn it on. The first boot
-prepares the card: it makes a **PLORPOS** partition from all the free space,
-copies plorpOS onto it and restarts. That takes about a minute; don't turn it
-off. Every boot after that goes straight to the shelf.
+# Device specific notes for the RG DS
 
-## 3. Add games
+### Base system
 
-Turn the RG DS off and put the card in your computer. The **PLORPOS** drive has:
+plorpOS runs on a trimmed ROCKNIX (no EmulationStation or emulators).
 
-```
-Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console,
-             Nintendo DS/ and Ports/ among them
-Bios/        BIOS files, loose
-Saves/       one folder per console
-Music/       albums for Muse+
-Audiobooks/
-plorpOS/     the launcher itself - leave it as it is
-```
+- The card's other two partitions are the system's. If Windows offers to
+  format them, say no.
+- Don't install ROCKNIX updates (its **update** network share): they replace
+  plorpOS's system with stock ROCKNIX.
 
-Games go in their console's folder in `Roms/`. Which BIOS files each console
-needs is in
-[Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems).
+### Screens
 
-The card's other two partitions are the system's. Windows may offer to format
-them: say no.
+plorpOS uses the main screen and puts something useful on the other.
 
-You can also copy files without taking the card out: connect the RG DS to
-Wi-Fi in **System Settings**, then use the **`games-external`** Samba share
-or Over the Hare.
+- **Anbernic + Home** swaps them, on the shelf or in a game. Remembered.
+- Second screen on the shelf: **Details** for the game under the cursor
+  (cover, scrape info, play time, achievements). Swipe sideways for its three
+  pages.
+- Second screen in a game: **Quick Settings**, the in-game menu's rows by
+  touch. The game keeps running: Display, Shader and the rest apply live, Save
+  and Load open their slots there, **Reset** and **Save and Quit** need a second
+  tap.
+- DS games use both screens: top on top, bottom below, and the bottom one takes
+  your finger or stylus. PokeDaisy DS keeps its own picture on the top screen.
 
-## Screens
+Edge swipes on the second screen, anywhere:
 
-plorpOS uses one screen (the main screen) and puts something useful on the
-other. Press **Anbernic + Home** together to swap them, on the shelf or in a
-game. plorpOS remembers your choice.
+- **Down from the top**: **Muse+** (Now Playing). It stays through games until
+  you swipe down again. Tap it to browse Muse+ there. While Muse+ is open on
+  the main screen, the second screen shows the queue: drag to scroll, tap a
+  track to play it.
+- **Up from the bottom**: **Recent games**. Pick one to play it, even from
+  inside another game.
 
-The second screen shows:
+### Buttons and brightness
 
-- **On the shelf**: Details for the game under the cursor (cover, what the
-  scrape knows, play time, achievements). Swipe sideways for its three pages.
-- **In a game**: Quick Settings, the in-game menu's rows, by touch. Your game
-  keeps running: Display, Shader and the rest change it live, Save and Load
-  open their slots right there, and Reset and Save and Quit each need a second tap.
+The **Anbernic** button is Menu. It acts on release, so it can be held for
+brightness. Each screen has its own:
 
-Two swipes work on the second screen wherever you are:
-
-- **Down from the top edge**: Muse+ (Now Playing). It stays there through
-  games until you swipe down from the top again. Tap it to browse all of
-  Muse+ on that screen. While Muse+ is open on the main screen, the second
-  screen shows the queue: drag to scroll, tap a track to play it.
-- **Up from the bottom edge**: Recent games, by touch. Pick one to play it,
-  even from inside another game.
-
-Nintendo DS games always use both screens: the top one on top, the bottom one
-below, and the bottom screen takes your finger or stylus. PokeDaisy DS keeps
-its own picture on the top screen.
-
-## Buttons and brightness
-
-The **Anbernic** button is Menu. It opens the menu when you let go of it, so it
-can also be held for brightness.
-
-Each screen has its own brightness:
-
-| Hold | with Volume up/down |
+| Hold + Volume up/down | Screen |
 |---|---|
-| Anbernic | top screen |
-| Home | bottom screen |
+| Anbernic | top |
+| Home | bottom |
 
-The level bar shows on the screen you are changing, in games too.
+- The level bar shows on the screen you are changing, in games too.
+- The second screen goes down to **off**; touching it then does nothing. The
+  main screen never goes fully dark.
+- Swapping screens swaps their brightness too.
+- A DS game lights a screen that is off, and turns it off again after.
 
-- The second screen goes all the way down to **off**: that's how you turn it
-  off. While it's off, touching it does nothing.
-- The main screen never goes fully dark.
-- Swap the screens and the brightness goes with them: the new main screen
-  takes the old one's level, and the other screen takes the second screen's.
-- A DS game needs both screens, so a screen that is off lights up for the game
-  and goes dark again after it.
+### Lid
 
-## Touch
+Closing the lid for 1 s sleeps, like a POWER tap.
+
+### Touch
 
 Both screens are touchscreens. The one plorpOS is on does what the buttons do:
 
 | Touch | Does |
 |---|---|
-| tap | selects what is under it; A on the selected item |
-| swipe | the d-pad (a longer swipe moves further, a flick coasts) |
-| swipe in from the left or right edge | B (back) |
+| tap | selects; A on the selected item |
+| swipe | d-pad (longer goes further, a flick coasts) |
+| swipe in from the left or right edge | B |
 | swipe down from the top edge | Muse+ (or what Select Shortcut says) |
 | swipe up from the bottom edge | Recent games (or what Menu Hold says) |
-| long press | Y on what is under it (favorite a game) |
-| two-finger tap | X on what is under it (a game's info) |
+| long press | Y (favorite) |
+| two-finger tap | X (game info) |
 | three-finger tap | Menu |
 
-In a game, the game's screen takes the edge swipes (Muse+, Recent games) and a
-long press opens the in-game menu. In a DS game that is the top screen: the
-bottom one is only ever the game's.
+- In a game, the game's screen takes the edge swipes and a long press opens
+  the in-game menu. In a DS game that is the top screen; the bottom is the
+  game's.
+- No tap-in needed: whichever screen your finger lands on takes over, and a
+  swipe carries on there.
+- Muse+, Quick Settings and Recent games on the second screen are touch only.
+  Beside a game they stay open while you play: the Anbernic button or a side
+  edge swipe (Back) closes them. On the shelf any button or a touch on the main
+  screen hands control back. Back at Muse+'s top level goes to Now Playing.
 
-Touch works on both screens without tapping in first. Whichever screen your
-finger lands on takes over, and the same swipe carries on there. Muse+, Quick
-Settings and Recent games on the second screen are touch only. Beside a game
-they stay open while you play: the Anbernic button closes them, and so does a
-swipe in from the side edge (Back). On the shelf any button or a touch on the
-main screen hands control back. Swiping back at Muse+'s top level goes to Now
-Playing there.
+### Display
 
-## Ports
+- Header Size and Body Size start at `90%`.
 
-Open PortMaster, the first entry on the Ports shelf, with the RG DS on Wi-Fi.
-The ports it installs land in `Roms/Ports/` and on the shelf, with the
-runtimes they need. Install ports through PortMaster rather than copying them
-onto the card: a copied port can be missing its runtime. It's unofficial
-support: report problems to plorpOS, not the PortMaster team.
+### SSH and Samba
 
-Select + Start quits a port. In PortMaster's own menus, B selects and A goes
-back.
+**Network Services** has **SSH** and **Samba** switches. With Samba on, the
+card is the **`games-external`** share.
 
-Tested runtimes: native 64-bit and 32-bit, LÖVE, Mono, .NET, GameMaker
-(GMLoader, 64-bit and 32-bit), Java, Godot 3 and 4, Westonpack (Wayland and
-X11), box86, Python, Pyxel, Ren'Py and Qt6. Ren'Py games keep their own
-shape, with black bars above and below.
+### USB Debugging
 
-Known issues:
+**System Settings > USB Debugging** turns on adb over USB-C, as a root shell,
+with no authorisation. It stays on across restarts until you turn it off.
 
-- **Braid** doesn't start. Its port supports ROCKNIX only with the Panfrost
-  graphics driver, and the RG DS uses Mali's.
-- **Dust Racing 2D** closes at once. Its port looks for its Qt6 runtime under
-  a name PortMaster doesn't install.
-- **Balatro**: with the port's Performance setting off, keep the CRT effect at
-  0. The full CRT effect draws black patches on the RG DS's graphics driver.
+### Ports
 
-## USB debugging
+The **Ports** shelf opens with **PortMaster**. Run it on Wi-Fi; ports install
+to `Roms/Ports/` with the runtimes they need. Install through PortMaster, not
+by copying: a copied port can be missing its runtime. Support is unofficial:
+report problems to plorpOS, not the PortMaster team. How ports run:
+[how-it-works](how-it-works.md#ports).
 
-**System Settings > USB Debugging** turns on adb over the USB-C port, as a
-root shell. It stays on across restarts until you turn it off.
+- Select + Start quits a port. In PortMaster's menus, B selects and A goes
+  back.
+- **Braid** doesn't start (its port needs the Panfrost driver; the RG DS uses
+  Mali).
+- **Dust Racing 2D** closes at once until PortMaster fixes its Qt6 runtime
+  name.
+- **Balatro**: with the port's Performance setting off, keep the CRT effect
+  at 0, or it draws black patches.
 
-## Updating
+# Adding Content
 
-Don't install ROCKNIX updates (its **update** network share): they replace
-plorpOS's system with stock ROCKNIX.
+| Folder | What |
+|---|---|
+| `Roms/<System>/` | games, one folder per system ([Supported systems](https://github.com/thwonp/plorpOS/blob/main/README.md#supported-systems)) |
+| `Bios/` | BIOS files, loose |
+| `Music/` | albums, one folder each |
+| `Audiobooks/` | books |
 
-From v1.10, **MENU > Network Services > Check for update** updates plorpOS
-over Wi-Fi ([guide](guide.md#check-for-update)). A release that changes the
-RG DS's system underneath comes as a new image instead. Copy `Saves/` and the hidden `.userdata/` folder
-off the card first (your settings, play time and achievements are in
-`.userdata/`), flash the new image, let the first boot finish, then copy them
-back.
+Leave `plorpOS/` as it is.
 
-## If something goes wrong
+### Copy them to the card
 
-- **It starts the RG DS's own system.** The card isn't in or wasn't read.
-  Reseat it and restart; if that doesn't help, flash it again.
-- **The screen stays black.** plorpOS failed to start and is trying again
-  every 10 seconds. Its log is `.userdata/rgds/logs/tortos.log` on the card;
-  put the card in a computer to read it, or reach it over Wi-Fi if the RG DS
-  was connected before.
+Put the card in a computer and copy into the folders above on the
+**PLORPOS** drive.
 
-## Removing plorpOS
+### Over Wi-Fi
 
-Take the card out. To reuse the card for something else, format it.
+Join a network under **MENU > Wi-Fi**. Then **MENU > Network Services > Over
+The Hare** shows an address and a PIN. Open the address in a browser, enter
+the PIN and drag files into their folders. See the [guide](guide.md). The
+Samba share works too ([SSH and Samba](#ssh-and-samba)).
+
+# Updating plorpOS
+
+Settings, saves, play time and achievements (`.userdata/`, `Saves/`) are kept
+either way.
+
+### Over Wi-Fi
+
+1. **MENU > Network Services > Check for update.**
+2. Confirm the download, then the restart. If the new version won't start, the
+   old one comes back.
+
+Details: [guide](guide.md#check-for-update).
+
+### By hand
+
+1. Unzip `plorpOS-v<version>-rgds.zip`.
+2. Copy its contents onto the **PLORPOS** drive, replacing what is there.
+
+### New image
+
+A release that changes the system underneath comes as a new image, not over
+Wi-Fi:
+
+1. Copy `Saves/` and the hidden `.userdata/` off the card.
+2. Flash the new image and let the first boot finish.
+3. Copy them back.
+
+# Removing plorpOS
+
+### Steps
+
+Take the card out. To reuse it, format it.
+
+# FAQ
+
+### It starts the RG DS's own system
+
+The card isn't in or wasn't read. Reseat it and restart; if that doesn't help,
+flash it again.
+
+### The screen stays black
+
+plorpOS failed to start and retries every 10 seconds. The log is
+`.userdata/rgds/logs/tortos.log` on the card: read it in a computer, or over
+Wi-Fi if the RG DS was already connected.

@@ -60,7 +60,11 @@ the 640x480 screen looks like the RG35XX H's.
 - **System Settings > USB Debugging** keeps the USB port in device mode for adb
   (from the next boot). Off on a fresh card. Without it, a computer's cable can
   flip the port to host mode and drop adb.
-- A USB DAC needs USB Debugging **off**. Reboot after changing it.
+- A USB DAC goes in the **OTG port** (the adb one); the other port charges,
+  also while the DAC plays. It needs USB Debugging **off** (reboot after
+  changing it). With a DAC in, adb is gone.
+- After sleep the DAC takes about 5 s to come back; sound before then plays on
+  the speaker.
 
 ### Ports
 
