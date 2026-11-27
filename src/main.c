@@ -21137,6 +21137,15 @@ static bool native_tick(void *ctx)
 	return musec_playing();
 }
 
+/* The crash fallback's Diatom has a tick on the RG DS only: its window has
+ * to be put on the primary (plorpos-rgds.34). Not quiet: as it was. */
+#if defined(PLATFORM_RGDS)
+static bool alone_tick(void *ctx) { (void)ctx; plat_rgds_alone_tick(); return false; }
+#define ALONE_TICK alone_tick
+#else
+#define ALONE_TICK NULL
+#endif
+
 static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
                      run_tick_fn on_tick)
 {
@@ -22332,7 +22341,7 @@ static void launch_one(app *a)
 			argv[n++] = (char *)"--core-option"; argv[n++] = palc;
 		}
 		argv[n] = NULL;
-		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL, NULL));
+		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL, ALONE_TICK));
 		if (!a->running) return;
 	}
 

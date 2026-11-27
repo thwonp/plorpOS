@@ -463,6 +463,11 @@ void plat_set_primary_bottom(bool on);
  * new Primary Screen, to keep it. */
 void plat_on_swap(void (*fn)(bool bottom));
 bool rgds_home_held(void);
+/* The crash fallback's Diatom, run alone: its window onto the primary
+ * (plorpos-rgds.34). From that run's tick. */
+void plat_rgds_alone_tick(void);
+/* The child plat_run started last (its pid; -1 before any). */
+pid_t plat_run_child(void);
 /* During a game, from its tick: the game's window onto the primary once mapped. */
 void plat_rgds_game_tick(void);
 void plat_rgds_child_tick(void);   /* a port's window onto the primary */

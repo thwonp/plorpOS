@@ -732,6 +732,7 @@ bool plat_abs_pressed(int fd, const struct input_event *ev)
  * RG DS's secondary beside it runs the tick itself (plorpos-rgds.18.3.5). */
 static pid_t g_run_pid = -1;
 void plat_child_quiet(bool quiet) { if (g_run_pid > 0) child_quiet(g_run_pid, quiet); }
+pid_t plat_run_child(void) { return g_run_pid; }
 
 
 #if defined(PLATFORM_ROTATE)
