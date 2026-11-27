@@ -8,8 +8,8 @@ can start ROCKNIX for one boot, switch BasedOS off, or remove it.
 
 You need:
 
-- the GKD with its stock ROCKNIX
-- a computer with SSH on the same Wi-Fi network (or a spare card, see step 1)
+- the GKD with its stock ROCKNIX, or with plorpOS 1.9.x on ROCKNIX
+- a computer with SSH on the same Wi-Fi network, or a spare card (step 1)
 - a microSD card for plorpOS, FAT32 or exFAT
 - a second card you can erase, for the recovery card (recommended)
 
@@ -21,31 +21,48 @@ Download:
 - **`plorpOS-v<version>-gkd350based.zip`** from
   [plorpOS releases](https://github.com/thwonp/plorpOS/releases/latest).
 
+**Already on plorpOS for ROCKNIX?** Follow the same steps. Your card keeps its
+games, saves and settings; step 2 says what to change on it.
+
 ### 1. Install BasedOS
 
-1. Take the plorpOS card out and turn the GKD on. It starts EmulationStation.
-2. START > **Network Settings**: turn Wi-Fi on, join your network and note the
-   **IP address** (say `192.168.0.55`).
-3. On the computer, run the line from the BasedOS release page, like:
+1. Take the plorpOS card out and turn the GKD on. It starts EmulationStation
+   (also on a GKD that ran plorpOS on ROCKNIX).
+2. Start setup, either way:
+   - **From a computer:** START > **Network Settings**: turn Wi-Fi on, join
+     your network and note the **IP address** (say `192.168.0.55`). On the
+     computer, run the line from the BasedOS release page, like:
 
-   ```sh
-   ssh -t root@192.168.0.55 "curl -fsSL -o /tmp/basedos-setup.sh https://github.com/thwonp/BasedOS/releases/download/v0.0.1-pre.8.plorpos.1/basedos-setup.sh && sh /tmp/basedos-setup.sh"
-   ```
+     ```sh
+     ssh -t root@192.168.0.55 "curl -fsSL -o /tmp/basedos-setup.sh https://github.com/thwonp/BasedOS/releases/download/v0.0.1-pre.8.plorpos.1/basedos-setup.sh && sh /tmp/basedos-setup.sh"
+     ```
 
-   At the password prompt press Enter (stock ROCKNIX's root has none).
-4. Choose **Install**. Make the **recovery card** it offers: a backup of the
+     At the password prompt press Enter (stock ROCKNIX's root has none). If
+     it doesn't take an empty password, try `rocknix`.
+   - **Without a computer:** unzip the release's
+     `basedos-setup-card-<release>.zip` onto a spare card, put it in and run
+     **BasedOS** from Ports. Confirmations are A, B, X, Y in that order.
+3. Choose **Install**. Make the **recovery card** it offers: a backup of the
    GKD's built-in storage with a small system that puts it back.
-5. Type `INSTALL` at the summary. If setup stops part-way (the connection
+4. Type `INSTALL` at the summary. If setup stops part-way (the connection
    drops), run it again. Until it finishes, ROCKNIX still starts.
-
-**No computer?** Unzip the release's `basedos-setup-card-<release>.zip` onto a
-spare card, put it in, start ROCKNIX and run **BasedOS** from Ports.
-Confirmations are A, B, X, Y in that order.
 
 ### 2. Prepare the card
 
 Copy everything inside the zip to the root of the plorpOS card, replacing what
 is there.
+
+From plorpOS on ROCKNIX, first rename the card's `plorpOS/` (or `TortOS/` on a
+1.9.x card) to `plorpOS-old/`, then copy. Delete `plorpOS-old/` once
+everything works.
+
+- Settings, saves, play time and achievements (`.userdata/`, `Saves/`) carry
+  over.
+- Join Wi-Fi and pair Bluetooth headsets again: BasedOS doesn't see ROCKNIX's
+  settings.
+- The three folders on the GKD's `system.d` share can stay. The first boot
+  removes the old build's `launch.sh`, so ROCKNIX (Start at power-on) starts
+  EmulationStation.
 
 ### 3. Boot
 
@@ -199,21 +216,6 @@ Either:
    one back ([Boot logo](#boot-logo)).
 
 # FAQ
-
-### I ran plorpOS on ROCKNIX. How do I move to BasedOS?
-
-1. Install BasedOS (step 1).
-2. Rename the card's `plorpOS/` (or `TortOS/` on a 1.9.x card) to
-   `plorpOS-old/`.
-3. Copy the new zip onto the card. Delete `plorpOS-old/` once everything works.
-
-- Settings, saves, play time and achievements (`.userdata/`, `Saves/`) carry
-  over.
-- Join Wi-Fi and pair Bluetooth headsets again: BasedOS doesn't see ROCKNIX's
-  settings.
-- The three folders on the GKD's `system.d` share can stay. The first boot
-  removes the old build's `launch.sh`, so ROCKNIX (Start at power-on) starts
-  EmulationStation.
 
 ### It says "Waiting for a card with a frontend"
 
