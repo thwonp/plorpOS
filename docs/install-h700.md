@@ -5,9 +5,10 @@ need the device, two microSD cards and a computer.
 
 ### 1. BaseOS on the first card (TF1)
 
-Write [BaseOS v1.4.0](https://github.com/pvaibhav/BaseOS/releases/tag/v1.4.0)
-for your model to a card, as BaseOS's instructions say. Newer 1.5.x builds are
-pre-releases and can fail to wake from sleep.
+Write the latest stable [BaseOS](https://github.com/pvaibhav/BaseOS/releases)
+for your model to a card, as BaseOS's instructions say. Latest stable BaseOS
+should work; this release was only tested against
+[1.4.0](https://github.com/pvaibhav/BaseOS/releases/tag/v1.4.0).
 
 Put it in the slot marked **TF1** and turn the device on once. It grows its
 storage, then says there is no frontend. Turn it off.

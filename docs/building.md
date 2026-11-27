@@ -88,7 +88,7 @@ releases by these rules, so every release follows them:
   built with (`2.0`, `2.0.1`). A release candidate is marked **pre-release**
   on GitHub; the devices skip pre-releases and drafts.
 - One zip per port, named `plorpOS-v<VER>-<port>.zip`, exactly as the
-  packagers above write it: `brick`, `gkdb`, `h700`, `rgds`, `zero40`, `zero28`,
+  packagers above write it: `brick`, `gkd350based` (from `PLATFORM=gkdb`), `h700`, `rgds`, `zero40`, `zero28`,
   `rotate-update` and `miyoominiflip`. No `gkd` zip in 2.0: ROCKNIX GKDs look for
   `gkd`, so they are not offered it. A device takes the newest release that
   has its own port's zip, so a release for some ports only is fine.

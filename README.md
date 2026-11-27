@@ -189,9 +189,10 @@ The PIN is new every time.
 
 - **MENU > Game Settings > Scraping > Scrape Systems** fetches missing covers
   over Wi-Fi. MENU on a shelf has **Scrape Shelf** for that console alone.
-- Sign in to a free [ScreenScraper](https://www.screenscraper.fr) account under
-  **Scraping > ScreenScraper** for year, genre and synopsis too. Without one,
-  covers come from [libretro's thumbnails](https://thumbnails.libretro.com).
+- Covers, year, genre and synopsis come from
+  [ScreenScraper](https://www.screenscraper.fr), no account needed; then
+  [libretro's thumbnails](https://thumbnails.libretro.com). Signing in under
+  **Scraping > ScreenScraper** uses your own daily quota.
 - Your own: a PNG named like the game in `Roms/<console>/.media/`
   (`Black Castle.gb` wants `Black Castle.png`), about 512 px on the long side.
 - Don't like a cover? X on the game > **Replace Box Art**.

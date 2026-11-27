@@ -18,7 +18,7 @@ Download:
 - **BasedOS for plorpOS** from
   [thwonp/BasedOS releases](https://github.com/thwonp/BasedOS/releases). Not
   upstream BasedOS: plorpOS needs this fork's sound, Bluetooth and 32-bit sound.
-- **`plorpOS-v<version>-gkdb.zip`** from
+- **`plorpOS-v<version>-gkd350based.zip`** from
   [plorpOS releases](https://github.com/thwonp/plorpOS/releases/latest).
 
 ### 1. Install BasedOS
@@ -178,7 +178,7 @@ Details: [guide](guide.md#check-for-update).
 
 ### By hand
 
-1. Unzip `plorpOS-v<version>-gkdb.zip`.
+1. Unzip `plorpOS-v<version>-gkd350based.zip`.
 2. Copy its contents onto the card, replacing what is there.
 
 ### BasedOS

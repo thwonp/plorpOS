@@ -232,8 +232,8 @@ devices. Not on the Miyoo Mini Flip.
 
 - **Scrape Systems**: check systems (A; A on **All** checks or clears all),
   then START fetches their missing art in one run. Needs Wi-Fi.
-- **ScreenScraper**: the account (covers plus year, genre, synopsis). `not in
-  this build` when the build has no key.
+- **ScreenScraper**: optional sign-in, so scraping uses your own daily quota.
+  `not in this build` when the build has no key.
 - **Import gamelist.xml metadata**: reads `gamelist.xml` or
   `miyoogamelist.xml` from each `Roms/<system>/` for year, genre and synopsis.
   No network. **Fill in missing** or **Replace all**. Titles still come from
@@ -321,10 +321,10 @@ A card's picture comes from, in order:
 
 The fetch:
 
-- With a ScreenScraper account it asks there first (and brings year, genre,
-  synopsis).
-- Otherwise, or if missing there, libretro: by file name, then for zips by
-  checksum. If libretro's server is down, its GitHub mirror.
+- ScreenScraper first (also brings year, genre, synopsis). No account needed;
+  signed in, it uses your own daily quota.
+- If missing there, libretro: by file name, then for zips by checksum. If
+  libretro's server is down, its GitHub mirror.
 - Fetched art is shrunk to screen size. Art you added is never touched.
 - Ports need no network: art and details come from PortMaster's
   `gameinfo.xml`.
