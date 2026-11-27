@@ -24462,7 +24462,9 @@ static void muse_queue_tick(void)
 	if (cur > n - 1) cur = n - 1;
 	if (cur < 0) cur = 0;
 
-	snprintf(key, sizeof key, "%d|%d|%d|%d|%.40s", n, mn->index, (int)mn->state, cur, mn->title);
+	/* The epoch too: the level bar coming and going (plorpos-rgds.28). */
+	snprintf(key, sizeof key, "%u|%d|%d|%d|%d|%.40s", plat_bottom_epoch(), n, mn->index, (int)mn->state,
+	         cur, mn->title);
 	if (!strcmp(key, shown)) return;
 	if (!(r = plat_bottom_begin(&w, &h))) return;
 	memset(&L, 0, sizeof L);

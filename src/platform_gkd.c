@@ -175,6 +175,7 @@ static int place_tries;
 static bool b_move;             /* Primary Bottom: the secondary over to DSI-2 once mapped */
 static int move_tries;
 static bool bottom_over(void);
+static void osd2_draw(void);
 #endif
 static void resident_place(bool on_screen);
 static bool helper(char *const argv[]);
@@ -184,6 +185,17 @@ void plat_present(SDL_Renderer *r)
 {
 #ifdef PLATFORM_RGDS
 	ui_hit_frame();   /* a tap now means what this frame shows */
+	/* A screen run on the secondary (Muse, Quick Settings, the switcher)
+	 * presents here, not through plat_bottom_end: its level bar too
+	 * (plorpos-rgds.28), in panel pixels whatever that screen's scale. */
+	if (r == bren && bren) {
+		float sx, sy;
+
+		SDL_RenderGetScale(r, &sx, &sy);
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		osd2_draw();
+		SDL_RenderSetScale(r, sx, sy);
+	}
 #endif
 	SDL_RenderPresent(r);
 #ifdef PLATFORM_RGDS
@@ -1762,6 +1774,8 @@ static void osd2_show(int val)
 	osd2_val = val;
 	osd2_until = SDL_GetTicks() + 900;
 	b_epoch++;
+	/* A screen running there draws on its own clock: draw it now. */
+	if (b_session) ui_redraw_now();
 }
 
 static void osd2_draw(void)
@@ -1786,6 +1800,7 @@ static void osd2_tick(void)
 	if (osd2_until && (Sint32)(SDL_GetTicks() - osd2_until) > 0) {
 		osd2_until = 0;
 		b_epoch++;
+		if (b_session) ui_redraw_now();   /* and off it again */
 	}
 }
 
