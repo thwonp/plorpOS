@@ -74,6 +74,7 @@ than any one console:
 Charging, or plugged into a computer, the device never sleeps, suspends or
 turns itself off: Auto Off, Auto Sleep and suspend all wait until it is
 unplugged. As in NextUI - suspending on external power hangs the Brick.
+Muse+'s Screen Off still goes dark on time.
 
 Date & Time has a row for each part of the clock and one for the time zone,
 each changed with left and right and set the moment it changes, so the time
