@@ -23468,7 +23468,14 @@ static void launch_one(app *a)
 	}
 
 	t_back0 = plat_now_ms();
+	/* Not on the Rotate: under sway the launcher's window is a surface of
+	 * its own, still showing the menu after a resident Quit, and black here
+	 * was a frame of flash before the shelf (plorpos-3yv.115). After a port
+	 * or a fallback game the window is new and its first frame is the shelf
+	 * anyway. */
+#if !defined(PLATFORM_ROTATE)
 	present_black(a);
+#endif
 
 	/* The game has just written a fresh autosave preview. Throw the card's
 	 * texture away so it picks that up - but only if the preview is what the
