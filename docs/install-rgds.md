@@ -104,7 +104,9 @@ Both screens are touchscreens. The one plorpOS is on does what the buttons do:
 - Muse+, Quick Settings and Recent games on the second screen are touch only.
   Beside a game they stay open while you play: the Anbernic button or a side
   edge swipe (Back) closes them. On the shelf any button or a touch on the main
-  screen hands control back. Back at Muse+'s top level goes to Now Playing.
+  screen hands control back. Muse+ stays where you left it and a touch picks
+  up there; once the screen turns off it rests on Now Playing. Back at Muse+'s
+  top level goes to Now Playing.
 
 ### Display
 

@@ -266,7 +266,8 @@ Under **MENU > System Settings**:
   resuming where you were. It and Auto Sleep exclude each other.
 - Idle counts only on the shelf and in menus. With music playing, Muse+'s
   **Auto Screen Off** and **Paused Sleep Delay** decide.
-- On a charger it never sleeps, suspends or turns off by itself.
+- On a charger it never sleeps, suspends or turns off by itself. Muse+'s
+  Auto Screen Off still goes dark on time.
 - **Mini Flip:** no suspend or Auto Off; **Sleep Poweroff** (default 2 min)
   turns a sleeping Flip off.
 

@@ -74,7 +74,8 @@ Your recent games as cards.
 ### Never sleeps on a charger
 
 Charging or on a computer, the device never sleeps, suspends or powers off by
-itself. Auto Off, Auto Sleep and suspend wait until it is unplugged.
+itself. Auto Off, Auto Sleep and suspend wait until it is unplugged. Muse+'s
+Auto Screen Off still goes dark on time.
 
 # The plorpOS menu
 
