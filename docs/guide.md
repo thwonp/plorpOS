@@ -11,7 +11,7 @@ Each device has its own install guide:
 - [Anbernic H700: RG SP, RG34xxSP, RG35XX H, RG35XX SP](install-h700.md)
 - [Anbernic RG DS](install-rgds.md)
 - [Anbernic RG Rotate](install-rotate.md)
-- [GKD 350H Ultra](install-gkdb.md)
+- [GKD 350H Ultra](install-gkd350based.md)
 - [MagicX Zero 28](install-zero28.md)
 - [MagicX Zero 40](install-zero40.md)
 - [Miyoo Mini Flip](install-flip.md)
@@ -133,7 +133,7 @@ Miyoo Mini Flip.
   duplicate gets a number; rename it in Tailscale's admin console.
 - MagicDNS names and subnet routes work.
 - GKD: only plorpOS's own traffic uses the tailnet. See
-  [install-gkdb](install-gkdb.md#tailscale).
+  [install-gkd350based](install-gkd350based.md#tailscale).
 
 ### Syncthing
 
