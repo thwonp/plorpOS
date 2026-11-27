@@ -13409,9 +13409,14 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		shortcut_told();
 		return MENU_STAY;
 	}
-	/* Menu Hold (plorpos-bn9.13): the same. */
+	/* Menu Hold (plorpos-bn9.13): the same, in the owner's order
+	 * Switcher, Muse+, off (its default first). */
 	if (sel == ST_HOLD && (d || key == IN_ACCEPT)) {
-		g_sc_hold = (g_sc_hold + (d ? d : 1) + SC_COUNT) % SC_COUNT;
+		static const sc_action ORDER[SC_COUNT] = { SC_SWITCHER, SC_MUSE, SC_OFF };
+		int i = 0;
+
+		while (i < SC_COUNT - 1 && (int)ORDER[i] != g_sc_hold) i++;
+		g_sc_hold = ORDER[(i + (d ? d : 1) + SC_COUNT) % SC_COUNT];
 		db_set_int(db_dev(), "shortcut.hold", g_sc_hold);
 		shortcut_told();
 		return MENU_STAY;
