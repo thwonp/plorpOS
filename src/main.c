@@ -3617,6 +3617,16 @@ static void aout_save(aout_policy p)
 	db_set_str(db_dev(), "audioout", p == AOUT_SPEAKER ? "speaker" : "auto");
 }
 
+/* Volume Limiter (plorpos-bn9.9): db keys by aout_dest; the speaker has none. */
+static const char *const VLIM_KEY[AOUT_USB + 1] =
+	{ NULL, "vollimit.wired", "vollimit.bt", "vollimit.dac" };
+
+static void vlim_load(void)
+{
+	for (int d = AOUT_WIRED; d <= AOUT_USB; d++)
+		aout_limit_set((aout_dest)d, db_get_int(db_dev(), VLIM_KEY[d], 100));
+}
+
 /* The connected sink, published by bt_reconnect in launch.sh.
  *
  * A file rather than asking Bluetooth ourselves: asking means forking
@@ -3848,20 +3858,53 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
+/* The Volume Limiter's ceiling for the output in use, kept by vlim_follow
+ * (plorpos-bn9.9). */
+static int g_vlim_top = PLAT_VOL_MAX;
+
+/* Volume Limiter (plorpos-bn9.9): the volume keys stop at the limit of the
+ * output in use, and a level above it - a cable just plugged in, a headset
+ * just connected, the limit just lowered - comes down to it. Where it goes:
+ * Diatom in a game, which answers with its new level. Every frame, so only
+ * compares unless something is over. */
+static void vlim_follow(aout_dest d)
+{
+	int count = 0, level;
+
+	g_vlim_top = aout_limit_level(d, PLAT_VOL_MAX);
+	plat_volume_ceiling(g_vlim_top);
+	if (g_vlim_top >= PLAT_VOL_MAX) return;
+	level = g_game_ticking ? plat_resident_volume(&count) : -1;
+	if (g_game_ticking) {
+		if (level < 0) level = plat_volume_get();
+		else if (count >= 2 && count != PLAT_VOL_MAX + 1)   /* on Diatom's own ladder */
+			level = (level * PLAT_VOL_MAX + (count - 1) / 2) / (count - 1);
+		if (level > g_vlim_top)
+			plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
+			                   g_vlim_top, PLAT_VOL_MAX + 1);
+		return;
+	}
+	level = plat_volume_get();
+	if (level > g_vlim_top) plat_volume_nudge(g_vlim_top - level);
+}
+
 #if !defined(PLAT_PIPEWIRE)   /* PipeWire: no hand-over, no headset volume */
 /* The level lowered to PLAT_OUT_CAP when it is above, where it goes: Diatom in
- * a game. Returns the level now. */
+ * a game. Returns the level now. The Volume Limiter's limit is a second
+ * ceiling under it (plorpos-bn9.9). */
 static int cap_level(const char *out, int level)
 {
-	if (level <= PLAT_OUT_CAP) return level;
+	int cap = g_vlim_top < PLAT_OUT_CAP ? g_vlim_top : PLAT_OUT_CAP;
+
+	if (level <= cap) return level;
 	if (g_game_ticking)
 		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                   PLAT_OUT_CAP, PLAT_VOL_MAX + 1);
+		                   cap, PLAT_VOL_MAX + 1);
 	else
-		plat_volume_nudge(PLAT_OUT_CAP - plat_volume_get());
+		plat_volume_nudge(cap - plat_volume_get());
 	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
-	        out, PLAT_OUT_CAP, level);
-	return PLAT_OUT_CAP;
+	        out, cap, level);
+	return cap;
 }
 
 /* Muse's sound landed on a DAC or headset - new, or back from the speaker it
@@ -3975,8 +4018,11 @@ static void aout_apply(bool force)
 {
 #if defined(PLAT_PIPEWIRE)
 	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
+	aout_state s = aout_now();
+
 	(void)force;
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
+	vlim_follow(aout_resolve(&s));
 #else
 	static char  link_seen[32];
 	static bool  on_usb, muse_was_heard;
@@ -4012,6 +4058,8 @@ static void aout_apply(bool force)
 	 * are already on. */
 	bool        fresh = named && link[0] && strcmp(link, link_seen);
 
+	/* Before any volume goes to a new headset or DAC (plorpos-bn9.9). */
+	vlim_follow(aout_resolve(&s));
 	if (!muse) {
 		musec_sink(codec);
 		if (named && !musec_sink_settled()) return;     /* Muse is still letting go */
@@ -7856,6 +7904,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 #endif
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
+		for (int d = AOUT_SPK; d <= AOUT_USB; d++) u.vlim[d] = aout_limit_pct((aout_dest)d);
 
 		/* The connected headset's name.
 		 *
@@ -13224,6 +13273,10 @@ static int system_settings_build(void *ctx, menu_row *rows, int max,
 	return sys_menu_system_build(&u, rows, &c->bufs, heading);
 }
 
+#if SYS_HAS_VLIM
+static void vollimit_screen(app *a);
+#endif
+
 static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
@@ -13293,6 +13346,13 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		aout_apply(true);
 		return MENU_STAY;
 	}
+#if SYS_HAS_VLIM
+	/* A door (plorpos-bn9.9): only A opens it. */
+	if (sel == ST_VOLLIM) {
+		if (key == IN_ACCEPT) vollimit_screen(a);
+		return MENU_STAY;
+	}
+#endif
 #if defined(PLATFORM_MIYOO)
 	/* Lid Close (f1p.61): sleep or nothing, a toggle. */
 	if (sel == ST_LID && (d || key == IN_ACCEPT)) {
@@ -13349,6 +13409,56 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 #endif
 	return MENU_STAY;
 }
+
+#if SYS_HAS_VLIM
+static int vollimit_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_vollimit_build(&u, rows, &c->bufs, heading);
+}
+
+/* A limit, a step of ten; left, right and A step, A wrapping from 100 to 10
+ * (plorpos-bn9.9). Saved at once; the menu loop's aout_apply brings the level
+ * down to it on its next frame if the output is in use. */
+static menu_result vollimit_key(app *a, void *ctx, in_button key, int sel)
+{
+	static const aout_dest dest[VL_ROWS] = {
+#if VL_HAS_BT
+		AOUT_BT,
+#endif
+#if VL_HAS_DAC
+		AOUT_USB,
+#endif
+#if VL_HAS_WIRED
+		AOUT_WIRED,
+#endif
+	};
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : key == IN_ACCEPT ? 1 : 0;
+	int pct;
+
+	(void)a; (void)ctx;
+	if (!d || sel < 0 || sel >= VL_ROWS) return MENU_STAY;
+	pct = aout_limit_pct(dest[sel]);
+	pct = key == IN_ACCEPT && pct >= 100 ? AOUT_LIMIT_MIN : aout_limit_step(pct, d);
+	aout_limit_set(dest[sel], pct);
+	db_set_int(db_dev(), VLIM_KEY[dest[sel]], pct);
+	return MENU_STAY;
+}
+
+static void vollimit_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         vollimit_build, vollimit_key, &c);
+}
+#endif
 
 static void system_settings_screen(app *a)
 {
@@ -25725,6 +25835,7 @@ int main(int argc, char *argv[])
 #endif
 		(void)muse_hk_get(0);     /* read, and the volume holds told (5eq.14) */
 		g_aout_policy = aout_load();
+		vlim_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
 		net_set_ca_path(cp);

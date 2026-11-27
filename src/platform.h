@@ -636,6 +636,8 @@ void plat_settings_init(void);
 int  plat_volume_get(void);
 int  plat_brightness_get(void);
 void plat_volume_nudge(int delta);
+/* Volume Limiter (plorpos-bn9.9): no nudge up takes the level past `top`. */
+void plat_volume_ceiling(int top);
 void plat_brightness_nudge(int delta);
 void plat_volume_set_pct(int pct);
 void plat_brightness_set(int level);

@@ -296,6 +296,19 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
 	   "Battery Percentage defaults to off");
+	/* Volume Limiter (plorpos-bn9.9): a door under Audio Output, three limits
+	 * on a Brick, each its own percentage. */
+	ck(ST_VOLLIM == ST_AUDIO + 1 && !strcmp(rows[ST_VOLLIM].label, "Volume Limiter")
+	   && rows[ST_VOLLIM].live && !rows[ST_VOLLIM].value, "Volume Limiter is a door under Audio Output");
+	u.vlim[AOUT_BT] = 100; u.vlim[AOUT_USB] = 40; u.vlim[AOUT_WIRED] = 10;
+	n = sys_menu_vollimit_build(&u, rows, &b, &heading);
+	ck(n == 3 && !strcmp(heading, "Volume Limiter"), "Volume Limiter: three outputs on the Brick");
+	ck(!strcmp(rows[VL_BT].label, "Bluetooth Limit") && !strcmp(val(&rows[VL_BT]), "100%"),
+	   "Bluetooth Limit reads 100%");
+	ck(!strcmp(rows[VL_DAC].label, "DAC Limit") && !strcmp(val(&rows[VL_DAC]), "40%"),
+	   "DAC Limit reads its own");
+	ck(!strcmp(rows[VL_WIRED].label, "3.5mm Limit") && !strcmp(val(&rows[VL_WIRED]), "10%"),
+	   "3.5mm Limit reads its own");
 	n = sys_menu_ui_build(&u, rows, &heading);
 	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	u.has_ports = true;

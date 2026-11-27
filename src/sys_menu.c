@@ -203,6 +203,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	else
 		snprintf(b->d, sizeof b->d, "%s", aout_dest_name(u->audio_dest));
 	out[ST_AUDIO]    = (menu_row){ "Audio Output", b->d, true };
+#if SYS_HAS_VLIM
+	out[ST_VOLLIM]   = (menu_row){ "Volume Limiter", NULL, true };
+#endif
 #if !defined(PLATFORM_ROTATE)
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 #if defined(PLATFORM_MIYOO)
@@ -252,6 +255,26 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	                               true };
 #endif
 	return ST_ROWS;
+}
+
+int sys_menu_vollimit_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                            const char **heading)
+{
+	*heading = "Volume Limiter";
+	(void)u; (void)out; (void)b;
+#if VL_HAS_BT
+	snprintf(b->a, sizeof b->a, "%d%%", u->vlim[AOUT_BT]);
+	out[VL_BT]    = (menu_row){ "Bluetooth Limit", b->a, true };
+#endif
+#if VL_HAS_DAC
+	snprintf(b->c, sizeof b->c, "%d%%", u->vlim[AOUT_USB]);
+	out[VL_DAC]   = (menu_row){ "DAC Limit", b->c, true };
+#endif
+#if VL_HAS_WIRED
+	snprintf(b->d, sizeof b->d, "%d%%", u->vlim[AOUT_WIRED]);
+	out[VL_WIRED] = (menu_row){ "3.5mm Limit", b->d, true };
+#endif
+	return VL_ROWS;
 }
 
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)

@@ -3022,10 +3022,19 @@ void plat_draw_osd(SDL_Renderer *r)
 	SDL_RenderFillRect(r, &(SDL_Rect){ 0, OSD_PAD, (int)(W * pct), OSD_LINE_H });
 }
 
+/* The Volume Limiter's ceiling for the output in use (plorpos-bn9.9): a step
+ * up stops there, and the OSD shows where it stopped. Set by the launcher. */
+static int vol_top = VOL_MAX;
+void plat_volume_ceiling(int top) { vol_top = clampi(top, 0, VOL_MAX); }
+
 void plat_volume_nudge(int delta)
 {
+	int v;
+
 	if (mixer_fd < 0) return;
-	apply_volume(clampi((cur_vol < 0 ? 0 : cur_vol) + delta, 0, VOL_MAX));
+	v = clampi((cur_vol < 0 ? 0 : cur_vol) + delta, 0, VOL_MAX);
+	if (delta > 0 && v > vol_top) v = vol_top;
+	apply_volume(v);
 	levels_save();
 	plat_osd_show(2, cur_vol, VOL_MAX);
 }
