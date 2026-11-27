@@ -77,7 +77,7 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	) > /dev/null 2>&1 &
 fi
 # Stock ROCKNIX (Start held at power-on) runs plorpOS's ROCKNIX build from
-# plorpOS/launch.sh, or TortOS/launch.sh on a GKD set up before v1.10, through
+# plorpOS/launch.sh, or TortOS/launch.sh on a GKD set up before 2.0, through
 # the system.d drop-ins that build installed. This build ships neither, so on a
 # card moved over from it they started nothing and stock stayed black, retrying
 # every 2 s (plorpos-gkd.94.16). Without them stock starts EmulationStation.
