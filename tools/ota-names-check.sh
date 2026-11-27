@@ -23,6 +23,9 @@ miyoo miyoominiflip mk/miyoo-deploy.sh'
 # A whole release: each port's zip plus the downloads that are not updates.
 echo "$PORTS" | while read -r _ z _; do echo "plorpOS-v$VER-$z.zip"; done > "$T/assets"
 for x in rotate rgds zero40 zero28; do echo "plorpOS-v$VER-$x.img.xz"; done >> "$T/assets"
+# The gkd zip is not a 2.0 asset (ROCKNIX GKD is development only and
+# mk/payload.sh writes no zip for it, plorpos-qylg); it stays here so that
+# gkd350based is shown never to take it.
 printf '%s\n' plorpOS-v$VER-zero28.omupd plorpOS-miyoominiflip-fast-boot.zip \
 	plorpOS-v$VER-gkd.zip SHA256SUMS >> "$T/assets"
 

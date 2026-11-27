@@ -9,7 +9,10 @@
 # GKD (PLATFORM=gkd): out/gkd/, the two folders docs/install-gkd.md installs -
 # copy_to_sd/ (plorpOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
 # Saves/) for the card and system.d/ for the GKD's storage - and that guide as
-# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
+# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot. Development only
+# since 2.0 (plorpos-qylg): the GKD ships as gkdb, so this writes no zip and
+# deletes any old plorpOS-v<ver>-gkd.zip from out/, where a release's
+# `sha256sum plorpOS-v<VER>-*.zip` would pick it up.
 #
 # H700 (PLATFORM=h700): out/h700/, the TF2 card's root as docs/install-h700.md
 # describes it - System/launch_frontend.sh (BaseOS's frontend hook), plorpOS/
@@ -358,7 +361,9 @@ done
 
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
-gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh" ;;
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" "$P/gkd/portmaster/pm-run.sh"
+      du -sh "$OUT"; echo "payload ready: $OUT"
+      rm -f "$ZIP"; echo "no release zip: ROCKNIX GKD is development only (plorpos-qylg)"; exit 0 ;;
 zero40|zero28) chmod +x "$P/launch.sh" "$P/musectl" "$P/ssh.sh" "$P/dropbearmulti" "$P/curl" "$OUT/.tmp_update/updater"
       du -sh "$OUT"; echo "payload ready: $OUT"
       rm -f "$ZIP"; ( cd "$OUT" && zip -qr "$ZIP" . -x '.DS_Store' '._*' )
@@ -373,7 +378,7 @@ h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/p
 	      "$P/h700/portmaster/pm-run.sh" "$P/h700/portmaster/retroarch" ;;
 *)    chmod +x "$P/launch.sh" "$P/brick/portmaster/pm-run.sh" "$P/brick/portmaster/retroarch" ;;
 esac
-if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
+if [ "$PLATFORM" = h700 ] || [ "$PLATFORM" = gkdb ]; then
 	du -sh "$OUT"
 	echo "payload ready: $OUT"
 	rm -f "$ZIP"
