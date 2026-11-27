@@ -32,7 +32,7 @@ On 2026-09-04 five defects turned up in one evening, all downstream of that:
 
 None of these are hard problems. They are all the same problem: `menu_draw`
 abstracts *drawing* a menu and nothing abstracts *being* one, so the rules are
-conventions each screen can forget independently. `docs/menus.md` writes those
+conventions each screen can forget independently. `docs/how-it-works.md#menus` writes those
 conventions down, and says plainly that a convention enforced by reading is not
 enforced.
 
@@ -89,7 +89,7 @@ Rejected. Two reasons, and the first was originally argued the other way:
 ## Decision
 
 **Option A.** Screens declare their rows and their key meanings; `menu_run` owns
-the loop, the frame, and every rule in `docs/menus.md`.
+the loop, the frame, and every rule in `docs/how-it-works.md#rules-a-screen-must-follow`.
 
 The `build` callback must be callable with no renderer and no device, so that
 "given this state, what does this menu contain" is answerable by `make check`.
