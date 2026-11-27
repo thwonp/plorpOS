@@ -6,7 +6,7 @@
 # boot installs the runtrimui.sh hook and every boot after that comes straight
 # up in TortOS.
 #
-# GKD (PLATFORM=gkd): out/gkd/, the two folders docs/install-gkd.md installs -
+# GKD (PLATFORM=gkd): out/gkd/, the two folders the ROCKNIX GKD build (not released since 2.0) -
 # copy_to_sd/ (plorpOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
 # Saves/) for the card and system.d/ for the GKD's storage - and that guide as
 # INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
@@ -119,7 +119,6 @@ if [ "$PLATFORM" = gkd ]; then
 	mkdir -p "$P/gkd/portmaster"
 	cp "$ROOT/sd/gkd/portmaster/"* "$ROOT/vendor/portmaster/PortMaster.zip" "$P/gkd/portmaster/"
 	cp "$B/portfullscreen.so" "$P/gkd/portmaster/"
-	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = rgds ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/rgds/launch.sh" "$P/"
