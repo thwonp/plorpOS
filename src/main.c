@@ -2050,19 +2050,32 @@ static void sleep_timer_tick(void)
 }
 
 
+/* Muse+ opened: the next check is the owner's doing (srv_check_tick). */
+static bool g_srv_check_user;
+
 /* Whether the library changed on the server (plorpos-vgr.16): asked when a
  * server Source comes in - at boot, on a switch to it - and hourly after,
  * each Source by its own clock; one clock for all left a Source switched to
- * unasked for up to an hour. A check that failed says so and is tried again
- * in five minutes (owner; a suspend mid-sync is one, plorpos-vgr.10). Nothing
- * is asked in Offline Mode or off the network, and the clock waits. From
- * muse_poll, so on the shelf and in Muse+ alike: starting a sync rebuilds
- * nothing - srv_main_poll takes what it brings. */
+ * unasked for up to an hour. Nothing is asked in Offline Mode or off the
+ * network, and the clock waits. From muse_poll, so on the shelf and in
+ * Muse+ alike: starting a sync rebuilds nothing - srv_main_poll takes what
+ * it brings.
+ *
+ * A check that failed is not tried again on a clock (owner, plorpos-5eq.30;
+ * it was every 5 min): the next thing the owner does that reaches the
+ * server tries it - a switch to the Source, opening Muse+, a play that found
+ * the server, a Resync that worked. It says "Could not reach the server"
+ * only when the owner started it: at boot Wi-Fi has an address before its
+ * routes or Tailscale are up, and a check then can fail for nothing. */
 static void srv_check_tick(void)
 {
 	static unsigned next[MSRC_COUNT];   /* 0: not asked yet */
-	static msrv *asked;                 /* the check whose end is waited for */
+	static bool failed[MSRC_COUNT];     /* the last check failed: no clock */
+	static bool linked[MSRC_COUNT];     /* ...with a connection known */
+	static msrv *asked, *seen;          /* the check waited for; the Source last seen */
+	static bool asked_user;
 	unsigned now = plat_now_ms();
+	bool user;
 	muse_src s;
 
 	if (asked) {
@@ -2070,18 +2083,39 @@ static void srv_check_tick(void)
 
 		if (st == 1) return;
 		if (st < 0) {
-			next[srv_src(asked)] = (now + 5u * 60u * 1000u) | 1u;
-			if (asked == g_srv) muse_toast("Server offline. Retrying in 5 min");
+			failed[srv_src(asked)] = true;
+			linked[srv_src(asked)] = msrv_connected(asked);
+			if (asked_user && asked == g_srv) muse_toast("Could not reach the server");
 		}
 		asked = NULL;
 	}
 	if (!g_srv || g_walk_thread) return;
 	s = srv_src(g_srv);
+	/* A switch is the owner's; the Source boot comes up on is not. */
+	if (seen && seen != g_srv) g_srv_check_user = true;
+	seen = g_srv;
+	user = g_srv_check_user;
+	g_srv_check_user = false;
+	if (failed[s]) {
+		if (msrv_sync_state(g_srv, NULL, NULL) == 0) {
+			/* A sync worked since (Resync, Check for Updates): the clock again. */
+			failed[s] = false;
+			next[s] = (now + 60u * 60u * 1000u) | 1u;
+			return;
+		}
+		/* A play that looked for the server found it: it answers again. A
+		 * connection already known when the check failed (a suspend cut it)
+		 * waits for the owner instead, or it would be asked at once again. */
+		if (!user && (linked[s] || !msrv_connected(g_srv))) return;
+		failed[s] = false;
+		next[s] = 0;
+	}
 	if (next[s] && (int)(now - next[s]) < 0) return;
 	if (!net_online() || msrv_get_offline(g_srv) || msrv_sync_state(g_srv, NULL, NULL) == 1) return;
 	msrv_sync_start(g_srv, false);
 	next[s] = (now + 60u * 60u * 1000u) | 1u;        /* an hour */
 	asked = g_srv;
+	asked_user = user;
 }
 
 /* Muse, polled: what the daemon said, a book's place and the queue kept.
@@ -17988,6 +18022,7 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	g_srv_check_user = true;        /* a failed server check is tried again (plorpos-5eq.30) */
 	if (!abs_offline()) abs_progress_refresh();   /* places moved elsewhere, before a book opens */
 	pod_auto_sync();                /* new episodes, when the source opens (plorpos-7ni) */
 	pod_autodel_day();              /* played copies a day old (7ni.6), network or not */

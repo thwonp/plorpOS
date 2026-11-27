@@ -726,8 +726,9 @@ Music works the way [Plex](#plex) does:
   `100.10.0.0:8096`), tried first while Tailscale is connected. An address that
   is not your Jellyfin server is refused ("Not a Jellyfin server", or "Not the
   same server" for a different one). Leave it empty to turn it off.
-- If the server can't be reached when you switch to it, Muse+ says "Server
-  offline. Retrying in 5 min" and keeps showing the copy on the card.
+- If the server can't be reached when you switch to it, Muse+ says "Could
+  not reach the server" and keeps showing the copy on the card. It tries
+  again the next time you open Muse+ or play something from it.
 
 Jellyfin reads your files' tags, so a few server settings make a big
 difference:
