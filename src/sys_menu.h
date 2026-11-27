@@ -101,7 +101,7 @@ typedef enum {
  * them. */
 typedef enum { US_THEME, US_DIR, US_ORDER, US_FONTS /* a door: Fonts */,
        US_BATTPCT /* from System Settings (plorpos-bn9.11) */,
-       US_PORTS /* shown only when the shelves have a Ports card (plorpos-w8j) */,
+       US_TILES /* a door: Visible Tiles, was Ports Tile (plorpos-bn9.10) */,
        US_ROWS } us_row;
 
 /* UI Settings > Fonts (plorpos-bn9.6): each face with its size under it. */
@@ -258,8 +258,6 @@ typedef struct {
 	const char *head_font;   /* the headings' face's name (plorpos-3yv.60) */
 	int         head_size, body_size; /* their sizes, percent (plorpos-bn9.6) */
 	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
-	bool        has_ports;   /* systems.cfg has a Ports shelf: US_PORTS is listed */
-	bool        ports_hidden; /* Ports Tile reads Hidden */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
@@ -351,9 +349,13 @@ int sys_menu_scrape_pick_build(const char *const *names, const bool *on, int n,
 int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                           const char **heading);
 
-/* Settings > UI Settings. Returns US_ROWS, or US_PORTS when there is no Ports
- * shelf to hide. */
+/* Settings > UI Settings. Returns US_ROWS. */
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* UI Settings > Visible Tiles (plorpos-bn9.10): a row a shelf, on or off,
+ * in the order given (Ports, Muse+, then the systems). Returns n. */
+int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
+                         menu_row *out, const char **heading);
 
 /* UI Settings > Fonts. Returns UF_ROWS; the sizes are written into b. */
 int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,

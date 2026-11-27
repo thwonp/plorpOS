@@ -1237,10 +1237,6 @@ static int g_cards;
 static int g_gl;     /* Gamelist Layout, an index into GAMELISTS */
 /* System Order (plorpos-xpt.9), read at boot like the two above. */
 static sys_order g_order;
-/* Ports Tile (plorpos-w8j): Hidden drops the Ports card from the systems row
- * at scan time. g_has_ports is whether systems.cfg lists a Ports shelf at all,
- * read before the drop, so the setting row only exists where there is a tile. */
-static bool g_ports_hidden, g_has_ports;
 #if defined(PLATFORM_RGDS)
 /* Dual Screen Settings (plorpos-rgds.18.1), from the device's settings: read
  * once and kept here, as details_tick asks every frame. No on/off: the
@@ -1304,6 +1300,76 @@ static unsigned g_walk_ms;           /* how long it took, for the log */
 static bool is_muse(const system_cfg *s)
 {
 	return s && !strcmp(s->tag, "MUSE");
+}
+
+/* Visible Tiles (plorpos-bn9.10). A hidden shelf stays in a->sys - its games
+ * are still in Favorites, Recents, the switcher, resume and the scrape - and
+ * only the systems row leaves it out. The row counts in places, the shown
+ * shelves in order; these turn one into the other. At most CFG_MAX_SYSTEMS
+ * each, never a db read. db: "tile.<TAG>", 0 hidden, unset shown. */
+static void tile_key(char *k, size_t n, const char *tag) { snprintf(k, n, "tile.%s", tag); }
+
+static bool tile_shown(const char *tag)
+{
+	char k[24];
+
+	tile_key(k, sizeof k, tag);
+	return db_get_int(db_dev(), k, 1) != 0;
+}
+
+static int sys_shown_n(const app *a)
+{
+	int i, n = 0;
+
+	for (i = 0; i < a->sys.count; i++) n += !a->sys.systems[i].hidden;
+	return n;
+}
+
+/* The row place of shelf i: for a hidden one, the next shown one's. */
+static int sys_shown_at(const app *a, int i)
+{
+	int k, p = 0;
+
+	for (k = 0; k < i && k < a->sys.count; k++) p += !a->sys.systems[k].hidden;
+	return p;
+}
+
+/* The shelf at row place p (clamped to the last shown), or 0 with none. */
+static int sys_shown_real(const app *a, int p)
+{
+	int k, last = 0;
+
+	for (k = 0; k < a->sys.count; k++)
+		if (!a->sys.systems[k].hidden) {
+			if (p-- <= 0) return k;
+			last = k;
+		}
+	return last;
+}
+
+/* Every shelf's flag from the settings; at each scan and when the
+ * checklist closes. Favorites is not on the list: it is there while
+ * something is favorited. */
+static void tiles_mark(app *a)
+{
+	for (int i = 0; i < a->sys.count; i++) {
+		system_cfg *s = &a->sys.systems[i];
+
+		s->hidden = strcmp(s->tag, "FAV") != 0 && !tile_shown(s->tag);
+	}
+}
+
+/* The systems row on a shown shelf: back from a hidden shelf's games (a
+ * recent, the switcher, resume), or after the checklist hid the one it was
+ * on, it lands on the next shown one. */
+static void sys_cursor_show(app *a)
+{
+	int n = sys_shown_n(a), p;
+
+	if (n <= 0 || a->sys_cursor >= a->sys.count || !a->sys.systems[a->sys_cursor].hidden) return;
+	p = sys_shown_at(a, a->sys_cursor);
+	a->sys_cursor = sys_shown_real(a, p < n ? p : n - 1);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* What is known about each album's cover: one per album in g_muse, rebuilt
@@ -2738,8 +2804,9 @@ static void texload_drain(app *a)
 #define SYS_COVERS 2
 static int sys_dist(const app *a, int i)
 {
-	int n = a->sys.count, d = abs(i - a->sys_cursor);
+	int n = sys_shown_n(a), d = abs(sys_shown_at(a, i) - sys_shown_at(a, a->sys_cursor));
 
+	if (a->sys.systems[i].hidden) return SYS_KEEP + 1;   /* off the row (bn9.10) */
 	if (n >= CF_WINDOW) d = d > n / 2 ? n - d : d;
 	return d;
 }
@@ -2922,7 +2989,7 @@ static void prime_toward(app *a, int s, int center)
 static void sys_prefetch(app *a)
 {
 	static int cur = -1, step;
-	int n = a->sys.count, off, s;
+	int n = sys_shown_n(a), off, s;
 
 	if (n < 2) return;
 	if (a->sys_cursor != cur) { cur = a->sys_cursor; step = 0; }
@@ -2930,7 +2997,7 @@ static void sys_prefetch(app *a)
 	off = step / 2 + 1;
 	if (step % 2) off = -off;
 	step++;
-	s = ((cur + off) % n + n) % n;
+	s = sys_shown_real(a, ((sys_shown_at(a, cur) + off) % n + n) % n);
 	prime_toward(a, s, a->view[s].cursor);
 }
 #endif
@@ -2952,11 +3019,11 @@ static void prime_sys_window(app *a)
  * false past the last. */
 static bool sys_card_visible(const app *a, int n, int *item)
 {
-	int count = a->sys.count, half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
+	int count = sys_shown_n(a), half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
 	int k = (n + 1) / 2, side = n % 2 ? 1 : -1;
 
 	if (count <= 0 || k > half) return false;
-	*item = ((a->sys_cursor + side * k) % count + count) % count;
+	*item = sys_shown_real(a, ((sys_shown_at(a, a->sys_cursor) + side * k) % count + count) % count);
 	return true;
 }
 
@@ -5284,8 +5351,14 @@ static unsigned rail_sys_hue(void *ctx, int i)
 {
 	app *a = ctx;
 
-	if (i < 0 || i >= a->sys.count) return 0;
-	return a->sys.systems[i].accent;
+	if (i < 0 || i >= sys_shown_n(a)) return 0;
+	return a->sys.systems[sys_shown_real(a, i)].accent;   /* a row place (bn9.10) */
+}
+
+/* The row's card at place i: the shown shelves only (plorpos-bn9.10). */
+static SDL_Texture *sys_row_tex(void *ctx, int i, int *w, int *h, float *cb)
+{
+	return sys_get_tex(ctx, sys_shown_real(ctx, i), w, h, cb);
 }
 
 /* How far the shelf's stage sits below the top of a screen taller than the one
@@ -5301,8 +5374,10 @@ static int gl_text_w(void *font, const char *s) { return ui_text_width((TTF_Font
 static void draw_systems(app *a)
 {
 	shelf_pacing(&a->cf_sys);
+	sys_cursor_show(a);
 
 	SDL_Rect focus;
+	int nshown = sys_shown_n(a), at = sys_shown_at(a, a->sys_cursor);
 	const system_cfg *s = &a->sys.systems[a->sys_cursor];
 	char line[128];
 
@@ -5319,8 +5394,8 @@ static void draw_systems(app *a)
 	 * and the cards in view are not (evict_far's rule). */
 	if (!cf_cutting(&a->cf_sys)) sys_evict_far(a);
 #endif
-	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
-	            sys_get_tex, a, &lay))
+	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, nshown,
+	            sys_row_tex, a, &lay))
 		ui_redraw_now();
 #if defined(PLATFORM_MIYOO)
 	else sys_prefetch(a);
@@ -5372,6 +5447,7 @@ static void draw_systems(app *a)
 		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
 		if (books)  snprintf(bk, sizeof bk, g_muse_pod ? "%d episode%s" : "%d book%s", books, books == 1 ? "" : "s");
 		snprintf(line, sizeof line, "%s%s%s", al, al[0] && bk[0] ? ", " : "", bk);
+		if (!line[0]) snprintf(line, sizeof line, "no music or books");   /* the empty card (bn9.10) */
 	} else {
 		int gc = a->view[(int)(label - a->sys.systems)].list.count;
 
@@ -5391,12 +5467,12 @@ static void draw_systems(app *a)
 	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, cy,
 	        0, ui_fade(UI_TEXT_DIM, label_a));
 	if (col) {
-		snprintf(line, sizeof line, "%d / %d", a->sys_cursor + 1, a->sys.count);
-		col_rail(a, a->cf_sys.pos, a->sys.count, line, s->accent,
+		snprintf(line, sizeof line, "%d / %d", at + 1, nshown);
+		col_rail(a, a->cf_sys.pos, nshown, line, s->accent,
 		         rail_sys_hue, a, 0);
 		return;
 	}
-	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
+	ui_rail(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, nshown,
 	        s->accent, rail_sys_hue, a);
 }
 
@@ -6477,7 +6553,7 @@ static void draw_shelf(app *a)
 	 * draws none, so nothing else would ask, and a full queue turns an ask
 	 * away. Thirteen checks once they are all in. */
 	for (int i = 0; i < a->sys.count; i++)
-		if (!a->sys_tex[i]
+		if (!a->sys_tex[i] && !a->sys.systems[i].hidden
 #if defined(PLATFORM_MIYOO)
 		    && sys_wanted(a, i)    /* not the ones sys_evict_far just dropped */
 #endif
@@ -6504,7 +6580,7 @@ static void draw_shelf(app *a)
 			if (games) ui_glow(a->r, &focus, accent, 100, 2.3f);
 		}
 	}
-	if (a->sys.count <= 0) draw_no_games(a);
+	if (a->sys.count <= 0 || (a->screen == SCREEN_SYSTEMS && sys_shown_n(a) <= 0)) draw_no_games(a);
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
 }
@@ -7847,8 +7923,6 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.head_size = g_head_size;
 		u.body_size = g_body_size;
 		u.sys_order = SYS_ORDERS[g_order].name;
-		u.has_ports = g_has_ports;
-		u.ports_hidden = g_ports_hidden;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
@@ -13392,6 +13466,71 @@ static int ui_settings_build(void *ctx, menu_row *rows, int max,
 
 static void fonts_screen(app *a);
 
+/* UI Settings > Visible Tiles (plorpos-bn9.10): Ports and Muse+ first, then
+ * every system with games in the row's order; Favorites is not listed (it is
+ * there while something is favorited). A, Left and Right toggle; the row
+ * changes once, when the list closes. */
+typedef struct {
+	int         n, sys[CFG_MAX_SYSTEMS];     /* row -> a->sys index */
+	const char *name[CFG_MAX_SYSTEMS];
+	bool        on[CFG_MAX_SYSTEMS];
+} tiles_pick;
+
+static int tiles_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	tiles_pick *tp = ctx;
+
+	(void)max;
+	return sys_menu_tiles_build(tp->name, tp->on, tp->n, rows, heading);
+}
+
+static menu_result tiles_key(app *a, void *ctx, in_button key, int sel)
+{
+	tiles_pick *tp = ctx;
+
+	(void)a;
+	if ((key == IN_ACCEPT || key == IN_LEFT || key == IN_RIGHT) && sel >= 0 && sel < tp->n)
+		tp->on[sel] = !tp->on[sel];
+	return MENU_STAY;
+}
+
+static void tiles_screen(app *a)
+{
+	tiles_pick tp = { 0 };
+	bool changed = false;
+	int pass, i;
+
+	/* Ports, Muse+, the rest: three passes over the same shelves. */
+	for (pass = 0; pass < 3; pass++)
+		for (i = 0; i < a->sys.count && tp.n < CFG_MAX_SYSTEMS; i++) {
+			const system_cfg *s = &a->sys.systems[i];
+			int kind = is_ports(s) ? 0 : is_muse(s) ? 1 : 2;
+
+			if (kind != pass || !strcmp(s->tag, "FAV")) continue;
+			tp.sys[tp.n] = i;
+			tp.name[tp.n] = s->name;
+			tp.on[tp.n++] = !s->hidden;
+		}
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT, .fixed_w = menu_std_width(a) },
+	         tiles_build, tiles_key, &tp);
+	for (i = 0; i < tp.n; i++) {
+		char k[24];
+
+		if (tp.on[i] == !a->sys.systems[tp.sys[i]].hidden) continue;
+		tile_key(k, sizeof k, a->sys.systems[tp.sys[i]].tag);
+		if (tp.on[i]) db_del(db_dev(), k);       /* shown is the default */
+		else db_set_int(db_dev(), k, 0);
+		changed = true;
+	}
+	if (!changed) return;
+	/* No rescan: the shelves are all still there, only the row's places
+	 * move. The cursor stays on its shelf, or the next shown one. */
+	tiles_mark(a);
+	if (a->screen == SCREEN_SYSTEMS) sys_cursor_show(a);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
+	ui_redraw_now();
+}
+
 static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 {
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
@@ -13453,13 +13592,9 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* The Ports card, shown or dropped: the shelves are scanned again, which
-	 * is what puts it back or takes it off. A scan, so the panel says so. */
-	if (sel == US_PORTS && g_has_ports && (d || key == IN_ACCEPT)) {
-		g_ports_hidden = !g_ports_hidden;
-		db_set_int(db_dev(), "ports_hidden", g_ports_hidden ? 1 : 0);
-		wait_panel(a, "Ports Tile", "Scanning...");
-		rescan_all(a);
+	/* A door (plorpos-bn9.10): only A opens it. */
+	if (sel == US_TILES) {
+		if (key == IN_ACCEPT) tiles_screen(a);
 		return MENU_STAY;
 	}
 
@@ -17617,7 +17752,9 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	}
 	muse_src_follow(a);             /* the Source of what is playing (ps8.10) */
 	pod_apply_sync(a);              /* episodes a sync found since (plorpos-ps8.1) */
-	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
+	/* An empty library opens too (plorpos-bn9.10): the shelf says where
+	 * music goes, and MENU has Source and the sign-ins. */
+	if (g_walk_thread || !a->running || g_muse_gone) {
 		g_muse_over = NULL;
 		g_muse_over_ctx = NULL;
 		g_menu_closing = false;
@@ -19498,6 +19635,9 @@ static void muse_shelf_screen(app *a, bool now)
 
 	a->sys_cursor = muse;
 	enter_system(a);                      /* the screen, the coverflow, the window */
+	/* An empty shelf too, which enter_system leaves be: MENU in it is Muse's,
+	 * not the plorpOS menu's rows under Muse's labels (plorpos-bn9.10). */
+	a->screen = SCREEN_GAMES;
 	v = &a->view[muse];
 
 	/* On the album that is playing, so SELECT lands where the music is - on
@@ -23103,13 +23243,15 @@ static void load_ahead(app *a)
 
 static void update_systems(app *a)
 {
-	int n = a->sys.count;
+	int n = sys_shown_n(a), at;   /* the row's places: hidden tiles left out (bn9.10) */
 
 	/* No systems means the modulo below divides by zero. Reachable the moment
 	 * empty systems started being hidden: a card with no ROMs on it, or ROMs
 	 * one directory too deep, now leaves nothing on the shelf and the first
 	 * press of left or right took the launcher down with SIGFPE. */
 	if (n <= 0) return;
+	sys_cursor_show(a);
+	at = sys_shown_at(a, a->sys_cursor);
 
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
@@ -23119,15 +23261,15 @@ static void update_systems(app *a)
 	in_button back = col ? IN_UP : IN_LEFT, fwd = col ? IN_DOWN : IN_RIGHT;
 	int dir = 0;
 
-	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
-	if (in_repeat(&a->in, fwd))  { a->sys_cursor = (a->sys_cursor + 1) % n; dir = +1; }
-	if (dir) load_ahead(a);
+	if (in_repeat(&a->in, back)) { at = (at - 1 + n) % n; dir = -1; }
+	if (in_repeat(&a->in, fwd))  { at = (at + 1) % n; dir = +1; }
+	if (dir) { a->sys_cursor = sys_shown_real(a, at); load_ahead(a); }
 	/* Muse's card opens Muse, the one SELECT opens - see update_games. */
 	if (a->in.pressed[IN_ACCEPT]) {
 		if (is_muse(&a->sys.systems[a->sys_cursor])) muse_open_shelf(a, true);
 		else enter_system(a);
 	}
-	cf_set_cursor_dir(&a->cf_sys, a->sys_cursor, n, dir);
+	cf_set_cursor_dir(&a->cf_sys, at, n, dir);
 }
 
 /* The first alphanumeric character of a name, upper-cased, or '\0' for a name
@@ -23322,15 +23464,10 @@ static void hide_empty_systems(app *a)
 {
 	int i, n = 0;
 
-	g_has_ports = false;
-	for (i = 0; i < a->sys.count; i++)
-		if (is_ports(&a->sys.systems[i])) g_has_ports = true;
-
+	/* A shelf Visible Tiles hides is NOT dropped (plorpos-bn9.10; Ports Tile
+	 * dropped Ports here): tiles_mark below flags it, and only the systems
+	 * row leaves it out. */
 	for (i = 0; i < a->sys.count; i++) {
-		/* Ports Tile: Hidden. Dropped like an empty shelf, so the cursor,
-		 * the jump and the coverflow never see it. Its favorites and recents
-		 * stay in their files and come back when it is Visible again. */
-		if (g_ports_hidden && is_ports(&a->sys.systems[i])) continue;
 		if (a->view[i].list.count <= 0) continue;
 		if (n != i) {
 			a->sys.systems[n] = a->sys.systems[i];
@@ -23343,6 +23480,7 @@ static void hide_empty_systems(app *a)
 		fprintf(stderr, "scan: %d of %d systems have games\n", n, a->sys.count);
 	a->sys.count = n;
 	if (a->sys_cursor >= n) a->sys_cursor = n ? n - 1 : 0;
+	tiles_mark(a);
 }
 
 /* Build the Favorites shelf: one shelf whose games come from every other.
@@ -23563,7 +23701,7 @@ static void refresh_favorites_shelf(app *a)
 		a->sys_cursor = 0;
 		a->screen = SCREEN_SYSTEMS;
 	}
-	cf_reset(&a->cf_sys, a->sys_cursor);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* Two systems trade places, with everything their index keys: the games,
@@ -24095,17 +24233,8 @@ static void muse_install(app *a)
 	    !(g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done))) {
 		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
 		ml_free(&g_muse);
-		if (m >= a->sys.count) return;
-		/* Always the last card: it is appended after everything else. */
-		texload_bump();
-		if (a->sys_tex[m]) SDL_DestroyTexture(a->sys_tex[m]);
-		a->sys_tex[m] = NULL;
-		a->sys.count--;
-		if (a->sys_cursor >= a->sys.count) {
-			a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
-			a->screen = SCREEN_SYSTEMS;
-			cf_reset(&a->cf_sys, a->sys_cursor);
-		}
+		/* Its card stays, empty (plorpos-bn9.10): Muse+ opens on a Source
+		 * with none, saying where it goes, and its menu signs in. */
 		ui_redraw_now();
 		return;
 	}
@@ -24197,11 +24326,11 @@ static void build_muse_shelf(app *a, bool bg)
 		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
 		bool used = muse_dir_used(dir);
 		snprintf(dir, sizeof dir, "%s/Audiobooks", g_muse_root);
-		if (!used && !muse_dir_used(dir)) {
+		/* The card stays, empty: Muse+ is where streaming and podcasts are
+		 * signed in to (plorpos-bn9.10). */
+		if (!used && !muse_dir_used(dir))
 			fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse",
 			        g_muse_root);
-			return;
-		}
 	}
 	muse_tabs_load();
 	g_muse_books = (src == MSRC_BOOKS || src == MSRC_ABS || src == MSRC_PODCASTS) && !g_srv;
@@ -24216,6 +24345,7 @@ static void build_muse_shelf(app *a, bool bg)
 	snprintf(s->tag, sizeof s->tag, "%s", "MUSE");
 	snprintf(s->card, CFG_STR, "%s", "MUSE.png");
 	s->accent = MUSE_ACCENT;
+	s->hidden = !tile_shown(s->tag);   /* Visible Tiles (plorpos-bn9.10) */
 	memset(&a->view[i], 0, sizeof a->view[i]);
 	a->sys_tex[i] = NULL;
 	a->sys_w[i] = a->sys_h[i] = 0;
@@ -24395,7 +24525,7 @@ static void rescan_all(app *a)
 		a->view[a->sys_cursor].cursor = 0;
 		cf_reset(&a->view[a->sys_cursor].cf, 0);
 	}
-	cf_reset(&a->cf_sys, a->sys_cursor);
+	cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 }
 
 /* Muse's library read again on its own (plorpos-ps8.1). rescan_all reads
@@ -24446,7 +24576,7 @@ static void muse_refresh(app *a)
 	if (a->sys_cursor >= a->sys.count) {
 		a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
 		a->screen = SCREEN_SYSTEMS;
-		cf_reset(&a->cf_sys, a->sys_cursor);
+		cf_reset(&a->cf_sys, sys_shown_at(a, a->sys_cursor));
 	}
 	fprintf(stderr, "muse: library read again in %u ms\n", plat_now_ms() - t0);
 }
@@ -25718,7 +25848,17 @@ int main(int argc, char *argv[])
 
 		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
 		g_order = cfg_order_index(id);
-		g_ports_hidden = db_get_int(db_dev(), "ports_hidden", 0) == 1;
+		/* Ports Tile: Hidden is Visible Tiles' Ports row off (bn9.10). */
+		if (db_get_int(db_dev(), "ports_hidden", 0) == 1) {
+			for (int i = 0; i < a.sys.count; i++)
+				if (is_ports(&a.sys.systems[i])) {
+					char k[24];
+
+					tile_key(k, sizeof k, a.sys.systems[i].tag);
+					db_set_int(db_dev(), k, 0);
+				}
+			db_del(db_dev(), "ports_hidden");
+		}
 #if defined(PLATFORM_RGDS)
 		g_dual_muse   = db_get_int(db_dev(), "dual_muse", 0) != 0;
 		g_dual_bottom = db_get_int(db_dev(), "dual_bottom", 0) != 0;
@@ -25874,7 +26014,7 @@ int main(int argc, char *argv[])
 	 * below, because that loads textures for whatever the cursor is on, and
 	 * a fallback to the shelf should find the right ones there. */
 	a.resume_menu = playing_restore(&a);
-	cf_reset(&a.cf_sys, a.sys_cursor);
+	cf_reset(&a.cf_sys, sys_shown_at(&a, a.sys_cursor));
 	a.tint = a.sys.systems[a.sys_cursor].accent;
 	t_mark("restore place");
 
@@ -25992,8 +26132,8 @@ int main(int argc, char *argv[])
 		cf_clock_freeze();
 		if (shot_sysmove != 0.0f) {
 			shelf_pacing(&a.cf_sys);
-			cf_stage(&a.cf_sys, (float)a.sys_cursor,
-			         (float)a.sys_cursor + 1.0f, shot_sysmove);
+			cf_stage(&a.cf_sys, (float)sys_shown_at(&a, a.sys_cursor),
+			         (float)sys_shown_at(&a, a.sys_cursor) + 1.0f, shot_sysmove);
 		}
 		/* The games shelf, with the cursor ALREADY at the destination - which
 		 * is the state the device is in for the whole of a move, and the reason

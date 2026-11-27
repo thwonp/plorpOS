@@ -296,10 +296,7 @@ static void tortos_menu_offline(void)
 		   "no Battery Percentage: it is UI Settings' now (plorpos-bn9.11)");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_PORTS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
-	u.has_ports = true;
-	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(n == US_ROWS, "with a Ports shelf, one row more");
+	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[US_DIR]), "Coverflow"), "and so does the gamelist layout");
 	ck(rows[US_DIR].live, "Gamelist Layout is reachable offline too");
@@ -307,12 +304,22 @@ static void tortos_menu_offline(void)
 	   && !strcmp(val(&rows[US_BATTPCT]), "off") && rows[US_BATTPCT].live,
 	   "Battery Percentage after Fonts, off to begin with (plorpos-bn9.11)");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
-	ck(!strcmp(rows[US_PORTS].label, "Ports Tile")
-	   && !strcmp(val(&rows[US_PORTS]), "Visible") && rows[US_PORTS].live,
-	   "Ports Tile reads Visible by default");
-	u.ports_hidden = true;
+	ck(US_TILES == US_ROWS - 1 && !strcmp(rows[US_TILES].label, "Visible Tiles")
+	   && !rows[US_TILES].value && rows[US_TILES].live,
+	   "Visible Tiles, a door, last - Ports Tile is gone (plorpos-bn9.10)");
+	for (int k = 0; k < n; k++)
+		ck(strcmp(rows[k].label, "Ports Tile") != 0, "no Ports Tile row");
+	{
+		const char *tn[] = { "Ports", "Muse+", "Game Boy" };
+		bool ton[] = { false, true, true };
+
+		n = sys_menu_tiles_build(tn, ton, 3, rows, &heading);
+		ck(n == 3 && !strcmp(heading, "Visible Tiles"), "Visible Tiles: a row a shelf");
+		ck(!strcmp(rows[0].label, "Ports") && !strcmp(val(&rows[0]), "off") && rows[0].live,
+		   "a hidden one reads off, as Scrape Systems' rows");
+		ck(!strcmp(val(&rows[1]), "on") && !strcmp(val(&rows[2]), "on"), "a shown one reads on");
+	}
 	n = sys_menu_ui_build(&u, rows, &heading);
-	ck(!strcmp(val(&rows[US_PORTS]), "Hidden"), "and Hidden when set");
 	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
 	   && rows[US_ORDER].live, "System Order reads Year, offline too");
 	ck(!strcmp(rows[US_FONTS].label, "Fonts") && !rows[US_FONTS].value && rows[US_FONTS].live,

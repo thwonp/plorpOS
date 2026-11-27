@@ -272,9 +272,20 @@ int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 	 * screen but the game's. Off, the disc is only the low-battery dot.
 	 * How the screen looks, so here, not System Settings (bn9.11). */
 	out[US_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
-	out[US_PORTS]    = (menu_row){ "Ports Tile",
-	                               u->ports_hidden ? "Hidden" : "Visible", true };
-	return u->has_ports ? US_ROWS : US_PORTS;
+	/* Which shelves have a tile on the systems row (plorpos-bn9.10). */
+	out[US_TILES]    = (menu_row){ "Visible Tiles", NULL, true };
+	return US_ROWS;
+}
+
+int sys_menu_tiles_build(const char *const *names, const bool *on, int n,
+                         menu_row *out, const char **heading)
+{
+	int i;
+
+	*heading = "Visible Tiles";
+	/* on/off, as Scrape Systems: the faces have no check mark. */
+	for (i = 0; i < n; i++) out[i] = (menu_row){ names[i], on[i] ? "on" : "off", true };
+	return n;
 }
 
 int sys_menu_fonts_build(const sys_ui *u, menu_row *out, menu_bufs *b,
