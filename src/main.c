@@ -25978,9 +25978,12 @@ static menu_result qs_key(app *a, void *ctx, in_button key, int sel)
 		if (!slot) return MENU_STAY;
 		slot_state_path(a, o, &sv->list.items[sv->cursor], slot, sp, sizeof sp);
 		if (row == GM_SAVE) {
-			plat_resident_line("SAVE\tpath=%s", sp);
+			/* The game runs on: Diatom writes its frame beside the state
+			 * (plorpos-rgds.38). The old picture goes first - never after,
+			 * which could take the new one - and an older Diatom leaves none. */
 			slot_preview_path(a, o, &sv->list.items[sv->cursor], slot, pp, sizeof pp);
 			unlink(pp);
+			plat_resident_line("SAVE\tpath=%s\tpreview=%s", sp, pp);
 		} else {
 			plat_resident_line("LOAD\tpath=%s", sp);
 		}
