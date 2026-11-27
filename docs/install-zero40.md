@@ -21,13 +21,12 @@ for your games) and a computer.
 The release has one image for the Zero 40: oakMOSS (Shaun Inman's boot chain with our system) with plorpOS
 already in it. Back up the Zero 40's stock card first: it is the only way back.
 
+It is highly recommended to reformat your card fresh before flashing. Existing
+partitions on the card may interfere with the oakMOSS / plorpOS flash.
+
 - **New card:** write `plorpOS-v<version>-zero40.img.xz` to a microSD card with
-  [Etcher](https://etcher.balena.io/) or `dd`. It replaces everything on the
+  [Etcher](https://etcher.balena.io/) or `dd`. It replaces the system on the
   card.
-- **A card that already runs oakMOSS:** copy `plorpOS-v<version>-zero40.omupd`
-  to the root of the card's `SPRUCEOS` partition and reboot. The board
-  installs it, restarts and deletes the file. Your games and saves stay. It
-  waits while the battery is under 30% with no charger.
 
 The first boot adds a FAT32 partition called `SPRUCEOS` to the free space on
 the card and puts plorpOS on it. That is the partition a computer sees as an
