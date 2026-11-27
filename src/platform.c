@@ -1394,6 +1394,10 @@ static char d_turbo_old[600];     /* "turbo.<TAG>/<rom file>": the bits it repla
 /* The running game's hotkeys and Button Mapping, resolved at RUN and changed
  * by the in-game Hotkeys screen for this session (plorpos-bn9.4). */
 static char d_hk[320], d_bm[160];
+/* Every volume SETLEVEL carries the Volume Limiter's ceiling (plorpos-bn9.20):
+ * Diatom then never sets or shows a level above it. vol_top is set below. */
+#define SETLEVEL_VOLUME "SETLEVEL\tkind=volume\tindex=%d\tcount=%d\tmax=%d"
+static int vol_top;
 
 bool plat_save_overrides(void) { return db_get_int(db_dev(), "saveoverrides", 1) != 0; }
 
@@ -1686,8 +1690,7 @@ bool plat_resident_send(const plat_game *g)
 		 * Both are written off the shared maxima now. */
 		vol = plat_volume_get();
 		bri = plat_brightness_get();
-		if (vol >= 0) dsend("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                    vol, PLAT_VOL_MAX + 1);
+		if (vol >= 0) dsend(SETLEVEL_VOLUME, vol, PLAT_VOL_MAX + 1, vol_top);
 		if (bri >= 0) dsend("SETLEVEL\tkind=brightness\tindex=%d\tcount=%d",
 		                    bri, PLAT_BRIGHT_MAX + 1);
 #ifdef PLATFORM_RGDS
@@ -1797,6 +1800,11 @@ bool plat_resident_line(const char *fmt, ...)
 	 * connection, and nothing of the line reached the old one to repeat. */
 	if (!dconnect()) return false;
 	return dsend("%s", line);
+}
+
+bool plat_resident_volume_set(int index)
+{
+	return plat_resident_line(SETLEVEL_VOLUME, index, PLAT_VOL_MAX + 1, vol_top);
 }
 
 const char *plat_resident_last_preview(void) { return d_preview; }
@@ -3024,7 +3032,7 @@ void plat_draw_osd(SDL_Renderer *r)
 
 /* The Volume Limiter's ceiling for the output in use (plorpos-bn9.9): a step
  * up stops there, and the OSD shows where it stopped. Set by the launcher. */
-static int vol_top = VOL_MAX;
+static int vol_top = PLAT_VOL_MAX;
 void plat_volume_ceiling(int top) { vol_top = clampi(top, 0, VOL_MAX); }
 
 void plat_volume_nudge(int delta)

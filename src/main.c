@@ -3876,19 +3876,26 @@ static int g_vlim_top = PLAT_VOL_MAX;
  * compares unless something is over. */
 static void vlim_follow(aout_dest d)
 {
+	/* The ceiling Diatom was last given in a game; RUN gives the current one
+	 * (plorpos-bn9.20). */
+	static int told = PLAT_VOL_MAX;
 	int count = 0, level;
 
 	g_vlim_top = aout_limit_level(d, PLAT_VOL_MAX);
 	plat_volume_ceiling(g_vlim_top);
-	if (g_vlim_top >= PLAT_VOL_MAX) return;
+	if (g_vlim_top >= PLAT_VOL_MAX && (!g_game_ticking || told == g_vlim_top)) return;
 	level = g_game_ticking ? plat_resident_volume(&count) : -1;
 	if (g_game_ticking) {
 		if (level < 0) level = plat_volume_get();
 		else if (count >= 2 && count != PLAT_VOL_MAX + 1)   /* on Diatom's own ladder */
 			level = (level * PLAT_VOL_MAX + (count - 1) / 2) / (count - 1);
-		if (level > g_vlim_top)
-			plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-			                   g_vlim_top, PLAT_VOL_MAX + 1);
+		/* A new limit or output: Diatom's ceiling follows (bn9.20). A level
+		 * still over it - an older Diatom, which ignores max= - comes down
+		 * from here, as before. */
+		if (level > g_vlim_top || told != g_vlim_top) {
+			told = g_vlim_top;
+			if (level >= 0) plat_resident_volume_set(level > g_vlim_top ? g_vlim_top : level);
+		}
 		return;
 	}
 	level = plat_volume_get();
@@ -3905,8 +3912,7 @@ static int cap_level(const char *out, int level)
 
 	if (level <= cap) return level;
 	if (g_game_ticking)
-		plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-		                   cap, PLAT_VOL_MAX + 1);
+		plat_resident_volume_set(cap);
 	else
 		plat_volume_nudge(cap - plat_volume_get());
 	fprintf(stderr, "audio: new output %s capped at level %d (was %d)\n",
@@ -3971,8 +3977,7 @@ static void bt_volume_follow(const char *out, bool fresh)
 				want = (hv * PLAT_VOL_MAX + 63) / 127;
 				if (!echo && want != have) {
 					if (g_game_ticking)
-						plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d",
-						                   want, PLAT_VOL_MAX + 1);
+						plat_resident_volume_set(want);
 					else
 						plat_volume_nudge(want - have);
 					sent = (want * 127 + PLAT_VOL_MAX / 2) / PLAT_VOL_MAX;
