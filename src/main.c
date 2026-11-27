@@ -5197,6 +5197,9 @@ static unsigned muse_pause_delay_ms(const app *a)
 static bool idle_due(app *a)
 {
 	int b, secs;
+#if !defined(PLATFORM_MIYOO)
+	bool screen_off;          /* Muse's Screen Off is the clock: nothing holds it */
+#endif
 
 	/* Whichever of the two is armed - never both (ST_SLEEP/ST_AUTO_OFF) -
 	 * except while music plays, when Playback Settings' Screen Off says how
@@ -5212,8 +5215,8 @@ static bool idle_due(app *a)
 	{
 		int so = db_get_int(db_dev(), "muse.screenoff", -1);
 
-		secs = musec_playing() && so >= 0 ? so
-		     : a->auto_off ? a->auto_off : a->auto_poweroff;
+		screen_off = musec_playing() && so >= 0;
+		secs = screen_off ? so : a->auto_off ? a->auto_off : a->auto_poweroff;
 	}
 #endif
 	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
@@ -5238,9 +5241,10 @@ static bool idle_due(app *a)
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, !musec_playing() && muse_syncing());
 #else
 	/* A sync holds it as the charger does - not while music plays, when the
-	 * clock only turns the screen off (music_dark waits for the sync). */
+	 * clock only turns the screen off (music_dark waits for the sync). Nor
+	 * does the charger then: Screen Off is always honored (plorpos-rgds.39). */
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
-	                  keep_awake() || (!musec_playing() && muse_syncing()));
+	                  !screen_off && (keep_awake() || (!musec_playing() && muse_syncing())));
 #endif
 }
 

@@ -215,7 +215,7 @@ They're under **MENU > System Settings**. The device has two ways to rest: **sle
 - **Suspend** comes 10 seconds after the device falls asleep, however it fell asleep. When music is paused or ends with the screen dark, it suspends after Muse+'s **Paused Sleep Delay** (Playback Settings; Auto Sleep's time to begin with).
 - **Auto Off** (default Never; not on the RG Rotate): how long the device sits untouched before it powers itself off. Next time you turn it on, you're back where you were. Auto Off and Auto Sleep can't both be on: setting one turns the other to Never.
 
-Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse+'s own **Screen Off** setting decides when the screen goes dark instead. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
+Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-game menu included, never while you're playing. While music plays, Muse+'s own **Screen Off** setting decides when the screen goes dark instead, charging or not. Plugged in to charge, the device never sleeps, suspends or powers off on its own.
 
 **Miyoo Mini Flip:** no suspend and no Auto Off. **Sleep Poweroff** (default 2 minutes) powers a sleeping Flip off instead.
 
