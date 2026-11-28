@@ -1295,15 +1295,10 @@ struct pl_ctl_elem_value {
 
 #define DISP_LCD_SET_BRIGHTNESS 0x102
 #define DISP_LCD_GET_BRIGHTNESS 0x103
-/* The Zero 40's panel runs its backlight the other way: a higher raw value is
- * darker and 255 is off (oakMOSS hardware-notes, "Backlight polarity"; the
- * owner saw Menu+Vol go the wrong way and sleep light the screen up,
- * plorpos-auv.15). Every raw value to and from the driver goes through this. */
-#ifdef PLATFORM_ZERO40
-#define BL_RAW(v) (255 - (v))
-#else
-#define BL_RAW(v) (v)
-#endif
+/* Raw values go to and from the driver as they are on every board, the Zero
+ * 40 included: its image (the hybrid, Shaun Inman's device tree, lcd_pwm_pol
+ * 0) runs the backlight the normal way, 0 off. The inversion auv.15 measured
+ * on the earlier base ran it backwards there (plorpos-auv.22). */
 
 /* Perceived brightness is proportional, not linear, so the rungs are
  * geometric. The first is the panel's measured floor: 0 and 1 are black on
@@ -1645,7 +1640,7 @@ void apply_brightness(int b)
 
 	cur_bright = b;
 	if (disp_fd < 0) return;
-	a[1] = BL_RAW(bright_ladder[b]);
+	a[1] = bright_ladder[b];
 	ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
 
@@ -1654,46 +1649,11 @@ void apply_brightness(int b)
  * apply_brightness(0): rung 0 is 2/255, still lit, which is a dim screen
  * rather than a dark one (found on hardware, 2026-09-28). cur_bright is left
  * alone, so apply_brightness(cur_bright) puts the player's level back. */
-#ifdef PLATFORM_ZERO40
-/* The Zero 40's darkest raw value, 255, still leaves the inverted PWM 1/256
- * on: a visible glow in the dark (owner, plorpos-auv.15). The driver cannot
- * go past it, so the channel's period register is set to all-active: no
- * light at all. Waking needs nothing: every rung is a duty change from 255's,
- * which the driver writes to the register again (it skips only a duty equal
- * to the one it last set). PWM0 PPR: entire cycles - 1 in [31:16], active
- * cycles in [15:0]; 0x01DF0186 at 207 (390 of 480). */
-#define PWM_BASE   0x0300A000
-#define PWM0_PPR   0x104
-static void pwm_dark(void)
-{
-	static volatile uint32_t *pwm = NULL;
-
-	if (!pwm) {
-		int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
-		void *m;
-
-		if (fd < 0) return;
-		m = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, PWM_BASE);
-		close(fd);
-		if (m == MAP_FAILED) return;
-		pwm = m;
-	}
-	{
-		uint32_t ppr = pwm[PWM0_PPR / 4];
-
-		pwm[PWM0_PPR / 4] = (ppr & 0xFFFF0000u) | ((ppr >> 16) + 1);
-	}
-}
-#endif
-
 void backlight_off(void)
 {
-	unsigned long a[4] = { 0, BL_RAW(0), 0, 0 };
+	unsigned long a[4] = { 0, 0, 0, 0 };
 
 	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
-#ifdef PLATFORM_ZERO40
-	pwm_dark();
-#endif
 }
 /* END PolyForm-Noncommercial-1.0.0 */
 
@@ -1729,7 +1689,6 @@ void plat_settings_init(void)
 		int raw = ioctl(disp_fd, DISP_LCD_GET_BRIGHTNESS, (unsigned long[4]){ 0, 0, 0, 0 });
 		int i;
 		if (raw >= 0) {
-			raw = BL_RAW(raw);
 			b = 0;
 			for (i = 1; i <= BRIGHT_MAX; i++)
 				if (abs(bright_ladder[i] - raw) < abs(bright_ladder[b] - raw)) b = i;
