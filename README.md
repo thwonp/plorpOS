@@ -24,12 +24,12 @@ has grown into its own project.
 
 <table>
   <tr>
-    <td align="center"><img src="res/readme/systems.png" width="240" alt="The consoles row"><br><sub>Main Shelf</sub></td>
+    <td align="center"><img src="res/readme/shelf-rgds.png" width="240" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
     <td align="center"><img src="res/readme/switcher.png" width="240" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
-    <td align="center"><img src="res/readme/cheevos.png" width="240" alt="An achievements list"><br><sub>RetroAchievements on the device</sub></td>
+    <td align="center"><img src="res/readme/cheevos-rgds.png" width="240" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RetroAchievements on the device</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="res/readme/muse.png" width="240" alt="Muse+'s shelf of albums"><br><sub>Your albums, in Muse+</sub></td>
+    <td align="center"><img src="res/readme/muse-coverflow.png" width="240" alt="Muse+ Coverflow, album covers in a row"><br><sub>Your albums, in Muse+</sub></td>
     <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>Nintendo DS, laid out your way</sub></td>
     <td align="center"><img src="res/readme/rotate-ports.png" width="240" alt="The Ports shelf with PortMaster games"><br><sub>Ports, installed by PortMaster</sub></td>
   </tr>
@@ -41,14 +41,14 @@ has grown into its own project.
 
 | Handheld | How plorpOS runs | Guide |
 |---|---|---|
-| TrimUI Brick, Brick Hammer, Brick Pro | From the card, on the stock system. One card works in all three | [Brick](docs/install-brick.md) |
+| TrimUI Brick, Brick Hammer, Brick Pro | From the card, on modified stock (for faster boot). One card works in all three | [Brick](docs/install-brick.md) |
 | Anbernic RG SP, RG34xxSP, RG35XX H, RG35XX SP | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [H700](docs/install-h700.md) |
 | Anbernic RG DS | A card image (trimmed ROCKNIX). The internal system is never touched | [RG DS](docs/install-rgds.md) |
 | Anbernic RG Rotate | A card image ([base618](https://github.com/thwonp/base618), Linux). Android stays on the device | [RG Rotate](docs/install-rotate.md) |
 | GKD 350H Ultra | On [BasedOS](https://github.com/thwonp/BasedOS), installed beside the stock ROCKNIX | [GKD](docs/install-gkd350based.md) |
 | MagicX Zero 28 | A card image on [oakMOSS](https://github.com/spruceUI/oakMOSS) | [Zero 28](docs/install-zero28.md) |
 | MagicX Zero 40 | A card image on [oakMOSS](https://github.com/spruceUI/oakMOSS) | [Zero 40](docs/install-zero40.md) |
-| Miyoo Mini Flip | From the card, on the stock firmware | [Mini Flip](docs/install-flip.md) |
+| Miyoo Mini Flip | From the card, on stock firmware, with optional [fast boot firmware](https://github.com/thwonp/plorpOS/blob/main/docs/install-flip.md#faster-boot-optional) | [Mini Flip](docs/install-flip.md) |
 | Anbernic RG Nano | **plorpOS nano**, a music-first version, as a card image | [RG Nano](docs/install-nano.md) |
 
 Everything below is about the full plorpOS. The Nano's guide lists what nano
@@ -131,7 +131,7 @@ Each guide has **Updating** and **Removing plorpOS** sections.
 
 ### Adding games over Wi-Fi
 
-<img align="right" width="360" src="res/readme/hare.png" alt="Over The Hare, with a browser connected">
+<img align="right" width="360" src="res/readme/network-services.png" alt="Network Services: SSH, Syncthing, Tailscale, Over The Hare and Check for update">
 
 1. Join a network under **MENU > Wi-Fi**.
 2. Open **MENU > Network Services > Over The Hare**. It shows an address and a
@@ -368,6 +368,9 @@ plorpOS stands on a lot of other people's work. The licence of every piece is in
 - **[ROCKNIX](https://rocknix.org)**, which the RG DS image is built on.
 - **[DrUm78](https://github.com/DrUm78)** for their [FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics) build that plorpOS Nano built on.
 - **[nelynes](https://github.com/nelynes)** of [slotPlus](https://github.com/nelynes/slotPlus) for helping with DSperate frame-skip implementation.
+- **[tenlevels](https://github.com/tenlevels)** of [bloom](https://github.com/tenlevels/PakUI) for help on the Miyoo Mini Flip FBNeo build and fast boot firmware.
+- **[Magnominus](https://github.com/MagnominusGit)** for [armGBA](https://github.com/MagnominusGit/armGBA).
+- **[Plex](https://www.plex.tv)**, **[Jellyfin](https://jellyfin.org)** and **[Audiobookshelf](https://www.audiobookshelf.org)**, the media servers Muse+ streams from.
 - All the contributors for [libretro](https://github.com/libretro), [PortMaster](https://portmaster.games), [RetroAchievements](https://retroachievements.org), [ScreenScraper](https://www.screenscraper.fr), and other projects used here.
 
 ## License
