@@ -24,12 +24,12 @@ has grown into its own project.
 
 <table>
   <tr>
-    <td align="center"><img src="res/readme/systems.png" width="240" alt="The consoles row"><br><sub>Main Shelf</sub></td>
+    <td align="center"><img src="res/readme/shelf-rgds.png" width="240" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
     <td align="center"><img src="res/readme/switcher.png" width="240" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
-    <td align="center"><img src="res/readme/cheevos.png" width="240" alt="An achievements list"><br><sub>RetroAchievements on the device</sub></td>
+    <td align="center"><img src="res/readme/cheevos-rgds.png" width="240" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RetroAchievements on the device</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="res/readme/muse.png" width="240" alt="Muse+'s shelf of albums"><br><sub>Your albums, in Muse+</sub></td>
+    <td align="center"><img src="res/readme/muse-coverflow.png" width="240" alt="Muse+ Coverflow, album covers in a row"><br><sub>Your albums, in Muse+</sub></td>
     <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>Nintendo DS, laid out your way</sub></td>
     <td align="center"><img src="res/readme/rotate-ports.png" width="240" alt="The Ports shelf with PortMaster games"><br><sub>Ports, installed by PortMaster</sub></td>
   </tr>
@@ -131,7 +131,7 @@ Each guide has **Updating** and **Removing plorpOS** sections.
 
 ### Adding games over Wi-Fi
 
-<img align="right" width="360" src="res/readme/hare.png" alt="Over The Hare, with a browser connected">
+<img align="right" width="360" src="res/readme/network-services.png" alt="Network Services: SSH, Syncthing, Tailscale, Over The Hare and Check for update">
 
 1. Join a network under **MENU > Wi-Fi**.
 2. Open **MENU > Network Services > Over The Hare**. It shows an address and a
