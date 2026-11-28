@@ -370,6 +370,7 @@ plorpOS stands on a lot of other people's work. The licence of every piece is in
 - **[nelynes](https://github.com/nelynes)** of [slotPlus](https://github.com/nelynes/slotPlus) for helping with DSperate frame-skip implementation.
 - **[tenlevels](https://github.com/tenlevels)** of [bloom](https://github.com/tenlevels/PakUI) for help on the Miyoo Mini Flip FBNeo build and fast boot firmware.
 - **[Magnominus](https://github.com/MagnominusGit)** for [armGBA](https://github.com/MagnominusGit/armGBA).
+- **[Plex](https://www.plex.tv)**, **[Jellyfin](https://jellyfin.org)** and **[Audiobookshelf](https://www.audiobookshelf.org)**, the media servers Muse+ streams from.
 - All the contributors for [libretro](https://github.com/libretro), [PortMaster](https://portmaster.games), [RetroAchievements](https://retroachievements.org), [ScreenScraper](https://www.screenscraper.fr), and other projects used here.
 
 ## License
