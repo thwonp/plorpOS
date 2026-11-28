@@ -368,6 +368,8 @@ plorpOS stands on a lot of other people's work. The licence of every piece is in
 - **[ROCKNIX](https://rocknix.org)**, which the RG DS image is built on.
 - **[DrUm78](https://github.com/DrUm78)** for their [FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics) build that plorpOS Nano built on.
 - **[nelynes](https://github.com/nelynes)** of [slotPlus](https://github.com/nelynes/slotPlus) for helping with DSperate frame-skip implementation.
+- **[tenlevels](https://github.com/tenlevels)** of [bloom](https://github.com/tenlevels/PakUI) for help on the Miyoo Mini Flip FBNeo build and fast boot firmware.
+- **[Magnominus](https://github.com/MagnominusGit)** for [armGBA](https://github.com/MagnominusGit/armGBA).
 - All the contributors for [libretro](https://github.com/libretro), [PortMaster](https://portmaster.games), [RetroAchievements](https://retroachievements.org), [ScreenScraper](https://www.screenscraper.fr), and other projects used here.
 
 ## License
