@@ -19,12 +19,15 @@ Copy everything in it to the root of the card, merging folders.
 Optional check first, from the card root: `md5sum -c MD5SUMS`. Then put the
 card in the Flip and power on.
 
+### 4. **Recommended:** Update the stock firmware to use [fast-boot](https://github.com/thwonp/plorpOS/blob/main/docs/install-flip.md#faster-boot-optional).
+
 # Device specific notes for the Miyoo Mini Flip
 
 ### Base system
 
-plorpOS runs on Miyoo's stock firmware, which starts `.tmp_update/updater` in
-place of MainUI. Nothing is installed on the Flip itself.
+plorpOS can run on Miyoo's stock firmware, but it is **Highly Recommended** to
+update to [fast-boot firmware](https://github.com/thwonp/plorpOS/blob/main/docs/install-flip.md#faster-boot-optional).
+Each starts `.tmp_update/updater` in place of Miyoo's MainUI.
 
 - 128 MB of RAM (about 101 MB usable), no swap. This decides what runs; see
   [Limitations](#limitations).
