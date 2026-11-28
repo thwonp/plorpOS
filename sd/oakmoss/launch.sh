@@ -87,6 +87,19 @@ BOOT_ENV=$USERDATA_PATH/boot.env
 [ "$BOARD" = zero40 ] && { grep -q '^axs15205 ' /proc/modules ||
 	( insmod "/lib/modules/$(uname -r)/axs15205.ko" 2> /dev/null ) & }
 
+# The Zero 40's vibration motor (plorpos-auv.24): GPIO 227, high is on, as on
+# the Brick - but the hybrid's device tree hands it to a fixed regulator,
+# io-vibrator, that nothing uses and the kernel switches off at boot. Free the
+# line and export it parked low; the launcher and Diatom find it as the
+# Brick's (plat_has_rumble, MOTOR_PATH).
+if [ "$BOARD" = zero40 ]; then
+	R=/sys/bus/platform/drivers/reg-fixed-voltage
+	[ -e $R/io-vibrator ] && echo io-vibrator > $R/unbind 2> /dev/null
+	[ -d /sys/class/gpio/gpio227 ] || echo 227 > /sys/class/gpio/export 2> /dev/null
+	echo out > /sys/class/gpio/gpio227/direction 2> /dev/null
+	echo 0 > /sys/class/gpio/gpio227/value 2> /dev/null
+fi
+
 # USB DACs (plorpos-czp): oakMOSS's kernel has the USB audio driver as modules
 # but its image ships none, so a DAC enumerates and gets no sound card. These
 # are built from MagicX's own 4.9.191 tree and match only that build; insmod
