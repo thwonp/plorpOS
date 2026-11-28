@@ -41,14 +41,14 @@ has grown into its own project.
 
 | Handheld | How plorpOS runs | Guide |
 |---|---|---|
-| TrimUI Brick, Brick Hammer, Brick Pro | From the card, on the stock system. One card works in all three | [Brick](docs/install-brick.md) |
+| TrimUI Brick, Brick Hammer, Brick Pro | From the card, on modified stock (for faster boot). One card works in all three | [Brick](docs/install-brick.md) |
 | Anbernic RG SP, RG34xxSP, RG35XX H, RG35XX SP | As the front end for [BaseOS](https://github.com/pvaibhav/BaseOS), on a second card | [H700](docs/install-h700.md) |
 | Anbernic RG DS | A card image (trimmed ROCKNIX). The internal system is never touched | [RG DS](docs/install-rgds.md) |
 | Anbernic RG Rotate | A card image ([base618](https://github.com/thwonp/base618), Linux). Android stays on the device | [RG Rotate](docs/install-rotate.md) |
 | GKD 350H Ultra | On [BasedOS](https://github.com/thwonp/BasedOS), installed beside the stock ROCKNIX | [GKD](docs/install-gkd350based.md) |
 | MagicX Zero 28 | A card image on [oakMOSS](https://github.com/spruceUI/oakMOSS) | [Zero 28](docs/install-zero28.md) |
 | MagicX Zero 40 | A card image on [oakMOSS](https://github.com/spruceUI/oakMOSS) | [Zero 40](docs/install-zero40.md) |
-| Miyoo Mini Flip | From the card, on the stock firmware | [Mini Flip](docs/install-flip.md) |
+| Miyoo Mini Flip | From the card, on stock firmware, with optional [fast boot firmware](https://github.com/thwonp/plorpOS/blob/main/docs/install-flip.md#faster-boot-optional) | [Mini Flip](docs/install-flip.md) |
 | Anbernic RG Nano | **plorpOS nano**, a music-first version, as a card image | [RG Nano](docs/install-nano.md) |
 
 Everything below is about the full plorpOS. The Nano's guide lists what nano
