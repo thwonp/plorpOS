@@ -158,7 +158,7 @@ Flip boots Miyoo's MainUI and `.tmp_update` is renamed `.tmp_update.off`.
 ### Faster boot (optional)
 
 `plorpOS-miyoominiflip-fast-boot.zip` (separate download) reaches the shelf
-about 6 s sooner, games and sound ready. Miyoo's splash pictures become black;
+about 7 s sooner, games and sound ready. Miyoo's splash pictures become black;
 the boot logo stays.
 
 - **It writes the Flip's internal flash**: the `/customer` and `miservice`
