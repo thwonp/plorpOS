@@ -26,12 +26,12 @@ has grown into its own project.
   <tr>
     <td align="center"><img src="res/readme/shelf-rgds.png" width="240" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
     <td align="center"><img src="res/readme/switcher.png" width="240" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
-    <td align="center"><img src="res/readme/cheevos-rgds.png" width="240" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RetroAchievements on the device</sub></td>
+    <td align="center"><img src="res/readme/cheevos-rgds.png" width="240" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RG DS - Offline RetroAchievements over CRT Shader</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="res/readme/muse-coverflow.png" width="240" alt="Muse+ Coverflow, album covers in a row"><br><sub>Your albums, in Muse+</sub></td>
-    <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>Nintendo DS, laid out your way</sub></td>
-    <td align="center"><img src="res/readme/rotate-ports.png" width="240" alt="The Ports shelf with PortMaster games"><br><sub>Ports, installed by PortMaster</sub></td>
+    <td align="center"><img src="res/readme/muse-coverflow.png" width="240" alt="Muse+ Coverflow, album covers in a row"><br><sub>Muse+ Coverflow</sub></td>
+    <td align="center"><img src="res/readme/muse-sources.png" width="240" alt="Muse+ Visible Sources: Local Music, Local Audiobooks, Plex Music, Jellyfin Music, Audiobookshelf, Podcasts"><br><sub>Muse+ streaming sources</sub></td>
+    <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>DSperate with custom layouts</sub></td>
   </tr>
 </table>
 
