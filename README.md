@@ -40,15 +40,18 @@ has grown into its own project.
 
 <table>
   <tr>
-    <td align="center"><img src="res/readme/shelf-rgds.png" width="200" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
-    <td align="center"><img src="res/readme/rotate-ds.png" width="200" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>DSperate with custom layouts</sub></td>
-    <td align="center"><img src="res/readme/muse-sources.png" width="200" alt="Muse+ Visible Sources: Local Music, Local Audiobooks, Plex Music, Jellyfin Music, Audiobookshelf, Podcasts"><br><sub>Muse+ streaming sources</sub></td>
-    <td align="center" rowspan="2"><img src="res/readme/cheevos-rgds.png" width="200" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RG DS - Offline RetroAchievements over CRT Shader</sub></td>
+    <td align="center"><img src="res/readme/shelf-rgds.png" height="180" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
+    <td align="center"><img src="res/readme/switcher.png" height="180" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
+    <td align="center" rowspan="2"><img src="res/readme/cheevos-rgds.png" width="305" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RG DS - Offline RetroAchievements over CRT Shader</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="res/readme/switcher.png" width="200" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
-    <td align="center"><img src="res/readme/muse-coverflow.png" width="200" alt="Muse+ Coverflow, album covers in a row"><br><sub>Muse+ Coverflow</sub></td>
-    <td align="center"><img src="res/readme/jellyfin-settings.png" width="200" alt="Jellyfin Settings: offline mode, account, server, library, streaming and download quality"><br><sub>Downloads and configurations on each streaming source</sub></td>
+    <td align="center"><img src="res/readme/rotate-ds.png" height="180" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>DSperate with custom layouts</sub></td>
+    <td align="center"><img src="res/readme/pico8-list.png" height="180" alt="The PICO-8 shelf: Splore first, then downloaded carts with their cartridge art"><br><sub>PICO-8 downloads carts to the shelf</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="res/readme/muse-coverflow.png" height="180" alt="Muse+ Coverflow, album covers in a row"><br><sub>Muse+ Coverflow</sub></td>
+    <td align="center"><img src="res/readme/muse-sources.png" height="180" alt="Muse+ Visible Sources: Local Music, Local Audiobooks, Plex Music, Jellyfin Music, Audiobookshelf, Podcasts"><br><sub>Muse+ streaming sources</sub></td>
+    <td align="center"><img src="res/readme/jellyfin-settings.png" height="180" alt="Jellyfin Settings: offline mode, account, server, library, streaming and download quality"><br><sub>Downloads and configurations on each streaming source</sub></td>
   </tr>
 </table>
 
