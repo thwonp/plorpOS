@@ -20,23 +20,6 @@ easy to remove.
 It started as a fork of [TortOS](https://tortos.games/) for the TrimUI Brick and
 has grown into its own project.
 
-<div align="center">
-
-<table>
-  <tr>
-    <td align="center"><img src="res/readme/shelf-rgds.png" width="240" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
-    <td align="center"><img src="res/readme/switcher.png" width="240" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
-    <td align="center"><img src="res/readme/cheevos-rgds.png" width="240" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RG DS - Offline RetroAchievements over CRT Shader</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="res/readme/muse-coverflow.png" width="240" alt="Muse+ Coverflow, album covers in a row"><br><sub>Muse+ Coverflow</sub></td>
-    <td align="center"><img src="res/readme/muse-sources.png" width="240" alt="Muse+ Visible Sources: Local Music, Local Audiobooks, Plex Music, Jellyfin Music, Audiobookshelf, Podcasts"><br><sub>Muse+ streaming sources</sub></td>
-    <td align="center"><img src="res/readme/rotate-ds.png" width="240" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>DSperate with custom layouts</sub></td>
-  </tr>
-</table>
-
-</div>
-
 ## Devices
 
 | Handheld | How plorpOS runs | Guide |
@@ -51,10 +34,27 @@ has grown into its own project.
 | Miyoo Mini Flip | From the card, on stock firmware, with optional [fast boot firmware](https://github.com/thwonp/plorpOS/blob/main/docs/install-flip.md#faster-boot-optional) | [Mini Flip](docs/install-flip.md) |
 | Anbernic RG Nano | **plorpOS nano**, a music-first version, as a card image | [RG Nano](docs/install-nano.md) |
 
-Everything below is about the full plorpOS. The Nano's guide lists what nano
-does.
+## Screenshots
 
-## What it does
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center"><img src="res/readme/shelf-rgds.png" width="200" alt="The main shelf on the RG DS, PICO-8 in focus"><br><sub>Main Shelf</sub></td>
+    <td align="center"><img src="res/readme/rotate-ds.png" width="200" alt="A Nintendo DS game on the RG Rotate, top screen large, bottom screen small"><br><sub>DSperate with custom layouts</sub></td>
+    <td align="center"><img src="res/readme/muse-sources.png" width="200" alt="Muse+ Visible Sources: Local Music, Local Audiobooks, Plex Music, Jellyfin Music, Audiobookshelf, Podcasts"><br><sub>Muse+ streaming sources</sub></td>
+    <td align="center" rowspan="2"><img src="res/readme/cheevos-rgds.png" width="200" alt="An achievements list on the RG DS top screen, the game on the bottom screen"><br><sub>RG DS - Offline RetroAchievements over CRT Shader</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="res/readme/switcher.png" width="200" alt="The game switcher, recent games in a row"><br><sub>Game switcher</sub></td>
+    <td align="center"><img src="res/readme/muse-coverflow.png" width="200" alt="Muse+ Coverflow, album covers in a row"><br><sub>Muse+ Coverflow</sub></td>
+    <td align="center"><img src="res/readme/jellyfin-settings.png" width="200" alt="Jellyfin Settings: offline mode, account, server, library, streaming and download quality"><br><sub>Downloads and configurations on each streaming source</sub></td>
+  </tr>
+</table>
+
+</div>
+
+## Main Features
 
 - **Muse+**: music, audiobooks and podcasts one or two buttons (or a swipe) away
   from anywhere, playing over your game. Local files, **Plex**, **Jellyfin**
@@ -83,8 +83,8 @@ does.
 - **Favorites, sorting, rename, delete** and **play time** for every game and
   console.
 
-What each device has or lacks: its install guide. Every menu and setting:
-[the guide](docs/guide.md).
+What each device has or lacks is in its install guide. Every menu and setting
+is in the [main guide](docs/guide.md).
 
 ## Supported systems
 
